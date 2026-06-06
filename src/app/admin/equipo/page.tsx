@@ -75,6 +75,14 @@ export default function EquipoPage() {
   const [nuevoRol, setNuevoRol] = useState<Rol>('mecanico')
   const [savingRol, setSavingRol] = useState(false)
 
+  // Modal editar usuario completo
+  const [editModal, setEditModal] = useState<UsuarioEquipo | null>(null)
+  const [editNombreModal, setEditNombreModal] = useState('')
+  const [savingNombre, setSavingNombre] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteMsg, setDeleteMsg] = useState('')
+
   // Reset password
   const [resetState, setResetState] = useState<Record<string, 'loading' | 'ok' | 'error'>>({})
 
@@ -177,6 +185,43 @@ export default function EquipoPage() {
     permisosRef.current.set(rol, mapa)
     setPermisosPorRol(new Map(permisosRef.current))
     clearPermisosCache(profile.tenant_id, rol)
+  }
+
+  const abrirEditModal = (u: UsuarioEquipo) => {
+    setEditModal(u)
+    setEditNombreModal(u.nombre)
+    setConfirmDelete(false)
+    setDeleteMsg('')
+  }
+
+  const guardarNombre = async () => {
+    if (!editModal || !editNombreModal.trim()) return
+    setSavingNombre(true)
+    await supabase.from('usuarios').update({ nombre: editNombreModal.trim() }).eq('id', editModal.id)
+    setUsuarios((prev) => prev.map((x) => x.id === editModal.id ? { ...x, nombre: editNombreModal.trim() } : x))
+    setEditModal(null)
+    setSavingNombre(false)
+  }
+
+  const eliminarUsuario = async () => {
+    if (!editModal) return
+    setDeleting(true)
+    setDeleteMsg('')
+    try {
+      const res = await fetch('/api/admin/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: editModal.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setUsuarios((prev) => prev.filter((x) => x.id !== editModal.id))
+      setEditModal(null)
+    } catch (e: unknown) {
+      setDeleteMsg(e instanceof Error ? e.message : 'Error al eliminar')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   // Toggle activo
@@ -283,6 +328,14 @@ export default function EquipoPage() {
                     </button>
                   )}
 
+                  {/* Editar nombre/eliminar */}
+                  <button
+                    onClick={() => abrirEditModal(u)}
+                    className="flex-shrink-0 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700 font-medium transition-colors"
+                  >
+                    Editar
+                  </button>
+
                   {/* Reset password */}
                   <button
                     onClick={() => enviarReset(u)}
@@ -310,6 +363,77 @@ export default function EquipoPage() {
               )
             })
           )}
+        </div>
+      )}
+
+      {/* Modal editar usuario */}
+      {editModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div>
+              <h2 className="font-bold text-gray-900">Editar usuario</h2>
+              <p className="text-xs text-gray-400">{editModal.email}</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+              <input
+                value={editNombreModal}
+                onChange={(e) => setEditNombreModal(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={guardarNombre}
+                disabled={savingNombre || !editNombreModal.trim() || editNombreModal.trim() === editModal.nombre}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors"
+              >
+                {savingNombre ? 'Guardando...' : 'Guardar nombre'}
+              </button>
+              <button
+                onClick={() => setEditModal(null)}
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+
+            <div className="border-t pt-3">
+              {!confirmDelete ? (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="w-full text-sm text-red-500 hover:text-red-700 hover:bg-red-50 py-2 rounded-lg transition-colors font-medium"
+                >
+                  Eliminar usuario
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-red-600 font-medium text-center">
+                    ¿Eliminar a <strong>{editModal.nombre}</strong>? Esta acción no se puede deshacer.
+                  </p>
+                  {deleteMsg && <p className="text-xs text-red-500 text-center">{deleteMsg}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={eliminarUsuario}
+                      disabled={deleting}
+                      className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
+                    >
+                      {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(false)}
+                      className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-semibold transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

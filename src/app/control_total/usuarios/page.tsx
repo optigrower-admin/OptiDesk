@@ -48,7 +48,11 @@ export default function UsuariosPage() {
   const [error, setError] = useState('')
   const [editando, setEditando] = useState<Usuario | null>(null)
   const [editRol, setEditRol] = useState<'gerencia' | 'admin' | 'mecanico'>('mecanico')
+  const [editNombre, setEditNombre] = useState('')
   const [savingRol, setSavingRol] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteMsg, setDeleteMsg] = useState('')
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -100,15 +104,44 @@ export default function UsuariosPage() {
   const abrirEditar = (u: Usuario) => {
     setEditando(u)
     setEditRol(u.rol as 'gerencia' | 'admin' | 'mecanico')
+    setEditNombre(u.nombre)
+    setConfirmDelete(false)
+    setDeleteMsg('')
   }
 
-  const guardarRol = async () => {
+  const guardarCambios = async () => {
     if (!editando) return
     setSavingRol(true)
-    await supabase.from('usuarios').update({ rol: editRol }).eq('id', editando.id)
-    setUsuarios((prev) => prev.map((u) => u.id === editando.id ? { ...u, rol: editRol } : u))
+    await supabase.from('usuarios').update({
+      rol: editRol,
+      nombre: editNombre.trim() || editando.nombre,
+    }).eq('id', editando.id)
+    setUsuarios((prev) => prev.map((u) =>
+      u.id === editando.id ? { ...u, rol: editRol, nombre: editNombre.trim() || u.nombre } : u
+    ))
     setEditando(null)
     setSavingRol(false)
+  }
+
+  const eliminarUsuario = async () => {
+    if (!editando) return
+    setDeleting(true)
+    setDeleteMsg('')
+    try {
+      const res = await fetch('/api/admin/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: editando.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setUsuarios((prev) => prev.filter((u) => u.id !== editando.id))
+      setEditando(null)
+    } catch (e: unknown) {
+      setDeleteMsg(e instanceof Error ? e.message : 'Error al eliminar')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const porEmpresa = (tenantId: string) => usuarios.filter((u) => u.tenant_id === tenantId)
@@ -209,44 +242,60 @@ export default function UsuariosPage() {
         </div>
       </Modal>
 
-      {/* Modal editar rol */}
+      {/* Modal editar usuario */}
       {editando && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <div>
-              <h2 className="font-bold text-gray-900">Cambiar perfil</h2>
-              <p className="text-sm text-gray-500">{editando.nombre}</p>
+              <h2 className="font-bold text-gray-900">Editar usuario</h2>
               <p className="text-xs text-gray-400">{editando.email}</p>
             </div>
-            <div className="space-y-2">
-              {([
-                { value: 'gerencia',  label: 'Gerencia',            desc: 'Control total de su empresa' },
-                { value: 'admin',     label: 'Administrador Área',  desc: 'Acceso por secciones según permisos' },
-                { value: 'mecanico',  label: 'Profesional',         desc: 'Solo sus órdenes de trabajo' },
-              ] as { value: 'gerencia' | 'admin' | 'mecanico'; label: string; desc: string }[]).map((op) => (
-                <button
-                  key={op.value}
-                  onClick={() => setEditRol(op.value)}
-                  className={`w-full p-3 rounded-xl border-2 text-left transition-colors ${
-                    editRol === op.value
-                      ? op.value === 'gerencia' ? 'border-green-400 bg-green-50'
-                      : op.value === 'admin'    ? 'border-amber-400 bg-amber-50'
-                      :                           'border-blue-400 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-gray-900">{op.label}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{op.desc}</p>
-                </button>
-              ))}
+
+            {/* Nombre */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+              <input
+                value={editNombre}
+                onChange={(e) => setEditNombre(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
             </div>
-            <div className="flex gap-2 pt-1">
+
+            {/* Rol */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Rol</label>
+              <div className="space-y-2">
+                {([
+                  { value: 'gerencia', label: 'Gerencia',           desc: 'Control total de su empresa' },
+                  { value: 'admin',    label: 'Administrador Área', desc: 'Acceso por secciones según permisos' },
+                  { value: 'mecanico', label: 'Profesional',        desc: 'Solo sus órdenes de trabajo' },
+                ] as { value: 'gerencia' | 'admin' | 'mecanico'; label: string; desc: string }[]).map((op) => (
+                  <button
+                    key={op.value}
+                    onClick={() => setEditRol(op.value)}
+                    className={`w-full p-3 rounded-xl border-2 text-left transition-colors ${
+                      editRol === op.value
+                        ? op.value === 'gerencia' ? 'border-green-400 bg-green-50'
+                        : op.value === 'admin'    ? 'border-amber-400 bg-amber-50'
+                        :                           'border-blue-400 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-gray-900">{op.label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{op.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Botones principales */}
+            <div className="flex gap-2">
               <button
-                onClick={guardarRol}
-                disabled={savingRol || editRol === editando.rol}
+                onClick={guardarCambios}
+                disabled={savingRol || !editNombre.trim()}
                 className="flex-1 bg-purple-700 hover:bg-purple-800 disabled:bg-gray-200 disabled:text-gray-400 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors"
               >
-                {savingRol ? 'Guardando...' : 'Guardar cambio'}
+                {savingRol ? 'Guardando...' : 'Guardar'}
               </button>
               <button
                 onClick={() => setEditando(null)}
@@ -254,6 +303,40 @@ export default function UsuariosPage() {
               >
                 Cancelar
               </button>
+            </div>
+
+            {/* Zona eliminar */}
+            <div className="border-t pt-3">
+              {!confirmDelete ? (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="w-full text-sm text-red-500 hover:text-red-700 hover:bg-red-50 py-2 rounded-lg transition-colors font-medium"
+                >
+                  Eliminar usuario
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-red-600 font-medium text-center">
+                    ¿Eliminar a <strong>{editando.nombre}</strong>? Esta acción no se puede deshacer.
+                  </p>
+                  {deleteMsg && <p className="text-xs text-red-500 text-center">{deleteMsg}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={eliminarUsuario}
+                      disabled={deleting}
+                      className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
+                    >
+                      {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(false)}
+                      className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-semibold transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
