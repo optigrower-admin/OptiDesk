@@ -107,7 +107,7 @@ function StorageBar({ bytes }: { bytes: number }) {
 }
 
 // ─── Página principal ─────────────────────────────────────────────────────────
-export default function StoragePage() {
+function StoragePageInner() {
   const supabase = createClient()
   const searchParams = useSearchParams()
   const [tenants, setTenants] = useState<Tenant[]>([])
@@ -473,5 +473,23 @@ export default function StoragePage() {
         <div className="text-center py-16 text-gray-400 text-sm">Sin empresas registradas</div>
       )}
     </div>
+  )
+}
+
+export default function StoragePage() {
+  return (
+    <Suspense fallback={
+      <div className="p-6 space-y-4">
+        <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
+        {[1, 2].map((k) => (
+          <div key={k} className="bg-white rounded-xl border border-gray-100 p-5 animate-pulse space-y-3">
+            <div className="h-5 w-32 bg-gray-200 rounded" />
+            <div className="h-2.5 w-full bg-gray-100 rounded-full" />
+          </div>
+        ))}
+      </div>
+    }>
+      <StoragePageInner />
+    </Suspense>
   )
 }
