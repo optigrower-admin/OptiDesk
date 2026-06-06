@@ -53,6 +53,8 @@ export default function UsuariosPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteMsg, setDeleteMsg] = useState('')
+  const [resetingPw, setResetingPw] = useState(false)
+  const [resetPwMsg, setResetPwMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -107,6 +109,22 @@ export default function UsuariosPage() {
     setEditNombre(u.nombre)
     setConfirmDelete(false)
     setDeleteMsg('')
+    setResetingPw(false)
+    setResetPwMsg(null)
+  }
+
+  const enviarReset = async () => {
+    if (!editando) return
+    setResetingPw(true)
+    setResetPwMsg(null)
+    const { error } = await supabase.auth.resetPasswordForEmail(editando.email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    setResetPwMsg({
+      ok: !error,
+      text: error ? 'Error al enviar el correo' : `Correo enviado a ${editando.email}`,
+    })
+    setResetingPw(false)
   }
 
   const guardarCambios = async () => {
@@ -303,6 +321,22 @@ export default function UsuariosPage() {
               >
                 Cancelar
               </button>
+            </div>
+
+            {/* Recuperar contraseña */}
+            <div className="border-t pt-3">
+              <button
+                onClick={enviarReset}
+                disabled={resetingPw}
+                className="w-full text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 py-2 rounded-lg transition-colors font-medium disabled:opacity-50"
+              >
+                {resetingPw ? 'Enviando...' : 'Enviar correo de recuperación de contraseña'}
+              </button>
+              {resetPwMsg && (
+                <p className={`text-xs text-center mt-1.5 font-medium ${resetPwMsg.ok ? 'text-green-600' : 'text-red-500'}`}>
+                  {resetPwMsg.text}
+                </p>
+              )}
             </div>
 
             {/* Zona eliminar */}
