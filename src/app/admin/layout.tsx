@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { usePermisos } from '@/hooks/usePermisos'
@@ -26,6 +27,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { profile } = useAuth()
   const { tienePermiso, getOrden } = usePermisos()
   const supabase = createClient()
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [nombreNegocio, setNombreNegocio] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!profile?.tenant_id) return
+    supabase.from('tenants').select('logo_url, nombre_herramienta, nombre').eq('id', profile.tenant_id).single()
+      .then(({ data }) => {
+        setLogoUrl(data?.logo_url ?? null)
+        setNombreNegocio(data?.nombre_herramienta || data?.nombre || null)
+      })
+  }, [profile?.tenant_id])
 
   const navItems = ALL_NAV
     .filter((item) => {
@@ -48,10 +60,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <aside className="w-48 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
         <div className="p-4 border-b">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xs">OD</span>
-            </div>
-            <span className="font-bold text-gray-900 text-sm">OptiDesk</span>
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt="Logo"
+                className="w-8 h-8 rounded-lg object-contain bg-gray-50"
+                onError={() => setLogoUrl(null)}
+              />
+            ) : (
+              <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-white font-bold text-xs">OD</span>
+              </div>
+            )}
+            <span className="font-bold text-gray-900 text-sm truncate">
+              {nombreNegocio || 'OptiDesk'}
+            </span>
           </div>
         </div>
 

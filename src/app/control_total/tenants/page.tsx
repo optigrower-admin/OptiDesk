@@ -15,6 +15,7 @@ interface Tenant {
   nombre_herramienta: string | null
   drive_folder_id: string | null
   archivado_drive_habilitado: boolean
+  logo_url: string | null
   created_at: string
   // conteos
   usuarios_count?: number
@@ -46,6 +47,8 @@ export default function TenantsPage() {
   const [editDriveFolder, setEditDriveFolder] = useState('')
   const [editDriveHabilitado, setEditDriveHabilitado] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoMsg, setLogoMsg] = useState('')
 
   // Modal reiniciar empresa
   const [resetTenant, setResetTenant] = useState<Tenant | null>(null)
@@ -58,7 +61,7 @@ export default function TenantsPage() {
   const cargar = useCallback(async () => {
     setLoading(true)
     const [{ data: ts }, { data: us }, { data: os }] = await Promise.all([
-      supabase.from('tenants').select('id, nombre, slug, activo, storage_usado_bytes, nombre_herramienta, drive_folder_id, archivado_drive_habilitado, created_at').order('created_at', { ascending: false }),
+      supabase.from('tenants').select('id, nombre, slug, activo, storage_usado_bytes, nombre_herramienta, drive_folder_id, archivado_drive_habilitado, logo_url, created_at').order('created_at', { ascending: false }),
       supabase.from('usuarios').select('tenant_id, rol').eq('activo', true),
       supabase.from('ordenes').select('tenant_id, estado').in('estado', ['falta_revision', 'en_proceso', 'pendiente']),
     ])
@@ -94,6 +97,26 @@ export default function TenantsPage() {
       await cargar()
     } finally {
       setSaving(false)
+    }
+  }
+
+  const subirLogo = async (file: File, tenantId: string) => {
+    setUploadingLogo(true)
+    setLogoMsg('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('tenant_id', tenantId)
+      const res = await fetch('/api/admin/upload-logo', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setLogoMsg('Logo actualizado')
+      await cargar()
+      setTimeout(() => setLogoMsg(''), 3000)
+    } catch (e: unknown) {
+      setLogoMsg(e instanceof Error ? e.message : 'Error al subir')
+    } finally {
+      setUploadingLogo(false)
     }
   }
 
@@ -439,6 +462,35 @@ export default function TenantsPage() {
                 placeholder="OptiDesk - NombreTaller"
               />
               <p className="text-xs text-gray-400 mt-1">Título personalizado que ve el taller</p>
+            </div>
+
+            <div className="border-t pt-4">
+              <p className="text-sm font-medium text-gray-700 mb-3">Logo de la empresa</p>
+              <div className="flex items-center gap-4">
+                {editTenant.logo_url ? (
+                  <img src={editTenant.logo_url} alt="Logo" className="w-14 h-14 rounded-xl object-contain bg-gray-50 border border-gray-200" />
+                ) : (
+                  <div className="w-14 h-14 rounded-xl bg-gray-100 border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs">Sin logo</div>
+                )}
+                <div className="flex-1">
+                  <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium cursor-pointer transition-colors ${uploadingLogo ? 'border-gray-200 text-gray-400' : 'border-blue-300 text-blue-700 hover:bg-blue-50'}`}>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                      className="hidden"
+                      disabled={uploadingLogo}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (f) subirLogo(f, editTenant.id)
+                        e.target.value = ''
+                      }}
+                    />
+                    {uploadingLogo ? 'Subiendo...' : 'Subir imagen'}
+                  </label>
+                  <p className="text-xs text-gray-400 mt-1">JPG, PNG, WebP o SVG · máx 3 MB</p>
+                  {logoMsg && <p className={`text-xs mt-1 font-medium ${logoMsg.includes('Error') || logoMsg.includes('error') ? 'text-red-500' : 'text-green-600'}`}>{logoMsg}</p>}
+                </div>
+              </div>
             </div>
 
             <div className="border-t pt-4">

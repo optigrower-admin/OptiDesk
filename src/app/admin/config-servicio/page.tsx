@@ -63,6 +63,11 @@ export default function ConfigServicioPage() {
 
   const [loading, setLoading] = useState(true)
 
+  /* ── Estado logo ── */
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoMsg, setLogoMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
   /* ── Estado carga catálogo UMA ── */
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -85,6 +90,35 @@ export default function ConfigServicioPage() {
   }, [profile?.tenant_id])
 
   useEffect(() => { cargar() }, [cargar])
+
+  useEffect(() => {
+    if (!profile?.tenant_id) return
+    supabase.from('tenants').select('logo_url').eq('id', profile.tenant_id).single()
+      .then(({ data }) => setLogoUrl(data?.logo_url ?? null))
+  }, [profile?.tenant_id])
+
+  const subirLogo = async (file: File) => {
+    if (!profile?.tenant_id) return
+    setUploadingLogo(true)
+    setLogoMsg(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('tenant_id', profile.tenant_id)
+      const res = await fetch('/api/admin/upload-logo', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) {
+        setLogoMsg({ ok: false, text: json.error ?? 'Error al subir el logo' })
+      } else {
+        setLogoUrl(json.logo_url)
+        setLogoMsg({ ok: true, text: 'Logo actualizado correctamente' })
+      }
+    } catch {
+      setLogoMsg({ ok: false, text: 'Error de conexión' })
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
 
   /* ── Categorías: acciones ── */
   const addCategoria = async () => {
@@ -196,6 +230,56 @@ export default function ConfigServicioPage() {
         <p className="text-sm text-gray-500 mt-1">
           Gestiona los tipos de servicio y métodos de pago disponibles en el taller.
         </p>
+      </div>
+
+      {/* ── Logo del negocio ── */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Logo del negocio</h2>
+            <p className="text-xs text-gray-400">Aparece en el menú lateral de la aplicación</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-6">
+          {logoUrl ? (
+            <img src={logoUrl} alt="Logo actual"
+              className="w-20 h-20 rounded-xl object-contain bg-gray-50 border border-gray-200 flex-shrink-0"
+              onError={() => setLogoUrl(null)} />
+          ) : (
+            <div className="w-20 h-20 rounded-xl bg-gray-100 border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs flex-shrink-0">
+              Sin logo
+            </div>
+          )}
+          <div className="flex-1">
+            <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-colors ${
+              uploadingLogo
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-blue-700 hover:bg-blue-800 text-white'
+            }`}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" className="hidden"
+                disabled={uploadingLogo}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) subirLogo(f) }} />
+              {uploadingLogo ? 'Subiendo...' : 'Cambiar logo'}
+            </label>
+            <p className="text-xs text-gray-400 mt-2">JPG, PNG, WebP o SVG · máx 3 MB</p>
+            {logoMsg && (
+              <p className={`text-xs mt-2 font-medium ${logoMsg.ok ? 'text-green-600' : 'text-red-600'}`}>
+                {logoMsg.text}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
