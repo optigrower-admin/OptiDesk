@@ -52,6 +52,7 @@ export default function TenantsPage() {
   const [resetConfirm, setResetConfirm] = useState('')
   const [resetting, setResetting] = useState(false)
   const [resetMsg, setResetMsg] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null)
+  const [exportando, setExportando] = useState(false)
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -123,6 +124,33 @@ export default function TenantsPage() {
   const toggleActivo = async (id: string, activo: boolean) => {
     await supabase.from('tenants').update({ activo: !activo }).eq('id', id)
     setTenants((prev) => prev.map((t) => t.id === id ? { ...t, activo: !activo } : t))
+  }
+
+  const handleExport = async () => {
+    if (!resetTenant) return
+    setExportando(true)
+    try {
+      const res = await fetch('/api/admin/export-tenant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_id: resetTenant.id }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `respaldo_${resetTenant.nombre.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err: unknown) {
+      setResetMsg({ tipo: 'err', texto: `Error exportando: ${err instanceof Error ? err.message : 'Error desconocido'}` })
+    } finally {
+      setExportando(false)
+    }
   }
 
   const handleReset = async () => {
@@ -312,6 +340,14 @@ export default function TenantsPage() {
                 Se eliminarán <strong>todos los datos</strong> de <strong>{resetTenant.nombre}</strong>: órdenes, clientes, motos, repuestos, inventario y archivos. Los usuarios se conservan.
               </p>
             </div>
+
+            <button
+              onClick={handleExport}
+              disabled={exportando}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors disabled:opacity-50"
+            >
+              {exportando ? 'Descargando...' : '⬇ Descargar respaldo Excel antes de reiniciar'}
+            </button>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

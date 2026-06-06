@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
 
-  const { data: tenant } = await admin.from('tenants').select('id, nombre').eq('id', tenant_id).single()
+  // Usar cliente autenticado para lookup (el admin client puede fallar con nuevos formatos de key)
+  const { data: tenant } = await supabase.from('tenants').select('id, nombre').eq('id', tenant_id).single()
   if (!tenant) return NextResponse.json({ error: 'Empresa no encontrada' }, { status: 404 })
 
   if (tenant.nombre.trim().toLowerCase() !== confirmar_nombre.trim().toLowerCase()) {
