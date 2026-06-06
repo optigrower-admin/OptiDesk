@@ -29,39 +29,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'El nombre de confirmación no coincide' }, { status: 400 })
   }
 
-  try {
-    // Siempre se borran: auditoría, medios, movimientos, órdenes y repuestos
-    await admin.from('auditoria').delete().eq('tenant_id', tenant_id)
-    await admin.from('medios').delete().eq('tenant_id', tenant_id)
-    await admin.from('movimientos_inventario').delete().eq('tenant_id', tenant_id)
+  // Helper: lanza si el delete falla (Supabase devuelve { error } en vez de lanzar)
+  const del = async (tabla: string) => {
+    const { error } = await admin.from(tabla).delete().eq('tenant_id', tenant_id)
+    if (error) throw new Error(`Error eliminando ${tabla}: ${error.message}`)
+  }
 
-    const { data: ordenIds } = await admin.from('ordenes').select('id').eq('tenant_id', tenant_id)
+  try {
+    await del('auditoria')
+    await del('medios')
+    await del('movimientos_inventario')
+
+    // items_orden no tiene tenant_id — hay que borrar por orden_id
+    const { data: ordenIds, error: ordenErr } = await admin
+      .from('ordenes')
+      .select('id')
+      .eq('tenant_id', tenant_id)
+    if (ordenErr) throw new Error(`Error obteniendo órdenes: ${ordenErr.message}`)
+
     if (ordenIds && ordenIds.length > 0) {
       const ids = ordenIds.map((o: { id: string }) => o.id)
-      await admin.from('items_orden').delete().in('orden_id', ids)
+      const { error: itemsErr } = await admin.from('items_orden').delete().in('orden_id', ids)
+      if (itemsErr) throw new Error(`Error eliminando items_orden: ${itemsErr.message}`)
     }
-    await admin.from('ordenes').delete().eq('tenant_id', tenant_id)
-    await admin.from('repuestos_externos').delete().eq('tenant_id', tenant_id)
 
-    // Solo en modo completo se borran clientes y motos
+    await del('ordenes')
+    await del('repuestos_externos')
+
     if (modo === 'completo') {
-      await admin.from('motos').delete().eq('tenant_id', tenant_id)
-      await admin.from('clientes').delete().eq('tenant_id', tenant_id)
+      await del('motos')
+      await del('clientes')
     }
 
-    await admin.from('tenants').update({ storage_usado_bytes: 0 }).eq('id', tenant_id)
+    const { error: updErr } = await admin
+      .from('tenants')
+      .update({ storage_usado_bytes: 0 })
+      .eq('id', tenant_id)
+    if (updErr) throw new Error(`Error actualizando storage: ${updErr.message}`)
 
-    const { data: adminPerfil } = await supabase.from('usuarios').select('tenant_id').eq('id', user.id).single()
-    if (adminPerfil) {
-      await admin.from('auditoria').insert({
-        tenant_id: adminPerfil.tenant_id,
-        usuario_id: user.id,
-        accion: `reset_tenant_${modo}`,
-        tabla: 'tenants',
-        registro_id: tenant_id,
-        detalle: { tenant_nombre: tenant.nombre, ejecutado_por: user.email, modo },
-      })
-    }
+    // Auditoría en el tenant afectado (control_total no tiene tenant_id propio)
+    await admin.from('auditoria').insert({
+      tenant_id,
+      usuario_id: user.id,
+      accion: `reset_tenant_${modo}`,
+      tabla: 'tenants',
+      registro_id: tenant_id,
+      detalle: { tenant_nombre: tenant.nombre, ejecutado_por: user.email, modo },
+    })
 
     const msg = modo === 'completo'
       ? `Empresa "${tenant.nombre}" reiniciada completamente`
@@ -70,6 +84,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, mensaje: msg })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido'
-    return NextResponse.json({ error: `Error al reiniciar: ${msg}` }, { status: 500 })
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
