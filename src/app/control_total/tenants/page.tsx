@@ -53,6 +53,7 @@ export default function TenantsPage() {
   const [resetting, setResetting] = useState(false)
   const [resetMsg, setResetMsg] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null)
   const [exportando, setExportando] = useState(false)
+  const [resetModo, setResetModo] = useState<'completo' | 'operativo'>('completo')
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -161,7 +162,7 @@ export default function TenantsPage() {
       const res = await fetch('/api/admin/reset-tenant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant_id: resetTenant.id, confirmar_nombre: resetConfirm }),
+        body: JSON.stringify({ tenant_id: resetTenant.id, confirmar_nombre: resetConfirm, modo: resetModo }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -234,7 +235,7 @@ export default function TenantsPage() {
                   Configurar
                 </button>
                 <button
-                  onClick={() => { setResetTenant(t); setResetConfirm(''); setResetMsg(null) }}
+                  onClick={() => { setResetTenant(t); setResetConfirm(''); setResetMsg(null); setResetModo('completo') }}
                   className="px-3 py-1.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-medium"
                   title="Reiniciar todos los datos de esta empresa"
                 >
@@ -334,11 +335,41 @@ export default function TenantsPage() {
       {resetTenant && (
         <Modal open={true} onClose={() => { setResetTenant(null); setResetMsg(null) }} title="Reiniciar empresa" size="sm">
           <div className="space-y-4">
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
-              <p className="text-sm font-bold text-red-800 mb-1">⚠ Esta acción es irreversible</p>
-              <p className="text-xs text-red-700">
-                Se eliminarán <strong>todos los datos</strong> de <strong>{resetTenant.nombre}</strong>: órdenes, clientes, motos, repuestos, inventario y archivos. Los usuarios se conservan.
-              </p>
+            {/* Opciones de reinicio */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700">¿Qué deseas eliminar?</p>
+              <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${resetModo === 'completo' ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                <input
+                  type="radio"
+                  name="resetModo"
+                  value="completo"
+                  checked={resetModo === 'completo'}
+                  onChange={() => setResetModo('completo')}
+                  className="mt-0.5 accent-red-600"
+                />
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Todo — inicio desde cero</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Borra órdenes, clientes, motos, repuestos, inventario y archivos. Solo se conservan los usuarios.</p>
+                </div>
+              </label>
+              <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${resetModo === 'operativo' ? 'border-amber-400 bg-amber-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                <input
+                  type="radio"
+                  name="resetModo"
+                  value="operativo"
+                  checked={resetModo === 'operativo'}
+                  onChange={() => setResetModo('operativo')}
+                  className="mt-0.5 accent-amber-600"
+                />
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Solo historial operativo</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Borra órdenes, repuestos e inventario. Conserva clientes, motos y usuarios — útil para cambiar de datos de prueba a producción.</p>
+                </div>
+              </label>
+            </div>
+
+            <div className={`p-3 rounded-xl border text-xs ${resetModo === 'completo' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+              ⚠ Esta acción es <strong>irreversible</strong>. Descarga el respaldo primero.
             </div>
 
             <button
