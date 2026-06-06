@@ -167,7 +167,7 @@ export default function TenantsPage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `respaldo_${resetTenant.nombre.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`
+      a.download = `respaldo_${resetTenant.nombre.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.zip`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err: unknown) {

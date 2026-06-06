@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
+
+const LIMIT = 100000 // tope de filas por tabla
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -19,49 +21,89 @@ export async function POST(req: NextRequest) {
   const { data: tenant } = await supabase.from('tenants').select('nombre').eq('id', tenant_id).single()
   if (!tenant) return NextResponse.json({ error: 'Empresa no encontrada' }, { status: 404 })
 
-  const admin = createAdminClient()
-
+  // Usar supabase (cliente autenticado como control_total) en vez de admin:
+  // las políticas RLS ya permiten control_total ver todos los datos.
   const [
-    { data: clientes },
-    { data: motos },
-    { data: ordenes },
-    { data: repuestos },
-    { data: movimientos },
+    { data: clientes,    error: eC },
+    { data: motos,       error: eM },
+    { data: ordenes,     error: eO },
+    { data: repuestos,   error: eR },
+    { data: movimientos, error: eMv },
+    { data: proveedores, error: ePr },
   ] = await Promise.all([
-    admin.from('clientes').select('*').eq('tenant_id', tenant_id),
-    admin.from('motos').select('*').eq('tenant_id', tenant_id),
-    admin.from('ordenes').select('*').eq('tenant_id', tenant_id),
-    admin.from('repuestos_externos').select('*').eq('tenant_id', tenant_id),
-    admin.from('movimientos_inventario').select('*').eq('tenant_id', tenant_id),
+    supabase.from('clientes').select('*').eq('tenant_id', tenant_id).limit(LIMIT),
+    supabase.from('motos').select('*').eq('tenant_id', tenant_id).limit(LIMIT),
+    supabase.from('ordenes').select('*').eq('tenant_id', tenant_id).limit(LIMIT),
+    supabase.from('repuestos_externos').select('*').eq('tenant_id', tenant_id).limit(LIMIT),
+    supabase.from('movimientos_inventario').select('*').eq('tenant_id', tenant_id).limit(LIMIT),
+    supabase.from('proveedores').select('*').eq('tenant_id', tenant_id).limit(LIMIT),
   ])
 
-  const ordenIds = (ordenes ?? []).map((o: { id: string }) => o.id)
-  const { data: items } = ordenIds.length > 0
-    ? await admin.from('items_orden').select('*').in('orden_id', ordenIds)
-    : { data: [] }
+  const errores = [
+    eC  && `clientes: ${eC.message}`,
+    eM  && `motos: ${eM.message}`,
+    eO  && `ordenes: ${eO.message}`,
+    eR  && `repuestos_externos: ${eR.message}`,
+    eMv && `movimientos_inventario: ${eMv.message}`,
+    ePr && `proveedores: ${ePr.message}`,
+  ].filter(Boolean)
 
-  const wb = XLSX.utils.book_new()
-
-  const addSheet = (name: string, data: Record<string, unknown>[] | null | undefined) => {
-    const ws = XLSX.utils.json_to_sheet(data && data.length > 0 ? data as Record<string, unknown>[] : [])
-    XLSX.utils.book_append_sheet(wb, ws, name)
+  if (errores.length > 0) {
+    return NextResponse.json({ error: `Error leyendo datos: ${errores.join(' | ')}` }, { status: 500 })
   }
 
-  addSheet('Clientes', clientes as Record<string, unknown>[])
-  addSheet('Motos', motos as Record<string, unknown>[])
-  addSheet('Ordenes', ordenes as Record<string, unknown>[])
-  addSheet('Items de Ordenes', items as Record<string, unknown>[])
-  addSheet('Repuestos', repuestos as Record<string, unknown>[])
-  addSheet('Movimientos', movimientos as Record<string, unknown>[])
+  // items_orden: paginar en chunks de 500 IDs para no superar límites de URL
+  const ordenIds = (ordenes ?? []).map((o: { id: string }) => o.id)
+  let items: Record<string, unknown>[] = []
+  const CHUNK = 500
+  for (let i = 0; i < ordenIds.length; i += CHUNK) {
+    const chunk = ordenIds.slice(i, i + CHUNK)
+    const { data: chunkItems, error: eI } = await supabase
+      .from('items_orden')
+      .select('*')
+      .in('orden_id', chunk)
+      .limit(LIMIT)
+    if (eI) return NextResponse.json({ error: `items_orden: ${eI.message}` }, { status: 500 })
+    if (chunkItems) items = items.concat(chunkItems as Record<string, unknown>[])
+  }
 
-  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+  // Convertir a CSV con xlsx
+  const toCSV = (data: Record<string, unknown>[]) => {
+    if (!data || data.length === 0) return ''
+    const ws = XLSX.utils.json_to_sheet(data)
+    return XLSX.utils.sheet_to_csv(ws)
+  }
+
+  const tablas: { nombre: string; data: Record<string, unknown>[] }[] = [
+    { nombre: 'clientes',               data: (clientes    ?? []) as Record<string, unknown>[] },
+    { nombre: 'motos',                  data: (motos       ?? []) as Record<string, unknown>[] },
+    { nombre: 'ordenes',                data: (ordenes     ?? []) as Record<string, unknown>[] },
+    { nombre: 'items_ordenes',          data: items },
+    { nombre: 'repuestos_externos',     data: (repuestos   ?? []) as Record<string, unknown>[] },
+    { nombre: 'movimientos_inventario', data: (movimientos ?? []) as Record<string, unknown>[] },
+    { nombre: 'proveedores',            data: (proveedores ?? []) as Record<string, unknown>[] },
+  ]
+
+  // Crear ZIP con una carpeta por respaldo
   const fecha = new Date().toISOString().split('T')[0]
-  const nombreArchivo = `respaldo_${tenant.nombre.replace(/\s+/g, '_')}_${fecha}.xlsx`
+  const nombreBase = `respaldo_${tenant.nombre.replace(/\s+/g, '_')}_${fecha}`
+  const zip = new JSZip()
+  const carpeta = zip.folder(nombreBase)!
 
-  return new NextResponse(buffer, {
+  for (const tabla of tablas) {
+    carpeta.file(`${tabla.nombre}.csv`, toCSV(tabla.data))
+  }
+
+  const zipBuffer = await zip.generateAsync({
+    type: 'nodebuffer',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  })
+
+  return new NextResponse(zipBuffer, {
     headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${nombreArchivo}"`,
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${nombreBase}.zip"`,
     },
   })
 }
