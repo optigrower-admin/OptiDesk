@@ -575,13 +575,14 @@ export default function AdminRepuestosPage() {
                         </tr>
                       )
                     }
+                    const esPendiente = item.ordenes?.estado_pago === 'pendiente' || item.ordenes?.estado_pago === 'abono'
                     return (
-                      <tr key={item.id} className="border-b hover:bg-gray-50 group">
+                      <tr key={item.id} className={`border-b group ${esPendiente ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}>
                         <td className="py-2.5 px-4 text-xs text-gray-500 whitespace-nowrap">
                           {formatFechaHora(item.created_at)}
                         </td>
                         <td className="py-2.5 px-3 max-w-[180px]">
-                          <span className="block truncate text-gray-800" title={item.descripcion}>{item.descripcion}</span>
+                          <span className={`block truncate ${esPendiente ? 'text-red-800 font-medium' : 'text-gray-800'}`} title={item.descripcion}>{item.descripcion}</span>
                           {item.cantidad > 1 && <span className="text-xs text-gray-400">×{item.cantidad}</span>}
                         </td>
                         <td className="py-2.5 px-3">
@@ -598,6 +599,9 @@ export default function AdminRepuestosPage() {
                                 {esVentaDirecta ? 'Venta' : 'S.T.'}
                               </span>
                               <span className="text-gray-500 text-xs font-mono">#{item.ordenes.numero}</span>
+                              {esPendiente && (
+                                <span className="text-[10px] font-semibold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">Pendiente</span>
+                              )}
                             </a>
                           ) : '—'}
                         </td>
@@ -607,7 +611,7 @@ export default function AdminRepuestosPage() {
                         <td className="py-2.5 px-3 text-right text-xs text-gray-500 whitespace-nowrap">
                           {item.costo ? formatCOP(item.costo * item.cantidad) : '—'}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-semibold text-gray-900 whitespace-nowrap">
+                        <td className={`py-2.5 px-3 text-right font-semibold whitespace-nowrap ${esPendiente ? 'text-red-700' : 'text-gray-900'}`}>
                           {formatCOP(item.precio_venta * item.cantidad)}
                         </td>
                         <td className="py-2.5 px-3">

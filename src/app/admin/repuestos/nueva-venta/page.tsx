@@ -78,8 +78,7 @@ export default function NuevaVentaPage() {
   const [showExternoForm, setShowExternoForm] = useState(false)
   const [externoForm, setExternoForm] = useState<ExternoForm>(externoInit)
 
-  const [estadoPago, setEstadoPago] = useState<'pagado' | 'abono' | 'pendiente'>('pagado')
-  const [valorAbono, setValorAbono] = useState('')
+  const [pagado, setPagado] = useState(true)
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
   const [metodoPagoId, setMetodoPagoId] = useState('')
 
@@ -190,7 +189,7 @@ export default function NuevaVentaPage() {
     const faltantes: string[] = []
     if (!cliente.trim()) faltantes.push('nombre del cliente')
     if (items.length === 0) faltantes.push('al menos un repuesto')
-    if (!metodoPagoId) faltantes.push('método de pago')
+    if (pagado && !metodoPagoId) faltantes.push('método de pago')
     if (faltantes.length > 0) {
       setError(`Faltan datos obligatorios: ${faltantes.join(', ')}.`)
       return
@@ -200,7 +199,8 @@ export default function NuevaVentaPage() {
     setSaving(true)
     try {
       const total = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-      const valorAbonoNum = estadoPago === 'abono' ? parseFloat(valorAbono) || 0 : estadoPago === 'pagado' ? total : 0
+      const estadoPago = pagado ? 'pagado' : 'pendiente'
+      const valorAbonoNum = pagado ? total : 0
       const placaNorm = placa ? normalizarPlaca(placa) : null
 
       // Registrar moto y cliente si hay datos suficientes
@@ -557,35 +557,38 @@ export default function NuevaVentaPage() {
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
         <h2 className="font-semibold text-gray-900">Pago</h2>
         <div className="flex gap-2">
-          {(['pagado', 'abono', 'pendiente'] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setEstadoPago(s)}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                estadoPago === s ? 'bg-blue-700 text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              {s === 'pagado' ? 'Pagado' : s === 'abono' ? 'Abono' : 'Pendiente'}
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={() => setPagado(true)}
+            className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors border-2 ${
+              pagado ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200 hover:border-green-300'
+            }`}
+          >
+            ✓ Se realizó el pago
+          </button>
+          <button
+            type="button"
+            onClick={() => setPagado(false)}
+            className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors border-2 ${
+              !pagado ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-600 border-gray-200 hover:border-red-300'
+            }`}
+          >
+            Queda pendiente
+          </button>
         </div>
-        {estadoPago === 'abono' && (
-          <input
-            type="number"
-            value={valorAbono}
-            onChange={(e) => setValorAbono(e.target.value)}
-            placeholder="Valor del abono"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-          />
+        {pagado && (
+          <select
+            value={metodoPagoId}
+            onChange={(e) => setMetodoPagoId(e.target.value)}
+            className={`w-full px-3 py-2 border rounded-lg text-sm ${!metodoPagoId ? 'border-amber-300 bg-amber-50' : 'border-gray-200'}`}
+          >
+            <option value="">Seleccionar método de pago *</option>
+            {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+          </select>
         )}
-        <select
-          value={metodoPagoId}
-          onChange={(e) => setMetodoPagoId(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-        >
-          <option value="">Sin especificar método de pago</option>
-          {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-        </select>
+        {!pagado && (
+          <p className="text-xs text-red-500 font-medium">Esta venta quedará registrada como pago pendiente.</p>
+        )}
       </div>
 
       {/* Total */}
