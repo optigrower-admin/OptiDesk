@@ -441,7 +441,8 @@ export default function AdminOrdenDetallePage() {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      fd.append('ordenId', ordenId)
+      fd.append('orden_id', ordenId)
+      fd.append('tipo', file.type.startsWith('video/') ? 'video' : 'imagen')
       const res = await fetch('/api/upload', { method: 'POST', body: fd })
       if (res.ok) {
         await cargar()
