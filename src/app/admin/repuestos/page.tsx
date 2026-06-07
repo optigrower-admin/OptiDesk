@@ -238,6 +238,20 @@ export default function AdminRepuestosPage() {
     setLoadingAudit(false)
   }
 
+  const imprimirConIframe = (html: string) => {
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:0;opacity:0'
+    document.body.appendChild(iframe)
+    const doc = iframe.contentDocument ?? iframe.contentWindow?.document
+    if (!doc) { document.body.removeChild(iframe); return }
+    doc.open(); doc.write(html); doc.close()
+    setTimeout(() => {
+      iframe.contentWindow?.focus()
+      iframe.contentWindow?.print()
+      setTimeout(() => { try { document.body.removeChild(iframe) } catch { /* ya eliminado */ } }, 2000)
+    }, 350)
+  }
+
   const handlePrintItem = async (item: ItemVenta) => {
     if (!item.ordenes) return
     const { data: allItemsData } = await supabase
@@ -251,16 +265,13 @@ export default function AdminRepuestosPage() {
     const total = allItems.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
     const o = item.ordenes
 
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer')
-    if (!printWindow) return
-
     const rowsHtml = (rows: { descripcion: string; cantidad: number; precio_venta: number }[]) =>
       rows.map((r) => `<tr>
         <td style="padding:6px 0;border-bottom:1px solid #f0f0f0;">${r.descripcion}${r.cantidad > 1 ? ' ×' + r.cantidad : ''}</td>
         <td style="padding:6px 0;border-bottom:1px solid #f0f0f0;text-align:right;">${formatCOP(r.precio_venta * r.cantidad)}</td>
       </tr>`).join('')
 
-    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    imprimirConIframe(`<!DOCTYPE html><html><head><meta charset="UTF-8">
       <style>
         @page{size:letter;margin:20mm}
         body{font-family:Arial,sans-serif;font-size:12px;color:#111;max-width:700px;margin:0 auto}
@@ -289,8 +300,6 @@ export default function AdminRepuestosPage() {
       </table>
       <div class="footer">Precios incluyen impuestos</div>
     </body></html>`)
-    printWindow.document.close()
-    setTimeout(() => { printWindow.focus(); printWindow.print() }, 400)
   }
 
   const handleDescargarCSV = () => {

@@ -683,13 +683,22 @@ export default function AdminOrdenDetallePage() {
   const esUMA = orden.tipo_servicio === 'uma'
   const esVenta = orden.tipo_orden === 'venta_repuestos'
 
+  const imprimirConIframe = (html: string) => {
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:0;opacity:0'
+    document.body.appendChild(iframe)
+    const doc = iframe.contentDocument ?? iframe.contentWindow?.document
+    if (!doc) { document.body.removeChild(iframe); return }
+    doc.open(); doc.write(html); doc.close()
+    setTimeout(() => {
+      iframe.contentWindow?.focus()
+      iframe.contentWindow?.print()
+      setTimeout(() => { try { document.body.removeChild(iframe) } catch { /* ya eliminado */ } }, 2000)
+    }, 350)
+  }
+
   const handlePrint = (formato: 'carta' | 'termica') => {
     setShowPrintModal(false)
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer')
-    if (!printWindow) {
-      alert('El navegador bloqueó la ventana. Permite ventanas emergentes para este sitio e intenta de nuevo.')
-      return
-    }
     const isTermica = formato === 'termica'
     const margin = isTermica ? '5mm' : '18mm'
     const fechaEntrada = new Date(orden.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -738,9 +747,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
 <div class="c sm" style="margin-top:4px">Impreso: ${ahora}</div>
 <div class="c" style="margin-top:10px;font-size:${isTermica ? '11px' : '12px'}">¡Gracias por su preferencia!</div>
 </body></html>`
-    printWindow.document.write(html)
-    printWindow.document.close()
-    setTimeout(() => { printWindow.focus(); printWindow.print() }, 400)
+    imprimirConIframe(html)
   }
 
   return (
