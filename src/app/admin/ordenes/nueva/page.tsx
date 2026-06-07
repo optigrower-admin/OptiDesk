@@ -33,6 +33,8 @@ export default function NuevaOrdenAdminPage() {
   const [subcategoriaId, setSubcategoriaId] = useState('')
   const [tipoServicio, setTipoServicio] = useState<'terceros' | 'uma'>('terceros')
   const [numeroOt, setNumeroOt] = useState('')
+  const [numerosOrdenUMA, setNumerosOrdenUMA] = useState<string[]>([])
+  const [nuevoNumOrden, setNuevoNumOrden] = useState('')
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [archivos, setArchivos] = useState<File[]>([])
   const [previews, setPreviews] = useState<{ url: string; tipo: 'imagen' | 'video' }[]>([])
@@ -56,6 +58,7 @@ export default function NuevaOrdenAdminPage() {
         if (d.subcategoriaId) setSubcategoriaId(d.subcategoriaId)
         if (d.tipoServicio) setTipoServicio(d.tipoServicio)
         if (d.numeroOt) setNumeroOt(d.numeroOt)
+        if (d.numerosOrdenUMA) setNumerosOrdenUMA(d.numerosOrdenUMA)
       }
     } catch { /* borrador inválido */ }
   }, [])
@@ -63,12 +66,12 @@ export default function NuevaOrdenAdminPage() {
   useEffect(() => {
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, cedula, descripcion, categoriaId, subcategoriaId, tipoServicio, numeroOt }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, cedula, descripcion, categoriaId, subcategoriaId, tipoServicio, numeroOt, numerosOrdenUMA }))
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [placa, cliente, telefono, cedula, descripcion, categoriaId, subcategoriaId, tipoServicio, numeroOt])
+  }, [placa, cliente, telefono, cedula, descripcion, categoriaId, subcategoriaId, tipoServicio, numeroOt, numerosOrdenUMA])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -147,6 +150,7 @@ export default function NuevaOrdenAdminPage() {
           subcategoria_servicio_id: subcategoriaId || null,
           tipo_servicio: tipoServicio,
           numero_ot: tipoServicio === 'uma' ? (numeroOt || null) : null,
+          numeros_orden_uma: tipoServicio === 'uma' ? numerosOrdenUMA : [],
           mecanico_id: profile.id,
           estado: 'en_proceso',
           numero: 0,
@@ -280,28 +284,103 @@ export default function NuevaOrdenAdminPage() {
           </div>
         </div>
 
-        {/* Servicio — categorías solo para UMA */}
+        {/* Servicio — categorías + # Orden UMA */}
         {tipoServicio === 'uma' && (
-          <div className="bg-white rounded-xl border border-purple-200 p-5 space-y-3">
-            <h2 className="font-semibold text-gray-900">Servicio UMA</h2>
-            <select
-              value={categoriaId}
-              onChange={(e) => { setCategoriaId(e.target.value); setSubcategoriaId('') }}
-              className="w-full px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-sm"
-            >
-              <option value="">Seleccionar subcategoría</option>
-              {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
-            {subcategorias.length > 0 && (
+          <div className="space-y-3">
+            <div className="bg-white rounded-xl border border-purple-200 p-5 space-y-3">
+              <h2 className="font-semibold text-gray-900">Servicio UMA</h2>
               <select
-                value={subcategoriaId}
-                onChange={(e) => setSubcategoriaId(e.target.value)}
+                value={categoriaId}
+                onChange={(e) => { setCategoriaId(e.target.value); setSubcategoriaId('') }}
                 className="w-full px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-sm"
               >
                 <option value="">Seleccionar subcategoría</option>
-                {subcategorias.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
-            )}
+              {subcategorias.length > 0 && (
+                <select
+                  value={subcategoriaId}
+                  onChange={(e) => setSubcategoriaId(e.target.value)}
+                  className="w-full px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-sm"
+                >
+                  <option value="">Seleccionar subcategoría</option>
+                  {subcategorias.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              )}
+            </div>
+
+            {/* # Orden UMA — campo requerido */}
+            <div className={`rounded-xl border p-5 space-y-3 transition-colors ${numerosOrdenUMA.length === 0 ? 'border-amber-300 bg-amber-50' : 'bg-white border-gray-200'}`}>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-gray-900"># Orden UMA</h2>
+                {numerosOrdenUMA.length === 0 && (
+                  <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                    ⚠ Importante: agrega el número de orden
+                  </span>
+                )}
+              </div>
+
+              {/* Números ya ingresados */}
+              {numerosOrdenUMA.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {numerosOrdenUMA.map((num, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 bg-purple-50 border border-purple-200 rounded-lg px-3 py-1.5">
+                      <span className="font-mono text-sm font-semibold text-purple-800">{num}</span>
+                      <button
+                        type="button"
+                        onClick={() => setNumerosOrdenUMA((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-purple-300 hover:text-red-500 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Input para agregar número */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={nuevoNumOrden}
+                  onChange={(e) => setNuevoNumOrden(e.target.value.replace(/\D/g, ''))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const num = nuevoNumOrden.trim()
+                      if (num && !numerosOrdenUMA.includes(num)) {
+                        setNumerosOrdenUMA((prev) => [...prev, num])
+                      }
+                      setNuevoNumOrden('')
+                    }
+                  }}
+                  placeholder="Ej: 349384"
+                  className={`flex-1 px-3 py-2 border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400 ${numerosOrdenUMA.length === 0 ? 'border-amber-300 bg-white placeholder-amber-400' : 'border-gray-200'}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const num = nuevoNumOrden.trim()
+                    if (!num || numerosOrdenUMA.includes(num)) return
+                    setNumerosOrdenUMA((prev) => [...prev, num])
+                    setNuevoNumOrden('')
+                  }}
+                  disabled={!nuevoNumOrden.trim()}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors"
+                >
+                  + Agregar
+                </button>
+              </div>
+
+              {numerosOrdenUMA.length === 0 && (
+                <p className="text-xs text-amber-700">
+                  El número de orden UMA es requerido para este tipo de ingreso. Puedes agregarlo ahora o más adelante en el detalle del caso.
+                </p>
+              )}
+            </div>
           </div>
         )}
 
