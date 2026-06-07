@@ -296,6 +296,16 @@ export default function AdminOrdenDetallePage() {
     }
   }, [estado, motivoPendiente, telefono, notas, numerosOrdenUMA, orden, ordenId])
 
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!dirty) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [dirty])
+
   const cargarAudit = async () => {
     if (!orden) return
     setLoadingAudit(true)
