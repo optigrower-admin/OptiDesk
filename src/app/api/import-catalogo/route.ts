@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       descuento: parseNum(row[COL.descuento]),
       precio_distribuidor_sin_iva: parseNum(row[COL.precio_distribuidor_sin_iva]),
       unidad_empaque: parseInt(String(row[COL.unidad_empaque] ?? '1')) || 1,
-      modelos_aplicables: String(row[COL.modelos_aplicables] ?? '').trim() || null,
+      modelo_aplicable: String(row[COL.modelos_aplicables] ?? '').trim() || null,
     })
   }
 

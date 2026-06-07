@@ -332,6 +332,7 @@ export default function AdminRepuestosPage() {
   }
 
   const totalVentas = ventas.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+  const totalCosto = ventas.reduce((s, i) => s + (i.costo ?? 0) * i.cantidad, 0)
   const totalItems = ventas.length
 
   const FiltroOrigenes = () => (
@@ -521,29 +522,31 @@ export default function AdminRepuestosPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-gray-500 uppercase border-b bg-gray-50">
-                    <th className="text-left py-2.5 px-5 font-medium">Repuesto</th>
+                    <th className="text-left py-2.5 px-4 font-medium whitespace-nowrap">Fecha / Hora</th>
+                    <th className="text-left py-2.5 px-3 font-medium">Repuesto</th>
                     <th className="text-left py-2.5 px-3 font-medium">Origen</th>
-                    <th className="text-left py-2.5 px-3 font-medium"># Orden</th>
-                    <th className="text-left py-2.5 px-3 font-medium">Fecha / Hora</th>
-                    <th className="text-right py-2.5 px-3 font-medium">Precio</th>
-                    <th className="text-center py-2.5 px-3 font-medium">Pago</th>
+                    <th className="text-left py-2.5 px-3 font-medium"># de Orden</th>
+                    <th className="text-left py-2.5 px-3 font-medium">Cliente</th>
+                    <th className="text-right py-2.5 px-3 font-medium">Costo</th>
+                    <th className="text-right py-2.5 px-3 font-medium">P. Venta</th>
                     <th className="py-2.5 px-3 w-28" />
                   </tr>
                 </thead>
                 <tbody>
                   {ventas.map((item) => {
                     const esVentaDirecta = item.ordenes?.tipo_orden === 'venta_repuestos'
-                    const esPagado = item.ordenes?.estado_pago === 'pagado'
                     if (editingItem?.id === item.id) {
                       return (
                         <tr key={item.id} className="border-b bg-amber-50">
-                          <td className="py-2 px-5" colSpan={2}>
+                          <td className="py-2 px-4 text-xs text-gray-400 whitespace-nowrap">{formatFechaHora(item.created_at)}</td>
+                          <td className="py-2 px-3" colSpan={2}>
                             <input autoFocus value={editingItem.descripcion}
                               onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
                               className="w-full px-2 py-1.5 border border-amber-400 rounded-lg text-sm focus:outline-none"
                             />
                           </td>
                           <td className="py-2 px-3 text-xs text-gray-400">{item.ordenes ? `#${item.ordenes.numero}` : '—'}</td>
+                          <td className="py-2 px-3 text-xs text-gray-500 truncate max-w-[100px]">{item.ordenes?.cliente ?? '—'}</td>
                           <td className="py-2 px-3">
                             <input type="number" min={1} value={editingItem.cantidad}
                               onChange={(e) => setEditingItem({ ...editingItem, cantidad: e.target.value })}
@@ -560,7 +563,7 @@ export default function AdminRepuestosPage() {
                               />
                             </div>
                           </td>
-                          <td className="py-2 px-3" colSpan={2}>
+                          <td className="py-2 px-3">
                             <div className="flex gap-1 justify-end">
                               <button onClick={handleSaveEdit} disabled={savingItem}
                                 className="px-2 py-1 bg-amber-500 text-white rounded text-xs font-semibold disabled:opacity-50">
@@ -574,7 +577,10 @@ export default function AdminRepuestosPage() {
                     }
                     return (
                       <tr key={item.id} className="border-b hover:bg-gray-50 group">
-                        <td className="py-2.5 px-5 max-w-[200px]">
+                        <td className="py-2.5 px-4 text-xs text-gray-500 whitespace-nowrap">
+                          {formatFechaHora(item.created_at)}
+                        </td>
+                        <td className="py-2.5 px-3 max-w-[180px]">
                           <span className="block truncate text-gray-800" title={item.descripcion}>{item.descripcion}</span>
                           {item.cantidad > 1 && <span className="text-xs text-gray-400">×{item.cantidad}</span>}
                         </td>
@@ -595,16 +601,14 @@ export default function AdminRepuestosPage() {
                             </a>
                           ) : '—'}
                         </td>
-                        <td className="py-2.5 px-3 text-xs text-gray-500 whitespace-nowrap">
-                          {formatFechaHora(item.created_at)}
+                        <td className="py-2.5 px-3 text-xs text-gray-600 max-w-[120px]">
+                          <span className="block truncate" title={item.ordenes?.cliente ?? ''}>{item.ordenes?.cliente ?? '—'}</span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-xs text-gray-500 whitespace-nowrap">
+                          {item.costo ? formatCOP(item.costo * item.cantidad) : '—'}
                         </td>
                         <td className="py-2.5 px-3 text-right font-semibold text-gray-900 whitespace-nowrap">
                           {formatCOP(item.precio_venta * item.cantidad)}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${esPagado ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {esPagado ? 'Pagado' : 'Pendiente'}
-                          </span>
                         </td>
                         <td className="py-2.5 px-3">
                           <div className="flex gap-0.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
@@ -642,9 +646,10 @@ export default function AdminRepuestosPage() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-50">
-                    <td colSpan={4} className="py-2.5 px-5 text-xs text-gray-500 font-medium">{totalItems} ítems en total</td>
+                    <td colSpan={5} className="py-2.5 px-4 text-xs text-gray-500 font-medium">{totalItems} ítems en total</td>
+                    <td className="py-2.5 px-3 text-right text-xs text-gray-500 font-medium whitespace-nowrap">{formatCOP(totalCosto)}</td>
                     <td className="py-2.5 px-3 text-right font-bold text-gray-900 whitespace-nowrap">{formatCOP(totalVentas)}</td>
-                    <td colSpan={2} />
+                    <td />
                   </tr>
                 </tfoot>
               </table>
