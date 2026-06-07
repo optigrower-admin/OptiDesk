@@ -85,6 +85,7 @@ export default function NuevaOrdenAdminPage() {
   }, [profile?.tenant_id])
 
   const subcategorias = categorias.find((c) => c.id === categoriaId)?.subcategorias_servicio ?? []
+  const esUMACategoria = categorias.find(c => c.id === categoriaId)?.nombre?.toLowerCase().includes('uma') ?? false
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -150,7 +151,7 @@ export default function NuevaOrdenAdminPage() {
           subcategoria_servicio_id: subcategoriaId || null,
           tipo_servicio: tipoServicio,
           numero_ot: tipoServicio === 'uma' ? (numeroOt || null) : null,
-          numeros_orden_uma: tipoServicio === 'uma' ? numerosOrdenUMA : [],
+          numeros_orden_uma: esUMACategoria ? numerosOrdenUMA : [],
           mecanico_id: profile.id,
           estado: 'en_proceso',
           numero: 0,
@@ -309,8 +310,8 @@ export default function NuevaOrdenAdminPage() {
               )}
             </div>
 
-            {/* # Orden UMA — campo requerido */}
-            <div className={`rounded-xl border p-5 space-y-3 transition-colors ${numerosOrdenUMA.length === 0 ? 'border-amber-300 bg-amber-50' : 'bg-white border-gray-200'}`}>
+            {/* # Orden UMA — solo si categoría seleccionada es UMA */}
+            {esUMACategoria && <div className={`rounded-xl border p-5 space-y-3 transition-colors ${numerosOrdenUMA.length === 0 ? 'border-amber-300 bg-amber-50' : 'bg-white border-gray-200'}`}>
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-gray-900"># Orden UMA</h2>
                 {numerosOrdenUMA.length === 0 && (
@@ -380,7 +381,7 @@ export default function NuevaOrdenAdminPage() {
                   El número de orden UMA es requerido para este tipo de ingreso. Puedes agregarlo ahora o más adelante en el detalle del caso.
                 </p>
               )}
-            </div>
+            </div>}
           </div>
         )}
 
