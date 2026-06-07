@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
+import { PerfilExtras } from '@/components/PerfilExtras'
 
 type Periodo = 'hoy' | 'semana' | 'mes'
 
@@ -204,6 +205,17 @@ export default function AdminPerfilPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Fotos, videos y notas del perfil */}
+      {profile?.id && profile?.tenant_id && (
+        <PerfilExtras
+          usuarioId={profile.id}
+          tenantId={profile.tenant_id}
+          currentUserId={profile.id}
+          currentUserRol={profile.rol ?? ''}
+          currentUserEmail={profile.email ?? ''}
+        />
       )}
 
       <button

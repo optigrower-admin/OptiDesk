@@ -64,6 +64,12 @@ function formatAuditDate(iso: string): string {
 
 function soloDigitos(val: string) { return val.replace(/\D/g, '') }
 
+function formatFechaCorta(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) +
+    ' ' + d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })
+}
+
 function formatTelefono(digits: string): string {
   const d = soloDigitos(digits).slice(0, 10)
   if (d.length <= 3) return d
@@ -107,6 +113,8 @@ interface OrdenDetalle {
   categoria_servicio_id: string | null
   subcategoria_servicio_id: string | null
   tenant_id: string
+  created_at: string
+  fecha_finalizacion: string | null
   categorias_servicio: { nombre: string } | null
   subcategorias_servicio: { nombre: string } | null
   metodos_pago: { id: string; nombre: string } | null
@@ -132,6 +140,17 @@ interface Medio {
   storage_location: 'r2' | 'drive'
   drive_url: string | null
 }
+
+interface PagoOrden {
+  id: string
+  monto: number
+  metodo_pago_id: string | null
+  fecha: string
+  notas: string | null
+  metodos_pago: { nombre: string } | null
+}
+
+const ORDEN_DRAFT_KEY = (id: string) => `optiDesk_orden_draft_${id}`
 
 export default function AdminOrdenDetallePage() {
   const params = useParams()
@@ -174,46 +193,112 @@ export default function AdminOrdenDetallePage() {
   const [motivoPendiente, setMotivoPendiente] = useState('')
   const [telefono, setTelefono] = useState('')
 
+  // Control de cambios sin guardar
+  const [dirty, setDirty] = useState(false)
+  const [showExitDialog, setShowExitDialog] = useState(false)
+  const [savingFromDialog, setSavingFromDialog] = useState(false)
+  const [pendingNavBack, setPendingNavBack] = useState(false)
+
+  // Pagos consecutivos
+  const [pagosOrden, setPagosOrden] = useState<PagoOrden[]>([])
+  const [nuevoPagoMonto, setNuevoPagoMonto] = useState('')
+  const [nuevoPagoMetodo, setNuevoPagoMetodo] = useState('')
+  const [nuevoPagoNotas, setNuevoPagoNotas] = useState('')
+  const [savingPago, setSavingPago] = useState(false)
+  const [showPrintModal, setShowPrintModal] = useState(false)
+  const [tenantNombre, setTenantNombre] = useState('Motospace')
+
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
-    const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }] = await Promise.all([
+    const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }] = await Promise.all([
       supabase.from('ordenes')
-        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, descripcion, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, tenant_id,
+        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, descripcion, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, tenant_id, created_at, fecha_finalizacion,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre)`)
         .eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto').eq('orden_id', ordenId),
       supabase.from('medios').select('id, url, tipo, nombre_archivo, storage_location, drive_url').eq('orden_id', ordenId),
       supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', profile.tenant_id).eq('activo', true),
       supabase.from('categorias_servicio').select('id, nombre, subcategorias_servicio(id, nombre)').eq('tenant_id', profile.tenant_id).eq('activo', true).order('orden'),
+      supabase.from('pagos_orden').select('id, monto, metodo_pago_id, fecha, notas, metodos_pago(nombre)').eq('orden_id', ordenId).order('fecha', { ascending: true }),
     ])
     if (o) {
       const ord = o as unknown as OrdenDetalle
       setOrden(ord)
-      setEstado(ord.estado)
-      setEstadoPago(ord.estado_pago)
-      setValorAbono(String(ord.valor_abono ?? 0))
-      setMetodoPagoId((ord.metodos_pago as { id: string } | null)?.id ?? '')
-      setMotivoPendiente(ord.motivo_pendiente ?? '')
-      setTelefono(soloDigitos(ord.telefono ?? ''))
-      setNotas(ord.notas ?? '')
-      setNumerosOrdenUMA(ord.numeros_orden_uma ?? [])
       setEditCliente(ord.cliente)
       setEditDescripcion(ord.descripcion ?? '')
       setEditCategoriaId(ord.categoria_servicio_id ?? '')
       setEditSubcategoriaId(ord.subcategoria_servicio_id ?? '')
+
+      setEstadoPago(ord.estado_pago)
+      setValorAbono(String(ord.valor_abono ?? 0))
+      setMetodoPagoId((ord.metodos_pago as { id: string } | null)?.id ?? '')
+
+      // Restaurar borrador de localStorage si existe (solo campos de estado/notas)
+      try {
+        const draft = localStorage.getItem(ORDEN_DRAFT_KEY(ordenId))
+        if (draft) {
+          const d = JSON.parse(draft)
+          setEstado(d.estado ?? ord.estado)
+          setMotivoPendiente(d.motivoPendiente ?? (ord.motivo_pendiente ?? ''))
+          setTelefono(d.telefono ?? soloDigitos(ord.telefono ?? ''))
+          setNotas(d.notas ?? (ord.notas ?? ''))
+          setNumerosOrdenUMA(d.numerosOrdenUMA ?? (ord.numeros_orden_uma ?? []))
+          setDirty(true)
+          return
+        }
+      } catch { /* borrador inválido */ }
+
+      setEstado(ord.estado)
+      setMotivoPendiente(ord.motivo_pendiente ?? '')
+      setTelefono(soloDigitos(ord.telefono ?? ''))
+      setNotas(ord.notas ?? '')
+      setNumerosOrdenUMA(ord.numeros_orden_uma ?? [])
     }
     setItems((i as unknown as ItemOrden[]) ?? [])
     setMedios((m as unknown as Medio[]) ?? [])
     setMetodosPago((mp as unknown as { id: string; nombre: string }[]) ?? [])
     setCategorias((cats as unknown as Categoria[]) ?? [])
+    setPagosOrden((pg as unknown as PagoOrden[]) ?? [])
   }, [ordenId, profile?.tenant_id])
 
   useEffect(() => { cargar() }, [cargar])
 
+  useEffect(() => {
+    if (!profile?.tenant_id) return
+    supabase.from('tenants').select('nombre').eq('id', profile.tenant_id).single().then(({ data }) => {
+      if (data) setTenantNombre((data as { nombre: string }).nombre)
+    })
+  }, [profile?.tenant_id])
+
+  // Guardar borrador automáticamente cuando cambian los campos del sidebar
+  useEffect(() => {
+    if (!orden) return
+    const hayCambios =
+      estado !== orden.estado ||
+      motivoPendiente !== (orden.motivo_pendiente ?? '') ||
+      telefono !== soloDigitos(orden.telefono ?? '') ||
+      notas !== (orden.notas ?? '') ||
+      JSON.stringify(numerosOrdenUMA) !== JSON.stringify(orden.numeros_orden_uma ?? [])
+
+    if (hayCambios) {
+      try {
+        localStorage.setItem(ORDEN_DRAFT_KEY(ordenId), JSON.stringify({
+          estado, motivoPendiente, telefono, notas, numerosOrdenUMA,
+        }))
+      } catch { /* ignore */ }
+      setDirty(true)
+    } else {
+      try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
+      setDirty(false)
+    }
+  }, [estado, motivoPendiente, telefono, notas, numerosOrdenUMA, orden, ordenId])
+
   const cargarAudit = async () => {
+    if (!orden) return
     setLoadingAudit(true)
     const itemIds = items.map((i) => i.id)
-    const [{ data: auditOrden }, auditItemsResult] = await Promise.all([
+    const pagoIds = pagosOrden.map((p) => p.id)
+    const [{ data: auditOrden }, auditItemsResult, auditPagosResult] = await Promise.all([
       supabase.from('auditoria')
         .select('id, tipo, descripcion, valor_anterior, valor_nuevo, created_at, usuarios(nombre, email)')
         .eq('registro_id', ordenId)
@@ -224,13 +309,31 @@ export default function AdminOrdenDetallePage() {
             .select('id, tipo, descripcion, valor_anterior, valor_nuevo, created_at, usuarios(nombre, email)')
             .in('registro_id', itemIds)
             .order('created_at', { ascending: false })
-            .limit(30)
+            .limit(40)
+        : Promise.resolve({ data: [] }),
+      pagoIds.length > 0
+        ? supabase.from('auditoria')
+            .select('id, tipo, descripcion, valor_anterior, valor_nuevo, created_at, usuarios(nombre, email)')
+            .in('registro_id', pagoIds)
+            .order('created_at', { ascending: false })
+            .limit(20)
         : Promise.resolve({ data: [] }),
     ])
     const all = [
       ...((auditOrden as unknown as AuditEntry[]) ?? []),
       ...((auditItemsResult.data as unknown as AuditEntry[]) ?? []),
+      ...((auditPagosResult.data as unknown as AuditEntry[]) ?? []),
     ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    // Append synthetic creation entry at the end (oldest event)
+    all.push({
+      id: '__creation__',
+      tipo: 'movimiento',
+      descripcion: `Orden #${orden.numero} creada${orden.usuarios ? ` por ${(orden.usuarios as { nombre: string }).nombre}` : ''}`,
+      valor_anterior: null,
+      valor_nuevo: null,
+      created_at: orden.created_at,
+      usuarios: orden.usuarios as { nombre: string; email: string } | null,
+    })
     setAuditLog(all)
     setLoadingAudit(false)
   }
@@ -337,10 +440,10 @@ export default function AdminOrdenDetallePage() {
       ...item,
     }).select('*').single()
     if (data) {
+      const itemId = (data as { id: string }).id
       const nuevoTotal = [...items, data].reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
       await Promise.all([
         supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId),
-        // Registrar salida en inventario y descontar stock UMA
         registrarSalida(
           supabase,
           orden!.tipo_orden === 'venta_repuestos' ? 'venta_directa' : 'uso_st',
@@ -352,10 +455,18 @@ export default function AdminOrdenDetallePage() {
             costo_unitario: item.costo,
             precio_unitario: item.precio_venta,
             orden_id: ordenId,
-            item_orden_id: (data as { id: string }).id,
+            item_orden_id: itemId,
             registrado_por: profile?.id,
           }
         ),
+        registrarAuditoria(supabase, {
+          tenant_id: orden!.tenant_id,
+          tabla: 'items_orden',
+          registro_id: itemId,
+          tipo: 'movimiento',
+          descripcion: `Agregó repuesto "${item.descripcion}" (×${item.cantidad}) → $${(item.precio_venta * item.cantidad).toLocaleString('es-CO')} | orden #${orden?.numero}`,
+          usuario_id: profile?.id,
+        }),
       ])
       await cargar()
     }
@@ -391,12 +502,85 @@ export default function AdminOrdenDetallePage() {
     }).select('*').single()
     if (data) {
       const nuevoTotal = [...items, data].reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-      await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+      await Promise.all([
+        supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId),
+        registrarAuditoria(supabase, {
+          tenant_id: orden!.tenant_id,
+          tabla: 'items_orden',
+          registro_id: (data as { id: string }).id,
+          tipo: 'movimiento',
+          descripcion: `Agregó mano de obra "${desc}" → $${precio.toLocaleString('es-CO')} | orden #${orden?.numero}`,
+          usuario_id: profile?.id,
+        }),
+      ])
       setMoDescripcion('')
       setMoValor('')
       await cargar()
     }
     setSavingMO(false)
+  }
+
+  const calcularEstadoPago = (pagos: PagoOrden[], valorTotal: number): EstadoPago => {
+    const totalPagado = pagos.reduce((s, p) => s + p.monto, 0)
+    if (totalPagado <= 0) return 'pendiente'
+    if (totalPagado >= valorTotal) return 'pagado'
+    return 'abono'
+  }
+
+  const handleAddPago = async () => {
+    const monto = parseInt(nuevoPagoMonto.replace(/\D/g, ''), 10)
+    if (!monto || monto <= 0 || !orden) return
+    setSavingPago(true)
+    try {
+      const { data: pagoData } = await supabase.from('pagos_orden').insert({
+        orden_id: ordenId,
+        tenant_id: orden.tenant_id,
+        monto,
+        metodo_pago_id: nuevoPagoMetodo || null,
+        notas: nuevoPagoNotas.trim() || null,
+        registrado_por: profile?.id,
+      }).select('id').single()
+      // Recalcular estado_pago y valor_abono en ordenes
+      const nuevosPagos = [...pagosOrden, { id: '', monto, metodo_pago_id: nuevoPagoMetodo || null, fecha: new Date().toISOString(), notas: nuevoPagoNotas || null, metodos_pago: null }]
+      const nuevoEstadoPago = calcularEstadoPago(nuevosPagos, orden.valor_total)
+      const totalPagado = nuevosPagos.reduce((s, p) => s + p.monto, 0)
+      const ahora = new Date().toISOString()
+      await supabase.from('ordenes').update({
+        estado_pago: nuevoEstadoPago,
+        valor_abono: totalPagado,
+        metodo_pago_id: nuevoPagoMetodo || null,
+        ...(nuevoEstadoPago === 'pagado' && orden.estado !== 'listo' ? {} : {}),
+      }).eq('id', ordenId)
+      if (pagoData) {
+        await registrarAuditoria(supabase, {
+          tenant_id: orden.tenant_id,
+          tabla: 'pagos_orden',
+          registro_id: (pagoData as { id: string }).id,
+          tipo: 'movimiento',
+          descripcion: `Registró pago $${monto.toLocaleString('es-CO')} | orden #${orden.numero}`,
+          usuario_id: profile?.id,
+        })
+      }
+      setNuevoPagoMonto('')
+      setNuevoPagoMetodo('')
+      setNuevoPagoNotas('')
+      await cargar()
+    } finally {
+      setSavingPago(false)
+    }
+  }
+
+  const handleDeletePago = async (pagoId: string) => {
+    if (!confirm('¿Eliminar este pago?') || !orden) return
+    await supabase.from('pagos_orden').delete().eq('id', pagoId)
+    const pagosRestantes = pagosOrden.filter((p) => p.id !== pagoId)
+    const nuevoEstadoPago = calcularEstadoPago(pagosRestantes, orden.valor_total)
+    const totalPagado = pagosRestantes.reduce((s, p) => s + p.monto, 0)
+    await supabase.from('ordenes').update({
+      estado_pago: nuevoEstadoPago,
+      valor_abono: totalPagado,
+    }).eq('id', ordenId)
+    await cargar()
   }
 
   const handleGuardar = async () => {
@@ -417,18 +601,23 @@ export default function AdminOrdenDetallePage() {
 
     setSaving(true)
     try {
-      const valorAbonoNum = estadoPago === 'abono' ? parseFloat(valorAbono) || 0
-        : estadoPago === 'pagado' ? (orden?.valor_total ?? 0) : 0
+      // El estado_pago se calcula automáticamente desde pagos_orden
+      const estadoPagoCalculado = calcularEstadoPago(pagosOrden, orden?.valor_total ?? 0)
+      const totalPagado = pagosOrden.reduce((s, p) => s + p.monto, 0)
+
+      const ahora = new Date().toISOString()
+      const esFinalizacion = estado === 'listo' && orden?.estado !== 'listo'
 
       await supabase.from('ordenes').update({
         estado,
-        estado_pago: estadoPago,
-        valor_abono: valorAbonoNum,
+        estado_pago: estadoPagoCalculado,
+        valor_abono: totalPagado,
         metodo_pago_id: metodoPagoId || null,
         motivo_pendiente: estado === 'pendiente' ? motivoPendiente : null,
         telefono: telefono || null,
         notas: notas.trim() || null,
         numeros_orden_uma: numerosOrdenUMA,
+        ...(esFinalizacion ? { fecha_finalizacion: ahora } : {}),
       }).eq('id', ordenId)
 
       await registrarAuditoria(supabase, {
@@ -436,10 +625,12 @@ export default function AdminOrdenDetallePage() {
         tabla: 'ordenes',
         registro_id: ordenId,
         tipo: 'edicion',
-        descripcion: `Actualizó orden #${orden?.numero}: estado=${estado}, pago=${estadoPago}`,
+        descripcion: `Actualizó orden #${orden?.numero}: estado=${estado}, pago=${estadoPagoCalculado}`,
         usuario_id: profile?.id,
       })
 
+      try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
+      setDirty(false)
       setSavedOk(true)
       setTimeout(() => setSavedOk(false), 3500)
     } finally {
@@ -461,12 +652,168 @@ export default function AdminOrdenDetallePage() {
   const esUMA = orden.tipo_servicio === 'uma'
   const esVenta = orden.tipo_orden === 'venta_repuestos'
 
+  const handlePrint = (formato: 'carta' | 'termica') => {
+    setShowPrintModal(false)
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer')
+    if (!printWindow) {
+      alert('El navegador bloqueó la ventana. Permite ventanas emergentes para este sitio e intenta de nuevo.')
+      return
+    }
+    const isTermica = formato === 'termica'
+    const margin = isTermica ? '5mm' : '18mm'
+    const fechaEntrada = new Date(orden.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
+    const fechaFin = orden.fecha_finalizacion
+      ? new Date(orden.fecha_finalizacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
+      : null
+    const ahora = new Date().toLocaleString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    const repHTML = repuestosItems.map((item, idx) =>
+      `<tr><td style="padding:3px 0;border-bottom:1px dotted #ccc;">${idx + 1}. ${item.descripcion}${item.cantidad > 1 ? ` ×${item.cantidad}` : ''}</td><td style="padding:3px 0;border-bottom:1px dotted #ccc;text-align:right;white-space:nowrap;">$${(item.precio_venta * item.cantidad).toLocaleString('es-CO')}</td></tr>`
+    ).join('')
+    const moHTML = manoObraItems.map((item, idx) =>
+      `<tr><td style="padding:3px 0;border-bottom:1px dotted #ccc;">${idx + 1}. ${item.descripcion}</td><td style="padding:3px 0;border-bottom:1px dotted #ccc;text-align:right;white-space:nowrap;">$${item.precio_venta.toLocaleString('es-CO')}</td></tr>`
+    ).join('')
+    const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><title>Factura #${orden.numero}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:${isTermica ? "'Courier New',monospace" : 'Arial,sans-serif'};font-size:${isTermica ? '11px' : '12px'};color:#000;padding:${margin};width:${isTermica ? '80mm' : 'auto'}}
+@page{size:${isTermica ? '80mm auto' : 'letter'};margin:${margin}}
+table{width:100%;border-collapse:collapse}
+.c{text-align:center}.b{font-weight:bold}.sm{font-size:${isTermica ? '9px' : '10px'};color:#555}
+hr{border:none;border-top:${isTermica ? '1px dashed #000' : '1px solid #ccc'};margin:5px 0}
+</style></head><body>
+<div class="c b" style="font-size:${isTermica ? '18px' : '24px'};letter-spacing:3px;margin-bottom:2px">${tenantNombre.toUpperCase()}</div>
+<div class="c sm" style="margin-bottom:6px">Taller de Motos</div>
+<hr>
+<div class="c b" style="font-size:${isTermica ? '13px' : '16px'};margin:4px 0">FACTURA #${orden.numero}</div>
+<hr>
+<table style="margin:4px 0 6px">
+<tr><td class="sm" style="width:42%">Cliente:</td><td class="sm b">${orden.cliente}</td></tr>
+${orden.placa ? `<tr><td class="sm">Placa:</td><td class="sm b">${orden.placa}</td></tr>` : ''}
+${orden.telefono ? `<tr><td class="sm">Teléfono:</td><td class="sm">${orden.telefono}</td></tr>` : ''}
+<tr><td class="sm">Fecha entrada:</td><td class="sm">${fechaEntrada}</td></tr>
+${fechaFin ? `<tr><td class="sm">Fecha salida:</td><td class="sm">${fechaFin}</td></tr>` : ''}
+</table>
+<hr>
+${repuestosItems.length > 0 ? `<div class="b sm" style="margin:3px 0 4px">REPUESTOS</div><table>${repHTML}</table>` : ''}
+${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div class="b sm" style="margin:3px 0 4px">MANO DE OBRA</div><table>${moHTML}</table>` : ''}
+<hr>
+<table><tr>
+<td class="b" style="font-size:${isTermica ? '14px' : '15px'}">TOTAL</td>
+<td class="b" style="text-align:right;font-size:${isTermica ? '14px' : '15px'}">$${total.toLocaleString('es-CO')}</td>
+</tr></table>
+<div class="c sm" style="margin:6px 0;font-style:italic">* Precios incluyen impuestos *</div>
+<hr>
+<div class="c sm" style="margin-top:4px">Impreso: ${ahora}</div>
+<div class="c" style="margin-top:10px;font-size:${isTermica ? '11px' : '12px'}">¡Gracias por su preferencia!</div>
+</body></html>`
+    printWindow.document.write(html)
+    printWindow.document.close()
+    setTimeout(() => { printWindow.focus(); printWindow.print() }, 400)
+  }
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
+      {/* Dialog cambios sin guardar */}
+      {showExitDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-base">Cambios sin guardar</h3>
+              <button onClick={() => setShowExitDialog(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-sm text-gray-600">Tienes cambios pendientes en esta entrada. ¿Qué deseas hacer?</p>
+            <div className="space-y-2">
+              <button
+                onClick={async () => {
+                  setSavingFromDialog(true)
+                  await handleGuardar()
+                  setSavingFromDialog(false)
+                  setShowExitDialog(false)
+                  if (pendingNavBack) router.back()
+                }}
+                disabled={savingFromDialog}
+                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-semibold transition-colors"
+              >
+                {savingFromDialog ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+              <button
+                onClick={() => {
+                  try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
+                  setDirty(false)
+                  setShowExitDialog(false)
+                  if (pendingNavBack) router.back()
+                }}
+                className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
+              >
+                No guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal seleccionar formato de impresión */}
+      {showPrintModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-xs w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900">Imprimir factura</h3>
+              <button onClick={() => setShowPrintModal(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-sm text-gray-500">Selecciona el formato de impresión:</p>
+            <div className="space-y-2">
+              <button
+                onClick={() => handlePrint('carta')}
+                className="w-full py-3 px-4 bg-white border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 rounded-xl text-sm transition-colors text-left flex items-center gap-3"
+              >
+                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <div>
+                  <div className="font-semibold text-gray-800">Hoja carta</div>
+                  <div className="text-xs text-gray-400">Impresora estándar · Tamaño carta</div>
+                </div>
+              </button>
+              <button
+                onClick={() => handlePrint('termica')}
+                className="w-full py-3 px-4 bg-white border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 rounded-xl text-sm transition-colors text-left flex items-center gap-3"
+              >
+                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                <div>
+                  <div className="font-semibold text-gray-800">Impresora térmica</div>
+                  <div className="text-xs text-gray-400">Recibo · 80mm ancho</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-600">
+          <button
+            onClick={() => {
+              if (dirty) {
+                setPendingNavBack(true)
+                setShowExitDialog(true)
+              } else {
+                router.back()
+              }
+            }}
+            className="text-gray-400 hover:text-gray-600"
+          >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
@@ -491,18 +838,45 @@ export default function AdminOrdenDetallePage() {
                 {orden.subcategorias_servicio && ` · ${orden.subcategorias_servicio.nombre}`}
               </p>
             )}
+            <div className="flex flex-wrap gap-3 mt-1">
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="font-medium text-gray-500">Entrada:</span> {formatFechaCorta(orden.created_at)}
+              </span>
+              {orden.fecha_finalizacion && (
+                <span className="text-xs text-green-600 flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="font-medium">Finalización:</span> {formatFechaCorta(orden.fecha_finalizacion)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
-        {/* Reloj — historial de cambios */}
-        <button
-          onClick={() => { setShowAudit(true); cargarAudit() }}
-          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
-          title="Ver historial de cambios"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </button>
+        {/* Acciones del header */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onClick={() => setShowPrintModal(true)}
+            className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Imprimir factura"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => { setShowAudit(true); cargarAudit() }}
+            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            title="Ver historial de cambios"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Banner de confirmación */}
@@ -1091,67 +1465,136 @@ export default function AdminOrdenDetallePage() {
             )}
           </div>
 
-          {/* Pago */}
+          {/* Pago consecutivo */}
+          {(() => {
+            const totalPagado = pagosOrden.reduce((s, p) => s + p.monto, 0)
+            const saldoPendiente = (orden.valor_total ?? 0) - totalPagado
+            const estadoPagoCalc = calcularEstadoPago(pagosOrden, orden.valor_total ?? 0)
+            const estadoColor = estadoPagoCalc === 'pagado' ? 'bg-green-100 text-green-700 border-green-200'
+              : estadoPagoCalc === 'abono' ? 'bg-amber-100 text-amber-700 border-amber-200'
+              : 'bg-gray-100 text-gray-600 border-gray-200'
+            const estadoLabel = estadoPagoCalc === 'pagado' ? 'Pago Finalizado'
+              : estadoPagoCalc === 'abono' ? 'Abono parcial'
+              : 'Pendiente de pago'
+            return (
+              <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900">Pagos</h2>
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${estadoColor}`}>
+                    {estadoLabel}
+                  </span>
+                </div>
+
+                {/* Resumen */}
+                <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Total a pagar</span>
+                    <span className="font-semibold text-gray-900">{formatCOP(orden.valor_total ?? 0)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Total pagado</span>
+                    <span className="font-semibold text-green-700">{formatCOP(totalPagado)}</span>
+                  </div>
+                  {saldoPendiente > 0 && (
+                    <div className="flex justify-between text-xs font-semibold border-t border-gray-200 pt-1.5">
+                      <span className="text-red-600">Saldo pendiente</span>
+                      <span className="text-red-600">{formatCOP(saldoPendiente)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Historial de pagos */}
+                {pagosOrden.length > 0 && (
+                  <div className="space-y-1.5">
+                    {pagosOrden.map((pago, idx) => (
+                      <div key={pago.id} className="flex items-center justify-between p-2.5 bg-green-50 border border-green-100 rounded-lg group">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-gray-500">#{idx + 1}</span>
+                            <span className="text-sm font-bold text-green-800">{formatCOP(pago.monto)}</span>
+                            {pago.metodos_pago && (
+                              <span className="text-xs bg-white border border-green-200 text-green-700 px-1.5 py-0.5 rounded font-medium">
+                                {(pago.metodos_pago as { nombre: string }).nombre}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {new Date(pago.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })} · {new Date(pago.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                          </p>
+                          {pago.notas && <p className="text-xs text-gray-500 italic mt-0.5">{pago.notas}</p>}
+                        </div>
+                        <button
+                          onClick={() => handleDeletePago(pago.id)}
+                          className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1 flex-shrink-0"
+                          title="Eliminar pago"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Formulario nuevo pago */}
+                {estadoPagoCalc !== 'pagado' && (
+                  <div className="space-y-2 border-t border-gray-100 pt-3">
+                    <p className="text-xs font-medium text-gray-600">Registrar pago</p>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={nuevoPagoMonto ? '$' + parseInt(nuevoPagoMonto.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                      onChange={(e) => setNuevoPagoMonto(e.target.value.replace(/\D/g, ''))}
+                      placeholder="Monto del pago ($)"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-400"
+                    />
+                    <select
+                      value={nuevoPagoMetodo}
+                      onChange={(e) => setNuevoPagoMetodo(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    >
+                      <option value="">Método de pago (opcional)</option>
+                      {metodosPago.map((m) => (
+                        <option key={m.id} value={m.id}>{m.nombre}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={nuevoPagoNotas}
+                      onChange={(e) => setNuevoPagoNotas(e.target.value)}
+                      placeholder="Notas del pago (opcional)"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    />
+                    <button
+                      onClick={handleAddPago}
+                      disabled={savingPago || !nuevoPagoMonto}
+                      className="w-full py-2 px-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors"
+                    >
+                      {savingPago ? 'Registrando...' : '+ Registrar pago'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Notas internas */}
+          <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-2">
+            <h2 className="font-semibold text-gray-900 text-sm">Notas internas</h2>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              placeholder="Observaciones, recordatorios, detalles adicionales..."
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+
+          {/* Botón guardar */}
           <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
-            <h2 className="font-semibold text-gray-900">Pago</h2>
-            <div className="space-y-2">
-              {(['pagado', 'abono', 'pendiente'] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setEstadoPago(s)}
-                  className={`w-full py-2 px-3 rounded-lg text-sm font-medium text-left transition-colors ${
-                    estadoPago === s ? 'bg-blue-700 text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {s === 'pagado' ? 'Pagado' : s === 'abono' ? 'Abono' : 'Pendiente'}
-                </button>
-              ))}
-            </div>
-            {estadoPago === 'abono' && (
-              <>
-                <div>
-                  <label className="text-xs text-gray-600">Valor abono</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={formatAbonoDisplay(valorAbono)}
-                    onChange={(e) => setValorAbono(soloDigitos(e.target.value))}
-                    placeholder="$0"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mt-1 font-mono"
-                  />
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Saldo pendiente</span>
-                  <span className="font-semibold text-red-600">{formatCOP(saldo)}</span>
-                </div>
-              </>
+            {dirty && !savedOk && (
+              <p className="text-xs text-amber-600 text-center font-medium">Hay cambios sin guardar</p>
             )}
-            <div>
-              <label className="text-xs text-gray-600">Método de pago</label>
-              <select
-                value={metodoPagoId}
-                onChange={(e) => setMetodoPagoId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mt-1"
-              >
-                <option value="">Sin especificar</option>
-                {metodosPago.map((m) => (
-                  <option key={m.id} value={m.id}>{m.nombre}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Notas internas */}
-            <div>
-              <label className="text-xs text-gray-600">Notas internas</label>
-              <textarea
-                value={notas}
-                onChange={(e) => setNotas(e.target.value)}
-                placeholder="Observaciones, recordatorios, detalles adicionales..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mt-1 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-            </div>
-
             <Button className="w-full" onClick={handleGuardar} loading={saving}>
               Guardar cambios
             </Button>

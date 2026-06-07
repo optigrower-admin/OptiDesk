@@ -104,6 +104,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
   const [fPrecio, setFPrecio] = useState('')
   const [fSaving, setFSaving] = useState(false)
   const [fError, setFError] = useState('')
+  const [fSinDatos, setFSinDatos] = useState(false)
   // Autocomplete proveedor
   const [provSugg, setProvSugg] = useState<Proveedor[]>([])
   const [showProvDrop, setShowProvDrop] = useState(false)
@@ -115,7 +116,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
     if (open) {
       setUmaSelId(null); setUmaErrPrecio('')
       setExtSelId(null)
-      setShowForm(false); setFError('')
+      setShowForm(false); setFError(''); setFSinDatos(false)
     }
   }, [open])
 
@@ -239,7 +240,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
     try {
       let proveedorId: string | null = null
 
-      if (fProv.trim()) {
+      if (!fSinDatos && fProv.trim()) {
         if (provExistente) {
           proveedorId = provExistente.id
           if (fTel || fUbic) {
@@ -263,8 +264,8 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
       const { data: nr, error: eR } = await supabase.from('repuestos_externos').insert({
         tenant_id: tenantId,
         nombre: fDesc.trim(),
-        subgrupo: fSub.trim() || null,
-        unidad_empaque: parseInt(fUnidad) || 1,
+        subgrupo: fSinDatos ? null : (fSub.trim() || null),
+        unidad_empaque: fSinDatos ? 1 : (parseInt(fUnidad) || 1),
         ultimo_costo: costo,
         ultimo_precio_venta: precio,
         proveedor_id: proveedorId,
@@ -278,7 +279,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
         setExtBuscado(true)
         setFProv(''); setFTel(''); setFUbic(''); setFSub('')
         setFDesc(''); setFUnidad('1'); setFCosto(''); setFPrecio('')
-        setProvExistente(null); setShowForm(false)
+        setProvExistente(null); setFSinDatos(false); setShowForm(false)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
@@ -570,83 +571,111 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">Nuevo repuesto externo</h3>
-                <button onClick={() => setShowForm(false)}
-                  className="text-gray-400 hover:text-gray-600">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFSinDatos((v) => !v)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+                      fSinDatos
+                        ? 'bg-amber-100 border-amber-300 text-amber-700'
+                        : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    {fSinDatos ? '✓ Sin datos adicionales' : 'Sin datos'}
+                  </button>
+                  <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
+
+              {fSinDatos && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Modo simplificado — solo nombre, costo y precio son requeridos.
+                </p>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-                {/* Proveedor con autocomplete */}
-                <div className="relative sm:col-span-2">
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Proveedor</label>
-                  <input value={fProv} onChange={(e) => onProvChange(e.target.value)}
-                    onBlur={() => setTimeout(() => setShowProvDrop(false), 150)}
-                    onFocus={() => fProv.length >= 2 && setShowProvDrop(true)}
-                    placeholder="Nombre del proveedor (opcional)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-                  {showProvDrop && provSugg.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                      {provSugg.map((p) => (
-                        <button key={p.id} onMouseDown={() => seleccionarProv(p)}
-                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-green-50 transition-colors border-b border-gray-50 last:border-0">
-                          <span className="font-medium text-gray-900">{p.nombre}</span>
-                          {p.telefono && <span className="text-xs text-gray-400 ml-2">{p.telefono}</span>}
-                          {p.ubicacion && <span className="text-xs text-gray-400 ml-1">· {p.ubicacion}</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {provExistente && (
-                    <p className="text-xs text-green-600 mt-1">✓ Proveedor existente — datos auto-completados</p>
-                  )}
-                </div>
+                {/* Proveedor con autocomplete — oculto en modo Sin datos */}
+                {!fSinDatos && (
+                  <div className="relative sm:col-span-2">
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Proveedor</label>
+                    <input value={fProv} onChange={(e) => onProvChange(e.target.value)}
+                      onBlur={() => setTimeout(() => setShowProvDrop(false), 150)}
+                      onFocus={() => fProv.length >= 2 && setShowProvDrop(true)}
+                      placeholder="Nombre del proveedor (opcional)"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                    {showProvDrop && provSugg.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                        {provSugg.map((p) => (
+                          <button key={p.id} onMouseDown={() => seleccionarProv(p)}
+                            className="w-full text-left px-4 py-2.5 text-sm hover:bg-green-50 transition-colors border-b border-gray-50 last:border-0">
+                            <span className="font-medium text-gray-900">{p.nombre}</span>
+                            {p.telefono && <span className="text-xs text-gray-400 ml-2">{p.telefono}</span>}
+                            {p.ubicacion && <span className="text-xs text-gray-400 ml-1">· {p.ubicacion}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {provExistente && (
+                      <p className="text-xs text-green-600 mt-1">✓ Proveedor existente — datos auto-completados</p>
+                    )}
+                  </div>
+                )}
 
-                {/* Teléfono */}
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Teléfono proveedor</label>
-                  <input value={formatTel(fTel)} onChange={(e) => setFTel(soloDigitos(e.target.value))}
-                    placeholder="(310) 000-0000"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-400" />
-                </div>
+                {/* Teléfono — oculto en modo Sin datos */}
+                {!fSinDatos && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Teléfono proveedor</label>
+                    <input value={formatTel(fTel)} onChange={(e) => setFTel(soloDigitos(e.target.value))}
+                      placeholder="(310) 000-0000"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-400" />
+                  </div>
+                )}
 
-                {/* Ubicación */}
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Ubicación</label>
-                  <input value={fUbic} onChange={(e) => setFUbic(e.target.value)}
-                    placeholder="Ciudad / Dirección"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-                </div>
+                {/* Ubicación — oculta en modo Sin datos */}
+                {!fSinDatos && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Ubicación</label>
+                    <input value={fUbic} onChange={(e) => setFUbic(e.target.value)}
+                      placeholder="Ciudad / Dirección"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                  </div>
+                )}
 
-                {/* Sub-grupo */}
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Sub-tipo de repuesto</label>
-                  <input value={fSub} onChange={(e) => setFSub(e.target.value)}
-                    placeholder="Ej: Frenos, Motor, Eléctrico..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-                </div>
+                {/* Sub-grupo — oculto en modo Sin datos */}
+                {!fSinDatos && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Sub-tipo de repuesto</label>
+                    <input value={fSub} onChange={(e) => setFSub(e.target.value)}
+                      placeholder="Ej: Frenos, Motor, Eléctrico..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                  </div>
+                )}
 
-                {/* Unidad empaque */}
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Unidad empaque</label>
-                  <input type="number" min={1} value={fUnidad} onChange={(e) => setFUnidad(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-                </div>
+                {/* Unidad empaque — oculta en modo Sin datos */}
+                {!fSinDatos && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Unidad empaque</label>
+                    <input type="number" min={1} value={fUnidad} onChange={(e) => setFUnidad(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                  </div>
+                )}
 
-                {/* Descripción (col span 2) */}
+                {/* Descripción (siempre visible) */}
                 <div className="sm:col-span-2">
                   <label className="text-xs font-medium text-gray-700 block mb-1">
-                    Descripción <span className="text-red-400">*</span>
+                    Nombre / Descripción <span className="text-red-400">*</span>
                   </label>
                   <input value={fDesc} onChange={(e) => setFDesc(e.target.value)}
                     placeholder="Nombre / descripción del repuesto"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
                 </div>
 
-                {/* Costo */}
+                {/* Costo (siempre visible) */}
                 <div>
                   <label className="text-xs font-medium text-gray-700 block mb-1">Costo con proveedor</label>
                   <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-green-400 bg-white">
@@ -658,7 +687,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
                   </div>
                 </div>
 
-                {/* Precio venta */}
+                {/* Precio venta (siempre visible) */}
                 <div>
                   <label className="text-xs font-medium text-gray-700 block mb-1">
                     Precio de venta <span className="text-red-400">*</span>

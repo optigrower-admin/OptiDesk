@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
+import { PerfilExtras } from '@/components/PerfilExtras'
 
 type Periodo = 'hoy' | 'semana' | 'mes'
 
@@ -142,6 +143,17 @@ export default function PerfilMecanicoPage() {
             {stats.listo} de {stats.total} motos listas ({Math.round((stats.listo / stats.total) * 100)}%)
           </p>
         </div>
+      )}
+
+      {/* Fotos, videos y notas del perfil */}
+      {profile?.id && profile?.tenant_id && (
+        <PerfilExtras
+          usuarioId={profile.id}
+          tenantId={profile.tenant_id}
+          currentUserId={profile.id}
+          currentUserRol={profile.rol ?? ''}
+          currentUserEmail={profile.email ?? ''}
+        />
       )}
 
       {/* Cerrar sesión */}

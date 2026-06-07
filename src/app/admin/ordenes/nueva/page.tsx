@@ -198,7 +198,7 @@ export default function NuevaOrdenAdminPage() {
           <div className="flex gap-2">
             {([
               { value: 'terceros', label: 'Terceros / Independiente' },
-              { value: 'uma', label: 'UMA (autorizado)' },
+              { value: 'uma', label: 'UMA (Autorizado)' },
             ] as { value: 'terceros' | 'uma'; label: string }[]).map((t) => (
               <button
                 type="button"
@@ -214,17 +214,6 @@ export default function NuevaOrdenAdminPage() {
               </button>
             ))}
           </div>
-          {tipoServicio === 'uma' && (
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Número OT UMA</label>
-              <input
-                value={numeroOt}
-                onChange={(e) => setNumeroOt(e.target.value)}
-                className="w-full px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-sm"
-                placeholder="Número de orden de trabajo UMA"
-              />
-            </div>
-          )}
         </div>
 
         {/* Moto y cliente */}
@@ -291,27 +280,34 @@ export default function NuevaOrdenAdminPage() {
           </div>
         </div>
 
-        {/* Servicio */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-          <h2 className="font-semibold text-gray-900">Servicio</h2>
-          <select
-            value={categoriaId}
-            onChange={(e) => { setCategoriaId(e.target.value); setSubcategoriaId('') }}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-          >
-            <option value="">Seleccionar categoría</option>
-            {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
-          {subcategorias.length > 0 && (
+        {/* Servicio — categorías solo para UMA */}
+        {tipoServicio === 'uma' && (
+          <div className="bg-white rounded-xl border border-purple-200 p-5 space-y-3">
+            <h2 className="font-semibold text-gray-900">Servicio UMA</h2>
             <select
-              value={subcategoriaId}
-              onChange={(e) => setSubcategoriaId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+              value={categoriaId}
+              onChange={(e) => { setCategoriaId(e.target.value); setSubcategoriaId('') }}
+              className="w-full px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-sm"
             >
               <option value="">Seleccionar subcategoría</option>
-              {subcategorias.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+              {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
-          )}
+            {subcategorias.length > 0 && (
+              <select
+                value={subcategoriaId}
+                onChange={(e) => setSubcategoriaId(e.target.value)}
+                className="w-full px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-sm"
+              >
+                <option value="">Seleccionar subcategoría</option>
+                {subcategorias.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+
+        {/* Descripción del trabajo */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+          <h2 className="font-semibold text-gray-900">Descripción del trabajo</h2>
           <textarea
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
@@ -349,7 +345,7 @@ export default function NuevaOrdenAdminPage() {
         </div>
 
         <Button type="submit" className="w-full" size="lg" loading={saving}>
-          Crear orden → Agregar repuestos
+          + Crear Entrada
         </Button>
       </form>
     </div>

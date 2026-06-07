@@ -462,8 +462,7 @@ export default function NuevaVentaPage() {
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-gray-900">Repuestos</h2>
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => setShowConsulta(true)}>+ Catálogo UMA</Button>
-            <Button size="sm" variant="secondary" onClick={() => setShowExternoForm(!showExternoForm)}>+ Externo</Button>
+            <Button size="sm" onClick={() => setShowConsulta(true)}>Añadir Repuesto</Button>
           </div>
         </div>
 

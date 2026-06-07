@@ -1,8 +1,11 @@
 'use client'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+
+interface TenantSimple { id: string; nombre: string }
 
 const navItems = [
   { href: '/control_total/dashboard',     label: 'Dashboard' },
@@ -16,14 +19,35 @@ const navItems = [
   { href: '/control_total/auditoria',     label: 'Auditoría global' },
 ]
 
+const ROLES = [
+  { value: 'gerencia', label: 'Gerencia' },
+  { value: 'admin', label: 'Administrador' },
+  { value: 'mecanico', label: 'Mecánico' },
+]
+
 export default function ControlTotalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
 
+  const [tenants, setTenants] = useState<TenantSimple[]>([])
+  const [simTenant, setSimTenant] = useState('')
+  const [simRol, setSimRol] = useState('')
+
+  useEffect(() => {
+    supabase.from('tenants').select('id, nombre').eq('activo', true).order('nombre').then(({ data }) => {
+      if (data) setTenants(data as TenantSimple[])
+    })
+  }, [])
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  const handleSimular = () => {
+    if (!simTenant || !simRol) return
+    router.push(`/control_total/simular?tenant=${simTenant}&rol=${simRol}`)
   }
 
   return (
@@ -57,6 +81,51 @@ export default function ControlTotalLayout({ children }: { children: React.React
             </Link>
           ))}
         </nav>
+
+        {/* Vista simulada — Ver como rol */}
+        <div className="p-3 border-t border-gray-100 space-y-2">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Ver como...</p>
+          <select
+            value={simTenant}
+            onChange={(e) => setSimTenant(e.target.value)}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
+          >
+            <option value="">Empresa</option>
+            {tenants.map((t) => (
+              <option key={t.id} value={t.id}>{t.nombre}</option>
+            ))}
+          </select>
+          <select
+            value={simRol}
+            onChange={(e) => setSimRol(e.target.value)}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
+          >
+            <option value="">Rol</option>
+            {ROLES.map((r) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleSimular}
+            disabled={!simTenant || !simRol}
+            className={cn(
+              'w-full py-1.5 px-3 rounded-lg text-xs font-medium transition-colors',
+              simTenant && simRol
+                ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+            )}
+          >
+            Simular vista
+          </button>
+          {pathname.startsWith('/control_total/simular') && (
+            <Link
+              href="/control_total/dashboard"
+              className="block text-center text-xs text-purple-600 hover:text-purple-800 underline"
+            >
+              ← Salir de simulación
+            </Link>
+          )}
+        </div>
 
         <div className="p-3 border-t">
           <button

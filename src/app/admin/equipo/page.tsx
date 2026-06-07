@@ -94,6 +94,7 @@ export default function EquipoPage() {
       .select('id, nombre, email, rol, activo')
       .eq('tenant_id', profile.tenant_id)
       .neq('id', profile.id)
+      .neq('rol', 'control_total')
       .order('nombre')
     setUsuarios((data as unknown as UsuarioEquipo[]) ?? [])
     setLoading(false)

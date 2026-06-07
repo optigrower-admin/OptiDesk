@@ -128,7 +128,8 @@ function MotosContent() {
       m.placa.toLowerCase().includes(q) ||
       (m.marca ?? '').toLowerCase().includes(q) ||
       (m.modelo ?? '').toLowerCase().includes(q) ||
-      (m.clientes?.nombre ?? '').toLowerCase().includes(q)
+      (m.clientes?.nombre ?? '').toLowerCase().includes(q) ||
+      (m.clientes?.cedula ?? '').toLowerCase().includes(q)
     )
   })
 
@@ -154,7 +155,7 @@ function MotosContent() {
       <input
         value={busqueda}
         onChange={(e) => setBusqueda(e.target.value)}
-        placeholder="Buscar por placa, marca, modelo o cliente..."
+        placeholder="Buscar por placa, marca, modelo, cliente o cédula..."
         className="w-full max-w-sm px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
       />
 
