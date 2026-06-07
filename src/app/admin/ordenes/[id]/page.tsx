@@ -640,6 +640,14 @@ export default function AdminOrdenDetallePage() {
       return
     }
 
+    // Bloquear "Finalizado" si el pago no está completo
+    const totalPagadoGuardar = pagosOrden.reduce((s, p) => s + p.monto, 0)
+    if (estado === 'listo' && totalPagadoGuardar < (orden?.valor_total ?? 0)) {
+      const saldoFaltante = (orden?.valor_total ?? 0) - totalPagadoGuardar
+      alert(`No puedes finalizar la orden — falta por pagar ${formatCOP(saldoFaltante)}. Registra el pago completo antes de finalizar.`)
+      return
+    }
+
     setSaving(true)
     try {
       // El estado_pago se calcula automáticamente desde pagos_orden
@@ -1516,14 +1524,22 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
               ] as { value: EstadoOrden; label: string }[]).map((s) => {
                 const tieneRepPendientes = s.value === 'listo' &&
                   items.some((i) => i.origen !== 'mano_obra' && i.estado_repuesto === 'pedido')
+                const totalPagadoOrden = pagosOrden.reduce((sum, p) => sum + p.monto, 0)
+                const pagoIncompleto = s.value === 'listo' && totalPagadoOrden < (orden.valor_total ?? 0)
+                const bloqueado = tieneRepPendientes || pagoIncompleto
+                const titleMsg = tieneRepPendientes
+                  ? 'Hay repuestos marcados como Pedido que aún no han llegado'
+                  : pagoIncompleto
+                  ? `Saldo pendiente: ${formatCOP((orden.valor_total ?? 0) - totalPagadoOrden)}`
+                  : undefined
                 return (
                   <button
                     key={s.value}
                     onClick={() => setEstado(s.value)}
-                    disabled={tieneRepPendientes}
-                    title={tieneRepPendientes ? 'Hay repuestos marcados como Pedido que aún no han llegado' : undefined}
+                    disabled={bloqueado}
+                    title={titleMsg}
                     className={`w-full py-2 px-3 rounded-lg text-sm font-medium text-left transition-colors ${
-                      tieneRepPendientes
+                      bloqueado
                         ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
                         : estado === s.value
                           ? 'bg-blue-700 text-white'
@@ -1532,6 +1548,9 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   >
                     {s.label}
                     {tieneRepPendientes && <span className="ml-2 text-xs text-amber-400">⏳ rep. pendientes</span>}
+                    {!tieneRepPendientes && pagoIncompleto && (
+                      <span className="ml-2 text-xs text-red-300">saldo pendiente</span>
+                    )}
                   </button>
                 )
               })}
