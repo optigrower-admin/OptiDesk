@@ -174,6 +174,9 @@ export default function AdminOrdenDetallePage() {
   const [savedOk, setSavedOk] = useState(false)
   const [numerosOrdenUMA, setNumerosOrdenUMA] = useState<string[]>([])
   const [nuevoNumOrden, setNuevoNumOrden] = useState('')
+  // Tipo de caso (UMA / Terceros) — editable inline
+  const [localTipoServicio, setLocalTipoServicio] = useState<'uma' | 'terceros'>('terceros')
+  const [savingTipoServicio, setSavingTipoServicio] = useState(false)
   // Edición de datos del ingreso
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [editingOrden, setEditingOrden] = useState<'cliente' | 'descripcion' | 'categoria' | null>(null)
@@ -227,6 +230,7 @@ export default function AdminOrdenDetallePage() {
     if (o) {
       const ord = o as unknown as OrdenDetalle
       setOrden(ord)
+      setLocalTipoServicio((ord.tipo_servicio as 'uma' | 'terceros' | null) ?? 'terceros')
       setEditCliente(ord.cliente)
       setEditDescripcion(ord.descripcion ?? '')
       setEditCategoriaId(ord.categoria_servicio_id ?? '')
@@ -405,6 +409,25 @@ export default function AdminOrdenDetallePage() {
     setEditingOrden(null)
     setSavingOrden(false)
     await cargar()
+  }
+
+  const cambiarTipoServicio = async (tipo: 'uma' | 'terceros') => {
+    if (!orden || tipo === localTipoServicio) return
+    setSavingTipoServicio(true)
+    const anterior = orden.tipo_servicio
+    setLocalTipoServicio(tipo)
+    await supabase.from('ordenes').update({ tipo_servicio: tipo }).eq('id', ordenId)
+    await registrarAuditoria(supabase, {
+      tenant_id: orden.tenant_id,
+      tabla: 'ordenes',
+      registro_id: ordenId,
+      tipo: 'edicion',
+      valor_anterior: { tipo_servicio: anterior },
+      valor_nuevo: { tipo_servicio: tipo },
+      descripcion: `Admin cambió tipo de caso de orden #${orden.numero}`,
+      usuario_id: profile?.id,
+    })
+    setSavingTipoServicio(false)
   }
 
   const handleDeleteItem = async (item: ItemOrden) => {
@@ -698,7 +721,7 @@ export default function AdminOrdenDetallePage() {
   const total = totalRepuestos + totalManoObra
   const saldo = total - (parseFloat(valorAbono) || 0)
   const esFaltaRevision = orden.estado === 'falta_revision'
-  const esUMA = orden.tipo_servicio === 'uma'
+  const esUMA = localTipoServicio === 'uma'
   const esVenta = orden.tipo_orden === 'venta_repuestos'
 
   const imprimirConIframe = (html: string) => {
@@ -1010,6 +1033,30 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                     </svg>
                   </button>
                 </div>
+              )}
+            </div>
+
+            {/* Tipo de caso — UMA o Terceros */}
+            <div className="px-5 py-3">
+              <p className="text-xs text-gray-400 mb-2">Tipo de caso</p>
+              <div className="flex gap-2">
+                {([
+                  { value: 'uma', label: 'UMA (Autorizado)', active: 'bg-purple-700 text-white border-purple-700', inactive: 'bg-white text-gray-600 border-gray-200 hover:border-purple-300' },
+                  { value: 'terceros', label: 'Terceros / Independiente', active: 'bg-amber-500 text-white border-amber-500', inactive: 'bg-white text-gray-600 border-gray-200 hover:border-amber-300' },
+                ] as const).map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    disabled={savingTipoServicio}
+                    onClick={() => cambiarTipoServicio(t.value)}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium border-2 transition-colors ${localTipoServicio === t.value ? t.active : t.inactive} ${savingTipoServicio ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              {localTipoServicio === 'uma' && numerosOrdenUMA.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1.5">⚠ Agrega el número de orden UMA en la sección de la derecha</p>
               )}
             </div>
 
