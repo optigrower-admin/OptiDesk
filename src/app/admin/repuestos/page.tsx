@@ -585,8 +585,8 @@ export default function AdminRepuestosPage() {
                           {item.cantidad > 1 && <span className="text-xs text-gray-400">×{item.cantidad}</span>}
                         </td>
                         <td className="py-2.5 px-3">
-                          <Badge variant={item.origen === 'uma' ? 'blue' : item.origen === 'mano_obra' ? 'gray' : 'amber'}>
-                            {item.origen === 'uma' ? 'UMA' : item.origen === 'mano_obra' ? 'M.O.' : 'Ext.'}
+                          <Badge variant={item.origen === 'uma' ? 'blue' : 'amber'}>
+                            {item.origen === 'uma' ? 'UMA' : 'Terceros'}
                           </Badge>
                         </td>
                         <td className="py-2.5 px-3">
