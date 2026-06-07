@@ -698,8 +698,7 @@ export default function AdminOrdenDetallePage() {
   const total = totalRepuestos + totalManoObra
   const saldo = total - (parseFloat(valorAbono) || 0)
   const esFaltaRevision = orden.estado === 'falta_revision'
-  const esUMA = orden.tipo_servicio === 'uma' ||
-    (orden.categorias_servicio?.nombre?.toLowerCase().includes('uma') ?? false)
+  const esUMA = orden.categorias_servicio?.nombre?.toLowerCase().includes('uma') ?? false
   const esVenta = orden.tipo_orden === 'venta_repuestos'
 
   const imprimirConIframe = (html: string) => {
