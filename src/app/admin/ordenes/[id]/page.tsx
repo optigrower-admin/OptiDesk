@@ -555,6 +555,7 @@ export default function AdminOrdenDetallePage() {
   const handleAddPago = async () => {
     const monto = parseInt(nuevoPagoMonto.replace(/\D/g, ''), 10)
     if (!monto || monto <= 0 || !orden) return
+    if (!nuevoPagoMetodo) { setPagoError('Selecciona un método de pago.'); return }
     setSavingPago(true)
     setPagoError('')
     try {
@@ -562,12 +563,12 @@ export default function AdminOrdenDetallePage() {
         orden_id: ordenId,
         tenant_id: orden.tenant_id,
         monto,
-        metodo_pago_id: nuevoPagoMetodo || null,
+        metodo_pago_id: nuevoPagoMetodo,
         notas: nuevoPagoNotas.trim() || null,
-        registrado_por: profile?.id,
+        registrado_por: profile?.id ?? null,
       }).select('id').single()
       if (pagoInsertError) {
-        setPagoError('Error al registrar el pago. Verifica que las migraciones de BD estén aplicadas.')
+        setPagoError(`Error: ${pagoInsertError.message}`)
         return
       }
       // Recalcular estado_pago y valor_abono en ordenes
@@ -1615,9 +1616,9 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                     <select
                       value={nuevoPagoMetodo}
                       onChange={(e) => setNuevoPagoMetodo(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      className={`w-full px-3 py-2 border rounded-lg text-sm ${!nuevoPagoMetodo ? 'border-gray-300 text-gray-400' : 'border-gray-200 text-gray-900'}`}
                     >
-                      <option value="">Método de pago (opcional)</option>
+                      <option value="">Método de pago *</option>
                       {metodosPago.map((m) => (
                         <option key={m.id} value={m.id}>{m.nombre}</option>
                       ))}
@@ -1630,7 +1631,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                     />
                     <button
                       onClick={handleAddPago}
-                      disabled={savingPago || !nuevoPagoMonto}
+                      disabled={savingPago || !nuevoPagoMonto || !nuevoPagoMetodo}
                       className="w-full py-2 px-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors"
                     >
                       {savingPago ? 'Registrando...' : '+ Registrar pago'}
