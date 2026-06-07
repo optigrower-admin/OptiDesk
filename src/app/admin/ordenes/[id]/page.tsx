@@ -1,6 +1,6 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
@@ -207,6 +207,9 @@ export default function AdminOrdenDetallePage() {
   const [savingPago, setSavingPago] = useState(false)
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [tenantNombre, setTenantNombre] = useState('Motospace')
+  const [uploadingMedio, setUploadingMedio] = useState(false)
+  const [pagoError, setPagoError] = useState('')
+  const fileInputMedioRef = useRef<HTMLInputElement>(null)
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
@@ -431,6 +434,27 @@ export default function AdminOrdenDetallePage() {
     setMedios((prev) => prev.filter((m) => m.id !== id))
   }
 
+  const handleUploadMedio = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !orden) return
+    setUploadingMedio(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('ordenId', ordenId)
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (res.ok) {
+        await cargar()
+      } else {
+        const err = await res.json()
+        alert(err.error ?? 'Error al subir archivo')
+      }
+    } finally {
+      setUploadingMedio(false)
+      if (fileInputMedioRef.current) fileInputMedioRef.current.value = ''
+    }
+  }
+
   const handleAddItem = async (item: {
     descripcion: string; origen: 'uma' | 'externo'; repuesto_uma_id?: string;
     repuesto_externo_id?: string; cantidad: number; costo: number; precio_venta: number;
@@ -531,8 +555,9 @@ export default function AdminOrdenDetallePage() {
     const monto = parseInt(nuevoPagoMonto.replace(/\D/g, ''), 10)
     if (!monto || monto <= 0 || !orden) return
     setSavingPago(true)
+    setPagoError('')
     try {
-      const { data: pagoData } = await supabase.from('pagos_orden').insert({
+      const { data: pagoData, error: pagoInsertError } = await supabase.from('pagos_orden').insert({
         orden_id: ordenId,
         tenant_id: orden.tenant_id,
         monto,
@@ -540,6 +565,10 @@ export default function AdminOrdenDetallePage() {
         notas: nuevoPagoNotas.trim() || null,
         registrado_por: profile?.id,
       }).select('id').single()
+      if (pagoInsertError) {
+        setPagoError('Error al registrar el pago. Verifica que las migraciones de BD estén aplicadas.')
+        return
+      }
       // Recalcular estado_pago y valor_abono en ordenes
       const nuevosPagos = [...pagosOrden, { id: '', monto, metodo_pago_id: nuevoPagoMetodo || null, fecha: new Date().toISOString(), notas: nuevoPagoNotas || null, metodos_pago: null }]
       const nuevoEstadoPago = calcularEstadoPago(nuevosPagos, orden.valor_total)
@@ -1049,7 +1078,40 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
 
           {/* Medios */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <h2 className="font-semibold text-gray-900 mb-3">Fotos y videos</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-gray-900">Fotos y videos</h2>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputMedioRef}
+                  type="file"
+                  accept="image/*,video/mp4,video/quicktime"
+                  onChange={handleUploadMedio}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputMedioRef.current?.click()}
+                  disabled={uploadingMedio}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-xs font-medium transition-colors"
+                >
+                  {uploadingMedio ? (
+                    <>
+                      <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                      Subiendo...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Agregar foto/video
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
             <MediaGallery medios={medios} onDelete={handleDeleteMedio} />
           </div>
 
@@ -1572,6 +1634,9 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                     >
                       {savingPago ? 'Registrando...' : '+ Registrar pago'}
                     </button>
+                    {pagoError && (
+                      <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{pagoError}</p>
+                    )}
                   </div>
                 )}
               </div>
