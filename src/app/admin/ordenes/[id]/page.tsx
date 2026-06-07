@@ -174,9 +174,6 @@ export default function AdminOrdenDetallePage() {
   const [savedOk, setSavedOk] = useState(false)
   const [numerosOrdenUMA, setNumerosOrdenUMA] = useState<string[]>([])
   const [nuevoNumOrden, setNuevoNumOrden] = useState('')
-  // Tipo de caso (UMA / Terceros) — editable inline
-  const [localTipoServicio, setLocalTipoServicio] = useState<'uma' | 'terceros'>('terceros')
-  const [savingTipoServicio, setSavingTipoServicio] = useState(false)
   // Edición de datos del ingreso
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [editingOrden, setEditingOrden] = useState<'cliente' | 'descripcion' | 'categoria' | null>(null)
@@ -230,7 +227,6 @@ export default function AdminOrdenDetallePage() {
     if (o) {
       const ord = o as unknown as OrdenDetalle
       setOrden(ord)
-      setLocalTipoServicio((ord.tipo_servicio as 'uma' | 'terceros' | null) ?? 'terceros')
       setEditCliente(ord.cliente)
       setEditDescripcion(ord.descripcion ?? '')
       setEditCategoriaId(ord.categoria_servicio_id ?? '')
@@ -409,25 +405,6 @@ export default function AdminOrdenDetallePage() {
     setEditingOrden(null)
     setSavingOrden(false)
     await cargar()
-  }
-
-  const cambiarTipoServicio = async (tipo: 'uma' | 'terceros') => {
-    if (!orden || tipo === localTipoServicio) return
-    setSavingTipoServicio(true)
-    const anterior = orden.tipo_servicio
-    setLocalTipoServicio(tipo)
-    await supabase.from('ordenes').update({ tipo_servicio: tipo }).eq('id', ordenId)
-    await registrarAuditoria(supabase, {
-      tenant_id: orden.tenant_id,
-      tabla: 'ordenes',
-      registro_id: ordenId,
-      tipo: 'edicion',
-      valor_anterior: { tipo_servicio: anterior },
-      valor_nuevo: { tipo_servicio: tipo },
-      descripcion: `Admin cambió tipo de caso de orden #${orden.numero}`,
-      usuario_id: profile?.id,
-    })
-    setSavingTipoServicio(false)
   }
 
   const handleDeleteItem = async (item: ItemOrden) => {
@@ -721,7 +698,8 @@ export default function AdminOrdenDetallePage() {
   const total = totalRepuestos + totalManoObra
   const saldo = total - (parseFloat(valorAbono) || 0)
   const esFaltaRevision = orden.estado === 'falta_revision'
-  const esUMA = localTipoServicio === 'uma'
+  const esUMA = orden.tipo_servicio === 'uma' ||
+    (orden.categorias_servicio?.nombre?.toLowerCase().includes('uma') ?? false)
   const esVenta = orden.tipo_orden === 'venta_repuestos'
 
   const imprimirConIframe = (html: string) => {
@@ -1036,30 +1014,6 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
               )}
             </div>
 
-            {/* Tipo de caso — UMA o Terceros */}
-            <div className="px-5 py-3">
-              <p className="text-xs text-gray-400 mb-2">Tipo de caso</p>
-              <div className="flex gap-2">
-                {([
-                  { value: 'uma', label: 'UMA (Autorizado)', active: 'bg-purple-700 text-white border-purple-700', inactive: 'bg-white text-gray-600 border-gray-200 hover:border-purple-300' },
-                  { value: 'terceros', label: 'Terceros / Independiente', active: 'bg-amber-500 text-white border-amber-500', inactive: 'bg-white text-gray-600 border-gray-200 hover:border-amber-300' },
-                ] as const).map((t) => (
-                  <button
-                    key={t.value}
-                    type="button"
-                    disabled={savingTipoServicio}
-                    onClick={() => cambiarTipoServicio(t.value)}
-                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium border-2 transition-colors ${localTipoServicio === t.value ? t.active : t.inactive} ${savingTipoServicio ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              {localTipoServicio === 'uma' && numerosOrdenUMA.length === 0 && (
-                <p className="text-xs text-amber-600 mt-1.5">⚠ Agrega el número de orden UMA en la sección de la derecha</p>
-              )}
-            </div>
-
             {/* Tipo de ingreso */}
             <div className="px-5 py-3">
               {editingOrden === 'categoria' ? (
@@ -1096,21 +1050,26 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-400">Tipo de ingreso</p>
-                    <p className="text-sm font-semibold text-gray-900">
-                      {orden.categorias_servicio?.nombre
-                        ? <>{orden.categorias_servicio.nombre}{orden.subcategorias_servicio && <span className="text-gray-500 font-normal"> · {orden.subcategorias_servicio.nombre}</span>}</>
-                        : <span className="text-gray-400 italic font-normal">Sin tipo</span>
-                      }
-                    </p>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-400">Tipo de ingreso</p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {orden.categorias_servicio?.nombre
+                          ? <>{orden.categorias_servicio.nombre}{orden.subcategorias_servicio && <span className="text-gray-500 font-normal"> · {orden.subcategorias_servicio.nombre}</span>}</>
+                          : <span className="text-gray-400 italic font-normal">Sin tipo</span>
+                        }
+                      </p>
+                    </div>
+                    <button onClick={() => setEditingOrden('categoria')} className="text-gray-400 hover:text-blue-600 p-1">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
                   </div>
-                  <button onClick={() => setEditingOrden('categoria')} className="text-gray-400 hover:text-blue-600 p-1">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
+                  {esUMA && numerosOrdenUMA.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">⚠ Agrega el # de orden UMA en el panel derecho</p>
+                  )}
                 </div>
               )}
             </div>
