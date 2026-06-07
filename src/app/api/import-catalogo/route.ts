@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
   const formData = await req.formData()
   const file = formData.get('file') as File | null
   const tenantId = formData.get('tenant_id') as string
+  const modo = (formData.get('modo') as string) ?? 'reemplazar'
 
   if (!file || !tenantId) return NextResponse.json({ error: 'Faltan campos' }, { status: 400 })
 
@@ -61,19 +62,23 @@ export async function POST(req: NextRequest) {
 
   if (!records.length) return NextResponse.json({ error: 'No se encontraron datos en el archivo' }, { status: 400 })
 
-  let insertados = 0
+  const ignoreDuplicates = modo === 'agregar'
+  let procesados = 0
 
   // Upsert por lotes de 100
   const BATCH = 100
   for (let i = 0; i < records.length; i += BATCH) {
     const batch = records.slice(i, i + BATCH)
     const { data, error } = await supabase.from('repuestos_uma')
-      .upsert(batch, { onConflict: 'tenant_id,codigo', ignoreDuplicates: false })
+      .upsert(batch, { onConflict: 'tenant_id,codigo', ignoreDuplicates })
       .select('id')
 
     if (error) console.error('Error upsert batch:', error.message)
-    else insertados += data?.length ?? 0
+    else procesados += data?.length ?? 0
   }
 
-  return NextResponse.json({ insertados, total: records.length })
+  if (modo === 'agregar') {
+    return NextResponse.json({ agregados: procesados, total: records.length })
+  }
+  return NextResponse.json({ procesados, total: records.length })
 }

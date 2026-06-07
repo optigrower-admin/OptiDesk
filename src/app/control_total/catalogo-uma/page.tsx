@@ -23,6 +23,7 @@ export default function CatalogoUMAPage() {
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState('')
+  const [modoImport, setModoImport] = useState<'reemplazar' | 'agregar'>('reemplazar')
   const [busqueda, setBusqueda] = useState('')
 
   useEffect(() => {
@@ -60,10 +61,15 @@ export default function CatalogoUMAPage() {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('tenant_id', tenantId)
+      formData.append('modo', modoImport)
       const res = await fetch('/api/import-catalogo', { method: 'POST', body: formData })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      setImportResult(`Importación exitosa: ${data.insertados} insertados, ${data.actualizados} actualizados`)
+      setImportResult(
+        modoImport === 'reemplazar'
+          ? `Importación exitosa: ${data.procesados} de ${data.total} registros actualizados/insertados`
+          : `Importación exitosa: ${data.agregados} nuevos de ${data.total} registros (duplicados omitidos)`
+      )
       await cargar()
     } catch (err: unknown) {
       setImportResult(`Error: ${err instanceof Error ? err.message : 'Error desconocido'}`)
@@ -87,6 +93,18 @@ export default function CatalogoUMAPage() {
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
             {tenants.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
           </select>
+          <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+            <span className="text-xs text-gray-500 font-medium">Al importar:</span>
+            {(['reemplazar', 'agregar'] as const).map((m) => (
+              <label key={m} className="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="modoImport" value={m} checked={modoImport === m}
+                  onChange={() => setModoImport(m)} className="accent-blue-700" />
+                <span className="text-xs font-medium text-gray-700">
+                  {m === 'reemplazar' ? 'Reemplazar existentes' : 'Solo añadir nuevos'}
+                </span>
+              </label>
+            ))}
+          </div>
           <label className="cursor-pointer">
             <span className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors px-4 py-2 text-sm ${importing ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-700 text-white hover:bg-blue-800 cursor-pointer'}`}>
               {importing ? 'Importando...' : 'Importar Excel'}
