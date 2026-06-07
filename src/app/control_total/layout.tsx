@@ -17,6 +17,7 @@ const navItems = [
   { href: '/control_total/catalogo-uma',  label: 'Catálogo UMA' },
   { href: '/control_total/storage',       label: 'Storage' },
   { href: '/control_total/auditoria',     label: 'Auditoría global' },
+  { href: '/control_total/herramientas',  label: 'Herramientas' },
 ]
 
 const ROLES = [
