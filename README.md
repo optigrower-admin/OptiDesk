@@ -1,36 +1,107 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OptiDesk
 
-## Getting Started
+Sistema de gestión operativa para talleres de motocicletas. SaaS multi-tenant en producción.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Next.js 14** App Router + TypeScript + Tailwind CSS
+- **Supabase** — PostgreSQL + Auth + RLS (Row Level Security)
+- **Cloudflare R2** — almacenamiento de fotos y videos (`optidesk-media`)
+- **Google Drive** — archivado secundario via Service Account
+- **Vercel** — hosting (plan Hobby)
+
+## URLs
+
+| | |
+|---|---|
+| Producción | https://opti-desk-git-main-optigrower-s-projects.vercel.app |
+| GitHub | https://github.com/optigrower-admin/OptiDesk |
+| Supabase | https://fnyvsgugviyrcqxsevji.supabase.co |
+| Cuenta | optigrower@gmail.com |
+
+## Roles
+
+| Rol | Acceso |
+|---|---|
+| `control_total` | Super-admin — todas las empresas |
+| `gerencia` | Panel completo + configuración de su empresa |
+| `admin` | Panel operativo de su empresa |
+| `mecanico` | Solo sus órdenes asignadas |
+
+## Tablas en Supabase (20 tablas)
+
+**Operativas:** `ordenes`, `items_orden`, `pagos_orden`, `clientes`, `motos`
+
+**Inventario:** `repuestos_uma`, `repuestos_externos`, `proveedores`, `movimientos_inventario`
+
+**Configuración:** `categorias_servicio`, `subcategorias_servicio`, `metodos_pago`
+
+**Sistema:** `usuarios`, `tenants`, `permisos_roles`, `auditoria`
+
+**Multimedia:** `medios`, `medios_perfil`, `logos`, `notas_perfil`
+
+## Estructura de carpetas relevante
+
+```
+src/
+├── app/
+│   ├── admin/              # Panel de gerencia y admin
+│   │   ├── ordenes/        # Gestión de órdenes ([id]/ + nueva/)
+│   │   ├── repuestos/      # Inventario y ventas directas
+│   │   ├── clientes/       # Gestión de clientes y motos
+│   │   └── equipo/         # Gestión de usuarios
+│   ├── mecanico/           # Panel del mecánico
+│   ├── control_total/      # Super-admin
+│   │   ├── herramientas/   # Monitoreo DB, acceso rápido plataformas
+│   │   ├── tipos-servicio/ # Config categorías (UMA, Externo)
+│   │   └── ...
+│   ├── api/                # API routes (fotos, archivado, pagos)
+│   └── login/
+├── components/             # ClienteMotoPanel, ConsultaRepuestos, etc.
+├── hooks/                  # useAuth, usePermisos
+└── lib/                    # supabase client, clienteMoto, r2
+supabase/
+├── schema.sql              # Migración inicial
+├── migration_v2.sql        # Migración v2
+└── migration_v14_indexes.sql  # Índices de rendimiento
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Cómo desarrollar localmente
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+# → http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Variables de entorno requeridas en `.env.local` (ver `OptiDesk_EnvVars.txt` en Desktop).
 
-## Learn More
+## Deploy
 
-To learn more about Next.js, take a look at the following resources:
+```
+git add .
+git commit -m "descripción"
+git push origin main
+# Vercel despliega automáticamente en ~2 min
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+El git author email debe ser `optigrower@gmail.com` para que Vercel acepte los commits.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Migraciones de BD
 
-## Deploy on Vercel
+Ejecutar en orden en el SQL Editor de Supabase:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. `supabase/schema.sql`
+2. `supabase/migration_v2.sql`
+3. `supabase/migration_v14_indexes.sql`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Reglas técnicas importantes
+
+- Todos los `page.tsx` con `'use client'` deben tener `export const dynamic = 'force-dynamic'`
+- `useSearchParams()` requiere Suspense boundary en Next.js 14
+- La lógica `esUMA` en el detalle de orden es reactiva al `editCategoriaId` (no solo al valor guardado)
+- El panel `# Orden UMA` aparece cuando la categoría seleccionada contiene "uma" en su nombre
+
+## Empresa en producción
+
+**Motospace38** — slug: `motospace38`
