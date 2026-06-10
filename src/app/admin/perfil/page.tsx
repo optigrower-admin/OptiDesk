@@ -115,7 +115,7 @@ export default function AdminPerfilPage() {
           <div>
             <p className="font-bold text-xl leading-tight">{profile?.nombre ?? '...'}</p>
             <p className="text-blue-200 text-sm">
-              {profile?.rol === 'gerencia' ? 'Gerencia' : 'Administrador Área'}
+              {profile?.rol === 'gerencia' ? 'Gerencia' : 'Administración'}
             </p>
             <p className="text-blue-300 text-xs mt-0.5">{profile?.email}</p>
           </div>

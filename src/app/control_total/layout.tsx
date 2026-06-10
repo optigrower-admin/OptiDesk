@@ -22,8 +22,8 @@ const navItems = [
 
 const ROLES = [
   { value: 'gerencia', label: 'Gerencia' },
-  { value: 'admin', label: 'Administrador' },
-  { value: 'mecanico', label: 'Mecánico' },
+  { value: 'admin', label: 'Administración' },
+  { value: 'mecanico', label: 'Profesional' },
 ]
 
 export default function ControlTotalLayout({ children }: { children: React.ReactNode }) {

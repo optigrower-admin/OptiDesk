@@ -32,7 +32,7 @@ const rolColors: Record<string, 'blue' | 'amber' | 'purple' | 'green'> = {
 const rolLabels: Record<string, string> = {
   control_total: 'Control Total',
   gerencia: 'Gerencia',
-  admin: 'Administrador Área',
+  admin: 'Administración',
   mecanico: 'Profesional',
 }
 
@@ -238,7 +238,7 @@ export default function UsuariosPage() {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
           >
             <option value="mecanico">Profesional</option>
-            <option value="admin">Administrador Área</option>
+            <option value="admin">Administración</option>
             <option value="gerencia">Gerencia</option>
           </select>
           <select value={form.tenant_id} onChange={(e) => setForm((p) => ({ ...p, tenant_id: e.target.value }))}
@@ -285,7 +285,7 @@ export default function UsuariosPage() {
               <div className="space-y-2">
                 {([
                   { value: 'gerencia', label: 'Gerencia',           desc: 'Control total de su empresa' },
-                  { value: 'admin',    label: 'Administrador Área', desc: 'Acceso por secciones según permisos' },
+                  { value: 'admin',    label: 'Administración',     desc: 'Acceso por secciones según permisos' },
                   { value: 'mecanico', label: 'Profesional',        desc: 'Solo sus órdenes de trabajo' },
                 ] as { value: 'gerencia' | 'admin' | 'mecanico'; label: string; desc: string }[]).map((op) => (
                   <button

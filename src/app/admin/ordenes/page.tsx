@@ -202,7 +202,7 @@ export default function AdminOrdenesPage() {
 
       const headers = [
         'Fecha', '# Orden', 'Placa', 'Cliente', 'Estado', 'Estado Pago',
-        'Tipo servicio', 'Categoría', 'Mecánico', '# Ordenes UMA',
+        'Tipo servicio', 'Categoría', 'Profesional', '# Ordenes UMA',
         'Descripción ítem', 'Origen', 'Cantidad', 'P. Unitario', 'Total ítem',
       ]
 

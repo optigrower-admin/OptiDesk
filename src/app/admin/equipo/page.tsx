@@ -21,7 +21,7 @@ interface PermisoLocal { habilitado: boolean; orden: number }
 
 const ROL_LABEL: Record<Rol, string> = {
   gerencia: 'Gerencia',
-  admin:    'Administrador Área',
+  admin:    'Administración',
   mecanico: 'Profesional',
 }
 const ROL_COLOR: Record<Rol, string> = {

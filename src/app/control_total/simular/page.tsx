@@ -37,8 +37,8 @@ interface Tenant {
 
 const ROL_LABEL: Record<string, string> = {
   gerencia: 'Gerencia',
-  admin: 'Administrador',
-  mecanico: 'Mecánico / Profesional',
+  admin: 'Administración',
+  mecanico: 'Profesional',
 }
 
 const ESTADO_COLOR: Record<string, string> = {
@@ -201,7 +201,7 @@ function SimularContent() {
                           )}
                         </div>
                         {o.usuarios && (
-                          <p className="text-xs text-gray-400 mt-0.5">Mecánico: {(o.usuarios as { nombre: string }).nombre}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">Profesional: {(o.usuarios as { nombre: string }).nombre}</p>
                         )}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">

@@ -31,7 +31,7 @@ const SECCIONES_POR_ROL: Record<Rol, SeccionDef[]> = {
 
 const ROL_TABS: { value: Rol; label: string; color: string }[] = [
   { value: 'gerencia', label: 'Gerencia',           color: 'bg-green-600' },
-  { value: 'admin',    label: 'Administrador Área', color: 'bg-amber-500' },
+  { value: 'admin',    label: 'Administración',     color: 'bg-amber-500' },
   { value: 'mecanico', label: 'Profesional',        color: 'bg-blue-600'  },
 ]
 

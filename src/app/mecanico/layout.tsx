@@ -59,7 +59,7 @@ export default function MecanicoLayout({ children }: { children: React.ReactNode
       <header className="sticky top-0 z-10 bg-blue-700 text-white px-4 py-3 flex items-center justify-between shadow">
         <div>
           <span className="font-bold text-lg">OptiDesk</span>
-          <span className="text-blue-300 text-xs ml-2">Prof. Mecánica</span>
+          <span className="text-blue-300 text-xs ml-2">Profesional</span>
         </div>
         <button onClick={handleLogout} className="text-blue-200 hover:text-white text-sm transition-colors">
           Salir

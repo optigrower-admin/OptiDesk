@@ -1723,7 +1723,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
           {/* Info mecánico */}
           {orden.usuarios && (
             <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600">
-              <span className="font-medium">Mecánico: </span>{(orden.usuarios as { nombre: string }).nombre}
+              <span className="font-medium">Profesional: </span>{(orden.usuarios as { nombre: string }).nombre}
             </div>
           )}
         </div>
