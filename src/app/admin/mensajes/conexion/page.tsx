@@ -8,7 +8,7 @@ declare global {
   interface Window {
     FB: {
       init: (opts: object) => void
-      login: (cb: (r: { authResponse?: { code?: string } }) => void, opts: object) => void
+      login: (cb: (r: { authResponse?: { accessToken?: string; code?: string } }) => void, opts: object) => void
     }
     fbAsyncInit: () => void
   }
@@ -149,18 +149,15 @@ export default function ConexionMetaPage() {
     setSignupStep('loading')
 
     window.FB.login((response) => {
-      if (!response.authResponse?.code) {
+      if (!response.authResponse?.accessToken) {
         setSignupStep('idle')
         if (response.authResponse === undefined) return // usuario cerró el popup
         toast('No se obtuvo autorización de Meta', false)
         return
       }
-      intercambiarCodigo(response.authResponse.code)
+      intercambiarCodigo(response.authResponse.accessToken)
     }, {
       scope: 'whatsapp_business_management,whatsapp_business_messaging',
-      response_type: 'code',
-      override_default_response_type: true,
-      extras: { setup: {}, featureType: '', sessionInfoVersion: '3' },
     })
   }
 
@@ -170,7 +167,7 @@ export default function ConexionMetaPage() {
       const res = await fetch('/api/admin/mensajes/embedded-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ accessToken: code }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)

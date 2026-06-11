@@ -15,26 +15,15 @@ export async function POST(request: NextRequest) {
     .from('usuarios').select('tenant_id, rol').eq('id', user.id).single()
   if (!perfil) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
-  const { code } = await request.json()
-  if (!code) return NextResponse.json({ error: 'Falta el código de autorización' }, { status: 400 })
+  const { accessToken: shortToken } = await request.json()
+  if (!shortToken) return NextResponse.json({ error: 'Falta el token de acceso' }, { status: 400 })
 
-  // 1. Intercambiar código por user access token
-  // redirect_uri debe coincidir con el que usa el SDK de Facebook internamente
-  const redirectUri = encodeURIComponent('https://www.facebook.com/connect/login_success.html')
-  const tokenRes = await fetch(
-    `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${APP_ID}&client_secret=${APP_SECRET}&code=${code}&redirect_uri=${redirectUri}`
-  )
-  const tokenData = await tokenRes.json()
-  if (!tokenData.access_token) {
-    return NextResponse.json({ error: 'Error al obtener token: ' + (tokenData.error?.message ?? 'desconocido') }, { status: 400 })
-  }
-
-  // 2. Extender a token de larga duración (60 días)
+  // Extender a token de larga duración (60 días)
   const llRes = await fetch(
-    `https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${tokenData.access_token}`
+    `https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${shortToken}`
   )
   const llData = await llRes.json()
-  const accessToken = llData.access_token ?? tokenData.access_token
+  const accessToken = llData.access_token ?? shortToken
 
   // 3. Obtener negocios del usuario
   const bizRes = await fetch(
