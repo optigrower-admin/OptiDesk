@@ -2,6 +2,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createAnonClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 // GET — verificación del webhook por Meta
 export async function GET(
   request: NextRequest,
@@ -44,7 +46,10 @@ export async function GET(
     return new NextResponse('Forbidden', { status: 403 })
   }
 
-  return new NextResponse(challenge, { status: 200 })
+  return new NextResponse(challenge, {
+    status: 200,
+    headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' },
+  })
 }
 
 // POST — mensajes entrantes de Meta
