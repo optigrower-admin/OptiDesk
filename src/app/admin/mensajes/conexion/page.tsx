@@ -119,65 +119,20 @@ export default function ConexionMetaPage() {
 
   useEffect(() => { cargar() }, [cargar])
 
-  // Cargar Facebook SDK
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.fbAsyncInit = function () {
-      window.FB.init({ appId: process.env.NEXT_PUBLIC_META_APP_ID, autoLogAppEvents: true, xfbml: true, version: 'v20.0' })
-      setSdkReady(true)
-    }
-    if (!document.getElementById('facebook-jssdk')) {
-      const script = document.createElement('script')
-      script.id = 'facebook-jssdk'
-      script.src = 'https://connect.facebook.net/es_LA/sdk.js'
-      script.async = true
-      script.defer = true
-      document.body.appendChild(script)
-    } else {
-      setSdkReady(true)
-    }
-  }, [])
+  // No se usa JS SDK — el flujo es server-side OAuth redirect
+  useEffect(() => { setSdkReady(true) }, [])
 
   const isConnected = !!config && config.estado_wa !== 'desconectado' && config.estado_wa !== null
 
   const appUrl    = typeof window !== 'undefined' ? window.location.origin : ''
   const webhookUrl = `${appUrl}/api/webhooks/meta`
 
-  // ── Embedded Signup ──────────────────────────────────────────────────────────
+  // ── OAuth redirect (server-side, sin JS SDK) ─────────────────────────────────
   const handleEmbeddedSignup = () => {
-    if (!sdkReady || !window.FB) { toast('SDK de Meta cargando, intenta en un segundo', false); return }
-    setSignupStep('loading')
-
-    window.FB.login((response) => {
-      if (!response.authResponse?.accessToken) {
-        setSignupStep('idle')
-        if (response.authResponse === undefined) return // usuario cerró el popup
-        toast('No se obtuvo autorización de Meta', false)
-        return
-      }
-      intercambiarCodigo(response.authResponse.accessToken)
-    }, {
-      scope: 'whatsapp_business_management,whatsapp_business_messaging',
-    })
-  }
-
-  const intercambiarCodigo = async (code: string) => {
-    setSignupStep('loading')
-    try {
-      const res = await fetch('/api/admin/mensajes/embedded-signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken: code }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setSignupData(data)
-      setSelectedPhone(data.phone_numbers[0] ?? null)
-      setSignupStep('select')
-    } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : 'Error al conectar', false)
-      setSignupStep('idle')
-    }
+    const redirectUri = encodeURIComponent('https://opti-desk.vercel.app/api/admin/mensajes/oauth-callback')
+    const scope = 'whatsapp_business_management,whatsapp_business_messaging'
+    const url = `https://www.facebook.com/dialog/oauth?client_id=${process.env.NEXT_PUBLIC_META_APP_ID}&redirect_uri=${redirectUri}&scope=${scope}&response_type=code`
+    window.location.href = url
   }
 
   const confirmarConexion = async () => {
