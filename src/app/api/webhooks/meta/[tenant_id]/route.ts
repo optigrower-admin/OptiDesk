@@ -14,29 +14,30 @@ export async function GET(
 
   if (mode !== 'subscribe') return new NextResponse('Forbidden', { status: 403 })
 
-  // Intentar con admin client primero, luego con anon como fallback
+  // Intentar con admin client, si falla (error o null) usar anon como fallback
   let verifyToken: string | null = null
 
-  try {
-    const admin = createAdminClient()
-    const { data } = await admin
-      .from('config_meta')
-      .select('meta_webhook_verify_token')
-      .eq('tenant_id', params.tenant_id)
-      .single()
-    verifyToken = data?.meta_webhook_verify_token ?? null
-  } catch {
-    // fallback: anon client (requiere política pública en config_meta)
+  const admin = createAdminClient()
+  const { data: adminData } = await admin
+    .from('config_meta')
+    .select('meta_webhook_verify_token')
+    .eq('tenant_id', params.tenant_id)
+    .single()
+
+  verifyToken = adminData?.meta_webhook_verify_token ?? null
+
+  if (!verifyToken) {
+    // Fallback: anon client con política pública (webhook_verify_public_read)
     const anon = createAnonClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
-    const { data } = await anon
+    const { data: anonData } = await anon
       .from('config_meta')
       .select('meta_webhook_verify_token')
       .eq('tenant_id', params.tenant_id)
       .single()
-    verifyToken = data?.meta_webhook_verify_token ?? null
+    verifyToken = anonData?.meta_webhook_verify_token ?? null
   }
 
   if (!verifyToken || verifyToken !== token) {
