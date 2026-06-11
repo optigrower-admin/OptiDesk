@@ -19,8 +19,10 @@ export async function POST(request: NextRequest) {
   if (!code) return NextResponse.json({ error: 'Falta el código de autorización' }, { status: 400 })
 
   // 1. Intercambiar código por user access token
+  // redirect_uri debe coincidir con el que usa el SDK de Facebook internamente
+  const redirectUri = encodeURIComponent('https://www.facebook.com/connect/login_success.html')
   const tokenRes = await fetch(
-    `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${APP_ID}&client_secret=${APP_SECRET}&code=${code}`
+    `https://graph.facebook.com/v20.0/oauth/access_token?client_id=${APP_ID}&client_secret=${APP_SECRET}&code=${code}&redirect_uri=${redirectUri}`
   )
   const tokenData = await tokenRes.json()
   if (!tokenData.access_token) {
