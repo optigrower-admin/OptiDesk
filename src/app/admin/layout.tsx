@@ -38,8 +38,10 @@ const NAV_GROUPS: NavGroup[] = [
     key: 'mensajes',
     label: 'Mensajes',
     items: [
+      { href: '/admin/mensajes/bandeja',    label: 'Bandeja',       seccion: null, soloGerencia: false, defaultOrden: 100 },
       { href: '/admin/mensajes/conexion',   label: 'Conexión Meta', seccion: null, soloGerencia: true,  defaultOrden: 110 },
       { href: '/admin/mensajes/plantillas', label: 'Plantillas',    seccion: null, soloGerencia: false, defaultOrden: 120 },
+      { href: '/admin/mensajes/flujos',     label: 'Flujos',        seccion: null, soloGerencia: false, defaultOrden: 130 },
     ],
   },
 ]
