@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient as createAnonClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET — verificación del webhook por Meta
@@ -6,21 +7,39 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { tenant_id: string } }
 ) {
-  const sp     = request.nextUrl.searchParams
-  const mode   = sp.get('hub.mode')
-  const token  = sp.get('hub.verify_token')
+  const sp        = request.nextUrl.searchParams
+  const mode      = sp.get('hub.mode')
+  const token     = sp.get('hub.verify_token')
   const challenge = sp.get('hub.challenge')
 
   if (mode !== 'subscribe') return new NextResponse('Forbidden', { status: 403 })
 
-  const supabase = createAdminClient()
-  const { data: config } = await supabase
-    .from('config_meta')
-    .select('meta_webhook_verify_token')
-    .eq('tenant_id', params.tenant_id)
-    .single()
+  // Intentar con admin client primero, luego con anon como fallback
+  let verifyToken: string | null = null
 
-  if (!config || config.meta_webhook_verify_token !== token) {
+  try {
+    const admin = createAdminClient()
+    const { data } = await admin
+      .from('config_meta')
+      .select('meta_webhook_verify_token')
+      .eq('tenant_id', params.tenant_id)
+      .single()
+    verifyToken = data?.meta_webhook_verify_token ?? null
+  } catch {
+    // fallback: anon client (requiere política pública en config_meta)
+    const anon = createAnonClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+    const { data } = await anon
+      .from('config_meta')
+      .select('meta_webhook_verify_token')
+      .eq('tenant_id', params.tenant_id)
+      .single()
+    verifyToken = data?.meta_webhook_verify_token ?? null
+  }
+
+  if (!verifyToken || verifyToken !== token) {
     return new NextResponse('Forbidden', { status: 403 })
   }
 
