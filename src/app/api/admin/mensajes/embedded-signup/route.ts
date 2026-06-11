@@ -25,52 +25,70 @@ export async function POST(request: NextRequest) {
   const llData = await llRes.json()
   const accessToken = llData.access_token ?? shortToken
 
-  // 3. Obtener negocios del usuario
-  const bizRes = await fetch(
-    `https://graph.facebook.com/v20.0/me/businesses?access_token=${accessToken}&fields=id,name`
-  )
-  const bizData = await bizRes.json()
-  const businesses: Array<{ id: string; name: string }> = bizData.data ?? []
-
-  // 4. Encontrar WABAs y números de teléfono
+  // 3. Buscar WABA por múltiples rutas
   let wabaId = ''
   let wabaName = ''
   let phoneNumbers: Array<{ id: string; display_phone_number: string; verified_name: string }> = []
 
-  for (const biz of businesses) {
-    const wabaRes = await fetch(
-      `https://graph.facebook.com/v20.0/${biz.id}/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name`
-    )
-    const wabaData = await wabaRes.json()
-    const wabas: Array<{ id: string; name: string }> = wabaData.data ?? []
-
-    if (wabas.length) {
-      wabaId   = wabas[0].id
-      wabaName = wabas[0].name || biz.name
-      break
-    }
+  // Ruta A: /me/whatsapp_business_accounts (más directa)
+  const directWabaRes = await fetch(
+    `https://graph.facebook.com/v20.0/me/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name`
+  )
+  const directWabaData = await directWabaRes.json()
+  if (directWabaData.data?.length) {
+    wabaId   = directWabaData.data[0].id
+    wabaName = directWabaData.data[0].name
   }
 
-  // Si no encontró WABA por negocios, intentar directamente
+  // Ruta B: a través de negocios del usuario
   if (!wabaId) {
-    const directRes = await fetch(
-      `https://graph.facebook.com/v20.0/me?fields=id&access_token=${accessToken}`
+    const bizRes = await fetch(
+      `https://graph.facebook.com/v20.0/me/businesses?access_token=${accessToken}&fields=id,name`
     )
-    const meData = await directRes.json()
-    if (meData.id) {
+    const bizData = await bizRes.json()
+    const businesses: Array<{ id: string; name: string }> = bizData.data ?? []
+
+    for (const biz of businesses) {
       const wabaRes = await fetch(
-        `https://graph.facebook.com/v20.0/${meData.id}/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name`
+        `https://graph.facebook.com/v20.0/${biz.id}/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name`
       )
       const wabaData = await wabaRes.json()
       if (wabaData.data?.length) {
         wabaId   = wabaData.data[0].id
-        wabaName = wabaData.data[0].name
+        wabaName = wabaData.data[0].name || biz.name
+        break
+      }
+    }
+  }
+
+  // Ruta C: client credentials — buscar WABA de la propia app
+  if (!wabaId) {
+    const appTokenRes = await fetch(
+      `https://graph.facebook.com/oauth/access_token?client_id=${APP_ID}&client_secret=${APP_SECRET}&grant_type=client_credentials`
+    )
+    const appTokenData = await appTokenRes.json()
+    if (appTokenData.access_token) {
+      const appWabaRes = await fetch(
+        `https://graph.facebook.com/v20.0/${APP_ID}/subscribed_whatsapp_business_accounts?access_token=${appTokenData.access_token}`
+      )
+      const appWabaData = await appWabaRes.json()
+      if (appWabaData.data?.length) {
+        wabaId   = appWabaData.data[0].id
+        wabaName = appWabaData.data[0].name ?? 'WhatsApp Business'
       }
     }
   }
 
   if (!wabaId) {
-    return NextResponse.json({ error: 'No se encontró ninguna cuenta de WhatsApp Business asociada' }, { status: 400 })
+    // Devolver debug info para diagnóstico
+    const debugRes = await fetch(
+      `https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${APP_ID}|${APP_SECRET}`
+    )
+    const debugData = await debugRes.json()
+    return NextResponse.json({
+      error: 'No se encontró ninguna cuenta de WhatsApp Business. Asegúrate de tener una cuenta activa en tu Facebook Business.',
+      debug: debugData,
+    }, { status: 400 })
   }
 
   // 5. Obtener números de teléfono del WABA
