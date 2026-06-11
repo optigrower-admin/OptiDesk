@@ -31,7 +31,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Rutas públicas
-  if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/api/webhooks/') || pathname.startsWith('/privacy') || pathname.startsWith('/terms') || pathname.startsWith('/api/admin/mensajes/oauth-callback')) {
+  if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/api/webhooks/') || pathname.startsWith('/privacy') || pathname.startsWith('/terms')) {
     if (user) {
       const { data: usuario } = await supabase
         .from('usuarios')

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { useSearchParams, useRouter } from 'next/navigation'
 
 declare global {
   interface Window {
@@ -79,6 +80,8 @@ function LabeledInput({ label, value, onChange, type = 'text', placeholder, hint
 
 export default function ConexionMetaPage() {
   const { profile } = useAuth()
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [config, setConfig]       = useState<ConfigMeta | null>(null)
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
@@ -118,6 +121,45 @@ export default function ConexionMetaPage() {
   }, [])
 
   useEffect(() => { cargar() }, [cargar])
+
+  // Manejar parámetros de URL del callback OAuth
+  useEffect(() => {
+    const step    = searchParams.get('step')
+    const error   = searchParams.get('error')
+    const connected = searchParams.get('connected')
+
+    if (connected === 'true') {
+      toast('WhatsApp conectado correctamente')
+      cargar()
+      router.replace('/admin/mensajes/conexion')
+      return
+    }
+
+    if (error) {
+      const msgs: Record<string, string> = {
+        sin_waba:     'No se encontró cuenta de WhatsApp Business. Necesitas un config_id de Meta.',
+        no_code:      'No se recibió autorización de Meta.',
+        oauth_denied: 'Acceso denegado por Meta.',
+        sin_perfil:   'Error de perfil de usuario.',
+      }
+      toast(msgs[error] ?? `Error: ${error}`, false)
+      router.replace('/admin/mensajes/conexion')
+      return
+    }
+
+    if (step === 'select') {
+      try {
+        const phones = JSON.parse(decodeURIComponent(searchParams.get('phones') ?? '[]'))
+        const wabaId = searchParams.get('waba_id') ?? ''
+        const wabaName = decodeURIComponent(searchParams.get('waba_name') ?? '')
+        const token = searchParams.get('token') ?? ''
+        setSignupData({ waba_id: wabaId, waba_name: wabaName, phone_numbers: phones, access_token: token })
+        setSelectedPhone(phones[0] ?? null)
+        setSignupStep('select')
+        router.replace('/admin/mensajes/conexion')
+      } catch { /* ignorar */ }
+    }
+  }, [searchParams]) // eslint-disable-line
 
   // No se usa JS SDK — el flujo es server-side OAuth redirect
   useEffect(() => { setSdkReady(true) }, [])
