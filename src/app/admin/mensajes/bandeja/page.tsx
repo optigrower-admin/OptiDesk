@@ -132,7 +132,7 @@ export default function BandejaPage() {
   // Ventana de 24 h
   const [ventanaActiva, setVentanaActiva]     = useState<boolean | null>(null)
   const [ventanaExpiraAt, setVentanaExpiraAt] = useState<number | null>(null)
-  const [tickAhora, setTickAhora]             = useState(Date.now())
+  const [tickAhora, setTickAhora]             = useState(0)
 
   const messagesEndRef  = useRef<HTMLDivElement>(null)
   const inputRef        = useRef<HTMLTextAreaElement>(null)
@@ -303,7 +303,9 @@ export default function BandejaPage() {
   }, [selectedConv?.id])
 
   // Ticker de 1 minuto para actualizar el tiempo restante de ventana
+  // (se inicializa en useEffect para evitar hydration mismatch con Date.now())
   useEffect(() => {
+    setTickAhora(Date.now())
     const t = setInterval(() => setTickAhora(Date.now()), 60_000)
     return () => clearInterval(t)
   }, [])
