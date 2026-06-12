@@ -185,23 +185,50 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [profile?.tenant_id, pathname, mostrarToast])
 
   // ── Suscribir a Web Push (funciona con Chrome cerrado) ───────────────────
-  const suscribirPush = async (reg: ServiceWorkerRegistration) => {
+  const suscribirPush = async (_reg?: ServiceWorkerRegistration) => {
     try {
+      // 1. Obtener la clave pública VAPID del servidor
       const res = await fetch('/api/admin/mensajes/push-public-key')
-      if (!res.ok) return
+      if (!res.ok) {
+        console.warn('[push] VAPID no configurado:', await res.text())
+        return
+      }
       const { publicKey } = await res.json()
-      if (!publicKey) return
+      if (!publicKey) { console.warn('[push] Sin publicKey'); return }
 
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: publicKey,
-      })
-      await fetch('/api/admin/mensajes/push-subscribe', {
+      // 2. Convertir base64url → Uint8Array (Chrome lo exige así)
+      const padding = '='.repeat((4 - publicKey.length % 4) % 4)
+      const base64  = (publicKey + padding).replace(/-/g, '+').replace(/_/g, '/')
+      const raw     = window.atob(base64)
+      const appKey  = new Uint8Array(raw.length)
+      for (let i = 0; i < raw.length; i++) appKey[i] = raw.charCodeAt(i)
+
+      // 3. Usar navigator.serviceWorker.ready (SW activo garantizado)
+      const activeReg = await navigator.serviceWorker.ready
+
+      // 4. Obtener o crear la suscripción push
+      let sub = await activeReg.pushManager.getSubscription()
+      if (!sub) {
+        sub = await activeReg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: appKey,
+        })
+      }
+
+      // 5. Guardar en la DB
+      const saveRes = await fetch('/api/admin/mensajes/push-subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscription: sub }),
       })
-    } catch { /* push no soportado */ }
+      if (saveRes.ok) {
+        console.log('[push] Suscripción guardada ✓')
+      } else {
+        console.warn('[push] Error al guardar:', await saveRes.text())
+      }
+    } catch (err) {
+      console.warn('[push] Error al suscribir:', err)
+    }
   }
 
   // ── Activar notificaciones (requiere click del usuario) ──────────────────
