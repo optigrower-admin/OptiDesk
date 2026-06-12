@@ -6,11 +6,25 @@ type SupabaseAdmin = ReturnType<typeof createAdminClient>
 export async function procesarMensajeMeta(body: unknown, tenantId: string) {
   const supabase = createAdminClient()
   const payload = body as Record<string, unknown>
-
   if (!payload.entry) return
 
   const entries = payload.entry as Array<Record<string, unknown>>
+  const objeto  = String(payload.object ?? '')
+
   for (const entry of entries) {
+    // ── Messenger: estructura entry.messaging[] ───────────────────────────
+    if (objeto === 'page') {
+      const messaging = entry.messaging as Array<Record<string, unknown>> | undefined
+      if (!messaging?.length) continue
+      for (const event of messaging) {
+        const msgInner = event.message as Record<string, unknown> | undefined
+        if (msgInner?.is_echo) continue  // ignorar ecos del propio agente
+        await procesarMensajeIndividual(supabase, tenantId, event, {}, 'page')
+      }
+      continue
+    }
+
+    // ── WhatsApp / Instagram: estructura entry.changes[].value ────────────
     const changes = entry.changes as Array<Record<string, unknown>> | undefined
     if (!changes) continue
 
@@ -22,7 +36,6 @@ export async function procesarMensajeMeta(body: unknown, tenantId: string) {
         continue
       }
 
-      // Actualizaciones de estado (entregado / leído)
       const statuses = value.statuses as Array<Record<string, unknown>> | undefined
       if (statuses?.length) {
         for (const st of statuses) await actualizarEstadoMensaje(supabase, tenantId, st)
@@ -32,7 +45,7 @@ export async function procesarMensajeMeta(body: unknown, tenantId: string) {
       if (!messages?.length) continue
 
       for (const msg of messages) {
-        await procesarMensajeIndividual(supabase, tenantId, msg, value, payload.object as string)
+        await procesarMensajeIndividual(supabase, tenantId, msg, value, objeto)
       }
     }
   }

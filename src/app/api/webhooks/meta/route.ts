@@ -52,19 +52,27 @@ async function procesarPorWaba(body: unknown) {
   const entries = payload.entry as Array<Record<string, unknown>> | undefined
   if (!entries?.length) return
 
-  // Obtener el WABA ID del primer entry
-  const wabaId = String(entries[0].id ?? '')
-  if (!wabaId) return
+  const entryId = String(entries[0].id ?? '')
+  const objeto  = String(payload.object ?? '')
+  if (!entryId) return
 
-  // Buscar el tenant dueño de este WABA
   const admin = createAdminClient()
-  const { data } = await admin
-    .from('config_meta')
-    .select('tenant_id')
-    .eq('wa_business_account_id', wabaId)
-    .maybeSingle()
+  let tenantId: string | null = null
 
-  if (!data?.tenant_id) return
+  if (objeto === 'page') {
+    // Messenger: entry.id = Page ID
+    const { data } = await admin
+      .from('config_meta').select('tenant_id')
+      .eq('messenger_page_id', entryId).maybeSingle()
+    tenantId = data?.tenant_id ?? null
+  } else {
+    // WhatsApp: entry.id = WABA ID
+    const { data } = await admin
+      .from('config_meta').select('tenant_id')
+      .eq('wa_business_account_id', entryId).maybeSingle()
+    tenantId = data?.tenant_id ?? null
+  }
 
-  await procesarMensajeMeta(body, data.tenant_id)
+  if (!tenantId) return
+  await procesarMensajeMeta(body, tenantId)
 }

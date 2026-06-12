@@ -327,8 +327,6 @@ export default function ConexionMetaPage() {
           onConnect={() => conectar('messenger')}
           onDisconnect={isGerencia && config?.estado_messenger === 'conectado' ? () => desconectarCanal('messenger') : undefined}
           connecting={!!busy.messenger}
-          disabled={true}
-          disabledMsg="Requiere permisos adicionales en la app de Meta: pages_show_list y pages_messaging. Ve a developers.facebook.com → tu app → App Review → Permissions and Features y solicita Standard Access."
         />
 
         {/* ── Instagram ─────────────────────────────────────────────── */}

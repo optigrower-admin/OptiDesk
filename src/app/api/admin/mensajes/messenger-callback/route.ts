@@ -71,4 +71,16 @@ async function guardarMessenger(tenantId: string, pageId: string, pageToken: str
     estado_messenger:           'conectado',
     updated_at:                 new Date().toISOString(),
   }, { onConflict: 'tenant_id' })
+
+  // Suscribir la página al webhook del app para recibir eventos messages
+  try {
+    await fetch(
+      `https://graph.facebook.com/v20.0/${pageId}/subscribed_apps?access_token=${pageToken}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscribed_fields: 'messages,messaging_postbacks,message_deliveries,message_reads' }),
+      }
+    )
+  } catch { /* no crítico — se puede hacer manualmente en Meta Developer Console */ }
 }
