@@ -99,7 +99,7 @@ async function procesarMensajeIndividual(
 
   let { data: conv } = await supabase
     .from('conversaciones')
-    .select('id,assigned_to,no_leidos_count,sin_respuesta_asesor_desde')
+    .select('id,assigned_to,no_leidos_count,sin_respuesta_asesor_desde,cliente_id')
     .eq('tenant_id', tenantId)
     .eq('canal', canal)
     .eq('canal_contact_id', canalContactId)
@@ -121,11 +121,7 @@ async function procesarMensajeIndividual(
     } else if (canal === 'messenger') {
       const { data: existente } = await supabase
         .from('clientes').select('id').eq('tenant_id', tenantId).eq('messenger_id', canalContactId).maybeSingle()
-      if (existente) {
-        clienteId = existente.id
-      } else {
-        clienteId = await crearClienteDesdeMessenger(supabase, tenantId, canalContactId)
-      }
+      clienteId = existente?.id ?? await crearClienteDesdeMessenger(supabase, tenantId, canalContactId)
     }
 
     const { data: nuevaConv } = await supabase
@@ -134,12 +130,22 @@ async function procesarMensajeIndividual(
         tenant_id: tenantId, canal, canal_contact_id: canalContactId,
         assigned_to: assignedTo, cliente_id: clienteId, estado: 'abierta',
       })
-      .select('id,assigned_to,no_leidos_count,sin_respuesta_asesor_desde')
+      .select('id,assigned_to,no_leidos_count,sin_respuesta_asesor_desde,cliente_id')
       .single()
     conv = nuevaConv
   }
 
   if (!conv) return
+
+  // Conversación Messenger existente sin cliente vinculado (creada antes del auto-name)
+  if (canal === 'messenger' && !(conv as Record<string, unknown>).cliente_id) {
+    const { data: existente } = await supabase
+      .from('clientes').select('id').eq('tenant_id', tenantId).eq('messenger_id', canalContactId).maybeSingle()
+    const clienteId = existente?.id ?? await crearClienteDesdeMessenger(supabase, tenantId, canalContactId)
+    if (clienteId) {
+      await supabase.from('conversaciones').update({ cliente_id: clienteId }).eq('id', conv.id)
+    }
+  }
 
   const now = new Date().toISOString()
   await supabase.from('mensajes').insert({
