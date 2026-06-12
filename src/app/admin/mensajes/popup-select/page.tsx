@@ -1,58 +1,53 @@
 'use client'
 import { useState, useEffect } from 'react'
 
-type Phone    = { id: string; display_phone_number: string; verified_name: string }
-type IgAcct   = { id: string; name?: string; username?: string }
-type Page     = { id: string; name: string; access_token: string; instagram: IgAcct | null }
+type PhoneEntry = {
+  id: string
+  display_phone_number: string
+  verified_name: string
+  waba_id: string
+  waba_name: string
+}
 
 export default function PopupSelectPage() {
-  const [phones, setPhones]       = useState<Phone[]>([])
-  const [pages,  setPages]        = useState<Page[]>([])
-  const [wabaId, setWabaId]       = useState('')
-  const [token,  setToken]        = useState('')
-  const [wabaName, setWabaName]   = useState('')
-
-  const [selPhone, setSelPhone]   = useState<Phone | null>(null)
-  const [selPage,  setSelPage]    = useState<Page | null | 'none'>('none')
-  const [saving,   setSaving]     = useState(false)
-  const [error,    setError]      = useState('')
+  const [phones,   setPhones]   = useState<PhoneEntry[]>([])
+  const [token,    setToken]    = useState('')
+  const [selected, setSelected] = useState<PhoneEntry | null>(null)
+  const [saving,   setSaving]   = useState(false)
+  const [error,    setError]    = useState('')
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
     try {
-      const ph = JSON.parse(decodeURIComponent(p.get('phones') ?? '[]')) as Phone[]
+      const ph = JSON.parse(decodeURIComponent(p.get('phones') ?? '[]')) as PhoneEntry[]
       setPhones(ph)
-      setSelPhone(ph[0] ?? null)
-    } catch { setError('Error al cargar números') }
-    try {
-      const pg = JSON.parse(decodeURIComponent(p.get('pages') ?? '[]')) as Page[]
-      setPages(pg)
-    } catch { /* sin páginas */ }
-    setWabaId(p.get('waba_id') ?? '')
-    setWabaName(decodeURIComponent(p.get('waba_name') ?? ''))
+      setSelected(ph[0] ?? null)
+    } catch { setError('Error al cargar los datos') }
     setToken(p.get('token') ?? '')
   }, [])
 
-  const selectedIg = selPage && selPage !== 'none' ? selPage.instagram : null
+  // Agrupar por WABA
+  const groups = phones.reduce<Record<string, PhoneEntry[]>>((acc, ph) => {
+    const key = ph.waba_name || ph.waba_id
+    if (!acc[key]) acc[key] = []
+    acc[key].push(ph)
+    return acc
+  }, {})
 
   const confirmar = async () => {
-    if (!selPhone) return
+    if (!selected) return
     setSaving(true); setError('')
     try {
-      const body: Record<string, string | null> = {
-        waba_id:         wabaId,
-        phone_number_id: selPhone.id,
-        phone_number:    selPhone.display_phone_number,
-        verified_name:   selPhone.verified_name,
-        access_token:    token,
-        page_id:         selPage && selPage !== 'none' ? selPage.id        : null,
-        page_token:      selPage && selPage !== 'none' ? selPage.access_token : null,
-        instagram_id:    selectedIg?.id ?? null,
-      }
-      const res  = await fetch('/api/admin/mensajes/embedded-signup', {
+      const res = await fetch('/api/admin/mensajes/embedded-signup', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          waba_id:         selected.waba_id,
+          phone_number_id: selected.id,
+          phone_number:    selected.display_phone_number,
+          verified_name:   selected.verified_name,
+          access_token:    token,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
@@ -60,7 +55,7 @@ export default function PopupSelectPage() {
       if (window.opener) {
         window.opener.postMessage({
           type: 'META_OAUTH_COMPLETE', success: true,
-          phone: selPhone.display_phone_number,
+          phone: selected.display_phone_number,
         }, window.location.origin)
         setTimeout(() => window.close(), 1500)
       }
@@ -76,62 +71,84 @@ export default function PopupSelectPage() {
 
         {/* Header */}
         <div className="text-center pb-1">
-          <h2 className="font-bold text-gray-900 text-lg">Confirma tu conexión</h2>
-          {wabaName && <p className="text-xs text-gray-400 mt-0.5">{wabaName}</p>}
+          <div className="w-11 h-11 bg-green-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+            <svg viewBox="0 0 24 24" className="w-6 h-6 text-green-700" fill="currentColor">
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.49"/>
+            </svg>
+          </div>
+          <h2 className="font-bold text-gray-900 text-lg">Selecciona tu número</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {phones.length} número{phones.length !== 1 ? 's' : ''} encontrado{phones.length !== 1 ? 's' : ''}
+          </p>
         </div>
 
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>
         )}
 
-        {/* ── WhatsApp ─────────────────────────────────────────────── */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 24 24" className="w-4 h-4 text-green-700" fill="currentColor">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.49"/>
-              </svg>
+        {/* Lista de números agrupados por cuenta */}
+        <div className="space-y-3">
+          {Object.entries(groups).map(([groupName, groupPhones]) => (
+            <div key={groupName} className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+              {/* Cabecera del grupo */}
+              <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-gray-400" fill="currentColor">
+                  <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8"/>
+                </svg>
+                <span className="text-xs font-semibold text-gray-500 truncate">{groupName}</span>
+                <span className="ml-auto text-xs text-gray-400 flex-shrink-0">{groupPhones.length} nº</span>
+              </div>
+
+              {/* Números del grupo */}
+              <div className="divide-y divide-gray-100">
+                {groupPhones.map(ph => (
+                  <label
+                    key={ph.id}
+                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                      selected?.id === ph.id ? 'bg-green-50' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                      selected?.id === ph.id ? 'border-green-500 bg-green-500' : 'border-gray-300'
+                    }`}>
+                      {selected?.id === ph.id && (
+                        <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                      )}
+                    </div>
+                    <input type="radio" name="phone" className="sr-only"
+                      checked={selected?.id === ph.id} onChange={() => setSelected(ph)} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm">{ph.display_phone_number}</p>
+                      {ph.verified_name && (
+                        <p className="text-xs text-gray-400 truncate">{ph.verified_name}</p>
+                      )}
+                    </div>
+                    {selected?.id === ph.id && (
+                      <span className="text-xs font-medium text-green-600 flex-shrink-0">Seleccionado</span>
+                    )}
+                  </label>
+                ))}
+              </div>
             </div>
-            <p className="font-semibold text-gray-900 text-sm">WhatsApp Business</p>
-            <span className="ml-auto text-xs text-red-500 font-medium">Requerido</span>
-          </div>
-          <div className="space-y-2">
-            {phones.map(ph => (
-              <label key={ph.id} className={`flex items-center gap-3 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${selPhone?.id === ph.id ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                <input type="radio" name="phone" checked={selPhone?.id === ph.id}
-                  onChange={() => setSelPhone(ph)} className="accent-green-600" />
-                <div>
-                  <p className="font-semibold text-gray-900 text-sm">{ph.display_phone_number}</p>
-                  <p className="text-xs text-gray-400">{ph.verified_name}</p>
-                </div>
-              </label>
-            ))}
-          </div>
+          ))}
         </div>
 
-        {/* ── Próximamente ─────────────────────────────────────────── */}
+        {/* Próximamente */}
         <div className="bg-gray-50 border border-dashed border-gray-300 rounded-2xl p-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Próximamente</p>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-base">💬</span>
-            <p className="text-sm text-gray-500">Facebook Messenger</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Próximamente</p>
+          <div className="flex gap-4 text-sm text-gray-400">
+            <span>💬 Messenger</span>
+            <span>📸 Instagram</span>
           </div>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-base">📸</span>
-            <p className="text-sm text-gray-500">Instagram Direct</p>
-          </div>
-          <p className="text-xs text-gray-400 leading-relaxed">
-            Estos canales se habilitarán en una próxima actualización. Por ahora conecta tu WhatsApp y podrás agregar los demás desde la configuración.
-          </p>
         </div>
 
-        {/* ── Botón confirmar ──────────────────────────────────────── */}
+        {/* Botón */}
         <button
           onClick={confirmar}
-          disabled={!selPhone || saving}
-          className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-semibold text-sm transition-colors disabled:opacity-50"
+          disabled={!selected || saving}
+          className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold text-sm transition-colors disabled:opacity-50"
         >
-          {saving ? 'Conectando...' : 'Confirmar y conectar'}
+          {saving ? 'Conectando...' : `Conectar ${selected?.display_phone_number ?? ''}`}
         </button>
       </div>
     </div>

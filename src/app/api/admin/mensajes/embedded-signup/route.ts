@@ -179,5 +179,11 @@ export async function PUT(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true, phone_number, verified_name, page_id: page_id ?? null, instagram_id: instagram_id ?? null })
+  // Suscribir WABA al webhook de la plataforma
+  await fetch(
+    `https://graph.facebook.com/v20.0/${waba_id}/subscribed_apps?access_token=${access_token}&subscribed_fields=messages,message_template_status_update`,
+    { method: 'POST' }
+  ).catch(e => console.error('[embedded-signup] Error suscribiendo WABA:', e))
+
+  return NextResponse.json({ ok: true, phone_number, verified_name })
 }
