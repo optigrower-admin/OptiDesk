@@ -146,19 +146,29 @@ export default function PopupSelectPage() {
 
         {/* Búsqueda manual por ID */}
         <div className="bg-white border border-gray-200 rounded-2xl p-4">
-          <p className="text-sm font-semibold text-gray-800 mb-1">Buscar por ID de Business Manager</p>
-          <p className="text-xs text-gray-400 mb-3 leading-relaxed">
-            Si tu cuenta no aparece arriba, ingresa su ID aquí.
-            <br />
-            <span className="text-gray-500">Meta Business Manager → Configuración → Información del negocio → <strong>ID del negocio</strong></span>
+          <p className="text-sm font-semibold text-gray-800 mb-1">Buscar por ID de WABA</p>
+          <p className="text-xs text-gray-400 mb-1 leading-relaxed">
+            Ingresa el <strong className="text-gray-600">ID de tu cuenta de WhatsApp Business (WABA)</strong>.
           </p>
-          {searchError && <p className="text-xs text-red-600 mb-2">{searchError}</p>}
+          <p className="text-xs text-gray-400 mb-3 leading-relaxed">
+            📍 Dónde encontrarlo: <span className="text-gray-600">Meta Business Manager → menú izquierdo <strong>Cuentas de WhatsApp</strong> → selecciona la cuenta → <strong>Configuración</strong> → el número grande es el ID del WABA</span>
+          </p>
+          {searchError && (
+            <div className="mb-2 p-2.5 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-xs text-red-700">{searchError}</p>
+              {searchError.includes('business_management') && (
+                <p className="text-xs text-red-600 mt-1">
+                  💡 Usa el <strong>ID del WABA</strong> (no el ID del portafolio/BM). El WABA ID está en <em>Cuentas de WhatsApp</em> dentro de tu Business Manager.
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex gap-2">
             <input
               value={bizId}
               onChange={e => setBizId(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && buscarPorId()}
-              placeholder="Ej: 123456789012345"
+              placeholder="ID del WABA — ej: 469012751131216"
               className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 font-mono"
             />
             <button
@@ -169,7 +179,6 @@ export default function PopupSelectPage() {
               {searching ? '...' : 'Buscar'}
             </button>
           </div>
-          <p className="text-xs text-gray-400 mt-2">También puedes ingresar el ID de un WABA directamente.</p>
         </div>
 
         {/* Confirmar */}
