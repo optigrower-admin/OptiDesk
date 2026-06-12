@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 async function encryptToken(text: string): Promise<string> {
   const { encrypt } = await import('@/lib/crypto')
   return encrypt(text)
@@ -28,15 +30,15 @@ export async function GET() {
   if (!config) return NextResponse.json({ config: null })
 
   // Contar plantillas enviadas hoy directamente desde mensajes (fuente de verdad real)
-  // Esto evita depender del contador almacenado que puede estar contaminado
   const hoyUTC = new Date(); hoyUTC.setUTCHours(0, 0, 0, 0)
-  const { count: plantillasHoy } = await supabase
+  const { count: plantillasHoy, error: countErr } = await supabase
     .from('mensajes')
     .select('id', { count: 'exact', head: true })
     .eq('tenant_id', perfil.tenant_id)
     .eq('tipo', 'plantilla')
     .eq('direccion', 'saliente')
     .gte('created_at', hoyUTC.toISOString())
+  console.log(`[config] plantillasHoy=${plantillasHoy} err=${countErr?.message ?? 'none'} tenant=${perfil.tenant_id}`)
 
   // Enmascarar tokens sensibles — nunca exponer al cliente
   return NextResponse.json({
