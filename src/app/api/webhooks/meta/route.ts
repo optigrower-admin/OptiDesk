@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
   let body: unknown
   try { body = await request.json() } catch { return new NextResponse('EVENT_RECEIVED', { status: 200 }) }
 
-  procesarPorWaba(body).catch(console.error)
+  // Await garantiza que Vercel no termine la función antes de guardar el mensaje
+  await procesarPorWaba(body).catch(console.error)
   return new NextResponse('EVENT_RECEIVED', { status: 200 })
 }
 

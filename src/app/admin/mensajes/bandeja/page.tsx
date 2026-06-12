@@ -106,11 +106,16 @@ export default function BandejaPage() {
   const messagesEndRef  = useRef<HTMLDivElement>(null)
   const inputRef        = useRef<HTMLTextAreaElement>(null)
   const convsPrevRef    = useRef<Conversacion[]>([])
+  // Ref para que el callback de Realtime siempre tenga el valor actual sin re-suscribir
+  const selectedIdRef   = useRef<string | null>(null)
 
   const toast = useCallback((text: string, ok = true) => {
     setToastMsg({ text, ok })
     setTimeout(() => setToastMsg(null), 3000)
   }, [])
+
+  // Mantener el ref sincronizado con el estado
+  selectedIdRef.current = selectedId
 
   const selectedConv = convs.find(c => c.id === selectedId) ?? null
   const usuariosMap  = Object.fromEntries(equipo.map(u => [u.id, u.nombre]))
@@ -199,7 +204,7 @@ export default function BandejaPage() {
   useEffect(() => {
     if (!profile?.tenant_id) return
 
-    // Canal 1: cambios en conversaciones del tenant
+    // Canal 1: cambios en conversaciones (filter por tenant)
     const chConvs = supabase
       .channel(`convs-${profile.tenant_id}`)
       .on('postgres_changes', {
@@ -208,35 +213,32 @@ export default function BandejaPage() {
       }, () => { cargarConversaciones(true) })
       .subscribe()
 
-    // Fallback polling lento (30s) por si Realtime no está habilitado
+    // Canal 2: nuevos mensajes — SIN filtro para no depender de RLS
+    // Filtramos client-side con selectedIdRef para no re-suscribir al cambiar conversación
+    const chMsgs = supabase
+      .channel(`msgs-tenant-${profile.tenant_id}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'mensajes',
+      }, (payload) => {
+        const msg = payload.new as Mensaje
+        const activo = selectedIdRef.current
+        if (msg.conversacion_id === activo) {
+          setMensajes(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
+          supabase.from('conversaciones').update({ no_leidos_count: 0 }).eq('id', activo)
+          setConvs(cs => cs.map(c => c.id === activo ? { ...c, no_leidos_count: 0 } : c))
+        }
+      })
+      .subscribe()
+
+    // Fallback polling lento (30s) si Realtime no está habilitado en el proyecto
     const fallback = setInterval(() => cargarConversaciones(true), 30000)
 
     return () => {
       supabase.removeChannel(chConvs)
+      supabase.removeChannel(chMsgs)
       clearInterval(fallback)
     }
   }, [profile?.tenant_id, cargarConversaciones])
-
-  useEffect(() => {
-    if (!selectedId) return
-
-    // Canal 2: mensajes nuevos de la conversación seleccionada
-    const chMsgs = supabase
-      .channel(`msgs-${selectedId}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'mensajes',
-        filter: `conversacion_id=eq.${selectedId}`,
-      }, (payload) => {
-        const msg = payload.new as Mensaje
-        setMensajes(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
-        // Marcar leído
-        supabase.from('conversaciones').update({ no_leidos_count: 0 }).eq('id', selectedId)
-        setConvs(cs => cs.map(c => c.id === selectedId ? { ...c, no_leidos_count: 0 } : c))
-      })
-      .subscribe()
-
-    return () => { supabase.removeChannel(chMsgs) }
-  }, [selectedId])
 
   // ── Efectos de carga ──────────────────────────────────────────────────────
   useEffect(() => { cargarEquipo() }, [cargarEquipo])
