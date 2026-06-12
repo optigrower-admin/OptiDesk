@@ -118,6 +118,14 @@ async function procesarMensajeIndividual(
       const { data: cliente } = await supabase
         .from('clientes').select('id').eq('tenant_id', tenantId).eq('whatsapp_number', canalContactId).maybeSingle()
       clienteId = cliente?.id ?? null
+    } else if (canal === 'messenger') {
+      const { data: existente } = await supabase
+        .from('clientes').select('id').eq('tenant_id', tenantId).eq('messenger_id', canalContactId).maybeSingle()
+      if (existente) {
+        clienteId = existente.id
+      } else {
+        clienteId = await crearClienteDesdeMessenger(supabase, tenantId, canalContactId)
+      }
     }
 
     const { data: nuevaConv } = await supabase
@@ -231,6 +239,35 @@ async function actualizarEstadoMensaje(
     .update({ estado_envio: estadoEnvio })
     .eq('meta_message_id', metaMsgId)
     .eq('tenant_id', tenantId)
+}
+
+async function crearClienteDesdeMessenger(
+  supabase: SupabaseAdmin,
+  tenantId: string,
+  psid: string
+): Promise<string | null> {
+  try {
+    const { data: cfg } = await supabase
+      .from('config_meta').select('messenger_access_token_enc')
+      .eq('tenant_id', tenantId).maybeSingle()
+    if (!cfg?.messenger_access_token_enc) return null
+
+    let token = cfg.messenger_access_token_enc
+    try { const { decrypt } = await import('@/lib/crypto'); token = decrypt(cfg.messenger_access_token_enc) } catch { /* dev */ }
+
+    const r = await fetch(`https://graph.facebook.com/v20.0/${psid}?fields=name&access_token=${token}`)
+    if (!r.ok) return null
+    const profile = await r.json() as { name?: string }
+    const nombre = profile.name ?? null
+
+    const { data: nuevo } = await supabase
+      .from('clientes')
+      .insert({ tenant_id: tenantId, nombre, messenger_id: psid })
+      .select('id').single()
+    return nuevo?.id ?? null
+  } catch {
+    return null
+  }
 }
 
 async function manejarStatusPlantilla(

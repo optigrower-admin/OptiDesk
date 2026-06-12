@@ -41,19 +41,21 @@ export async function POST(req: NextRequest) {
     .eq('tenant_id', perfil.tenant_id)
     .maybeSingle()
 
-  // ── Validaciones previas al envío (solo WhatsApp, no notas internas) ────────
-  if (conv.canal === 'whatsapp' && tipo !== 'nota_interna') {
-    // 1. Límite diario: bloquear cuando mensajes_iniciados_hoy >= límite - 2
-    const efectiveLimite = cfg?.negocio_verificado ? (cfg?.limite_diario_wa ?? 1000) : 250
-    const mismodia = new Date(cfg?.limite_reset_at ?? 0).toDateString() === new Date().toDateString()
-    const hoy = mismodia ? (cfg?.mensajes_iniciados_hoy ?? 0) : 0
-    if (hoy >= efectiveLimite - 2) {
-      return NextResponse.json({
-        error: `Límite diario de WhatsApp alcanzado (${hoy}/${efectiveLimite}). No puedes enviar más mensajes hoy.`,
-      }, { status: 429 })
+  // ── Validaciones previas al envío (WhatsApp/Messenger, no notas internas) ──
+  if ((conv.canal === 'whatsapp' || conv.canal === 'messenger') && tipo !== 'nota_interna') {
+    // 1. Límite diario: solo WhatsApp
+    if (conv.canal === 'whatsapp') {
+      const efectiveLimite = cfg?.negocio_verificado ? (cfg?.limite_diario_wa ?? 1000) : 250
+      const mismodia = new Date(cfg?.limite_reset_at ?? 0).toDateString() === new Date().toDateString()
+      const hoy = mismodia ? (cfg?.mensajes_iniciados_hoy ?? 0) : 0
+      if (hoy >= efectiveLimite - 2) {
+        return NextResponse.json({
+          error: `Límite diario de WhatsApp alcanzado (${hoy}/${efectiveLimite}). No puedes enviar más mensajes hoy.`,
+        }, { status: 429 })
+      }
     }
 
-    // 2. Ventana de 24 h: fuera de ventana solo se pueden enviar plantillas
+    // 2. Ventana de 24 h: aplica a WhatsApp y Messenger
     const { data: lastEntrante } = await admin
       .from('mensajes')
       .select('created_at')
@@ -66,10 +68,10 @@ export async function POST(req: NextRequest) {
       ? Date.now() - new Date(lastEntrante.created_at).getTime() < 86_400_000
       : false
     if (!ventanaActiva) {
-      return NextResponse.json({
-        error: 'El contacto no ha escrito en las últimas 24 h. Debes enviar una plantilla aprobada por Meta.',
-        code: 'VENTANA_CERRADA',
-      }, { status: 403 })
+      const errorMsg = conv.canal === 'whatsapp'
+        ? 'El contacto no ha escrito en las últimas 24 h. Debes enviar una plantilla aprobada por Meta.'
+        : 'El contacto no ha escrito en las últimas 24 h (ventana estándar de Messenger cerrada).'
+      return NextResponse.json({ error: errorMsg, code: 'VENTANA_CERRADA' }, { status: 403 })
     }
   }
 
