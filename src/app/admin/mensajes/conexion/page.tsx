@@ -136,6 +136,18 @@ export default function ConexionMetaPage() {
 
   const showToast = useCallback((text: string, ok = true) => setToast({ text, ok }), [])
 
+  const suscribirWebhook = async () => {
+    setBusy(b => ({ ...b, suscribir: true }))
+    try {
+      const res  = await fetch('/api/admin/mensajes/suscribir-webhook', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      showToast('Webhook suscrito — los mensajes deberían llegar ahora')
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Error al suscribir webhook', false)
+    } finally { setBusy(b => ({ ...b, suscribir: false })) }
+  }
+
   const cargar = useCallback(async () => {
     setLoading(true)
     const res  = await fetch('/api/admin/mensajes/config')
@@ -249,14 +261,23 @@ export default function ConexionMetaPage() {
           onDisconnect={isGerencia ? () => desconectarCanal('whatsapp') : undefined}
           connecting={!!busy.whatsapp}
           extra={config?.estado_wa === 'conectado' ? (
-            <div className="mb-1">
-              <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                <span>Mensajes hoy</span>
-                <span className="font-medium">{config?.mensajes_iniciados_hoy ?? 0} / {config?.limite_diario_wa ?? 1000}</span>
+            <div className="mb-1 space-y-2">
+              <div>
+                <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                  <span>Mensajes hoy</span>
+                  <span className="font-medium">{config?.mensajes_iniciados_hoy ?? 0} / {config?.limite_diario_wa ?? 1000}</span>
+                </div>
+                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${pct}%` }} />
+                </div>
               </div>
-              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full ${pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${pct}%` }} />
-              </div>
+              <button
+                onClick={suscribirWebhook}
+                disabled={!!busy.suscribir}
+                className="w-full py-1.5 text-xs text-gray-500 hover:text-gray-800 border border-dashed border-gray-300 hover:border-gray-400 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {busy.suscribir ? 'Verificando...' : '🔔 Verificar suscripción de mensajes'}
+              </button>
             </div>
           ) : undefined}
         />
