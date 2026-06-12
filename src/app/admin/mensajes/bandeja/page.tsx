@@ -112,6 +112,9 @@ export default function BandejaPage() {
   const [editNombre, setEditNombre]   = useState('')
   const [savingNombre, setSavingNombre] = useState(false)
 
+  // Ventana de 24 h: null = cargando, true = activa, false = cerrada
+  const [ventanaActiva, setVentanaActiva] = useState<boolean | null>(null)
+
   const messagesEndRef  = useRef<HTMLDivElement>(null)
   const inputRef        = useRef<HTMLTextAreaElement>(null)
   const convsPrevRef    = useRef<Conversacion[]>([])
@@ -271,7 +274,16 @@ export default function BandejaPage() {
   // Cuando cambia selectedConv, pre-cargar nombre en el editor
   useEffect(() => {
     setEditNombre(selectedConv?.clientes?.[0]?.nombre ?? '')
+    setVentanaActiva(null) // reset mientras cargan mensajes
   }, [selectedConv?.id])
+
+  // Calcular ventana de 24 h cuando los mensajes están listos
+  useEffect(() => {
+    if (!selectedConv || selectedConv.canal !== 'whatsapp') { setVentanaActiva(null); return }
+    if (loadingMsgs) return
+    const last = [...mensajes].reverse().find(m => m.direccion === 'entrante')
+    setVentanaActiva(last ? Date.now() - new Date(last.created_at).getTime() < 86_400_000 : false)
+  }, [mensajes, selectedConv?.id, selectedConv?.canal, loadingMsgs])
 
   // ── Guardar nombre del contacto ───────────────────────────────────────────
   const guardarNombre = async () => {
@@ -552,20 +564,43 @@ export default function BandejaPage() {
 
             {/* Input */}
             <div className={`bg-white border-t border-gray-200 p-3 flex-shrink-0 ${esNota ? 'bg-yellow-50' : ''}`}>
+              {/* Banner ventana 24 h (solo WhatsApp, no notas) */}
+              {selectedConv?.canal === 'whatsapp' && !esNota && ventanaActiva === false && (
+                <div className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2 text-xs text-amber-800">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="flex-shrink-0">⚠️</span>
+                    <span className="truncate">Ventana cerrada — el contacto no ha escrito en 24 h. Solo puedes enviar una plantilla.</span>
+                  </div>
+                  <a href="/admin/mensajes/plantillas" className="flex-shrink-0 text-blue-700 font-semibold hover:underline whitespace-nowrap">
+                    Ver plantillas →
+                  </a>
+                </div>
+              )}
+              {selectedConv?.canal === 'whatsapp' && !esNota && ventanaActiva === true && (
+                <div className="flex items-center gap-1.5 text-xs text-green-600 mb-1.5 px-0.5">
+                  <span>✓</span>
+                  <span>Ventana activa — el contacto escribió en las últimas 24 h</span>
+                </div>
+              )}
               {esNota && <div className="text-xs text-yellow-700 font-medium mb-1.5 px-1">📝 Nota interna — no se envía al cliente</div>}
               <div className="flex items-end gap-2">
                 <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }}
-                  placeholder={esNota ? 'Escribe una nota interna...' : 'Escribe un mensaje... (Enter para enviar)'}
+                  placeholder={
+                    !esNota && ventanaActiva === false && selectedConv?.canal === 'whatsapp'
+                      ? 'Ventana cerrada — usa una plantilla para contactar'
+                      : esNota ? 'Escribe una nota interna...' : 'Escribe un mensaje... (Enter para enviar)'
+                  }
                   rows={2}
-                  className={`flex-1 border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none ${esNota ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'}`}
+                  disabled={!esNota && ventanaActiva === false && selectedConv?.canal === 'whatsapp'}
+                  className={`flex-1 border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed ${esNota ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'}`}
                 />
                 <div className="flex flex-col gap-1.5 flex-shrink-0">
                   <button onClick={() => setEsNota(!esNota)} title="Nota interna"
                     className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm transition-colors ${esNota ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
                     📝
                   </button>
-                  <button onClick={enviar} disabled={!input.trim() || sending}
+                  <button onClick={enviar} disabled={!input.trim() || sending || (!esNota && ventanaActiva === false && selectedConv?.canal === 'whatsapp')}
                     className="w-9 h-9 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700 disabled:opacity-40 transition-colors">
                     {sending
                       ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />

@@ -37,9 +37,41 @@ export async function POST(req: NextRequest) {
 
   const { data: cfg } = await admin
     .from('config_meta')
-    .select('wa_phone_number_id, wa_access_token_enc, messenger_access_token_enc, instagram_access_token_enc')
+    .select('wa_phone_number_id, wa_access_token_enc, messenger_access_token_enc, instagram_access_token_enc, mensajes_iniciados_hoy, limite_diario_wa, negocio_verificado, limite_reset_at')
     .eq('tenant_id', perfil.tenant_id)
     .maybeSingle()
+
+  // ── Validaciones previas al envío (solo WhatsApp, no notas internas) ────────
+  if (conv.canal === 'whatsapp' && tipo !== 'nota_interna') {
+    // 1. Límite diario: bloquear cuando mensajes_iniciados_hoy >= límite - 2
+    const efectiveLimite = cfg?.negocio_verificado ? (cfg?.limite_diario_wa ?? 1000) : 250
+    const mismodia = new Date(cfg?.limite_reset_at ?? 0).toDateString() === new Date().toDateString()
+    const hoy = mismodia ? (cfg?.mensajes_iniciados_hoy ?? 0) : 0
+    if (hoy >= efectiveLimite - 2) {
+      return NextResponse.json({
+        error: `Límite diario de WhatsApp alcanzado (${hoy}/${efectiveLimite}). No puedes enviar más mensajes hoy.`,
+      }, { status: 429 })
+    }
+
+    // 2. Ventana de 24 h: fuera de ventana solo se pueden enviar plantillas
+    const { data: lastEntrante } = await admin
+      .from('mensajes')
+      .select('created_at')
+      .eq('conversacion_id', conversacion_id)
+      .eq('direccion', 'entrante')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const ventanaActiva = lastEntrante
+      ? Date.now() - new Date(lastEntrante.created_at).getTime() < 86_400_000
+      : false
+    if (!ventanaActiva) {
+      return NextResponse.json({
+        error: 'El contacto no ha escrito en las últimas 24 h. Debes enviar una plantilla aprobada por Meta.',
+        code: 'VENTANA_CERRADA',
+      }, { status: 403 })
+    }
+  }
 
   let metaMsgId: string | null = null
   let estadoEnvio = 'enviado'
@@ -118,22 +150,14 @@ export async function POST(req: NextRequest) {
     }).eq('id', conversacion_id)
   }
 
-  // Incrementar contador diario de conversaciones iniciadas (solo WA, no notas, no fallidos)
-  if (conv.canal === 'whatsapp' && tipo !== 'nota_interna' && estadoEnvio !== 'fallido') {
-    const { data: cfgMeta } = await admin
-      .from('config_meta')
-      .select('mensajes_iniciados_hoy, limite_reset_at')
-      .eq('tenant_id', perfil.tenant_id)
-      .maybeSingle()
-    if (cfgMeta) {
-      const ahora = new Date()
-      const resetAt = new Date(cfgMeta.limite_reset_at ?? 0)
-      const mismodia = resetAt.toDateString() === ahora.toDateString()
-      await admin.from('config_meta').update({
-        mensajes_iniciados_hoy: mismodia ? (cfgMeta.mensajes_iniciados_hoy ?? 0) + 1 : 1,
-        ...(mismodia ? {} : { limite_reset_at: ahora.toISOString() }),
-      }).eq('tenant_id', perfil.tenant_id)
-    }
+  // Incrementar contador diario (ya tenemos cfg del select anterior)
+  if (conv.canal === 'whatsapp' && tipo !== 'nota_interna' && estadoEnvio !== 'fallido' && cfg) {
+    const ahora = new Date()
+    const mismodia = new Date(cfg.limite_reset_at ?? 0).toDateString() === ahora.toDateString()
+    await admin.from('config_meta').update({
+      mensajes_iniciados_hoy: mismodia ? (cfg.mensajes_iniciados_hoy ?? 0) + 1 : 1,
+      ...(mismodia ? {} : { limite_reset_at: ahora.toISOString() }),
+    }).eq('tenant_id', perfil.tenant_id)
   }
 
   return NextResponse.json({ ok: true, mensaje: msg })
