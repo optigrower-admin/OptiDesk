@@ -135,6 +135,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [notifToast, setNotifToast]     = useState<NotifToast | null>(null)
   const [notifPerm, setNotifPerm]       = useState<NotificationPermission>('default')
   const [showNotifModal, setShowNotifModal] = useState(false)
+  const [pushStatus, setPushStatus]     = useState<'idle' | 'ok' | 'error'>('idle')
 
   const prevConvsRef  = useRef<ConvSnap[]>([])
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -185,49 +186,60 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [profile?.tenant_id, pathname, mostrarToast])
 
   // ── Suscribir a Web Push (funciona con Chrome cerrado) ───────────────────
-  const suscribirPush = async (_reg?: ServiceWorkerRegistration) => {
+  const suscribirPush = async () => {
+    console.log('[push] suscribirPush() llamado')
+    if (!('serviceWorker' in navigator)) { console.warn('[push] SW no soportado'); setPushStatus('error'); return }
+    if (!('PushManager' in window))      { console.warn('[push] PushManager no soportado'); setPushStatus('error'); return }
+    if (Notification.permission !== 'granted') { console.warn('[push] Permiso no concedido:', Notification.permission); setPushStatus('error'); return }
     try {
-      // 1. Obtener la clave pública VAPID del servidor
+      console.log('[push] Paso 1: obteniendo clave VAPID...')
       const res = await fetch('/api/admin/mensajes/push-public-key')
       if (!res.ok) {
-        console.warn('[push] VAPID no configurado:', await res.text())
+        console.warn('[push] VAPID no configurado:', res.status, await res.text())
+        setPushStatus('error')
         return
       }
       const { publicKey } = await res.json()
-      if (!publicKey) { console.warn('[push] Sin publicKey'); return }
+      if (!publicKey) { console.warn('[push] publicKey vacía'); setPushStatus('error'); return }
+      console.log('[push] Paso 2: VAPID recibido, convirtiendo a Uint8Array...')
 
-      // 2. Convertir base64url → Uint8Array (Chrome lo exige así)
       const padding = '='.repeat((4 - publicKey.length % 4) % 4)
       const base64  = (publicKey + padding).replace(/-/g, '+').replace(/_/g, '/')
       const raw     = window.atob(base64)
       const appKey  = new Uint8Array(raw.length)
       for (let i = 0; i < raw.length; i++) appKey[i] = raw.charCodeAt(i)
 
-      // 3. Usar navigator.serviceWorker.ready (SW activo garantizado)
+      console.log('[push] Paso 3: esperando SW activo...')
       const activeReg = await navigator.serviceWorker.ready
+      console.log('[push] SW listo, estado:', activeReg.active?.state)
 
-      // 4. Obtener o crear la suscripción push
+      console.log('[push] Paso 4: buscando suscripción existente...')
       let sub = await activeReg.pushManager.getSubscription()
       if (!sub) {
-        sub = await activeReg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: appKey,
-        })
+        console.log('[push] No hay suscripción, creando nueva...')
+        sub = await activeReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey })
+        console.log('[push] Suscripción creada:', sub.endpoint.slice(0, 60))
+      } else {
+        console.log('[push] Ya existe suscripción:', sub.endpoint.slice(0, 60))
       }
 
-      // 5. Guardar en la DB
+      console.log('[push] Paso 5: guardando en DB...')
       const saveRes = await fetch('/api/admin/mensajes/push-subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscription: sub }),
       })
       if (saveRes.ok) {
-        console.log('[push] Suscripción guardada ✓')
+        console.log('[push] ✓ Suscripción guardada')
+        setPushStatus('ok')
       } else {
-        console.warn('[push] Error al guardar:', await saveRes.text())
+        const errText = await saveRes.text()
+        console.warn('[push] Error guardando:', saveRes.status, errText)
+        setPushStatus('error')
       }
     } catch (err) {
       console.warn('[push] Error al suscribir:', err)
+      setPushStatus('error')
     }
   }
 
@@ -238,16 +250,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       setShowNotifModal(true)
       return
     }
+    if (notifPerm === 'granted') {
+      // Ya tiene permiso → re-sincronizar suscripción push
+      suscribirPush()
+      return
+    }
     const result = await Notification.requestPermission()
     setNotifPerm(result)
     if (result === 'granted') {
       playMsgSound()
       setShowNotifModal(false)
-      // Suscribir a Web Push para notificaciones con Chrome cerrado
-      if ('serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.ready
-        suscribirPush(reg)
-      }
+      suscribirPush()
     }
   }
 
@@ -257,8 +270,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js')
-        .then(async reg => {
-          // Activar nueva versión del SW si hay una esperando
+        .then(reg => {
           if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' })
           reg.addEventListener('updatefound', () => {
             const sw = reg.installing
@@ -268,14 +280,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               }
             })
           })
-
-          // Si el permiso ya estaba dado, suscribir push automáticamente
-          // (usuarios que dieron permiso antes de que existiera Web Push)
-          if ('Notification' in window && Notification.permission === 'granted') {
-            suscribirPush(reg)
-          }
         })
-        .catch(() => { /* sin SW */ })
+        .catch(err => console.warn('[SW] Error al registrar:', err))
 
       navigator.serviceWorker.addEventListener('message', e => {
         if (e.data?.type === 'SW_NAV') router.push(e.data.url)
@@ -285,6 +291,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     cargarNoLeidos()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ── Auto-suscribir push cuando el perfil carga ────────────────────────────
+  useEffect(() => {
+    if (!profile?.tenant_id) return
+    if (typeof window === 'undefined') return
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) return
+    if (Notification.permission !== 'granted') return
+    console.log('[push] Auto-suscribiendo (perfil cargado, permiso ya concedido)...')
+    suscribirPush()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.tenant_id])
 
   // ── Realtime global ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -429,15 +446,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {'Notification' in (typeof window !== 'undefined' ? window : {}) && (
             <button
               onClick={activarNotificaciones}
+              title={notifPerm === 'granted' ? 'Haz clic para re-sincronizar notificaciones push' : 'Activar notificaciones del navegador'}
               className={cn(
                 'w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors',
-                notifPerm === 'granted'
+                notifPerm === 'granted' && pushStatus !== 'error'
                   ? 'text-green-600 hover:bg-green-50'
+                  : notifPerm === 'granted' && pushStatus === 'error'
+                  ? 'text-yellow-600 hover:bg-yellow-50'
                   : 'text-orange-500 hover:bg-orange-50 font-medium'
               )}
             >
-              <span className="text-sm">{notifPerm === 'granted' ? '🔔' : '🔕'}</span>
-              <span>{notifPerm === 'granted' ? 'Notificaciones activas' : 'Activar notificaciones'}</span>
+              <span className="text-sm">
+                {notifPerm !== 'granted' ? '🔕' : pushStatus === 'ok' ? '🔔' : pushStatus === 'error' ? '⚠️' : '🔔'}
+              </span>
+              <span>
+                {notifPerm !== 'granted'
+                  ? 'Activar notificaciones'
+                  : pushStatus === 'ok'
+                  ? 'Notificaciones activas'
+                  : pushStatus === 'error'
+                  ? 'Error push — reintentar'
+                  : 'Notificaciones activas'}
+              </span>
             </button>
           )}
 
