@@ -13,7 +13,7 @@ function popupComplete(base: URL, params: Record<string, string>) {
   return NextResponse.redirect(url)
 }
 
-type WabaEntry  = { id: string; name: string; biz_name?: string }
+type WabaEntry  = { id: string; name: string }
 type PhoneEntry = { id: string; display_phone_number: string; verified_name: string; waba_id: string; waba_name: string }
 
 export async function GET(request: NextRequest) {
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   const { data: perfil } = await supabase.from('usuarios').select('tenant_id').eq('id', user.id).single()
   if (!perfil) return popupComplete(request.nextUrl, { success: 'false', error: 'sin_perfil' })
 
-  // ── Token: corto → largo (60 días) ──────────────────────────────────────────
+  // ── Token corto → largo (60 días) ───────────────────────────────────────────
   const tokenRes = await fetch(
     `https://graph.facebook.com/v20.0/oauth/access_token` +
     `?client_id=${APP_ID}&client_secret=${APP_SECRET}` +
@@ -53,74 +53,70 @@ export async function GET(request: NextRequest) {
   const llData      = await llRes.json()
   const accessToken = llData.access_token ?? tokenData.access_token
 
-  // ── Recolectar TODOS los WABAs (todos los Business Managers) ─────────────────
+  // ── Recolectar WABAs por múltiples rutas ────────────────────────────────────
   const wabaMap = new Map<string, WabaEntry>()
 
-  const addWabas = (list: Array<{ id: string; name?: string }>, bizName?: string) => {
-    for (const w of list) {
-      if (!wabaMap.has(w.id)) wabaMap.set(w.id, { id: w.id, name: w.name ?? '', biz_name: bizName })
-    }
+  const addWabas = (list: Array<{ id: string; name?: string }>) => {
+    for (const w of list) if (!wabaMap.has(w.id)) wabaMap.set(w.id, { id: w.id, name: w.name ?? '' })
   }
 
   // Ruta A: WABAs directos del usuario
-  const r1 = await fetch(`https://graph.facebook.com/v20.0/me/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name&limit=50`)
-  const d1 = await r1.json()
-  console.log('[oauth-callback] Ruta A (WABAs directos):', JSON.stringify(d1))
-  addWabas(d1.data ?? [])
+  const rA = await fetch(`https://graph.facebook.com/v20.0/me/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name&limit=50`)
+  const dA = await rA.json()
+  console.log('[oauth-callback] A (WABAs directos):', JSON.stringify(dA))
+  addWabas(dA.data ?? [])
 
-  // Ruta B: todos los Business Managers del usuario y sus WABAs
-  const r2 = await fetch(`https://graph.facebook.com/v20.0/me/businesses?access_token=${accessToken}&fields=id,name&limit=50`)
-  const d2 = await r2.json()
-  console.log('[oauth-callback] Ruta B (negocios):', JSON.stringify(d2))
-  for (const biz of (d2.data ?? [])) {
-    const r3 = await fetch(`https://graph.facebook.com/v20.0/${biz.id}/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name&limit=50`)
-    const d3 = await r3.json()
-    console.log(`[oauth-callback] Ruta B WABAs de ${biz.name}:`, JSON.stringify(d3))
-    addWabas(d3.data ?? [], biz.name)
+  // Ruta B: negocios donde el usuario es propietario/admin
+  const rB = await fetch(`https://graph.facebook.com/v20.0/me/businesses?access_token=${accessToken}&fields=id,name&limit=50`)
+  const dB = await rB.json()
+  console.log('[oauth-callback] B (businesses):', JSON.stringify(dB))
+  for (const biz of (dB.data ?? [])) {
+    const r = await fetch(`https://graph.facebook.com/v20.0/${biz.id}/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name&limit=50`)
+    const d = await r.json()
+    addWabas(d.data ?? [])
   }
 
-  // Ruta C: WABA ya guardado para este tenant (re-autenticación)
+  // Ruta C: business_users → negocios donde el usuario tiene CUALQUIER rol (no solo propietario)
+  const rC = await fetch(`https://graph.facebook.com/v20.0/me/business_users?access_token=${accessToken}&fields=id,business{id,name}&limit=50`)
+  const dC = await rC.json()
+  console.log('[oauth-callback] C (business_users):', JSON.stringify(dC))
+  for (const bu of (dC.data ?? [])) {
+    if (!bu.business?.id) continue
+    const r = await fetch(`https://graph.facebook.com/v20.0/${bu.business.id}/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name&limit=50`)
+    const d = await r.json()
+    addWabas(d.data ?? [])
+  }
+
+  // Ruta D: WABA ya guardado para este tenant (re-autenticación)
   if (wabaMap.size === 0) {
     const { data: cfg } = await supabase.from('config_meta').select('wa_business_account_id').eq('tenant_id', perfil.tenant_id).maybeSingle()
     if (cfg?.wa_business_account_id) {
-      const r5 = await fetch(`https://graph.facebook.com/v20.0/${cfg.wa_business_account_id}?access_token=${accessToken}&fields=id,name`)
-      const d5 = await r5.json()
-      console.log('[oauth-callback] Ruta C (existing):', JSON.stringify(d5))
-      if (d5.id) addWabas([d5])
+      const r = await fetch(`https://graph.facebook.com/v20.0/${cfg.wa_business_account_id}?access_token=${accessToken}&fields=id,name`)
+      const d = await r.json()
+      if (d.id) addWabas([d])
     }
   }
 
-  if (wabaMap.size === 0) {
-    console.error('[oauth-callback] Sin WABAs para tenant', perfil.tenant_id)
-    return popupComplete(request.nextUrl, { success: 'false', error: 'sin_waba' })
-  }
-
-  // ── Para cada WABA, obtener TODOS sus números ───────────────────────────────
+  // ── Obtener números de todos los WABAs ──────────────────────────────────────
   const allPhones: PhoneEntry[] = []
-
   for (const waba of wabaMap.values()) {
-    const r4 = await fetch(
-      `https://graph.facebook.com/v20.0/${waba.id}/phone_numbers?access_token=${accessToken}&fields=id,display_phone_number,verified_name&limit=50`
-    )
-    const d4 = await r4.json()
-    const wabaLabel = waba.name || waba.biz_name || `WABA ${waba.id}`
-    console.log(`[oauth-callback] Números WABA ${waba.id} (${wabaLabel}):`, JSON.stringify(d4))
-    for (const p of (d4.data ?? [])) {
+    const r = await fetch(`https://graph.facebook.com/v20.0/${waba.id}/phone_numbers?access_token=${accessToken}&fields=id,display_phone_number,verified_name&limit=50`)
+    const d = await r.json()
+    console.log(`[oauth-callback] Números WABA ${waba.id}:`, JSON.stringify(d))
+    for (const p of (d.data ?? [])) {
       allPhones.push({
         id:                   p.id,
         display_phone_number: p.display_phone_number,
         verified_name:        p.verified_name ?? '',
         waba_id:              waba.id,
-        waba_name:            wabaLabel,
+        waba_name:            waba.name || `WABA ${waba.id}`,
       })
     }
   }
 
-  if (allPhones.length === 0) {
-    return popupComplete(request.nextUrl, { success: 'false', error: 'sin_numeros' })
-  }
+  console.log(`[oauth-callback] Total WABAs: ${wabaMap.size}, Total números: ${allPhones.length}`)
 
-  // ── Ir siempre al popup-select para que el usuario confirme ─────────────────
+  // Ir siempre a popup-select (aunque no haya números — el usuario puede buscar por ID)
   const selectUrl = new URL('/admin/mensajes/popup-select', request.url)
   selectUrl.searchParams.set('phones', encodeURIComponent(JSON.stringify(allPhones)))
   selectUrl.searchParams.set('token',  accessToken)
