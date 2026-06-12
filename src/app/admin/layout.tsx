@@ -230,8 +230,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js')
-        .then(reg => {
-          // Si hay un SW esperando (nueva versión), activarlo
+        .then(async reg => {
+          // Activar nueva versión del SW si hay una esperando
           if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' })
           reg.addEventListener('updatefound', () => {
             const sw = reg.installing
@@ -241,6 +241,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               }
             })
           })
+
+          // Si el permiso ya estaba dado, suscribir push automáticamente
+          // (usuarios que dieron permiso antes de que existiera Web Push)
+          if ('Notification' in window && Notification.permission === 'granted') {
+            suscribirPush(reg)
+          }
         })
         .catch(() => { /* sin SW */ })
 
