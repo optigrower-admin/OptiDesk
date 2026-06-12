@@ -68,6 +68,15 @@ function formatDuracion(ms: number): string {
   return `${Math.max(m, 1)} min`
 }
 
+// PostgREST may return the embedded join as an object (many-to-one) or array —
+// normalize to always have an array so the rest of the code works uniformly.
+function normalizeClientes(raw: unknown): { id: string; nombre: string | null }[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw as { id: string; nombre: string | null }[]
+  if (typeof raw === 'object') return [raw as { id: string; nombre: string | null }]
+  return []
+}
+
 function getDisplayName(conv: Conversacion): string {
   if (conv.clientes?.[0]?.nombre) return conv.clientes[0].nombre!
   if (conv.canal === 'whatsapp') return formatPhone(conv.canal_contact_id)
@@ -185,7 +194,9 @@ export default function BandejaPage() {
     if (filterMias && profile.id) q = q.eq('assigned_to', profile.id)
 
     const { data } = await q
-    const nuevas = (data as Conversacion[]) ?? []
+    // Normalize clientes: PostgREST returns object for many-to-one joins, but we need arrays
+    const nuevas: Conversacion[] = ((data ?? []) as (Omit<Conversacion, 'clientes'> & { clientes: unknown })[])
+      .map(c => ({ ...c, clientes: normalizeClientes(c.clientes) }))
 
     // Detectar mensajes nuevos para notificación
     if (convsPrevRef.current.length > 0) {
