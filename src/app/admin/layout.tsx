@@ -69,44 +69,42 @@ type ConvSnap = {
   canal_contact_id: string
   clientes: { nombre: string | null }[] | null
 }
+type NotifToast = { nombre: string; canal: string; texto: string; convId: string }
 
-type NotifToast = {
-  nombre: string
-  canal: string
-  texto: string
-  convId: string
-}
-
-// ── Sonido de mensaje (Web Audio API, sin archivos) ───────────────────────────
+// ── Ping de dos notas ascendentes (D5 → A5) ──────────────────────────────────
 function playMsgSound() {
   try {
-    type WinAudio = Window & { webkitAudioContext?: typeof AudioContext }
-    const Ctx = window.AudioContext ?? (window as WinAudio).webkitAudioContext
+    type WA = Window & { webkitAudioContext?: typeof AudioContext }
+    const Ctx = window.AudioContext ?? (window as WA).webkitAudioContext
     if (!Ctx) return
     const ctx = new Ctx()
-    const osc  = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(880, ctx.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15)
-    gain.gain.setValueAtTime(0.25, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.45)
-    osc.onended = () => ctx.close()
-  } catch { /* autoplay bloqueado o no soportado */ }
+
+    const ping = (freq: number, startAt: number, vol: number, dur: number) => {
+      const osc  = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(vol, startAt)
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur)
+      osc.start(startAt); osc.stop(startAt + dur)
+    }
+
+    ping(587,  ctx.currentTime,        0.30, 0.22)   // Re4 — primer ping
+    ping(880,  ctx.currentTime + 0.13, 0.25, 0.28)   // La4 — segundo ping (ascendente)
+    ping(1760, ctx.currentTime + 0.13, 0.07, 0.18)   // La5 — armónico suave (brillo)
+
+    setTimeout(() => ctx.close(), 900)
+  } catch { /* autoplay bloqueado */ }
 }
 
-// ── Notificación via Service Worker (funciona con Chrome en otra ventana) ─────
+// ── Notificación via Service Worker ──────────────────────────────────────────
 function notificarViaSW(title: string, body: string, tag: string) {
   if (!('serviceWorker' in navigator) || Notification.permission !== 'granted') return
 
   const send = (sw: ServiceWorker | null) => {
     if (!sw) {
-      // Fallback sin SW
-      try { new Notification(title, { body, icon: '/icons/icon-192.png', tag }) } catch { /* ok */ }
+      try { new Notification(title, { body, icon: '/icons/icon-192.png', tag }) } catch { /**/ }
       return
     }
     sw.postMessage({ type: 'SHOW_NOTIFICATION', title, body, tag, url: '/admin/mensajes/bandeja' })
@@ -123,21 +121,21 @@ function notificarViaSW(title: string, body: string, tag: string) {
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const router = useRouter()
+  const router   = useRouter()
   const { profile } = useAuth()
   const { tienePermiso, getOrden } = usePermisos()
   const supabase = createClient()
-  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+
+  const [logoUrl, setLogoUrl]           = useState<string | null>(null)
   const [nombreNegocio, setNombreNegocio] = useState<string | null>(null)
+  const [openGroups, setOpenGroups]     = useState<Record<string, boolean>>({ 'serv-tec': true, 'mensajes': false })
 
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    'serv-tec': true,
-    'mensajes': false,
-  })
+  // ── Notificaciones ───────────────────────────────────────────────────────
+  const [unreadTotal, setUnreadTotal]   = useState(0)
+  const [notifToast, setNotifToast]     = useState<NotifToast | null>(null)
+  const [notifPerm, setNotifPerm]       = useState<NotificationPermission>('default')
+  const [showNotifModal, setShowNotifModal] = useState(false)
 
-  // ── Estado de no leídos + toast ──────────────────────────────────────────
-  const [unreadTotal, setUnreadTotal] = useState(0)
-  const [notifToast, setNotifToast]   = useState<NotifToast | null>(null)
   const prevConvsRef  = useRef<ConvSnap[]>([])
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -156,65 +154,83 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .in('estado', ['abierta', 'pendiente'])
 
     const convs = (data ?? []) as ConvSnap[]
-    const total = convs.reduce((s, c) => s + (c.no_leidos_count ?? 0), 0)
-    setUnreadTotal(total)
+    setUnreadTotal(convs.reduce((s, c) => s + (c.no_leidos_count ?? 0), 0))
 
     if (detectar && prevConvsRef.current.length > 0) {
       const isBandeja = pathname.startsWith('/admin/mensajes/bandeja')
-
       for (const conv of convs) {
         const prev = prevConvsRef.current.find(c => c.id === conv.id)
-        const esMensajeNuevo =
+        const esNuevo =
           (conv.no_leidos_count ?? 0) > (prev?.no_leidos_count ?? 0) ||
           (!prev && (conv.no_leidos_count ?? 0) > 0)
-        if (!esMensajeNuevo) continue
+        if (!esNuevo) continue
 
         const nombre = conv.clientes?.[0]?.nombre ?? conv.canal_contact_id
         const canal  = CANAL_LABEL[conv.canal] ?? conv.canal
         const texto  = conv.ultimo_mensaje_texto ?? ''
 
-        // Sonido siempre que llegue un mensaje
         playMsgSound()
 
-        // Toast in-app cuando no está en bandeja
-        if (!isBandeja) {
-          mostrarToast({ nombre, canal, texto, convId: conv.id })
-        }
+        if (!isBandeja) mostrarToast({ nombre, canal, texto, convId: conv.id })
 
-        // Notificación del browser/OS via Service Worker
         notificarViaSW(
           `${CANAL_ICON[conv.canal] ?? '💬'} ${nombre}`,
-          texto ? `${texto.slice(0, 100)}` : `Nuevo mensaje de ${canal}`,
+          texto ? texto.slice(0, 120) : `Nuevo mensaje de ${canal}`,
           conv.id
         )
         break
       }
     }
-
     prevConvsRef.current = convs
   }, [profile?.tenant_id, pathname, mostrarToast])
 
-  // ── Registrar SW + pedir permiso de notificaciones ───────────────────────
-  useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => { /* silencioso */ })
+  // ── Activar notificaciones (requiere click del usuario) ──────────────────
+  const activarNotificaciones = async () => {
+    if (!('Notification' in window)) return
+    if (notifPerm === 'denied') {
+      setShowNotifModal(true)
+      return
+    }
+    const result = await Notification.requestPermission()
+    setNotifPerm(result)
+    if (result === 'granted') {
+      playMsgSound()
+      setShowNotifModal(false)
+    }
+  }
 
-      // Cuando el SW nos avisa que el usuario hizo click en la notificación
-      navigator.serviceWorker.addEventListener('message', (e) => {
-        if (e.data?.type === 'SW_NAV' && e.data.url) router.push(e.data.url)
+  // ── Registrar SW ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if ('Notification' in window) setNotifPerm(Notification.permission)
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => {
+          // Si hay un SW esperando (nueva versión), activarlo
+          if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' })
+          reg.addEventListener('updatefound', () => {
+            const sw = reg.installing
+            sw?.addEventListener('statechange', () => {
+              if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+                sw.postMessage({ type: 'SKIP_WAITING' })
+              }
+            })
+          })
+        })
+        .catch(() => { /* sin SW */ })
+
+      navigator.serviceWorker.addEventListener('message', e => {
+        if (e.data?.type === 'SW_NAV') router.push(e.data.url)
       })
     }
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission()
-    }
+
     cargarNoLeidos()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Realtime global (toda la sesión) ─────────────────────────────────────
+  // ── Realtime global ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!profile?.tenant_id) return
-
     const ch = supabase
       .channel(`layout-${profile.tenant_id}`)
       .on('postgres_changes', {
@@ -222,9 +238,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         filter: `tenant_id=eq.${profile.tenant_id}`,
       }, () => cargarNoLeidos(true))
       .subscribe()
-
-    const fallback = setInterval(() => cargarNoLeidos(true), 20000)
-    return () => { supabase.removeChannel(ch); clearInterval(fallback) }
+    const t = setInterval(() => cargarNoLeidos(true), 20000)
+    return () => { supabase.removeChannel(ch); clearInterval(t) }
   }, [profile?.tenant_id, cargarNoLeidos])
 
   useEffect(() => {
@@ -239,7 +254,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     for (const g of NAV_GROUPS) {
       if (g.items.some(i => pathname.startsWith(i.href)))
-        setOpenGroups(prev => ({ ...prev, [g.key]: true }))
+        setOpenGroups(p => ({ ...p, [g.key]: true }))
     }
   }, [pathname])
 
@@ -255,17 +270,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         return oa - ob
       })
 
-  const standaloneItems = filterAndSort(STANDALONE_NAV)
-  const isBandejaActive = pathname.startsWith('/admin/mensajes/bandeja')
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
+  const standaloneItems  = filterAndSort(STANDALONE_NAV)
+  const isBandejaActive  = pathname.startsWith('/admin/mensajes/bandeja')
+  const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
   return (
     <div className="flex h-screen bg-gray-50">
       <aside className="w-48 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+        {/* Logo */}
         <div className="p-4 border-b">
           <div className="flex items-center gap-2">
             {logoUrl ? (
@@ -283,9 +295,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {NAV_GROUPS.map((group, idx) => {
             const groupItems = filterAndSort(group.items)
             if (groupItems.length === 0) return null
-            const isOpen = openGroups[group.key]
+            const isOpen     = openGroups[group.key]
             const esMensajes = group.key === 'mensajes'
-
             return (
               <div key={group.key} className={idx > 0 ? 'mt-1' : ''}>
                 <button
@@ -333,7 +344,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
 
           {standaloneItems.length > 0 && <div className="border-t border-gray-100 my-1" />}
-
           {standaloneItems.map(item => (
             <Link key={item.href} href={item.href}
               className={cn(
@@ -348,13 +358,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           ))}
         </nav>
 
-        <div className="p-3 border-t">
-          <div className="px-3 py-2 mb-1">
+        {/* Perfil, notificaciones y logout */}
+        <div className="p-3 border-t space-y-1">
+          <div className="px-3 py-2">
             <p className="text-xs font-medium text-gray-900 truncate">{profile?.nombre}</p>
             <p className="text-xs text-gray-500 truncate">
               {profile?.rol === 'gerencia' ? 'Gerencia' : 'Administración'}
             </p>
           </div>
+
+          {/* Botón de activar notificaciones */}
+          {'Notification' in (typeof window !== 'undefined' ? window : {}) && (
+            <button
+              onClick={activarNotificaciones}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors',
+                notifPerm === 'granted'
+                  ? 'text-green-600 hover:bg-green-50'
+                  : 'text-orange-500 hover:bg-orange-50 font-medium'
+              )}
+            >
+              <span className="text-sm">{notifPerm === 'granted' ? '🔔' : '🔕'}</span>
+              <span>{notifPerm === 'granted' ? 'Notificaciones activas' : 'Activar notificaciones'}</span>
+            </button>
+          )}
+
           <button onClick={handleLogout}
             className="w-full text-left px-3 py-2 text-sm text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
             Cerrar sesión
@@ -366,7 +394,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {children}
       </main>
 
-      {/* Toast in-app — esquina inferior derecha */}
+      {/* Toast in-app */}
       {notifToast && (
         <div className="fixed bottom-5 right-5 z-50 bg-white border border-gray-200 shadow-xl rounded-xl p-3.5 flex items-start gap-3 w-80 animate-slide-up">
           <div className="w-9 h-9 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-lg mt-0.5">
@@ -377,11 +405,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <p className="text-xs font-semibold text-gray-900 truncate">{notifToast.nombre}</p>
               <span className="text-xs text-gray-400 flex-shrink-0">{notifToast.canal}</span>
             </div>
-            {notifToast.texto ? (
-              <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">{notifToast.texto}</p>
-            ) : (
-              <p className="text-xs text-gray-400 italic">Nuevo mensaje</p>
-            )}
+            {notifToast.texto
+              ? <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">{notifToast.texto}</p>
+              : <p className="text-xs text-gray-400 italic">Nuevo mensaje</p>
+            }
             <button
               onClick={() => { setNotifToast(null); router.push('/admin/mensajes/bandeja') }}
               className="mt-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 transition-colors"
@@ -394,6 +421,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+        </div>
+      )}
+
+      {/* Modal cuando notificaciones bloqueadas en Chrome */}
+      {showNotifModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowNotifModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="text-3xl mb-3 text-center">🔕</div>
+            <h3 className="font-bold text-gray-900 text-center mb-2">Notificaciones bloqueadas</h3>
+            <p className="text-sm text-gray-500 text-center mb-4">
+              Chrome bloqueó el permiso. Para activarlas:
+            </p>
+            <ol className="text-sm text-gray-700 space-y-1.5 mb-5 list-decimal list-inside">
+              <li>Haz click en el <strong>candado 🔒</strong> en la barra de Chrome</li>
+              <li>Busca <strong>&quot;Notificaciones&quot;</strong></li>
+              <li>Cambia a <strong>&quot;Permitir&quot;</strong></li>
+              <li>Recarga la página</li>
+            </ol>
+            <button onClick={() => setShowNotifModal(false)}
+              className="w-full py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition-colors">
+              Entendido
+            </button>
+          </div>
         </div>
       )}
     </div>

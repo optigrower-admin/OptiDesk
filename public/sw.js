@@ -25,6 +25,8 @@ self.addEventListener('activate', (event) => {
 // ── Notificaciones de mensajes ────────────────────────────────────────────────
 self.addEventListener('message', (event) => {
   const data = event.data
+  // Activar nueva versión del SW inmediatamente cuando la página lo pide
+  if (data?.type === 'SKIP_WAITING') { self.skipWaiting(); return }
   if (!data || data.type !== 'SHOW_NOTIFICATION') return
 
   event.waitUntil(
