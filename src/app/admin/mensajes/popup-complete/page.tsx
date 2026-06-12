@@ -1,54 +1,72 @@
 'use client'
 import { useEffect, useState } from 'react'
 
+const CHANNEL_LABELS: Record<string, string> = {
+  whatsapp:  'WhatsApp',
+  messenger: 'Messenger',
+  instagram: 'Instagram',
+}
+
+const ERROR_MSGS: Record<string, string> = {
+  sin_waba:      'No se encontró una cuenta de WhatsApp Business.',
+  sin_numeros:   'No hay números registrados en tu WABA.',
+  sin_paginas:   'No se encontraron páginas de Facebook en tu cuenta.',
+  sin_instagram: 'No se encontró Instagram profesional vinculado a ninguna página.',
+  no_code:       'No se recibió autorización de Meta.',
+  oauth_denied:  'Acceso denegado. Intenta de nuevo.',
+  sin_perfil:    'Error de sesión. Recarga OptiDesk e intenta de nuevo.',
+  token_error:   'Error al obtener el token de Meta. Intenta de nuevo.',
+}
+
 export default function PopupCompletePage() {
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [status,  setStatus]  = useState<'loading' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
+  const [channel, setChannel] = useState('whatsapp')
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
+    const params  = new URLSearchParams(window.location.search)
     const success = params.get('success') === 'true'
     const error   = params.get('error') ?? ''
     const phone   = params.get('phone') ?? ''
-
-    const errorMessages: Record<string, string> = {
-      sin_waba:     'No se encontró una cuenta de WhatsApp Business. Agrega tu número en Meta Business Manager.',
-      sin_numeros:  'No hay números registrados en tu cuenta de WhatsApp Business.',
-      no_code:      'No se recibió autorización de Meta.',
-      oauth_denied: 'Acceso denegado. Intenta de nuevo.',
-      sin_perfil:   'Error de sesión. Recarga OptiDesk e intenta de nuevo.',
-      token_error:  'Error al obtener el token de Meta. Intenta de nuevo.',
-    }
+    const detail  = params.get('detail') ?? phone
+    const ch      = params.get('channel') ?? 'whatsapp'
+    setChannel(ch)
 
     if (success) {
       setStatus('success')
-      setMessage(phone ? `Número ${phone} conectado` : 'WhatsApp conectado correctamente')
+      setMessage(detail ? `${CHANNEL_LABELS[ch] ?? ch} conectado: ${detail}` : `${CHANNEL_LABELS[ch] ?? ch} conectado correctamente`)
     } else {
       setStatus('error')
-      setMessage(errorMessages[error] ?? `Error al conectar (${error})`)
+      setMessage(ERROR_MSGS[error] ?? `Error al conectar (${error})`)
     }
 
-    // Enviar resultado al padre y cerrar el popup
     if (window.opener) {
       window.opener.postMessage({
-        type: 'META_OAUTH_COMPLETE',
+        type:    'META_OAUTH_COMPLETE',
+        channel: ch,
         success,
         error,
-        phone,
+        detail,
+        // legacy compat
+        phone: phone || detail,
       }, window.location.origin)
-      setTimeout(() => window.close(), success ? 1500 : 3000)
+      setTimeout(() => window.close(), success ? 1500 : 3500)
     }
   }, [])
+
+  const channelLabel = CHANNEL_LABELS[channel] ?? channel
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center p-6">
       <div className="max-w-sm w-full text-center">
+
         {status === 'loading' && (
           <>
             <div className="w-12 h-12 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-gray-600 text-sm">Conectando con Meta...</p>
+            <p className="text-gray-600 text-sm">Conectando {channelLabel}...</p>
           </>
         )}
+
         {status === 'success' && (
           <>
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -61,6 +79,7 @@ export default function PopupCompletePage() {
             <p className="text-xs text-gray-400 mt-3">Esta ventana se cerrará sola...</p>
           </>
         )}
+
         {status === 'error' && (
           <>
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
