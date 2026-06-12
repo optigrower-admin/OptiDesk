@@ -57,6 +57,22 @@ self.addEventListener('notificationclick', (event) => {
   )
 })
 
+// ── Push desde servidor (funciona con Chrome cerrado) ─────────────────────────
+self.addEventListener('push', (event) => {
+  let data = { title: 'OptiDesk', body: 'Nuevo mensaje', tag: 'mensaje', url: '/admin/mensajes/bandeja' }
+  try { if (event.data) data = { ...data, ...event.data.json() } } catch { /**/ }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body:     data.body,
+      icon:     '/icons/icon-192.png',
+      tag:      data.tag,
+      renotify: true,
+      data:     { url: data.url },
+    })
+  )
+})
+
 self.addEventListener('fetch', (event) => {
   // Solo cachear requests GET de assets estáticos
   if (event.request.method !== 'GET') return

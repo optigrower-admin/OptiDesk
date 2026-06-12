@@ -311,7 +311,12 @@ export default function BandejaPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
-      setMensajes(prev => prev.map(m => m.id === tempMsg.id ? json.mensaje : m))
+      const real = json.mensaje as Mensaje
+      setMensajes(prev => {
+        // Quitar el temp; si Realtime ya agregó el real, no duplicar
+        const sinTemp = prev.filter(m => m.id !== tempMsg.id)
+        return sinTemp.some(m => m.id === real.id) ? sinTemp : [...sinTemp, real]
+      })
     } catch (e: unknown) {
       setMensajes(prev => prev.filter(m => m.id !== tempMsg.id))
       toast(e instanceof Error ? e.message : 'Error al enviar', false)

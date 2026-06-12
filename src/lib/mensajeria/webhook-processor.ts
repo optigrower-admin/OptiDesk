@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendPushToTenant } from './push'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
 
@@ -127,6 +128,12 @@ async function procesarMensajeIndividual(
     meta_message_id: metaMessageId || null,
     leido_por_asesor: false,
   })
+
+  // Push notification cuando Chrome está cerrado o en background
+  if (contenido) {
+    const remitente = canalContactId
+    sendPushToTenant(tenantId, `📱 ${remitente}`, contenido.slice(0, 100)).catch(() => {})
+  }
 
   await supabase.from('conversaciones').update({
     ultimo_mensaje_at: now,

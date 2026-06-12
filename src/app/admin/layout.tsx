@@ -184,6 +184,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     prevConvsRef.current = convs
   }, [profile?.tenant_id, pathname, mostrarToast])
 
+  // ── Suscribir a Web Push (funciona con Chrome cerrado) ───────────────────
+  const suscribirPush = async (reg: ServiceWorkerRegistration) => {
+    try {
+      const res = await fetch('/api/admin/mensajes/push-public-key')
+      if (!res.ok) return
+      const { publicKey } = await res.json()
+      if (!publicKey) return
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: publicKey,
+      })
+      await fetch('/api/admin/mensajes/push-subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub }),
+      })
+    } catch { /* push no soportado */ }
+  }
+
   // ── Activar notificaciones (requiere click del usuario) ──────────────────
   const activarNotificaciones = async () => {
     if (!('Notification' in window)) return
@@ -196,6 +216,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (result === 'granted') {
       playMsgSound()
       setShowNotifModal(false)
+      // Suscribir a Web Push para notificaciones con Chrome cerrado
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready
+        suscribirPush(reg)
+      }
     }
   }
 
