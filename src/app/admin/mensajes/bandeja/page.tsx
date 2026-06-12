@@ -304,11 +304,14 @@ export default function BandejaPage() {
     if (loadingConvs) return
     const sinNombre = convs.some(c => c.canal === 'messenger' && !c.clientes?.[0]?.nombre)
     if (!sinNombre) return
-    messengerSyncedRef.current = true
+    messengerSyncedRef.current = true   // bloquear para no disparar múltiples veces en paralelo
     fetch('/api/admin/mensajes/sync-messenger-names', { method: 'POST' })
       .then(r => r.json())
-      .then(data => { if (data.updated > 0) cargarConversaciones(true) })
-      .catch(() => {})
+      .then(data => {
+        if (data.updated > 0) cargarConversaciones(true)
+        else messengerSyncedRef.current = false  // si no actualizó nada, permitir reintento
+      })
+      .catch(() => { messengerSyncedRef.current = false })
   }, [convs, loadingConvs, cargarConversaciones])
 
   // Cuando cambia selectedConv, pre-cargar nombre en el editor

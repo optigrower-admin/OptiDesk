@@ -256,17 +256,33 @@ async function crearClienteDesdeMessenger(
 ): Promise<string | null> {
   try {
     const { data: cfg } = await supabase
-      .from('config_meta').select('messenger_access_token_enc')
+      .from('config_meta').select('messenger_access_token_enc, messenger_page_id')
       .eq('tenant_id', tenantId).maybeSingle()
     if (!cfg?.messenger_access_token_enc) return null
 
     let token = cfg.messenger_access_token_enc
     try { const { decrypt } = await import('@/lib/crypto'); token = decrypt(cfg.messenger_access_token_enc) } catch { /* dev */ }
 
+    // Intentar PSID endpoint primero
+    let nombre: string | null = null
     const r = await fetch(`https://graph.facebook.com/v20.0/${psid}?fields=name&access_token=${token}`)
-    if (!r.ok) return null
-    const profile = await r.json() as { name?: string }
-    const nombre = profile.name ?? null
+    if (r.ok) {
+      const profile = await r.json() as { name?: string }
+      nombre = profile.name ?? null
+    }
+
+    // Fallback: buscar nombre en el listado de conversaciones de la página
+    if (!nombre) {
+      const pageId = cfg.messenger_page_id ?? ''
+      const rc = await fetch(`https://graph.facebook.com/v20.0/me/conversations?fields=participants%7Bid%2Cname%7D&limit=200&access_token=${token}`)
+      if (rc.ok) {
+        const dc = await rc.json() as { data?: Array<{ participants?: { data?: Array<{ id: string; name: string }> } }> }
+        for (const fbConv of dc.data ?? []) {
+          const p = fbConv.participants?.data?.find(p => p.id === psid && p.id !== pageId)
+          if (p?.name) { nombre = p.name; break }
+        }
+      }
+    }
 
     const { data: nuevo } = await supabase
       .from('clientes')
