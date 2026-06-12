@@ -204,7 +204,11 @@ export default function BandejaPage() {
       }
     }
     convsPrevRef.current = nuevas
-    setConvs(nuevas)
+    // Preservar clientes (nombre) que ya teníamos en estado local si el join devuelve vacío
+    setConvs(prev => nuevas.map(c => {
+      const old = prev.find(p => p.id === c.id)
+      return { ...c, clientes: c.clientes?.length ? c.clientes : old?.clientes ?? [] }
+    }))
     setLoadingConvs(false)
   }, [profile?.tenant_id, profile?.id, filterEstado, filterCanal, filterMias, selectedId, notificar])
 
@@ -439,11 +443,17 @@ export default function BandejaPage() {
                     <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${cm.color}`} title={cm.label} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <div className="flex items-center justify-between gap-1">
                       <span className="font-medium text-sm text-gray-900 truncate">{getDisplayName(conv)}</span>
                       <span className="flex-shrink-0 text-xs text-gray-400">{timeAgo(conv.ultimo_mensaje_at)}</span>
                     </div>
-                    <div className="flex items-center justify-between gap-1">
+                    {/* Teléfono pequeño si hay nombre guardado */}
+                    {conv.clientes?.[0]?.nombre && conv.canal === 'whatsapp' && (
+                      <p className="text-xs text-gray-400 truncate leading-tight">
+                        {formatPhone(conv.canal_contact_id)}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between gap-1 mt-0.5">
                       <p className="text-xs text-gray-500 truncate">
                         {conv.ultimo_mensaje_direccion === 'saliente' && <span className="text-blue-500">Tú: </span>}
                         {conv.ultimo_mensaje_texto ?? 'Sin mensajes'}
