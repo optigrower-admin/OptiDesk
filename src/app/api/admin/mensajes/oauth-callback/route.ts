@@ -4,34 +4,34 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-const APP_ID      = process.env.NEXT_PUBLIC_META_APP_ID!
-const APP_SECRET  = process.env.META_APP_SECRET!
+const APP_ID       = process.env.NEXT_PUBLIC_META_APP_ID!
+const APP_SECRET   = process.env.META_APP_SECRET!
 const REDIRECT_URI = 'https://opti-desk.vercel.app/api/admin/mensajes/oauth-callback'
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = request.nextUrl
-  const code  = searchParams.get('code')
-  const error = searchParams.get('error')
+function popupComplete(base: URL, params: Record<string, string>) {
+  const url = new URL('/admin/mensajes/popup-complete', base)
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
+  return NextResponse.redirect(url)
+}
 
-  const base = new URL('/admin/mensajes/conexion', request.url)
+export async function GET(request: NextRequest) {
+  const sp    = request.nextUrl.searchParams
+  const code  = sp.get('code')
+  const error = sp.get('error')
 
   if (error || !code) {
-    base.searchParams.set('error', error ?? 'no_code')
-    return NextResponse.redirect(base)
+    return popupComplete(request.nextUrl, { success: 'false', error: error ?? 'no_code' })
   }
 
-  // Verificar sesión del usuario (cookie de Supabase viene en el request)
+  // Verificar sesión (cookie de Supabase presente en el popup)
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.redirect(new URL('/login', request.url))
 
   const { data: perfil } = await supabase.from('usuarios').select('tenant_id').eq('id', user.id).single()
-  if (!perfil) {
-    base.searchParams.set('error', 'sin_perfil')
-    return NextResponse.redirect(base)
-  }
+  if (!perfil) return popupComplete(request.nextUrl, { success: 'false', error: 'sin_perfil' })
 
-  // Intercambiar código por token (con redirect_uri correcto)
+  // Intercambiar código por token
   const tokenRes = await fetch(
     `https://graph.facebook.com/v20.0/oauth/access_token` +
     `?client_id=${APP_ID}&client_secret=${APP_SECRET}` +
@@ -39,8 +39,7 @@ export async function GET(request: NextRequest) {
   )
   const tokenData = await tokenRes.json()
   if (!tokenData.access_token) {
-    base.searchParams.set('error', 'token_' + (tokenData.error?.code ?? 'unknown'))
-    return NextResponse.redirect(base)
+    return popupComplete(request.nextUrl, { success: 'false', error: 'token_error' })
   }
 
   // Extender a token de larga duración (60 días)
@@ -49,14 +48,13 @@ export async function GET(request: NextRequest) {
     `?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}` +
     `&fb_exchange_token=${tokenData.access_token}`
   )
-  const llData = await llRes.json()
+  const llData    = await llRes.json()
   const accessToken = llData.access_token ?? tokenData.access_token
 
   // Buscar WABA por múltiples rutas
-  let wabaId = ''
-  let wabaName = ''
+  let wabaId = ''; let wabaName = ''
 
-  // Ruta A: directo en /me/whatsapp_business_accounts
+  // Ruta A: directo
   const r1 = await fetch(`https://graph.facebook.com/v20.0/me/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name`)
   const d1 = await r1.json()
   if (d1.data?.length) { wabaId = d1.data[0].id; wabaName = d1.data[0].name }
@@ -73,41 +71,41 @@ export async function GET(request: NextRequest) {
   }
 
   if (!wabaId) {
-    base.searchParams.set('error', 'sin_waba')
-    return NextResponse.redirect(base)
+    return popupComplete(request.nextUrl, { success: 'false', error: 'sin_waba' })
   }
 
   // Obtener números de teléfono
   const r4 = await fetch(`https://graph.facebook.com/v20.0/${wabaId}/phone_numbers?access_token=${accessToken}&fields=id,display_phone_number,verified_name`)
   const d4 = await r4.json()
-  const phoneNumbers: Array<{ id: string; display_phone_number: string; verified_name: string }> = d4.data ?? []
+  const phones: Array<{ id: string; display_phone_number: string; verified_name: string }> = d4.data ?? []
 
-  // Suscribir WABA al webhook
-  await fetch(`https://graph.facebook.com/v20.0/${wabaId}/subscribed_apps?access_token=${accessToken}&subscribed_fields=messages,message_template_status_update`, { method: 'POST' })
+  // Suscribir WABA al webhook de la plataforma
+  await fetch(
+    `https://graph.facebook.com/v20.0/${wabaId}/subscribed_apps?access_token=${accessToken}&subscribed_fields=messages,message_template_status_update`,
+    { method: 'POST' }
+  )
 
-  if (phoneNumbers.length === 0) {
-    // No hay números — guardar WABA y redirigir para que el usuario agregue número
-    base.searchParams.set('waba_id', wabaId)
-    base.searchParams.set('waba_name', encodeURIComponent(wabaName))
-    base.searchParams.set('token', accessToken)
-    base.searchParams.set('step', 'add_number')
-    return NextResponse.redirect(base)
+  // Sin números — abrir popup de selección vacío con mensaje
+  if (phones.length === 0) {
+    return popupComplete(request.nextUrl, { success: 'false', error: 'sin_numeros' })
   }
 
-  if (phoneNumbers.length === 1) {
-    // Un solo número — guardar automáticamente
-    await guardarConfig(perfil.tenant_id, wabaId, phoneNumbers[0], accessToken)
-    base.searchParams.set('connected', 'true')
-    return NextResponse.redirect(base)
+  // Un solo número — guardar automáticamente
+  if (phones.length === 1) {
+    await guardarConfig(perfil.tenant_id, wabaId, phones[0], accessToken)
+    return popupComplete(request.nextUrl, {
+      success: 'true',
+      phone: phones[0].display_phone_number,
+    })
   }
 
-  // Múltiples números — redirigir para selección
-  base.searchParams.set('waba_id', wabaId)
-  base.searchParams.set('waba_name', encodeURIComponent(wabaName))
-  base.searchParams.set('phones', encodeURIComponent(JSON.stringify(phoneNumbers)))
-  base.searchParams.set('token', accessToken)
-  base.searchParams.set('step', 'select')
-  return NextResponse.redirect(base)
+  // Múltiples números — mostrar selección en el popup
+  const selectUrl = new URL('/admin/mensajes/popup-select', request.url)
+  selectUrl.searchParams.set('waba_id', wabaId)
+  selectUrl.searchParams.set('waba_name', encodeURIComponent(wabaName))
+  selectUrl.searchParams.set('phones', encodeURIComponent(JSON.stringify(phones)))
+  selectUrl.searchParams.set('token', accessToken)
+  return NextResponse.redirect(selectUrl)
 }
 
 async function guardarConfig(
@@ -117,7 +115,7 @@ async function guardarConfig(
   accessToken: string
 ) {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-  let verifyToken = ''; for (let i = 0; i < 32; i++) verifyToken += chars[Math.floor(Math.random() * chars.length)]
+  let vt = ''; for (let i = 0; i < 32; i++) vt += chars[Math.floor(Math.random() * chars.length)]
 
   let tokenEnc = accessToken
   try { const { encrypt } = await import('@/lib/crypto'); tokenEnc = encrypt(accessToken) } catch { /* dev */ }
@@ -125,12 +123,12 @@ async function guardarConfig(
   const admin = createAdminClient()
   await admin.from('config_meta').upsert({
     tenant_id:                 tenantId,
-    meta_app_id:               process.env.NEXT_PUBLIC_META_APP_ID,
+    meta_app_id:               APP_ID,
     wa_business_account_id:    wabaId,
     wa_phone_number_id:        phone.id,
     wa_phone_number:           phone.display_phone_number,
     wa_access_token_enc:       tokenEnc,
-    meta_webhook_verify_token: verifyToken,
+    meta_webhook_verify_token: vt,
     estado_wa:                 'conectado',
     negocio_verificado:        true,
     limite_diario_wa:          1000,

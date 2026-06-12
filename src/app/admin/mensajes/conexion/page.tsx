@@ -119,48 +119,31 @@ export default function ConexionMetaPage() {
 
   useEffect(() => { cargar() }, [cargar])
 
-  // Manejar parámetros de URL del callback OAuth
+  // Fallback: manejar parámetros de URL si el popup fue bloqueado y redirigió en la misma pestaña
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    const step      = params.get('step')
+    const params    = new URLSearchParams(window.location.search)
     const error     = params.get('error')
     const connected = params.get('connected')
+    if (!error && !connected) return
 
     if (connected === 'true') {
       toast('WhatsApp conectado correctamente')
       cargar()
-      window.history.replaceState({}, '', '/admin/mensajes/conexion')
-      return
-    }
-
-    if (error) {
+    } else if (error) {
       const msgs: Record<string, string> = {
-        sin_waba:     'No se encontró cuenta de WhatsApp Business asociada.',
-        no_code:      'No se recibió autorización de Meta.',
-        oauth_denied: 'Acceso denegado por Meta.',
-        sin_perfil:   'Error de perfil de usuario.',
+        sin_waba:    'No se encontró cuenta de WhatsApp Business.',
+        no_code:     'No se recibió autorización de Meta.',
+        oauth_denied:'Acceso denegado por Meta.',
+        sin_perfil:  'Error de perfil de usuario.',
+        token_error: 'Error al obtener el token de acceso.',
+        sin_numeros: 'No hay números en tu cuenta de WhatsApp Business.',
       }
       toast(msgs[error] ?? `Error: ${error}`, false)
-      window.history.replaceState({}, '', '/admin/mensajes/conexion')
-      return
     }
-
-    if (step === 'select') {
-      try {
-        const phones = JSON.parse(decodeURIComponent(params.get('phones') ?? '[]'))
-        const wabaId   = params.get('waba_id') ?? ''
-        const wabaName = decodeURIComponent(params.get('waba_name') ?? '')
-        const token    = params.get('token') ?? ''
-        setSignupData({ waba_id: wabaId, waba_name: wabaName, phone_numbers: phones, access_token: token })
-        setSelectedPhone(phones[0] ?? null)
-        setSignupStep('select')
-        window.history.replaceState({}, '', '/admin/mensajes/conexion')
-      } catch { /* ignorar */ }
-    }
+    window.history.replaceState({}, '', '/admin/mensajes/conexion')
   }, []) // eslint-disable-line
 
-  // No se usa JS SDK — el flujo es server-side OAuth redirect
   useEffect(() => { setSdkReady(true) }, [])
 
   const isConnected = !!config && config.estado_wa !== 'desconectado' && config.estado_wa !== null
@@ -168,12 +151,53 @@ export default function ConexionMetaPage() {
   const appUrl    = typeof window !== 'undefined' ? window.location.origin : ''
   const webhookUrl = `${appUrl}/api/webhooks/meta`
 
-  // ── OAuth redirect (server-side, sin JS SDK) ─────────────────────────────────
+  // ── OAuth en popup ───────────────────────────────────────────────────────────
   const handleEmbeddedSignup = () => {
     const redirectUri = encodeURIComponent('https://opti-desk.vercel.app/api/admin/mensajes/oauth-callback')
     const scope = 'whatsapp_business_management,whatsapp_business_messaging'
     const url = `https://www.facebook.com/dialog/oauth?client_id=${process.env.NEXT_PUBLIC_META_APP_ID}&redirect_uri=${redirectUri}&scope=${scope}&response_type=code`
-    window.location.href = url
+
+    const w = 580, h = 680
+    const left = Math.round(window.screenX + (window.outerWidth - w) / 2)
+    const top  = Math.round(window.screenY + (window.outerHeight - h) / 2)
+    const popup = window.open(url, 'meta_oauth', `width=${w},height=${h},left=${left},top=${top},scrollbars=yes,resizable=yes`)
+
+    setSignupStep('loading')
+
+    let closedCheck: ReturnType<typeof setInterval>
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type !== 'META_OAUTH_COMPLETE') return
+      window.removeEventListener('message', handleMessage)
+      clearInterval(closedCheck)
+      const { success, error, phone } = event.data as { success: boolean; error?: string; phone?: string }
+      if (success) {
+        toast(phone ? `WhatsApp conectado: ${phone}` : 'WhatsApp conectado correctamente')
+        cargar()
+      } else {
+        const msgs: Record<string, string> = {
+          sin_waba:    'No se encontró cuenta de WhatsApp Business. Agrega tu número en Meta Business Manager.',
+          sin_numeros: 'No hay números registrados en tu WABA.',
+          no_code:     'No se recibió autorización de Meta.',
+          oauth_denied:'Acceso denegado. Intenta de nuevo.',
+          sin_perfil:  'Error de sesión. Recarga OptiDesk.',
+          token_error: 'Error al obtener el token de Meta.',
+        }
+        toast(msgs[error ?? ''] ?? `Error al conectar (${error ?? 'desconocido'})`, false)
+      }
+      setSignupStep('idle')
+    }
+
+    window.addEventListener('message', handleMessage)
+
+    closedCheck = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(closedCheck)
+        window.removeEventListener('message', handleMessage)
+        setSignupStep('idle')
+      }
+    }, 500)
   }
 
   const confirmarConexion = async () => {
