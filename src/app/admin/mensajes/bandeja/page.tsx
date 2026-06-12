@@ -312,30 +312,24 @@ export default function BandejaPage() {
 
   // ── Guardar nombre del contacto ───────────────────────────────────────────
   const guardarNombre = async () => {
-    if (!selectedConv) return
+    if (!selectedConv || !editNombre.trim()) return
     setSavingNombre(true)
-    const nombre = editNombre.trim()
     try {
-      if (selectedConv.cliente_id) {
-        await supabase.from('clientes').update({ nombre }).eq('id', selectedConv.cliente_id)
-        setConvs(cs => cs.map(c => c.id === selectedConv.id
-          ? { ...c, clientes: [{ id: selectedConv.cliente_id!, nombre }] }
-          : c))
-      } else {
-        const { data: nuevo } = await supabase
-          .from('clientes')
-          .insert({ nombre, telefono: selectedConv.canal_contact_id, tenant_id: profile?.tenant_id })
-          .select('id').single()
-        if (nuevo?.id) {
-          await supabase.from('conversaciones').update({ cliente_id: nuevo.id }).eq('id', selectedConv.id)
-          setConvs(cs => cs.map(c => c.id === selectedConv.id
-            ? { ...c, cliente_id: nuevo.id, clientes: [{ id: nuevo.id, nombre }] }
-            : c))
-        }
-      }
+      const res  = await fetch('/api/admin/mensajes/guardar-contacto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversacion_id: selectedConv.id, nombre: editNombre.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al guardar')
+      const { cliente_id, nombre } = json as { cliente_id: string; nombre: string }
+      setConvs(cs => cs.map(c => c.id === selectedConv.id
+        ? { ...c, cliente_id, clientes: [{ id: cliente_id, nombre }] }
+        : c))
       toast('Nombre guardado')
-    } catch { toast('Error al guardar', false) }
-    finally { setSavingNombre(false) }
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : 'Error al guardar', false)
+    } finally { setSavingNombre(false) }
   }
 
   // ── Enviar mensaje ────────────────────────────────────────────────────────
