@@ -51,6 +51,15 @@ function timeAgo(dateStr: string | null): string {
   return new Date(dateStr).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
 }
 
+function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, '')
+  if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`
+  if (d.length === 11) return `+${d.slice(0,1)} (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`
+  if (d.length === 12) return `+${d.slice(0,2)} (${d.slice(2,5)}) ${d.slice(5,8)}-${d.slice(8)}`
+  if (d.length === 13) return `+${d.slice(0,3)} (${d.slice(3,5)}) ${d.slice(5,9)}-${d.slice(9)}`
+  return raw
+}
+
 function getDisplayName(conv: Conversacion): string {
   if (conv.clientes?.[0]?.nombre) return conv.clientes[0].nombre!
   if (conv.canal === 'whatsapp') return conv.canal_contact_id
@@ -272,21 +281,21 @@ export default function BandejaPage() {
     try {
       if (selectedConv.cliente_id) {
         await supabase.from('clientes').update({ nombre }).eq('id', selectedConv.cliente_id)
+        setConvs(cs => cs.map(c => c.id === selectedConv.id
+          ? { ...c, clientes: [{ id: selectedConv.cliente_id!, nombre }] }
+          : c))
       } else {
         const { data: nuevo } = await supabase
           .from('clientes')
           .insert({ nombre, telefono: selectedConv.canal_contact_id, tenant_id: profile?.tenant_id })
-          .select('id')
-          .single()
+          .select('id').single()
         if (nuevo?.id) {
           await supabase.from('conversaciones').update({ cliente_id: nuevo.id }).eq('id', selectedConv.id)
+          setConvs(cs => cs.map(c => c.id === selectedConv.id
+            ? { ...c, cliente_id: nuevo.id, clientes: [{ id: nuevo.id, nombre }] }
+            : c))
         }
       }
-      setConvs(cs => cs.map(c => c.id === selectedConv.id ? {
-        ...c,
-        cliente_id: selectedConv.cliente_id ?? c.cliente_id,
-        clientes: [{ id: selectedConv.cliente_id ?? '', nombre }],
-      } : c))
       toast('Nombre guardado')
     } catch { toast('Error al guardar', false) }
     finally { setSavingNombre(false) }
@@ -590,7 +599,22 @@ export default function BandejaPage() {
                 {/* Contacto */}
                 <div>
                   <p className="text-xs text-gray-400 mb-1">Número / ID</p>
-                  <p className="text-sm font-mono text-gray-700 bg-gray-50 rounded-lg px-2 py-1.5 break-all">{selectedConv.canal_contact_id}</p>
+                  <div className="flex items-center gap-1.5 bg-gray-50 rounded-lg px-2 py-1.5">
+                    <p className="text-sm font-mono text-gray-700 flex-1 select-none">
+                      {selectedConv.canal === 'whatsapp'
+                        ? formatPhone(selectedConv.canal_contact_id)
+                        : selectedConv.canal_contact_id}
+                    </p>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(selectedConv.canal_contact_id)}
+                      title="Copiar número"
+                      className="text-gray-400 hover:text-gray-700 flex-shrink-0"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 {/* Nombre */}
                 <div>

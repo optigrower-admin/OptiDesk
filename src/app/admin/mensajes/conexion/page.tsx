@@ -233,7 +233,9 @@ export default function ConexionMetaPage() {
     </div>
   )
 
-  const pct = Math.min(Math.round(((config?.mensajes_iniciados_hoy ?? 0) / (config?.limite_diario_wa ?? 1000)) * 100), 100)
+  // Cuentas no verificadas: Meta limita a 250 conversaciones/día iniciadas por el negocio
+  const limiteDiario = config?.negocio_verificado ? (config?.limite_diario_wa ?? 1000) : 250
+  const pct = Math.min(Math.round(((config?.mensajes_iniciados_hoy ?? 0) / limiteDiario) * 100), 100)
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
@@ -262,10 +264,15 @@ export default function ConexionMetaPage() {
           connecting={!!busy.whatsapp}
           extra={config?.estado_wa === 'conectado' ? (
             <div className="mb-1 space-y-2">
+              {/* Verificación del negocio */}
+              <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg ${config?.negocio_verificado ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                <span>{config?.negocio_verificado ? '✓' : '⚠'}</span>
+                <span>{config?.negocio_verificado ? 'Negocio verificado · límite 1 000/día' : 'No verificado / en revisión · límite 250/día'}</span>
+              </div>
               <div>
                 <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                  <span>Mensajes hoy</span>
-                  <span className="font-medium">{config?.mensajes_iniciados_hoy ?? 0} / {config?.limite_diario_wa ?? 1000}</span>
+                  <span>Conversaciones iniciadas hoy</span>
+                  <span className={`font-medium ${pct >= 90 ? 'text-red-600' : ''}`}>{config?.mensajes_iniciados_hoy ?? 0} / {limiteDiario}</span>
                 </div>
                 <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${pct}%` }} />

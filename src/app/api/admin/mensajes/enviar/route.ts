@@ -118,5 +118,23 @@ export async function POST(req: NextRequest) {
     }).eq('id', conversacion_id)
   }
 
+  // Incrementar contador diario de conversaciones iniciadas (solo WA, no notas, no fallidos)
+  if (conv.canal === 'whatsapp' && tipo !== 'nota_interna' && estadoEnvio !== 'fallido') {
+    const { data: cfgMeta } = await admin
+      .from('config_meta')
+      .select('mensajes_iniciados_hoy, limite_reset_at')
+      .eq('tenant_id', perfil.tenant_id)
+      .maybeSingle()
+    if (cfgMeta) {
+      const ahora = new Date()
+      const resetAt = new Date(cfgMeta.limite_reset_at ?? 0)
+      const mismodia = resetAt.toDateString() === ahora.toDateString()
+      await admin.from('config_meta').update({
+        mensajes_iniciados_hoy: mismodia ? (cfgMeta.mensajes_iniciados_hoy ?? 0) + 1 : 1,
+        ...(mismodia ? {} : { limite_reset_at: ahora.toISOString() }),
+      }).eq('tenant_id', perfil.tenant_id)
+    }
+  }
+
   return NextResponse.json({ ok: true, mensaje: msg })
 }
