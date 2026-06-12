@@ -20,10 +20,11 @@ export async function GET(request: NextRequest) {
   const error = sp.get('error')
 
   if (error || !code) {
+    console.error('[oauth-callback] Sin código o error:', error)
     return popupComplete(request.nextUrl, { success: 'false', error: error ?? 'no_code' })
   }
 
-  // Verificar sesión (cookie de Supabase presente en el popup)
+  // Verificar sesión
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.redirect(new URL('/login', request.url))
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
     `&code=${code}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`
   )
   const tokenData = await tokenRes.json()
+  console.log('[oauth-callback] Token response:', JSON.stringify({ ...tokenData, access_token: tokenData.access_token ? '***' : undefined }))
   if (!tokenData.access_token) {
     return popupComplete(request.nextUrl, { success: 'false', error: 'token_error' })
   }
@@ -48,63 +50,96 @@ export async function GET(request: NextRequest) {
     `?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}` +
     `&fb_exchange_token=${tokenData.access_token}`
   )
-  const llData    = await llRes.json()
+  const llData      = await llRes.json()
   const accessToken = llData.access_token ?? tokenData.access_token
 
-  // Buscar WABA por múltiples rutas
+  // ── Buscar WABA ──────────────────────────────────────────────────────────────
+
   let wabaId = ''; let wabaName = ''
 
-  // Ruta A: directo
+  // Ruta A: directo en el usuario
   const r1 = await fetch(`https://graph.facebook.com/v20.0/me/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name`)
   const d1 = await r1.json()
-  if (d1.data?.length) { wabaId = d1.data[0].id; wabaName = d1.data[0].name }
+  console.log('[oauth-callback] Ruta A (me/waba):', JSON.stringify(d1))
+  if (d1.data?.length) { wabaId = d1.data[0].id; wabaName = d1.data[0].name ?? '' }
 
   // Ruta B: a través de negocios
   if (!wabaId) {
     const r2 = await fetch(`https://graph.facebook.com/v20.0/me/businesses?access_token=${accessToken}&fields=id,name`)
     const d2 = await r2.json()
+    console.log('[oauth-callback] Ruta B (me/businesses):', JSON.stringify(d2))
     for (const biz of (d2.data ?? [])) {
       const r3 = await fetch(`https://graph.facebook.com/v20.0/${biz.id}/whatsapp_business_accounts?access_token=${accessToken}&fields=id,name`)
       const d3 = await r3.json()
-      if (d3.data?.length) { wabaId = d3.data[0].id; wabaName = d3.data[0].name || biz.name; break }
+      console.log(`[oauth-callback] Ruta B biz ${biz.id}:`, JSON.stringify(d3))
+      if (d3.data?.length) { wabaId = d3.data[0].id; wabaName = d3.data[0].name ?? biz.name; break }
+    }
+  }
+
+  // Ruta C: WABA ID ya guardado para este tenant — re-autenticación
+  if (!wabaId) {
+    const { data: existingCfg } = await supabase
+      .from('config_meta')
+      .select('wa_business_account_id')
+      .eq('tenant_id', perfil.tenant_id)
+      .maybeSingle()
+    if (existingCfg?.wa_business_account_id) {
+      const existingId = existingCfg.wa_business_account_id
+      const r5 = await fetch(`https://graph.facebook.com/v20.0/${existingId}?access_token=${accessToken}&fields=id,name`)
+      const d5 = await r5.json()
+      console.log('[oauth-callback] Ruta C (existing waba_id):', JSON.stringify(d5))
+      if (d5.id) { wabaId = d5.id; wabaName = d5.name ?? '' }
+    }
+  }
+
+  // Ruta D: nestedfields — campos anidados en un solo request
+  if (!wabaId) {
+    const r6 = await fetch(`https://graph.facebook.com/v20.0/me?fields=whatsapp_business_accounts%7Bid%2Cname%7D&access_token=${accessToken}`)
+    const d6 = await r6.json()
+    console.log('[oauth-callback] Ruta D (nested fields):', JSON.stringify(d6))
+    if (d6.whatsapp_business_accounts?.data?.length) {
+      wabaId   = d6.whatsapp_business_accounts.data[0].id
+      wabaName = d6.whatsapp_business_accounts.data[0].name ?? ''
     }
   }
 
   if (!wabaId) {
+    console.error('[oauth-callback] WABA no encontrado para tenant', perfil.tenant_id)
     return popupComplete(request.nextUrl, { success: 'false', error: 'sin_waba' })
   }
+
+  console.log('[oauth-callback] WABA encontrado:', wabaId, wabaName)
 
   // Obtener números de teléfono
   const r4 = await fetch(`https://graph.facebook.com/v20.0/${wabaId}/phone_numbers?access_token=${accessToken}&fields=id,display_phone_number,verified_name`)
   const d4 = await r4.json()
+  console.log('[oauth-callback] Números:', JSON.stringify(d4))
   const phones: Array<{ id: string; display_phone_number: string; verified_name: string }> = d4.data ?? []
 
-  // Suscribir WABA al webhook de la plataforma
+  // Suscribir WABA al webhook
   await fetch(
     `https://graph.facebook.com/v20.0/${wabaId}/subscribed_apps?access_token=${accessToken}&subscribed_fields=messages,message_template_status_update`,
     { method: 'POST' }
   )
 
-  // Sin números — abrir popup de selección vacío con mensaje
   if (phones.length === 0) {
     return popupComplete(request.nextUrl, { success: 'false', error: 'sin_numeros' })
   }
 
-  // Un solo número — guardar automáticamente
   if (phones.length === 1) {
     await guardarConfig(perfil.tenant_id, wabaId, phones[0], accessToken)
     return popupComplete(request.nextUrl, {
       success: 'true',
-      phone: phones[0].display_phone_number,
+      phone:   phones[0].display_phone_number,
     })
   }
 
-  // Múltiples números — mostrar selección en el popup
+  // Múltiples números → selección en popup
   const selectUrl = new URL('/admin/mensajes/popup-select', request.url)
-  selectUrl.searchParams.set('waba_id', wabaId)
+  selectUrl.searchParams.set('waba_id',   wabaId)
   selectUrl.searchParams.set('waba_name', encodeURIComponent(wabaName))
-  selectUrl.searchParams.set('phones', encodeURIComponent(JSON.stringify(phones)))
-  selectUrl.searchParams.set('token', accessToken)
+  selectUrl.searchParams.set('phones',    encodeURIComponent(JSON.stringify(phones)))
+  selectUrl.searchParams.set('token',     accessToken)
   return NextResponse.redirect(selectUrl)
 }
 
