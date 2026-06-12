@@ -27,10 +27,18 @@ export async function GET() {
 
   if (!config) return NextResponse.json({ config: null })
 
+  // Corregir contador diario: si limite_reset_at es de otro día, el valor almacenado es obsoleto
+  const ahora = new Date()
+  const resetAt = config.limite_reset_at ? new Date(config.limite_reset_at) : null
+  const mensajesHoy = resetAt?.toDateString() === ahora.toDateString()
+    ? (config.mensajes_iniciados_hoy ?? 0)
+    : 0
+
   // Enmascarar tokens sensibles — nunca exponer al cliente
   return NextResponse.json({
     config: {
       ...config,
+      mensajes_iniciados_hoy:       mensajesHoy,
       wa_access_token_enc:          config.wa_access_token_enc          ? '***' : null,
       messenger_access_token_enc:   config.messenger_access_token_enc   ? '***' : null,
       instagram_access_token_enc:   config.instagram_access_token_enc   ? '***' : null,

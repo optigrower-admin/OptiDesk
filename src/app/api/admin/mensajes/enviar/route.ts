@@ -152,8 +152,9 @@ export async function POST(req: NextRequest) {
     }).eq('id', conversacion_id)
   }
 
-  // Incrementar contador diario (ya tenemos cfg del select anterior)
-  if (conv.canal === 'whatsapp' && tipo !== 'nota_interna' && estadoEnvio !== 'fallido' && cfg) {
+  // Solo cuenta conversaciones iniciadas por el NEGOCIO (plantillas enviadas fuera de la ventana 24h).
+  // Respuestas dentro de la ventana son "service conversations" — gratis e ilimitadas desde jun 2023.
+  if (conv.canal === 'whatsapp' && tipo === 'plantilla' && estadoEnvio !== 'fallido' && cfg) {
     const ahora = new Date()
     const mismodia = new Date(cfg.limite_reset_at ?? 0).toDateString() === ahora.toDateString()
     await admin.from('config_meta').update({

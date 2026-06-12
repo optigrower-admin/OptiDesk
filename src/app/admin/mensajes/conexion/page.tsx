@@ -289,18 +289,21 @@ export default function ConexionMetaPage() {
               >
                 <span className="flex items-center gap-1.5">
                   <span>{config?.negocio_verificado ? '✓' : '⚠'}</span>
-                  <span>{config?.negocio_verificado ? 'Negocio verificado · límite 1 000/día' : 'No verificado / en revisión · límite 250/día'}</span>
+                  <span>{config?.negocio_verificado ? 'Negocio verificado · límite 1 000 plantillas/día' : 'No verificado / en revisión · límite 250 plantillas/día'}</span>
                 </span>
                 <span className="text-gray-400 text-[10px]">cambiar</span>
               </button>
               <div>
                 <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                  <span>Conversaciones iniciadas hoy</span>
+                  <span title="Solo cuenta plantillas enviadas. Responder a clientes es gratis e ilimitado.">
+                    Plantillas enviadas hoy ⓘ
+                  </span>
                   <span className={`font-medium ${pct >= 90 ? 'text-red-600' : ''}`}>{config?.mensajes_iniciados_hoy ?? 0} / {limiteDiario}</span>
                 </div>
                 <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${pct}%` }} />
                 </div>
+                <p className="text-[10px] text-gray-400 mt-0.5">Respuestas a clientes: gratis e ilimitadas</p>
               </div>
               <button
                 onClick={suscribirWebhook}
