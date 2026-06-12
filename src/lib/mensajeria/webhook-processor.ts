@@ -18,7 +18,8 @@ export async function procesarMensajeMeta(body: unknown, tenantId: string) {
       if (!messaging?.length) continue
       for (const event of messaging) {
         const msgInner = event.message as Record<string, unknown> | undefined
-        if (msgInner?.is_echo) continue  // ignorar ecos del propio agente
+        if (!msgInner) continue              // ignorar delivery/read receipts (sin objeto message)
+        if (msgInner.is_echo) continue       // ignorar ecos del propio agente
         await procesarMensajeIndividual(supabase, tenantId, event, {}, 'page')
       }
       continue
@@ -90,6 +91,7 @@ async function procesarMensajeIndividual(
   }
 
   if (!canalContactId) return
+  if (canal === 'messenger' && !contenido.trim() && !metaMessageId) return  // ignorar eventos sin texto (delivery/read/postback)
 
   if (metaMessageId) {
     const { data: dup } = await supabase

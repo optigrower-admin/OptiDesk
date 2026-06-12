@@ -82,21 +82,18 @@ export async function POST(req: NextRequest) {
       // Fetch profile name from Graph API if needed
       if (!existente?.nombre) {
         const r = await fetch(`https://graph.facebook.com/v20.0/${psid}?fields=name&access_token=${pageToken}`)
-        if (r.ok) {
-          const profile = await r.json() as { name?: string; error?: unknown }
-          if (profile.name) {
-            if (existente) {
-              // Update existing client with name
-              await admin.from('clientes').update({ nombre: profile.name }).eq('id', existente.id)
-              clienteId = existente.id
-            } else {
-              // Create new client
-              const { data: nuevo } = await admin
-                .from('clientes')
-                .insert({ tenant_id: tenantId, nombre: profile.name, messenger_id: psid })
-                .select('id').single()
-              clienteId = nuevo?.id ?? null
-            }
+        const profile = await r.json() as { name?: string; error?: { message?: string; code?: number } }
+        console.log(`[sync-messenger] psid=${psid} ok=${r.ok} name=${profile.name ?? 'null'} err=${profile.error?.message ?? 'none'}`)
+        if (r.ok && profile.name) {
+          if (existente) {
+            await admin.from('clientes').update({ nombre: profile.name }).eq('id', existente.id)
+            clienteId = existente.id
+          } else {
+            const { data: nuevo } = await admin
+              .from('clientes')
+              .insert({ tenant_id: tenantId, nombre: profile.name, messenger_id: psid })
+              .select('id').single()
+            clienteId = nuevo?.id ?? null
           }
         }
       }

@@ -134,11 +134,13 @@ export default function BandejaPage() {
   const [ventanaExpiraAt, setVentanaExpiraAt] = useState<number | null>(null)
   const [tickAhora, setTickAhora]             = useState(0)
 
-  const messagesEndRef  = useRef<HTMLDivElement>(null)
-  const inputRef        = useRef<HTMLTextAreaElement>(null)
-  const convsPrevRef    = useRef<Conversacion[]>([])
+  const messagesEndRef       = useRef<HTMLDivElement>(null)
+  const inputRef             = useRef<HTMLTextAreaElement>(null)
+  const convsPrevRef         = useRef<Conversacion[]>([])
   // Ref para que el callback de Realtime siempre tenga el valor actual sin re-suscribir
-  const selectedIdRef   = useRef<string | null>(null)
+  const selectedIdRef        = useRef<string | null>(null)
+  // Evitar múltiples intentos de sync en la misma sesión
+  const messengerSyncedRef   = useRef(false)
 
   const toast = useCallback((text: string, ok = true) => {
     setToastMsg({ text, ok })
@@ -295,6 +297,19 @@ export default function BandejaPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [mensajes])
+
+  // Auto-sync nombres de Messenger: corre una vez por sesión cuando detecta convs sin nombre
+  useEffect(() => {
+    if (messengerSyncedRef.current) return
+    if (loadingConvs) return
+    const sinNombre = convs.some(c => c.canal === 'messenger' && !c.clientes?.[0]?.nombre)
+    if (!sinNombre) return
+    messengerSyncedRef.current = true
+    fetch('/api/admin/mensajes/sync-messenger-names', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => { if (data.updated > 0) cargarConversaciones(true) })
+      .catch(() => {})
+  }, [convs, loadingConvs, cargarConversaciones])
 
   // Cuando cambia selectedConv, pre-cargar nombre en el editor
   useEffect(() => {
