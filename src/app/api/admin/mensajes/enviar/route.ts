@@ -43,14 +43,21 @@ export async function POST(req: NextRequest) {
 
   // ── Validaciones previas al envío (WhatsApp/Messenger, no notas internas) ──
   if ((conv.canal === 'whatsapp' || conv.canal === 'messenger') && tipo !== 'nota_interna') {
-    // 1. Límite diario: solo WhatsApp
+    // 1. Límite diario: solo WhatsApp (solo cuenta plantillas — conversaciones iniciadas por el negocio)
     if (conv.canal === 'whatsapp') {
       const efectiveLimite = cfg?.negocio_verificado ? (cfg?.limite_diario_wa ?? 1000) : 250
-      const mismodia = new Date(cfg?.limite_reset_at ?? 0).toDateString() === new Date().toDateString()
-      const hoy = mismodia ? (cfg?.mensajes_iniciados_hoy ?? 0) : 0
+      const hoyUTC = new Date(); hoyUTC.setUTCHours(0, 0, 0, 0)
+      const { count: plantillasHoy } = await admin
+        .from('mensajes')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', perfil.tenant_id)
+        .eq('tipo', 'plantilla')
+        .eq('direccion', 'saliente')
+        .gte('created_at', hoyUTC.toISOString())
+      const hoy = plantillasHoy ?? 0
       if (hoy >= efectiveLimite - 2) {
         return NextResponse.json({
-          error: `Límite diario de WhatsApp alcanzado (${hoy}/${efectiveLimite}). No puedes enviar más mensajes hoy.`,
+          error: `Límite diario de WhatsApp alcanzado (${hoy}/${efectiveLimite} plantillas). No puedes enviar más plantillas hoy.`,
         }, { status: 429 })
       }
     }

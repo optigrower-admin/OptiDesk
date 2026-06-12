@@ -27,18 +27,22 @@ export async function GET() {
 
   if (!config) return NextResponse.json({ config: null })
 
-  // Corregir contador diario: si limite_reset_at es de otro día, el valor almacenado es obsoleto
-  const ahora = new Date()
-  const resetAt = config.limite_reset_at ? new Date(config.limite_reset_at) : null
-  const mensajesHoy = resetAt?.toDateString() === ahora.toDateString()
-    ? (config.mensajes_iniciados_hoy ?? 0)
-    : 0
+  // Contar plantillas enviadas hoy directamente desde mensajes (fuente de verdad real)
+  // Esto evita depender del contador almacenado que puede estar contaminado
+  const hoyUTC = new Date(); hoyUTC.setUTCHours(0, 0, 0, 0)
+  const { count: plantillasHoy } = await supabase
+    .from('mensajes')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', perfil.tenant_id)
+    .eq('tipo', 'plantilla')
+    .eq('direccion', 'saliente')
+    .gte('created_at', hoyUTC.toISOString())
 
   // Enmascarar tokens sensibles — nunca exponer al cliente
   return NextResponse.json({
     config: {
       ...config,
-      mensajes_iniciados_hoy:       mensajesHoy,
+      mensajes_iniciados_hoy:       plantillasHoy ?? 0,
       wa_access_token_enc:          config.wa_access_token_enc          ? '***' : null,
       messenger_access_token_enc:   config.messenger_access_token_enc   ? '***' : null,
       instagram_access_token_enc:   config.instagram_access_token_enc   ? '***' : null,
