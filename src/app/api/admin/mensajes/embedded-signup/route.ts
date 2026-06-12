@@ -122,20 +122,24 @@ export async function PUT(request: NextRequest) {
     .from('usuarios').select('tenant_id, rol').eq('id', user.id).single()
   if (!perfil) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
-  const { waba_id, phone_number_id, phone_number, verified_name, access_token } = await request.json()
+  const body = await request.json()
+  const { waba_id, phone_number_id, phone_number, verified_name, access_token,
+          page_id, page_token, instagram_id } = body
+
   if (!waba_id || !phone_number_id || !access_token) {
     return NextResponse.json({ error: 'Faltan datos requeridos' }, { status: 400 })
   }
 
-  // Generar verify token único para este tenant
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
   let verifyToken = ''
   for (let i = 0; i < 32; i++) verifyToken += chars[Math.floor(Math.random() * chars.length)]
 
-  let tokenEnc = access_token
+  let tokenEnc     = access_token
+  let pageTokenEnc = page_token ?? null
   try {
     const { encrypt } = await import('@/lib/crypto')
     tokenEnc = encrypt(access_token)
+    if (page_token) pageTokenEnc = encrypt(page_token)
   } catch { /* sin ENCRYPTION_KEY en dev */ }
 
   const admin = createAdminClient()
@@ -153,9 +157,27 @@ export async function PUT(request: NextRequest) {
     mensajes_iniciados_hoy:     0,
     limite_reset_at:            new Date().toISOString(),
     updated_at:                 new Date().toISOString(),
+    // Messenger
+    ...(page_id ? {
+      messenger_page_id:         page_id,
+      messenger_access_token_enc: pageTokenEnc,
+      estado_messenger:          'conectado',
+    } : {
+      messenger_page_id:         null,
+      messenger_access_token_enc: null,
+      estado_messenger:          'desconectado',
+    }),
+    // Instagram
+    ...(instagram_id ? {
+      instagram_account_id:      instagram_id,
+      estado_instagram:          'conectado',
+    } : {
+      instagram_account_id:      null,
+      estado_instagram:          'desconectado',
+    }),
   }, { onConflict: 'tenant_id' })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true, phone_number, verified_name })
+  return NextResponse.json({ ok: true, phone_number, verified_name, page_id: page_id ?? null, instagram_id: instagram_id ?? null })
 }
