@@ -364,7 +364,6 @@ export default function ConexionMetaPage() {
                 ['WABA ID',         config.wa_business_account_id],
                 ['Messenger Page',  config.messenger_page_id],
                 ['Instagram ID',    config.instagram_account_id],
-                ['Webhook Token',   config.meta_webhook_verify_token ? '••••' : '—'],
               ].map(([k, v]) => (
                 <div key={k}>
                   <dt className="text-gray-400 mb-0.5">{k}</dt>
@@ -372,6 +371,22 @@ export default function ConexionMetaPage() {
                 </div>
               ))}
             </dl>
+            {config.meta_webhook_verify_token && (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <dt className="text-xs text-gray-400 mb-1">Webhook Token</dt>
+                <div className="flex items-center gap-2">
+                  <dd className="font-mono text-xs text-gray-700 bg-white border border-gray-200 rounded px-2 py-1 flex-1 truncate select-all">
+                    {config.meta_webhook_verify_token}
+                  </dd>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(config.meta_webhook_verify_token!).then(() => showToast('Token copiado'))}
+                    className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 transition-colors whitespace-nowrap"
+                  >
+                    Copiar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
