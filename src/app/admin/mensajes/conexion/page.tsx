@@ -208,6 +208,23 @@ export default function ConexionMetaPage() {
     }, 500)
   }
 
+  const toggleVerificado = async () => {
+    const nuevo = !config?.negocio_verificado
+    setConfig(c => c ? { ...c, negocio_verificado: nuevo } : c)
+    try {
+      const res = await fetch('/api/admin/mensajes/config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ negocio_verificado: nuevo }),
+      })
+      if (!res.ok) throw new Error()
+      showToast(nuevo ? 'Marcado como negocio verificado' : 'Marcado como no verificado')
+    } catch {
+      setConfig(c => c ? { ...c, negocio_verificado: !nuevo } : c)
+      showToast('Error al actualizar', false)
+    }
+  }
+
   const desconectarCanal = async (canal: 'whatsapp' | 'messenger' | 'instagram') => {
     const campos: Record<string, Record<string, string | null>> = {
       whatsapp:  { wa_access_token_enc: null, estado_wa: 'desconectado' },
@@ -264,11 +281,18 @@ export default function ConexionMetaPage() {
           connecting={!!busy.whatsapp}
           extra={config?.estado_wa === 'conectado' ? (
             <div className="mb-1 space-y-2">
-              {/* Verificación del negocio */}
-              <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg ${config?.negocio_verificado ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
-                <span>{config?.negocio_verificado ? '✓' : '⚠'}</span>
-                <span>{config?.negocio_verificado ? 'Negocio verificado · límite 1 000/día' : 'No verificado / en revisión · límite 250/día'}</span>
-              </div>
+              {/* Verificación del negocio — clickeable para cambiar */}
+              <button
+                onClick={toggleVerificado}
+                title="Haz clic para cambiar el estado de verificación"
+                className={`w-full flex items-center justify-between text-xs px-2 py-1.5 rounded-lg border transition-colors ${config?.negocio_verificado ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'}`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <span>{config?.negocio_verificado ? '✓' : '⚠'}</span>
+                  <span>{config?.negocio_verificado ? 'Negocio verificado · límite 1 000/día' : 'No verificado / en revisión · límite 250/día'}</span>
+                </span>
+                <span className="text-gray-400 text-[10px]">cambiar</span>
+              </button>
               <div>
                 <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
                   <span>Conversaciones iniciadas hoy</span>

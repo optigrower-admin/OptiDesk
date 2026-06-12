@@ -101,6 +101,34 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true })
 }
 
+export async function PATCH(req: NextRequest) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  const { data: perfil } = await supabase
+    .from('usuarios').select('tenant_id, rol').eq('id', user.id).single()
+  if (!perfil || !['control_total', 'gerencia', 'admin'].includes(perfil.rol)) {
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  }
+
+  const body = await req.json()
+  const allowed = ['negocio_verificado', 'limite_diario_wa']
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  for (const key of allowed) {
+    if (key in body) patch[key] = body[key]
+  }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('config_meta')
+    .update(patch)
+    .eq('tenant_id', perfil.tenant_id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
+
 export async function DELETE() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
