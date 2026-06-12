@@ -154,7 +154,7 @@ export default function ConexionMetaPage() {
   // ── OAuth en popup ───────────────────────────────────────────────────────────
   const handleEmbeddedSignup = () => {
     const redirectUri = encodeURIComponent('https://opti-desk.vercel.app/api/admin/mensajes/oauth-callback')
-    const scope = 'whatsapp_business_management,whatsapp_business_messaging,pages_show_list,pages_messaging,instagram_basic,instagram_manage_messages'
+    const scope = 'whatsapp_business_management,whatsapp_business_messaging'
     const url = `https://www.facebook.com/dialog/oauth?client_id=${process.env.NEXT_PUBLIC_META_APP_ID}&redirect_uri=${redirectUri}&scope=${scope}&response_type=code`
 
     const w = 580, h = 680

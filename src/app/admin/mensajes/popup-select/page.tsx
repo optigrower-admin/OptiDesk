@@ -109,73 +109,20 @@ export default function PopupSelectPage() {
           </div>
         </div>
 
-        {/* ── Facebook Messenger ──────────────────────────────────── */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 24 24" className="w-4 h-4 text-blue-700" fill="currentColor">
-                <path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.91 1.395 5.514 3.58 7.235V21l3.27-1.797c.874.241 1.8.371 2.76.371C17.523 19.574 22 15.43 22 10.33 22 5.232 17.523 2 12 2m1.194 11.305l-2.64-2.815-5.154 2.815 5.67-6.018 2.706 2.815 5.085-2.815-5.667 6.018z"/>
-              </svg>
-            </div>
-            <p className="font-semibold text-gray-900 text-sm">Facebook Messenger</p>
-            <span className="ml-auto text-xs text-gray-400">Opcional</span>
+        {/* ── Próximamente ─────────────────────────────────────────── */}
+        <div className="bg-gray-50 border border-dashed border-gray-300 rounded-2xl p-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Próximamente</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-base">💬</span>
+            <p className="text-sm text-gray-500">Facebook Messenger</p>
           </div>
-
-          {pages.length === 0 ? (
-            <p className="text-xs text-gray-400 pl-1">
-              No se encontraron páginas de Facebook en tu cuenta.{' '}
-              <span className="text-gray-500">Puedes conectarla después manualmente.</span>
-            </p>
-          ) : (
-            <div className="space-y-2">
-              <label className={`flex items-center gap-3 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${selPage === 'none' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                <input type="radio" name="page" checked={selPage === 'none'}
-                  onChange={() => setSelPage('none')} className="accent-blue-600" />
-                <p className="text-sm text-gray-500">No conectar ahora</p>
-              </label>
-              {pages.map(pg => (
-                <label key={pg.id} className={`flex items-center gap-3 p-2.5 rounded-xl border-2 cursor-pointer transition-all ${selPage !== 'none' && selPage?.id === pg.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                  <input type="radio" name="page" checked={selPage !== 'none' && selPage?.id === pg.id}
-                    onChange={() => setSelPage(pg)} className="accent-blue-600" />
-                  <div>
-                    <p className="font-semibold text-gray-900 text-sm">{pg.name}</p>
-                    <p className="text-xs text-gray-400">ID {pg.id}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── Instagram ───────────────────────────────────────────── */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-7 h-7 bg-pink-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 24 24" className="w-4 h-4 text-pink-600" fill="currentColor">
-                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
-              </svg>
-            </div>
-            <p className="font-semibold text-gray-900 text-sm">Instagram</p>
-            <span className="ml-auto text-xs text-gray-400">Opcional</span>
+            <span className="text-base">📸</span>
+            <p className="text-sm text-gray-500">Instagram Direct</p>
           </div>
-
-          {selPage === 'none' || !selPage ? (
-            <p className="text-xs text-gray-400 pl-1">Selecciona una página de Facebook para ver su Instagram vinculado.</p>
-          ) : !selectedIg ? (
-            <p className="text-xs text-gray-400 pl-1">
-              La página <span className="font-medium text-gray-600">{selPage.name}</span> no tiene Instagram profesional vinculado.
-            </p>
-          ) : (
-            <div className="flex items-center gap-3 p-2.5 rounded-xl border-2 border-pink-400 bg-pink-50">
-              <div className="w-7 h-7 bg-pink-200 rounded-full flex items-center justify-center text-sm font-bold text-pink-700">
-                {(selectedIg.username ?? selectedIg.name ?? 'IG')[0].toUpperCase()}
-              </div>
-              <div>
-                <p className="font-semibold text-gray-900 text-sm">@{selectedIg.username ?? selectedIg.name}</p>
-                <p className="text-xs text-pink-600">Se conectará automáticamente</p>
-              </div>
-            </div>
-          )}
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Estos canales se habilitarán en una próxima actualización. Por ahora conecta tu WhatsApp y podrás agregar los demás desde la configuración.
+          </p>
         </div>
 
         {/* ── Botón confirmar ──────────────────────────────────────── */}
