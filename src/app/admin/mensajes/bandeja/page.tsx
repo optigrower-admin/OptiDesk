@@ -213,8 +213,7 @@ export default function BandejaPage() {
       }, () => { cargarConversaciones(true) })
       .subscribe()
 
-    // Canal 2: nuevos mensajes — SIN filtro para no depender de RLS
-    // Filtramos client-side con selectedIdRef para no re-suscribir al cambiar conversación
+    // Canal 2: INSERT y UPDATE en mensajes — sin filtro, filtramos client-side
     const chMsgs = supabase
       .channel(`msgs-tenant-${profile.tenant_id}`)
       .on('postgres_changes', {
@@ -226,6 +225,15 @@ export default function BandejaPage() {
           setMensajes(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
           supabase.from('conversaciones').update({ no_leidos_count: 0 }).eq('id', activo)
           setConvs(cs => cs.map(c => c.id === activo ? { ...c, no_leidos_count: 0 } : c))
+        }
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'mensajes',
+      }, (payload) => {
+        // Actualizar el estado_envio (ticks) en tiempo real
+        const updated = payload.new as Mensaje
+        if (updated.conversacion_id === selectedIdRef.current) {
+          setMensajes(prev => prev.map(m => m.id === updated.id ? { ...m, estado_envio: updated.estado_envio } : m))
         }
       })
       .subscribe()
@@ -506,7 +514,16 @@ export default function BandejaPage() {
                             <span className="text-xs">{formatTime(msg.created_at)}</span>
                             {isOut && (
                               <span className="text-xs">
-                                {msg.estado_envio === 'leido' ? '✓✓' : msg.estado_envio === 'entregado' ? '✓✓' : msg.estado_envio === 'enviado' ? '✓' : msg.estado_envio === 'fallido' ? '✗' : '⏳'}
+                                {msg.estado_envio === 'leido'
+                                  ? <span className="text-sky-300 font-bold">✓✓</span>
+                                  : msg.estado_envio === 'entregado'
+                                    ? <span className="opacity-70">✓✓</span>
+                                    : msg.estado_envio === 'enviado'
+                                      ? <span className="opacity-60">✓</span>
+                                      : msg.estado_envio === 'fallido'
+                                        ? <span className="text-red-300">✗</span>
+                                        : <span className="opacity-50">⏳</span>
+                                }
                               </span>
                             )}
                           </div>

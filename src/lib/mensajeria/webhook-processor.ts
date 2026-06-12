@@ -21,6 +21,12 @@ export async function procesarMensajeMeta(body: unknown, tenantId: string) {
         continue
       }
 
+      // Actualizaciones de estado (entregado / leído)
+      const statuses = value.statuses as Array<Record<string, unknown>> | undefined
+      if (statuses?.length) {
+        for (const st of statuses) await actualizarEstadoMensaje(supabase, tenantId, st)
+      }
+
       const messages = value.messages as Array<Record<string, unknown>> | undefined
       if (!messages?.length) continue
 
@@ -181,6 +187,30 @@ async function verificarLimiteDiario(supabase: SupabaseAdmin, tenantId: string) 
       .update({ mensajes_iniciados_hoy: 0, limite_reset_at: ahora.toISOString() })
       .eq('tenant_id', tenantId)
   }
+}
+
+async function actualizarEstadoMensaje(
+  supabase: SupabaseAdmin,
+  tenantId: string,
+  status: Record<string, unknown>
+) {
+  const metaMsgId = String(status.id ?? '')
+  const statusMeta = String(status.status ?? '')
+  if (!metaMsgId || !statusMeta) return
+
+  const map: Record<string, string> = {
+    sent:      'enviado',
+    delivered: 'entregado',
+    read:      'leido',
+    failed:    'fallido',
+  }
+  const estadoEnvio = map[statusMeta]
+  if (!estadoEnvio) return
+
+  await supabase.from('mensajes')
+    .update({ estado_envio: estadoEnvio })
+    .eq('meta_message_id', metaMsgId)
+    .eq('tenant_id', tenantId)
 }
 
 async function manejarStatusPlantilla(
