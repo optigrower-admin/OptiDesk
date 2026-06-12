@@ -60,9 +60,17 @@ function formatPhone(raw: string): string {
   return raw
 }
 
+function formatDuracion(ms: number): string {
+  const h = Math.floor(ms / 3_600_000)
+  const m = Math.floor((ms % 3_600_000) / 60_000)
+  if (h > 0 && m > 0) return `${h} h ${m} min`
+  if (h > 0) return `${h} h`
+  return `${Math.max(m, 1)} min`
+}
+
 function getDisplayName(conv: Conversacion): string {
   if (conv.clientes?.[0]?.nombre) return conv.clientes[0].nombre!
-  if (conv.canal === 'whatsapp') return conv.canal_contact_id
+  if (conv.canal === 'whatsapp') return formatPhone(conv.canal_contact_id)
   if (conv.canal === 'messenger') return `Messenger ···${conv.canal_contact_id.slice(-4)}`
   if (conv.canal === 'instagram') return `Instagram ···${conv.canal_contact_id.slice(-4)}`
   return conv.canal_contact_id
@@ -112,8 +120,10 @@ export default function BandejaPage() {
   const [editNombre, setEditNombre]   = useState('')
   const [savingNombre, setSavingNombre] = useState(false)
 
-  // Ventana de 24 h: null = cargando, true = activa, false = cerrada
-  const [ventanaActiva, setVentanaActiva] = useState<boolean | null>(null)
+  // Ventana de 24 h
+  const [ventanaActiva, setVentanaActiva]     = useState<boolean | null>(null)
+  const [ventanaExpiraAt, setVentanaExpiraAt] = useState<number | null>(null)
+  const [tickAhora, setTickAhora]             = useState(Date.now())
 
   const messagesEndRef  = useRef<HTMLDivElement>(null)
   const inputRef        = useRef<HTMLTextAreaElement>(null)
@@ -277,12 +287,27 @@ export default function BandejaPage() {
     setVentanaActiva(null) // reset mientras cargan mensajes
   }, [selectedConv?.id])
 
+  // Ticker de 1 minuto para actualizar el tiempo restante de ventana
+  useEffect(() => {
+    const t = setInterval(() => setTickAhora(Date.now()), 60_000)
+    return () => clearInterval(t)
+  }, [])
+
   // Calcular ventana de 24 h cuando los mensajes están listos
   useEffect(() => {
-    if (!selectedConv || selectedConv.canal !== 'whatsapp') { setVentanaActiva(null); return }
+    if (!selectedConv || selectedConv.canal !== 'whatsapp') {
+      setVentanaActiva(null); setVentanaExpiraAt(null); return
+    }
     if (loadingMsgs) return
     const last = [...mensajes].reverse().find(m => m.direccion === 'entrante')
-    setVentanaActiva(last ? Date.now() - new Date(last.created_at).getTime() < 86_400_000 : false)
+    if (last) {
+      const expira = new Date(last.created_at).getTime() + 86_400_000
+      setVentanaActiva(expira > Date.now())
+      setVentanaExpiraAt(expira)
+    } else {
+      setVentanaActiva(false)
+      setVentanaExpiraAt(null)
+    }
   }, [mensajes, selectedConv?.id, selectedConv?.canal, loadingMsgs])
 
   // ── Guardar nombre del contacto ───────────────────────────────────────────
@@ -484,7 +509,9 @@ export default function BandejaPage() {
                   <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-medium ${CANAL_META[selectedConv.canal]?.cls}`}>
                     {CANAL_META[selectedConv.canal]?.icon} {CANAL_META[selectedConv.canal]?.label}
                   </span>
-                  <span className="text-xs text-gray-400">{selectedConv.canal_contact_id}</span>
+                  <span className="text-xs text-gray-400 select-none">
+                    {selectedConv.canal === 'whatsapp' ? formatPhone(selectedConv.canal_contact_id) : selectedConv.canal_contact_id}
+                  </span>
                 </div>
               </div>
               <select value={selectedConv.assigned_to ?? ''} onChange={e => reasignar(selectedConv.id, e.target.value)}
@@ -579,7 +606,10 @@ export default function BandejaPage() {
               {selectedConv?.canal === 'whatsapp' && !esNota && ventanaActiva === true && (
                 <div className="flex items-center gap-1.5 text-xs text-green-600 mb-1.5 px-0.5">
                   <span>✓</span>
-                  <span>Ventana activa — el contacto escribió en las últimas 24 h</span>
+                  <span>
+                    Ventana activa
+                    {ventanaExpiraAt && ` — cierra en ${formatDuracion(ventanaExpiraAt - tickAhora)}`}
+                  </span>
                 </div>
               )}
               {esNota && <div className="text-xs text-yellow-700 font-medium mb-1.5 px-1">📝 Nota interna — no se envía al cliente</div>}
