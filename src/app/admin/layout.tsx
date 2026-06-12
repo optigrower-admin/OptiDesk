@@ -209,8 +209,38 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       const appKey  = new Uint8Array(raw.length)
       for (let i = 0; i < raw.length; i++) appKey[i] = raw.charCodeAt(i)
 
-      console.log('[push] Paso 3: esperando SW activo...')
-      const activeReg = await navigator.serviceWorker.ready
+      console.log('[push] Paso 3: buscando SW activo...')
+      // serviceWorker.ready puede colgar si el SW falló al instalar → usar timeout de 8s
+      const activeReg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<undefined>(r => setTimeout(() => r(undefined), 8000)),
+      ])
+      if (!activeReg) {
+        // SW no activó en 8s — intentar con getRegistration directamente
+        console.warn('[push] serviceWorker.ready timeout, intentando getRegistration...')
+        const fallbackReg = await navigator.serviceWorker.getRegistration('/')
+        if (!fallbackReg?.pushManager) {
+          console.warn('[push] Sin pushManager disponible')
+          setPushStatus('error')
+          return
+        }
+        console.log('[push] SW via getRegistration, estado:', fallbackReg.active?.state)
+        // Continuar con fallbackReg
+        console.log('[push] Paso 4 (fallback): buscando suscripción existente...')
+        let subFb = await fallbackReg.pushManager.getSubscription()
+        if (!subFb) {
+          subFb = await fallbackReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey })
+          console.log('[push] Suscripción fallback creada:', subFb.endpoint.slice(0, 60))
+        }
+        console.log('[push] Paso 5 (fallback): guardando en DB...')
+        const saveResFb = await fetch('/api/admin/mensajes/push-subscribe', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: subFb }),
+        })
+        if (saveResFb.ok) { console.log('[push] ✓ guardado (fallback)'); setPushStatus('ok') }
+        else { console.warn('[push] Error guardando (fallback):', await saveResFb.text()); setPushStatus('error') }
+        return
+      }
       console.log('[push] SW listo, estado:', activeReg.active?.state)
 
       console.log('[push] Paso 4: buscando suscripción existente...')

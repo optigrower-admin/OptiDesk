@@ -7,8 +7,11 @@ const STATIC_ASSETS = [
 ]
 
 self.addEventListener('install', (event) => {
+  // Ignorar errores de caché: si algún asset no existe, el SW igual se instala
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .catch(() => {})
   )
   self.skipWaiting()
 })
