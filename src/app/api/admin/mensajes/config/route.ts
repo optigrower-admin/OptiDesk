@@ -127,7 +127,13 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json()
-  const allowed = ['negocio_verificado', 'limite_diario_wa']
+  const allowed = [
+    'negocio_verificado', 'limite_diario_wa',
+    // Desconexión por canal (sólo nullifica los campos de ese canal)
+    'estado_wa', 'wa_access_token_enc',
+    'estado_messenger', 'messenger_access_token_enc', 'messenger_page_id',
+    'estado_instagram', 'instagram_access_token_enc', 'instagram_account_id',
+  ]
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const key of allowed) {
     if (key in body) patch[key] = body[key]

@@ -234,7 +234,7 @@ export default function ConexionMetaPage() {
     setBusy(b => ({ ...b, [canal]: true }))
     try {
       await fetch('/api/admin/mensajes/config', {
-        method: 'POST',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(campos[canal]),
       })
