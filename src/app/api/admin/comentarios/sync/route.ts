@@ -28,20 +28,30 @@ export async function POST() {
 
   const stats = { facebook_posts: 0, facebook_comments: 0, instagram_posts: 0, instagram_comments: 0 }
 
-  // ── Facebook posts + comments ─────────────────────────────────────────────
-  if (cfg.estado_messenger === 'conectado' && cfg.messenger_access_token_enc && cfg.messenger_page_id) {
-    const fbToken = await dec(cfg.messenger_access_token_enc)
-    const pageId  = cfg.messenger_page_id
+  // Pre-decrypt Facebook page token — needed by both subscription and FB posts sync
+  let fbToken: string | null = null
+  let pageId: string | null  = null
+  if (cfg.messenger_access_token_enc && cfg.messenger_page_id) {
+    fbToken = await dec(cfg.messenger_access_token_enc)
+    pageId  = cfg.messenger_page_id
+  }
 
-    // Subscribe page to feed events for real-time comments (best-effort)
+  // Single subscription call covering all needed webhook fields (FB feed + IG comments)
+  if (pageId && fbToken) {
     fetch(
       `https://graph.facebook.com/v20.0/${pageId}/subscribed_apps?access_token=${fbToken}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscribed_fields: 'messages,messaging_postbacks,message_deliveries,message_reads,feed' }),
+        body: JSON.stringify({
+          subscribed_fields: 'messages,messaging_postbacks,message_deliveries,message_reads,feed,instagram_manage_messages,comments',
+        }),
       }
     ).catch(() => {})
+  }
+
+  // ── Facebook posts + comments ─────────────────────────────────────────────
+  if (cfg.estado_messenger === 'conectado' && fbToken && pageId) {
 
     const postsRes = await fetch(
       `https://graph.facebook.com/v20.0/${pageId}/posts?fields=id,message,story,created_time,permalink_url,full_picture&limit=20&access_token=${fbToken}`
@@ -103,18 +113,7 @@ export async function POST() {
     const igToken     = await dec(cfg.instagram_access_token_enc)
     const igAccountId = cfg.instagram_account_id
 
-    // Subscribe IG account to comments webhook (best-effort)
-    // The page subscription for IG is done through the same page_id from messenger config
-    if (cfg.messenger_page_id) {
-      fetch(
-        `https://graph.facebook.com/v20.0/${cfg.messenger_page_id}/subscribed_apps?access_token=${igToken}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subscribed_fields: 'messages,instagram_manage_messages,comments' }),
-        }
-      ).catch(() => {})
-    }
+    // Webhook subscription for IG comments already done above with fbToken
 
     const mediaRes = await fetch(
       `https://graph.facebook.com/v20.0/${igAccountId}/media?fields=id,caption,media_type,thumbnail_url,media_url,permalink,timestamp&limit=20&access_token=${igToken}`
