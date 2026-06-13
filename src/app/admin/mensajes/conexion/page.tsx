@@ -369,6 +369,29 @@ export default function ConexionMetaPage() {
           onConnect={() => conectar('instagram')}
           onDisconnect={isGerencia && config?.estado_instagram === 'conectado' ? () => desconectarCanal('instagram') : undefined}
           connecting={!!busy.instagram}
+          extra={config?.estado_instagram === 'conectado' ? (
+            <div className="mb-1">
+              <button
+                onClick={async () => {
+                  setBusy(b => ({ ...b, syncInstagram: true }))
+                  try {
+                    const res  = await fetch('/api/admin/mensajes/sync-instagram-names', { method: 'POST' })
+                    const data = await res.json()
+                    if (!res.ok) throw new Error(data.error)
+                    showToast(data.updated > 0
+                      ? `${data.updated} conversación${data.updated !== 1 ? 'es' : ''} actualizada${data.updated !== 1 ? 's' : ''} con nombre`
+                      : 'Todos los contactos ya tienen nombre')
+                  } catch (e: unknown) {
+                    showToast(e instanceof Error ? e.message : 'Error al sincronizar', false)
+                  } finally { setBusy(b => ({ ...b, syncInstagram: false })) }
+                }}
+                disabled={!!busy.syncInstagram}
+                className="w-full py-1.5 text-xs text-gray-500 hover:text-gray-800 border border-dashed border-gray-300 hover:border-gray-400 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {busy.syncInstagram ? 'Sincronizando...' : '👤 Sincronizar nombres de contactos'}
+              </button>
+            </div>
+          ) : undefined}
         />
 
       </div>

@@ -141,6 +141,7 @@ export default function BandejaPage() {
   const selectedIdRef        = useRef<string | null>(null)
   // Evitar múltiples intentos de sync en la misma sesión
   const messengerSyncedRef   = useRef(false)
+  const instagramSyncedRef   = useRef(false)
 
   const toast = useCallback((text: string, ok = true) => {
     setToastMsg({ text, ok })
@@ -304,14 +305,30 @@ export default function BandejaPage() {
     if (loadingConvs) return
     const sinNombre = convs.some(c => c.canal === 'messenger' && !c.clientes?.[0]?.nombre)
     if (!sinNombre) return
-    messengerSyncedRef.current = true   // bloquear para no disparar múltiples veces en paralelo
+    messengerSyncedRef.current = true
     fetch('/api/admin/mensajes/sync-messenger-names', { method: 'POST' })
       .then(r => r.json())
       .then(data => {
         if (data.updated > 0) cargarConversaciones(true)
-        else messengerSyncedRef.current = false  // si no actualizó nada, permitir reintento
+        else messengerSyncedRef.current = false
       })
       .catch(() => { messengerSyncedRef.current = false })
+  }, [convs, loadingConvs, cargarConversaciones])
+
+  // Auto-sync nombres de Instagram: igual que Messenger
+  useEffect(() => {
+    if (instagramSyncedRef.current) return
+    if (loadingConvs) return
+    const sinNombre = convs.some(c => c.canal === 'instagram' && !c.clientes?.[0]?.nombre)
+    if (!sinNombre) return
+    instagramSyncedRef.current = true
+    fetch('/api/admin/mensajes/sync-instagram-names', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.updated > 0) cargarConversaciones(true)
+        else instagramSyncedRef.current = false
+      })
+      .catch(() => { instagramSyncedRef.current = false })
   }, [convs, loadingConvs, cargarConversaciones])
 
   // Cuando cambia selectedConv, pre-cargar nombre en el editor
