@@ -580,6 +580,27 @@ export default function BandejaPage() {
               </select>
             </div>
 
+            {/* Banner nombre Instagram/Messenger sin nombre */}
+            {(selectedConv.canal === 'instagram' || selectedConv.canal === 'messenger') && !selectedConv.clientes?.[0]?.nombre && (
+              <div className="bg-pink-50 border-b border-pink-100 px-4 py-2 flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs text-pink-600 flex-shrink-0">¿Cómo se llama?</span>
+                <input
+                  value={editNombre}
+                  onChange={e => setEditNombre(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && guardarNombre()}
+                  placeholder="Escribe el nombre del contacto..."
+                  className="flex-1 text-xs border border-pink-200 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white"
+                />
+                <button
+                  onClick={guardarNombre}
+                  disabled={savingNombre || !editNombre.trim()}
+                  className="flex-shrink-0 px-3 py-1 bg-pink-500 hover:bg-pink-600 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
+                >
+                  {savingNombre ? '...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+
             {/* Mensajes */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
               {loadingMsgs ? (
