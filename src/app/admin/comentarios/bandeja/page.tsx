@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/hooks/useAuth'
 
 type Publicacion = {
   id: string
@@ -105,7 +107,9 @@ function PubCard({ pub, selected, onClick }: { pub: Publicacion; selected: boole
 }
 
 export default function ComentariosBandejaPage() {
-  const router = useRouter()
+  const router   = useRouter()
+  const supabase = createClient()
+  const { profile } = useAuth()
 
   const [publicaciones, setPublicaciones] = useState<Publicacion[]>([])
   const [selectedPub, setSelectedPub]     = useState<Publicacion | null>(null)
@@ -192,6 +196,45 @@ export default function ComentariosBandejaPage() {
     const id = setInterval(silentSync, 10 * 60 * 1000)
     return () => clearInterval(id)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Realtime: nuevo comentario llega vía webhook → aparece al instante
+  useEffect(() => {
+    if (!profile?.tenant_id) return
+
+    const ch = supabase
+      .channel(`bandeja-comentarios-${profile.tenant_id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'comentarios',
+        filter: `tenant_id=eq.${profile.tenant_id}`,
+      }, (payload) => {
+        const nuevo = payload.new as Comentario & { publicacion_id: string }
+
+        // Si la publicación activa es la que recibió el comentario → agrega al instante
+        if (selectedPubRef.current?.id === nuevo.publicacion_id) {
+          setComentarios(prev => {
+            const existe = prev.some(c => c.id === nuevo.id || c.comentario_id === nuevo.comentario_id)
+            return existe ? prev : [...prev, nuevo]
+          })
+        }
+
+        // Actualiza contadores de la publicación afectada sin recargar todo
+        setPublicaciones(prev => prev.map(p =>
+          p.id === nuevo.publicacion_id
+            ? {
+                ...p,
+                comentarios_count:  p.comentarios_count + 1,
+                nuevos_comentarios: p.nuevos_comentarios + (nuevo.estado === 'nuevo' ? 1 : 0),
+              }
+            : p
+        ))
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.tenant_id])
 
   const handleSelectPub = (pub: Publicacion) => {
     setSelectedPub(pub)
