@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   const { data: rows, error } = await admin.from('comentarios')
     .select('*')
     .eq('publicacion_id', publicacionId)
-    .eq('es_respuesta', false)
+    .neq('es_respuesta', true)   // muestra false Y null (compatibilidad con filas sin esa columna)
     .order('created_at', { ascending: true })
     .limit(200)
 

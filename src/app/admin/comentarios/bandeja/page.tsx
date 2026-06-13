@@ -258,7 +258,9 @@ export default function ComentariosBandejaPage() {
       const res  = await fetch('/api/admin/comentarios/sync', { method: 'POST' })
       const data = await res.json() as { ok?: boolean; facebook_posts?: number; facebook_comments?: number; instagram_posts?: number; instagram_comments?: number; error?: string }
       if (res.ok && data.ok) {
-        showToast({ ok: true, msg: `Sincronizado: ${data.facebook_posts ?? 0} posts FB · ${data.instagram_posts ?? 0} posts IG` })
+        const fbCom = data.facebook_comments ?? 0
+        const igCom = data.instagram_comments ?? 0
+        showToast({ ok: true, msg: `Sincronizado: ${data.facebook_posts ?? 0} posts FB (${fbCom} com.) · ${data.instagram_posts ?? 0} posts IG (${igCom} com.)` })
         await cargarPublicaciones()
         if (selectedPub) await cargarComentarios(selectedPub.id)
       } else {

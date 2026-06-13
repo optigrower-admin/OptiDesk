@@ -89,15 +89,16 @@ export async function POST() {
 
         for (const c of comments) {
           await admin.from('comentarios').upsert({
-            tenant_id:     tenantId,
+            tenant_id:      tenantId,
             publicacion_id: pub.id,
-            canal:         'facebook',
-            comentario_id: c.id,
-            texto:         c.message ?? null,
-            autor_id:      c.from?.id ?? null,
-            autor_nombre:  c.from?.name ?? null,
-            estado:        'nuevo',
-            created_at:    c.created_time ? new Date(c.created_time).toISOString() : new Date().toISOString(),
+            canal:          'facebook',
+            comentario_id:  c.id,
+            texto:          c.message ?? null,
+            autor_id:       c.from?.id ?? null,
+            autor_nombre:   c.from?.name ?? null,
+            estado:         'nuevo',
+            es_respuesta:   false,
+            created_at:     c.created_time ? new Date(c.created_time).toISOString() : new Date().toISOString(),
           }, { onConflict: 'tenant_id,comentario_id', ignoreDuplicates: true })
         }
 
@@ -160,6 +161,7 @@ export async function POST() {
             autor_username: c.from?.username ?? null,
             autor_nombre:   c.from?.username ? `@${c.from.username}` : null,
             estado:         'nuevo',
+            es_respuesta:   false,
             created_at:     c.timestamp ? new Date(c.timestamp).toISOString() : new Date().toISOString(),
           }, { onConflict: 'tenant_id,comentario_id', ignoreDuplicates: true })
         }
