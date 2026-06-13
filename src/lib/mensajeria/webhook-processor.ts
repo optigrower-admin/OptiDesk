@@ -12,15 +12,15 @@ export async function procesarMensajeMeta(body: unknown, tenantId: string) {
   const objeto  = String(payload.object ?? '')
 
   for (const entry of entries) {
-    // ── Messenger: estructura entry.messaging[] ───────────────────────────
-    if (objeto === 'page') {
+    // ── Messenger e Instagram: estructura entry.messaging[] ──────────────
+    if (objeto === 'page' || objeto === 'instagram') {
       const messaging = entry.messaging as Array<Record<string, unknown>> | undefined
       if (!messaging?.length) continue
       for (const event of messaging) {
         const msgInner = event.message as Record<string, unknown> | undefined
         if (!msgInner) continue              // ignorar delivery/read receipts (sin objeto message)
         if (msgInner.is_echo) continue       // ignorar ecos del propio agente
-        await procesarMensajeIndividual(supabase, tenantId, event, {}, 'page')
+        await procesarMensajeIndividual(supabase, tenantId, event, {}, objeto)
       }
       continue
     }
@@ -85,13 +85,14 @@ async function procesarMensajeIndividual(
     canal = 'instagram'
     const sender = msg.sender as Record<string, string> | undefined
     canalContactId = sender?.id ?? ''
+    // Instagram DM usa entry.messaging[] igual que Messenger
     const message = msg.message as Record<string, unknown> | undefined
     contenido = String(message?.text ?? '')
     metaMessageId = String((message as Record<string, string> | undefined)?.mid ?? '')
   }
 
   if (!canalContactId) return
-  if (canal === 'messenger' && !contenido.trim() && !metaMessageId) return  // ignorar eventos sin texto (delivery/read/postback)
+  if ((canal === 'messenger' || canal === 'instagram') && !contenido.trim() && !metaMessageId) return  // ignorar delivery/read/postback
 
   if (metaMessageId) {
     const { data: dup } = await supabase
@@ -124,6 +125,10 @@ async function procesarMensajeIndividual(
       const { data: existente } = await supabase
         .from('clientes').select('id').eq('tenant_id', tenantId).eq('messenger_id', canalContactId).maybeSingle()
       clienteId = existente?.id ?? await crearClienteDesdeMessenger(supabase, tenantId, canalContactId)
+    } else if (canal === 'instagram') {
+      const { data: existente } = await supabase
+        .from('clientes').select('id').eq('tenant_id', tenantId).eq('instagram_id', canalContactId).maybeSingle()
+      clienteId = existente?.id ?? await crearClienteDesdeInstagram(supabase, tenantId, canalContactId)
     }
 
     const { data: nuevaConv } = await supabase
@@ -139,13 +144,20 @@ async function procesarMensajeIndividual(
 
   if (!conv) return
 
-  // Conversación Messenger existente sin cliente vinculado (creada antes del auto-name)
-  if (canal === 'messenger' && !(conv as Record<string, unknown>).cliente_id) {
-    const { data: existente } = await supabase
-      .from('clientes').select('id').eq('tenant_id', tenantId).eq('messenger_id', canalContactId).maybeSingle()
-    const clienteId = existente?.id ?? await crearClienteDesdeMessenger(supabase, tenantId, canalContactId)
-    if (clienteId) {
-      await supabase.from('conversaciones').update({ cliente_id: clienteId }).eq('id', conv.id)
+  // Conversación Messenger/Instagram existente sin cliente vinculado
+  if ((canal === 'messenger' || canal === 'instagram') && !(conv as Record<string, unknown>).cliente_id) {
+    let clienteVinculadoId: string | null = null
+    if (canal === 'messenger') {
+      const { data: existente } = await supabase
+        .from('clientes').select('id').eq('tenant_id', tenantId).eq('messenger_id', canalContactId).maybeSingle()
+      clienteVinculadoId = existente?.id ?? await crearClienteDesdeMessenger(supabase, tenantId, canalContactId)
+    } else {
+      const { data: existente } = await supabase
+        .from('clientes').select('id').eq('tenant_id', tenantId).eq('instagram_id', canalContactId).maybeSingle()
+      clienteVinculadoId = existente?.id ?? await crearClienteDesdeInstagram(supabase, tenantId, canalContactId)
+    }
+    if (clienteVinculadoId) {
+      await supabase.from('conversaciones').update({ cliente_id: clienteVinculadoId }).eq('id', conv.id)
     }
   }
 
@@ -287,6 +299,39 @@ async function crearClienteDesdeMessenger(
     const { data: nuevo } = await supabase
       .from('clientes')
       .insert({ tenant_id: tenantId, nombre, messenger_id: psid })
+      .select('id').single()
+    return nuevo?.id ?? null
+  } catch {
+    return null
+  }
+}
+
+async function crearClienteDesdeInstagram(
+  supabase: SupabaseAdmin,
+  tenantId: string,
+  igsid: string
+): Promise<string | null> {
+  try {
+    const { data: cfg } = await supabase
+      .from('config_meta').select('instagram_access_token_enc')
+      .eq('tenant_id', tenantId).maybeSingle()
+    if (!cfg?.instagram_access_token_enc) return null
+
+    let token = cfg.instagram_access_token_enc
+    try { const { decrypt } = await import('@/lib/crypto'); token = decrypt(cfg.instagram_access_token_enc) } catch { /* dev */ }
+
+    let nombre: string | null = null
+    let username: string | null = null
+    const r = await fetch(`https://graph.facebook.com/v20.0/${igsid}?fields=name,username&access_token=${token}`)
+    if (r.ok) {
+      const profile = await r.json() as { name?: string; username?: string }
+      nombre   = profile.name     ?? null
+      username = profile.username ?? null
+    }
+
+    const { data: nuevo } = await supabase
+      .from('clientes')
+      .insert({ tenant_id: tenantId, nombre: nombre ?? username, instagram_id: igsid })
       .select('id').single()
     return nuevo?.id ?? null
   } catch {

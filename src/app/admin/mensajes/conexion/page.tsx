@@ -369,8 +369,6 @@ export default function ConexionMetaPage() {
           onConnect={() => conectar('instagram')}
           onDisconnect={isGerencia && config?.estado_instagram === 'conectado' ? () => desconectarCanal('instagram') : undefined}
           connecting={!!busy.instagram}
-          disabled={true}
-          disabledMsg="Requiere permisos adicionales: instagram_basic e instagram_manage_messages. Ve a developers.facebook.com → tu app → App Review → Permissions and Features."
         />
 
       </div>

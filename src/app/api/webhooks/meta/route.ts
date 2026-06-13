@@ -65,6 +65,12 @@ async function procesarPorWaba(body: unknown) {
       .from('config_meta').select('tenant_id')
       .eq('messenger_page_id', entryId).maybeSingle()
     tenantId = data?.tenant_id ?? null
+  } else if (objeto === 'instagram') {
+    // Instagram DM: entry.id = Instagram Business Account ID
+    const { data } = await admin
+      .from('config_meta').select('tenant_id')
+      .eq('instagram_account_id', entryId).maybeSingle()
+    tenantId = data?.tenant_id ?? null
   } else {
     // WhatsApp: entry.id = WABA ID
     const { data } = await admin

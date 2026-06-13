@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   // ── Validaciones previas al envío (WhatsApp/Messenger, no notas internas) ──
-  if ((conv.canal === 'whatsapp' || conv.canal === 'messenger') && tipo !== 'nota_interna') {
+  if ((conv.canal === 'whatsapp' || conv.canal === 'messenger' || conv.canal === 'instagram') && tipo !== 'nota_interna') {
     // 1. Límite diario: solo WhatsApp (solo cuenta plantillas — conversaciones iniciadas por el negocio)
     if (conv.canal === 'whatsapp') {
       const efectiveLimite = cfg?.negocio_verificado ? (cfg?.limite_diario_wa ?? 1000) : 250
@@ -77,6 +77,8 @@ export async function POST(req: NextRequest) {
     if (!ventanaActiva) {
       const errorMsg = conv.canal === 'whatsapp'
         ? 'El contacto no ha escrito en las últimas 24 h. Debes enviar una plantilla aprobada por Meta.'
+        : conv.canal === 'instagram'
+        ? 'El contacto no ha escrito en las últimas 24 h (ventana estándar de Instagram cerrada).'
         : 'El contacto no ha escrito en las últimas 24 h (ventana estándar de Messenger cerrada).'
       return NextResponse.json({ error: errorMsg, code: 'VENTANA_CERRADA' }, { status: 403 })
     }
