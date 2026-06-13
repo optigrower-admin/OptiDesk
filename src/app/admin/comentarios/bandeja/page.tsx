@@ -125,8 +125,15 @@ export default function ComentariosBandejaPage() {
   const [dmText, setDmText]   = useState('')
   const [sendingDm, setSendingDm] = useState(false)
 
-  const [toast, setToast] = useState<Toast | null>(null)
-  const toastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [toast, setToast]         = useState<Toast | null>(null)
+  const [lastSynced, setLastSynced] = useState<Date | null>(null)
+  const toastRef      = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const filtroRef     = useRef(filtro)
+  const selectedPubRef = useRef<Publicacion | null>(null)
+
+  // Keep refs fresh so the interval always reads the latest values
+  useEffect(() => { filtroRef.current = filtro }, [filtro])
+  useEffect(() => { selectedPubRef.current = selectedPub }, [selectedPub])
 
   const showToast = (t: Toast) => {
     if (toastRef.current) clearTimeout(toastRef.current)
@@ -159,6 +166,32 @@ export default function ComentariosBandejaPage() {
   }, [])
 
   useEffect(() => { cargarPublicaciones() }, [cargarPublicaciones])
+
+  // Auto-sync: on mount + every 10 minutes, silently in background
+  useEffect(() => {
+    const silentSync = async () => {
+      try {
+        await fetch('/api/admin/comentarios/sync', { method: 'POST' })
+        setLastSynced(new Date())
+        // Reload publications respecting current filter
+        const url = filtroRef.current !== 'todos'
+          ? `/api/admin/comentarios/publicaciones?canal=${filtroRef.current}`
+          : '/api/admin/comentarios/publicaciones'
+        const res = await fetch(url)
+        if (res.ok) setPublicaciones(await res.json())
+        // Reload comments for selected publication if any
+        const pub = selectedPubRef.current
+        if (pub) {
+          const cr = await fetch(`/api/admin/comentarios/comentarios?publicacion_id=${pub.id}`)
+          if (cr.ok) setComentarios(await cr.json())
+        }
+      } catch { /* ignore */ }
+    }
+
+    silentSync()
+    const id = setInterval(silentSync, 10 * 60 * 1000)
+    return () => clearInterval(id)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectPub = (pub: Publicacion) => {
     setSelectedPub(pub)
@@ -270,7 +303,7 @@ export default function ComentariosBandejaPage() {
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
         {/* Header */}
         <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-1">
             <h1 className="font-bold text-gray-900 text-base">Comentarios</h1>
             <button
               onClick={handleSync}
@@ -283,6 +316,11 @@ export default function ComentariosBandejaPage() {
               {syncing ? 'Sincronizando…' : 'Sincronizar'}
             </button>
           </div>
+          {lastSynced && (
+            <p className="text-[10px] text-gray-400 mb-2">
+              Auto-sync activo · última vez {lastSynced.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
 
           {/* Canal filter tabs */}
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
@@ -304,8 +342,8 @@ export default function ComentariosBandejaPage() {
             <div className="p-8 text-center text-gray-400 text-sm">Cargando…</div>
           ) : pubs.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-gray-400 text-sm mb-2">Sin publicaciones sincronizadas</p>
-              <p className="text-gray-300 text-xs">Haz clic en "Sincronizar" para traer los posts de Facebook e Instagram</p>
+              <p className="text-gray-400 text-sm mb-2">Sincronizando publicaciones…</p>
+              <p className="text-gray-300 text-xs">Trayendo posts de Facebook e Instagram automáticamente</p>
             </div>
           ) : (
             pubs.map(pub => (
