@@ -27,7 +27,7 @@ const APP_ID = process.env.NEXT_PUBLIC_META_APP_ID
 const SCOPES = {
   whatsapp:  'whatsapp_business_management,whatsapp_business_messaging',
   messenger: 'pages_show_list,pages_messaging',
-  instagram: 'pages_show_list,instagram_business_basic,instagram_business_manage_messages',
+  instagram: 'pages_show_list,instagram_manage_messages',
 }
 
 const CALLBACKS = {
