@@ -45,33 +45,31 @@ export async function POST(req: NextRequest) {
 
   const igAccountId = cfg.instagram_account_id ?? ''
 
-  // ── 1. Pre-cargar nombres desde la API de conversaciones de Instagram ────────
-  // Similar a Messenger: GET /{ig_account_id}/conversations?platform=instagram
+  // ── 1. Pre-cargar nombres desde la API de conversaciones — igual que Messenger
+  // GET /me/conversations?platform=instagram es el equivalente exacto de Messenger
   const nameByIgsid = new Map<string, string>()
-  if (igAccountId) {
-    try {
-      let nextUrl: string | null =
-        `https://graph.facebook.com/v20.0/${igAccountId}/conversations?platform=instagram&fields=participants%7Bid%2Cname%2Cusername%7D&limit=100&access_token=${pageToken}`
-      while (nextUrl) {
-        const r = await fetch(nextUrl)
-        const d = await r.json() as {
-          data?: Array<{ participants?: { data?: Array<{ id: string; name?: string; username?: string }> } }>
-          paging?: { next?: string }
-          error?: { message: string }
-        }
-        if (!r.ok || d.error) { console.log('[sync-instagram] conversations API error:', d.error?.message); break }
-        for (const igConv of d.data ?? []) {
-          for (const p of igConv.participants?.data ?? []) {
-            if (p.id !== igAccountId && !nameByIgsid.has(p.id)) {
-              const displayName = p.name ?? (p.username ? `@${p.username}` : null)
-              if (displayName) nameByIgsid.set(p.id, displayName)
-            }
+  try {
+    let nextUrl: string | null =
+      `https://graph.facebook.com/v20.0/me/conversations?platform=instagram&fields=participants%7Bid%2Cname%2Cusername%7D&limit=200&access_token=${pageToken}`
+    while (nextUrl) {
+      const r = await fetch(nextUrl)
+      const d = await r.json() as {
+        data?: Array<{ participants?: { data?: Array<{ id: string; name?: string; username?: string }> } }>
+        paging?: { next?: string }
+        error?: { message: string }
+      }
+      if (!r.ok || d.error) { console.log('[sync-instagram] conversations API error:', d.error?.message); break }
+      for (const igConv of d.data ?? []) {
+        for (const p of igConv.participants?.data ?? []) {
+          if (p.id !== igAccountId && !nameByIgsid.has(p.id)) {
+            const displayName = p.name ?? (p.username ? `@${p.username}` : null)
+            if (displayName) nameByIgsid.set(p.id, displayName)
           }
         }
-        nextUrl = d.paging?.next ?? null
       }
-    } catch (e) { console.log('[sync-instagram] conversations API exception:', e) }
-  }
+      nextUrl = d.paging?.next ?? null
+    }
+  } catch (e) { console.log('[sync-instagram] conversations API exception:', e) }
   console.log(`[sync-instagram] nombres obtenidos de conversaciones: ${nameByIgsid.size}`)
 
   // ── 1. Buscar convs de Instagram sin nombre en nuestra DB ─────────────────

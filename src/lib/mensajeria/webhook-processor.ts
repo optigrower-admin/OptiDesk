@@ -330,10 +330,10 @@ async function crearClienteDesdeInstagram(
       if (!profile.error) { nombre = profile.name ?? null; username = profile.username ?? null }
     }
 
-    // 2. Fallback: API de conversaciones de Instagram (más fiable para nombres)
-    if (!nombre && !username && cfg.instagram_account_id) {
+    // 2. Fallback: /me/conversations?platform=instagram — igual que Messenger
+    if (!nombre && !username) {
       const rc = await fetch(
-        `https://graph.facebook.com/v20.0/${cfg.instagram_account_id}/conversations?platform=instagram&user_id=${igsid}&fields=participants%7Bid%2Cname%2Cusername%7D&access_token=${token}`
+        `https://graph.facebook.com/v20.0/me/conversations?platform=instagram&fields=participants%7Bid%2Cname%2Cusername%7D&limit=200&access_token=${token}`
       )
       if (rc.ok) {
         const dc = await rc.json() as { data?: Array<{ participants?: { data?: Array<{ id: string; name?: string; username?: string }> } }> }
