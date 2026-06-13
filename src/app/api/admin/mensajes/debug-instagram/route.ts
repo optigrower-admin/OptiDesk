@@ -46,15 +46,40 @@ export async function GET() {
   const r4 = await fetch(`https://graph.facebook.com/debug_token?input_token=${token}&access_token=${token}`)
   const d4 = await r4.json()
 
+  // Prueba 5: endpoint directo por IGSID — tomamos el primer IGSID de nuestras convs
+  const { data: primerConv } = await admin
+    .from('conversaciones')
+    .select('canal_contact_id')
+    .eq('tenant_id', perfil.tenant_id)
+    .eq('canal', 'instagram')
+    .limit(1)
+    .maybeSingle()
+
+  const igsid = primerConv?.canal_contact_id ?? null
+  let d5: unknown = 'sin conversaciones instagram en DB'
+  let s5: number | string = 'N/A'
+  if (igsid) {
+    const r5 = await fetch(`https://graph.facebook.com/v20.0/${igsid}?fields=name,username,profile_pic&access_token=${token}`)
+    d5 = await r5.json()
+    s5 = r5.status
+  }
+
+  // Prueba 6: /me/conversations sin platform (para ver si la página tiene ALGUNA conv)
+  const r6 = await fetch(`https://graph.facebook.com/v20.0/me/conversations?fields=participants%7Bid%2Cname%7D&limit=3&access_token=${token}`)
+  const d6 = await r6.json()
+
   return NextResponse.json({
     config: {
       estado_instagram: cfg.estado_instagram,
       instagram_account_id: igAccountId,
+      page_id_del_token: d4?.data?.profile_id ?? 'ver prueba4',
       token_primeros_10: token.slice(0, 10) + '...',
     },
     prueba1_me_conversations_instagram: { status: r1.status, body: d1 },
     prueba2_me_identity: { status: r2.status, body: d2 },
     prueba3_ig_account_conversations: { status: r3?.status ?? 'N/A', body: d3 },
     prueba4_token_permisos: { status: r4.status, body: d4 },
+    prueba5_igsid_directo: { igsid, status: s5, body: d5 },
+    prueba6_me_conversations_sin_platform: { status: r6.status, body: d6 },
   })
 }
