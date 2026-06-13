@@ -14,13 +14,27 @@ export async function procesarMensajeMeta(body: unknown, tenantId: string) {
   for (const entry of entries) {
     // ── Messenger e Instagram: estructura entry.messaging[] ──────────────
     if (objeto === 'page' || objeto === 'instagram') {
+      // DMs
       const messaging = entry.messaging as Array<Record<string, unknown>> | undefined
-      if (!messaging?.length) continue
-      for (const event of messaging) {
-        const msgInner = event.message as Record<string, unknown> | undefined
-        if (!msgInner) continue              // ignorar delivery/read receipts (sin objeto message)
-        if (msgInner.is_echo) continue       // ignorar ecos del propio agente
-        await procesarMensajeIndividual(supabase, tenantId, event, {}, objeto)
+      if (messaging?.length) {
+        for (const event of messaging) {
+          const msgInner = event.message as Record<string, unknown> | undefined
+          if (!msgInner) continue
+          if (msgInner.is_echo) continue
+          await procesarMensajeIndividual(supabase, tenantId, event, {}, objeto)
+        }
+      }
+
+      // Comentarios de publicaciones (feed de FB, comments de IG)
+      const changes = entry.changes as Array<Record<string, unknown>> | undefined
+      if (changes?.length) {
+        for (const change of changes) {
+          if (objeto === 'page' && change.field === 'feed') {
+            await procesarComentarioFacebook(supabase, tenantId, change.value as Record<string, unknown>)
+          } else if (objeto === 'instagram' && change.field === 'comments') {
+            await procesarComentarioInstagram(supabase, tenantId, change.value as Record<string, unknown>)
+          }
+        }
       }
       continue
     }
@@ -353,6 +367,83 @@ async function crearClienteDesdeInstagram(
   } catch {
     return null
   }
+}
+
+async function procesarComentarioFacebook(
+  supabase: SupabaseAdmin,
+  tenantId: string,
+  value: Record<string, unknown>
+) {
+  // Solo comentarios nuevos, no likes/reactions/edits/removes
+  if (value.item !== 'comment' || value.verb === 'remove') return
+
+  const commentId   = String(value.comment_id ?? '')
+  const postId      = String(value.post_id ?? '')
+  const parentId    = String(value.parent_id ?? '')
+  const texto       = String(value.message ?? '')
+  const from        = value.from as Record<string, string> | undefined
+  const ts          = Number(value.created_time ?? 0)
+
+  if (!commentId || !postId) return
+
+  const { data: pub } = await supabase
+    .from('publicaciones')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('publicacion_id', postId)
+    .maybeSingle()
+
+  if (!pub) return // publicación no sincronizada aún
+
+  await supabase.from('comentarios').upsert({
+    tenant_id:           tenantId,
+    publicacion_id:      pub.id,
+    canal:               'facebook',
+    comentario_id:       commentId,
+    texto:               texto || null,
+    autor_id:            from?.id ?? null,
+    autor_nombre:        from?.name ?? null,
+    estado:              'nuevo',
+    es_respuesta:        Boolean(parentId && parentId !== postId),
+    parent_comentario_id: parentId || null,
+    created_at:          ts ? new Date(ts * 1000).toISOString() : new Date().toISOString(),
+  }, { onConflict: 'tenant_id,comentario_id', ignoreDuplicates: true })
+}
+
+async function procesarComentarioInstagram(
+  supabase: SupabaseAdmin,
+  tenantId: string,
+  value: Record<string, unknown>
+) {
+  const commentId     = String(value.id ?? '')
+  const texto         = String(value.text ?? '')
+  const media         = value.media as Record<string, string> | undefined
+  const mediaId       = String(media?.id ?? '')
+  const from          = value.from as Record<string, string> | undefined
+
+  if (!commentId || !mediaId) return
+
+  const { data: pub } = await supabase
+    .from('publicaciones')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('publicacion_id', mediaId)
+    .maybeSingle()
+
+  if (!pub) return
+
+  await supabase.from('comentarios').upsert({
+    tenant_id:      tenantId,
+    publicacion_id: pub.id,
+    canal:          'instagram',
+    comentario_id:  commentId,
+    texto:          texto || null,
+    autor_id:       from?.id ?? null,
+    autor_username: from?.username ?? null,
+    autor_nombre:   from?.username ? `@${from.username}` : null,
+    estado:         'nuevo',
+    created_at:     new Date().toISOString(),
+  }, { onConflict: 'tenant_id,comentario_id', ignoreDuplicates: true })
 }
 
 async function manejarStatusPlantilla(

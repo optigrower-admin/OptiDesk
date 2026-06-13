@@ -44,6 +44,13 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/mensajes/flujos',     label: 'Flujos',        seccion: null, soloGerencia: false, defaultOrden: 130 },
     ],
   },
+  {
+    key: 'comentarios',
+    label: 'Comentarios',
+    items: [
+      { href: '/admin/comentarios/bandeja', label: 'Publicaciones', seccion: null, soloGerencia: false, defaultOrden: 200 },
+    ],
+  },
 ]
 
 const STANDALONE_NAV: NavItem[] = [
@@ -128,7 +135,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const [logoUrl, setLogoUrl]           = useState<string | null>(null)
   const [nombreNegocio, setNombreNegocio] = useState<string | null>(null)
-  const [openGroups, setOpenGroups]     = useState<Record<string, boolean>>({ 'serv-tec': true, 'mensajes': false })
+  const [openGroups, setOpenGroups]     = useState<Record<string, boolean>>({ 'serv-tec': true, 'mensajes': false, 'comentarios': false })
 
   // ── Notificaciones ───────────────────────────────────────────────────────
   const [unreadTotal, setUnreadTotal]   = useState(0)
