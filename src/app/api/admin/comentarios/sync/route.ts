@@ -26,7 +26,7 @@ export async function POST() {
 
   if (!cfg) return NextResponse.json({ error: 'Sin configuración Meta' }, { status: 400 })
 
-  const stats = { facebook_posts: 0, facebook_comments: 0, instagram_posts: 0, instagram_comments: 0 }
+  const stats = { facebook_posts: 0, facebook_comments: 0, instagram_posts: 0, instagram_comments: 0, comment_errors: [] as string[] }
 
   // Pre-decrypt Facebook page token — needed by both subscription and FB posts sync
   let fbToken: string | null = null
@@ -78,12 +78,14 @@ export async function POST() {
         if (!pub) continue
 
         type FBComment = { id: string; message?: string; from?: { id?: string; name?: string }; created_time?: string }
-        const commRes = await fetch(
+        const commRes  = await fetch(
           `https://graph.facebook.com/v20.0/${post.id}/comments?fields=id,message,from%7Bid%2Cname%7D,created_time&limit=100&access_token=${fbToken}`
         )
-        if (!commRes.ok) continue
-
-        const commData = await commRes.json() as { data?: FBComment[] }
+        const commData = await commRes.json() as { data?: FBComment[]; error?: { message: string; code: number } }
+        if (!commRes.ok || commData.error) {
+          stats.comment_errors.push(`FB: ${commData.error?.message ?? `HTTP ${commRes.status}`}`)
+          continue
+        }
         const comments = commData.data ?? []
         stats.facebook_comments += comments.length
 
@@ -141,12 +143,14 @@ export async function POST() {
         if (!pub) continue
 
         type IGComment = { id: string; text?: string; from?: { id?: string; username?: string }; timestamp?: string }
-        const commRes = await fetch(
+        const commRes  = await fetch(
           `https://graph.facebook.com/v20.0/${media.id}/comments?fields=id,text,from%7Bid%2Cusername%7D,timestamp&limit=100&access_token=${igToken}`
         )
-        if (!commRes.ok) continue
-
-        const commData = await commRes.json() as { data?: IGComment[] }
+        const commData = await commRes.json() as { data?: IGComment[]; error?: { message: string; code: number } }
+        if (!commRes.ok || commData.error) {
+          stats.comment_errors.push(`IG: ${commData.error?.message ?? `HTTP ${commRes.status}`}`)
+          continue
+        }
         const comments = commData.data ?? []
         stats.instagram_comments += comments.length
 
