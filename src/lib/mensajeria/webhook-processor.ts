@@ -313,7 +313,7 @@ async function crearClienteDesdeInstagram(
 ): Promise<string | null> {
   try {
     const { data: cfg } = await supabase
-      .from('config_meta').select('instagram_access_token_enc')
+      .from('config_meta').select('instagram_access_token_enc, instagram_account_id')
       .eq('tenant_id', tenantId).maybeSingle()
     if (!cfg?.instagram_access_token_enc) return null
 
@@ -322,16 +322,32 @@ async function crearClienteDesdeInstagram(
 
     let nombre: string | null = null
     let username: string | null = null
+
+    // 1. Endpoint directo por IGSID
     const r = await fetch(`https://graph.facebook.com/v20.0/${igsid}?fields=name,username&access_token=${token}`)
     if (r.ok) {
-      const profile = await r.json() as { name?: string; username?: string }
-      nombre   = profile.name     ?? null
-      username = profile.username ?? null
+      const profile = await r.json() as { name?: string; username?: string; error?: unknown }
+      if (!profile.error) { nombre = profile.name ?? null; username = profile.username ?? null }
     }
 
+    // 2. Fallback: API de conversaciones de Instagram (más fiable para nombres)
+    if (!nombre && !username && cfg.instagram_account_id) {
+      const rc = await fetch(
+        `https://graph.facebook.com/v20.0/${cfg.instagram_account_id}/conversations?platform=instagram&user_id=${igsid}&fields=participants%7Bid%2Cname%2Cusername%7D&access_token=${token}`
+      )
+      if (rc.ok) {
+        const dc = await rc.json() as { data?: Array<{ participants?: { data?: Array<{ id: string; name?: string; username?: string }> } }> }
+        for (const conv of dc.data ?? []) {
+          const p = conv.participants?.data?.find(p => p.id === igsid)
+          if (p) { nombre = p.name ?? null; username = p.username ?? null; break }
+        }
+      }
+    }
+
+    const displayNombre = nombre ?? (username ? `@${username}` : null)
     const { data: nuevo } = await supabase
       .from('clientes')
-      .insert({ tenant_id: tenantId, nombre: nombre ?? username, instagram_id: igsid })
+      .insert({ tenant_id: tenantId, nombre: displayNombre, instagram_id: igsid })
       .select('id').single()
     return nuevo?.id ?? null
   } catch {

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   const { data: cfg } = await admin
     .from('config_meta')
-    .select('instagram_access_token_enc, estado_instagram')
+    .select('instagram_access_token_enc, instagram_account_id, estado_instagram')
     .eq('tenant_id', tenantId)
     .maybeSingle()
 
@@ -42,6 +42,37 @@ export async function POST(req: NextRequest) {
 
   let pageToken = cfg.instagram_access_token_enc
   try { const { decrypt } = await import('@/lib/crypto'); pageToken = decrypt(cfg.instagram_access_token_enc) } catch { /* dev */ }
+
+  const igAccountId = cfg.instagram_account_id ?? ''
+
+  // ── 1. Pre-cargar nombres desde la API de conversaciones de Instagram ────────
+  // Similar a Messenger: GET /{ig_account_id}/conversations?platform=instagram
+  const nameByIgsid = new Map<string, string>()
+  if (igAccountId) {
+    try {
+      let nextUrl: string | null =
+        `https://graph.facebook.com/v20.0/${igAccountId}/conversations?platform=instagram&fields=participants%7Bid%2Cname%2Cusername%7D&limit=100&access_token=${pageToken}`
+      while (nextUrl) {
+        const r = await fetch(nextUrl)
+        const d = await r.json() as {
+          data?: Array<{ participants?: { data?: Array<{ id: string; name?: string; username?: string }> } }>
+          paging?: { next?: string }
+          error?: { message: string }
+        }
+        if (!r.ok || d.error) { console.log('[sync-instagram] conversations API error:', d.error?.message); break }
+        for (const igConv of d.data ?? []) {
+          for (const p of igConv.participants?.data ?? []) {
+            if (p.id !== igAccountId && !nameByIgsid.has(p.id)) {
+              const displayName = p.name ?? (p.username ? `@${p.username}` : null)
+              if (displayName) nameByIgsid.set(p.id, displayName)
+            }
+          }
+        }
+        nextUrl = d.paging?.next ?? null
+      }
+    } catch (e) { console.log('[sync-instagram] conversations API exception:', e) }
+  }
+  console.log(`[sync-instagram] nombres obtenidos de conversaciones: ${nameByIgsid.size}`)
 
   // ── 1. Buscar convs de Instagram sin nombre en nuestra DB ─────────────────
   const { data: convs } = await admin
@@ -69,13 +100,16 @@ export async function POST(req: NextRequest) {
 
   for (const [igsid, convIds] of igsidToConvIds) {
     try {
-      // GET /v20.0/{igsid}?fields=name,username — disponible para usuarios que hayan enviado DMs
-      const r = await fetch(`https://graph.facebook.com/v20.0/${igsid}?fields=name,username&access_token=${pageToken}`)
-      const profile = await r.json() as { name?: string; username?: string; error?: { message?: string } }
-      console.log(`[sync-instagram] igsid=${igsid} ok=${r.ok} name=${profile.name ?? 'null'} username=${profile.username ?? 'null'} err=${profile.error?.message ?? 'none'}`)
+      // 1. Usar mapa pre-cargado de conversaciones (más fiable)
+      let nombre = nameByIgsid.get(igsid) ?? null
 
-      // Usar nombre completo si existe, si no username con @
-      const nombre = profile.name ?? (profile.username ? `@${profile.username}` : null)
+      // 2. Fallback: endpoint individual por IGSID
+      if (!nombre) {
+        const r = await fetch(`https://graph.facebook.com/v20.0/${igsid}?fields=name,username&access_token=${pageToken}`)
+        const profile = await r.json() as { name?: string; username?: string; error?: { message?: string } }
+        console.log(`[sync-instagram] igsid=${igsid} ok=${r.ok} name=${profile.name ?? 'null'} username=${profile.username ?? 'null'} err=${profile.error?.message ?? 'none'}`)
+        nombre = profile.name ?? (profile.username ? `@${profile.username}` : null)
+      }
 
       // Buscar o crear cliente
       const { data: existente } = await admin
