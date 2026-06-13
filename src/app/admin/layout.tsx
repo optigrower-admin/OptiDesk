@@ -105,6 +105,32 @@ function playMsgSound() {
   } catch { /* autoplay bloqueado */ }
 }
 
+// ── Chime suave de dos notas descendentes (E5 → C5) para comentarios ─────────
+function playCommentSound() {
+  try {
+    type WA = Window & { webkitAudioContext?: typeof AudioContext }
+    const Ctx = window.AudioContext ?? (window as WA).webkitAudioContext
+    if (!Ctx) return
+    const ctx = new Ctx()
+
+    const chime = (freq: number, startAt: number, vol: number, dur: number) => {
+      const osc  = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'triangle'                                // timbre más suave que sine
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(vol, startAt)
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur)
+      osc.start(startAt); osc.stop(startAt + dur)
+    }
+
+    chime(659, ctx.currentTime,        0.18, 0.35)        // Mi5 — primer tono
+    chime(523, ctx.currentTime + 0.20, 0.14, 0.40)        // Do5 — segundo tono (descendente)
+
+    setTimeout(() => ctx.close(), 900)
+  } catch { /* autoplay bloqueado */ }
+}
+
 // ── Notificación via Service Worker ──────────────────────────────────────────
 function notificarViaSW(title: string, body: string, tag: string) {
   if (!('serviceWorker' in navigator) || Notification.permission !== 'granted') return
@@ -146,6 +172,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const prevConvsRef  = useRef<ConvSnap[]>([])
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Comentarios ──────────────────────────────────────────────────────────
+  const [nuevosComentarios, setNuevosComentarios]   = useState(0)
+  const [commentToast, setCommentToast]             = useState<string | null>(null)
+  const prevNuevosComRef      = useRef<number>(0)
+  const commentToastTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const mostrarToast = useCallback((t: NotifToast) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -191,6 +223,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
     prevConvsRef.current = convs
   }, [profile?.tenant_id, pathname, mostrarToast])
+
+  const cargarNuevosComentarios = useCallback(async (detectar = false) => {
+    if (!profile?.tenant_id) return
+    const { count } = await supabase
+      .from('comentarios')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', profile.tenant_id)
+      .eq('estado', 'nuevo')
+
+    const total = count ?? 0
+    setNuevosComentarios(total)
+
+    if (detectar && total > prevNuevosComRef.current) {
+      playCommentSound()
+      if (!pathname.startsWith('/admin/comentarios')) {
+        const diff = total - prevNuevosComRef.current
+        const msg  = `${diff} comentario${diff > 1 ? 's' : ''} nuevo${diff > 1 ? 's' : ''}`
+        if (commentToastTimerRef.current) clearTimeout(commentToastTimerRef.current)
+        setCommentToast(msg)
+        commentToastTimerRef.current = setTimeout(() => setCommentToast(null), 5000)
+      }
+    }
+    prevNuevosComRef.current = total
+  }, [profile?.tenant_id, pathname])
 
   // ── Suscribir a Web Push (funciona con Chrome cerrado) ───────────────────
   const suscribirPush = async () => {
@@ -326,6 +382,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
 
     cargarNoLeidos()
+    cargarNuevosComentarios()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -349,10 +406,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         event: '*', schema: 'public', table: 'conversaciones',
         filter: `tenant_id=eq.${profile.tenant_id}`,
       }, () => cargarNoLeidos(true))
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'comentarios',
+        filter: `tenant_id=eq.${profile.tenant_id}`,
+      }, () => cargarNuevosComentarios(true))
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'comentarios',
+        filter: `tenant_id=eq.${profile.tenant_id}`,
+      }, () => cargarNuevosComentarios(false))
       .subscribe()
-    const t = setInterval(() => cargarNoLeidos(true), 20000)
+    const t = setInterval(() => { cargarNoLeidos(true); cargarNuevosComentarios(false) }, 20000)
     return () => { supabase.removeChannel(ch); clearInterval(t) }
-  }, [profile?.tenant_id, cargarNoLeidos])
+  }, [profile?.tenant_id, cargarNoLeidos, cargarNuevosComentarios])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -382,8 +447,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         return oa - ob
       })
 
-  const standaloneItems  = filterAndSort(STANDALONE_NAV)
-  const isBandejaActive  = pathname.startsWith('/admin/mensajes/bandeja')
+  const standaloneItems            = filterAndSort(STANDALONE_NAV)
+  const isBandejaActive            = pathname.startsWith('/admin/mensajes/bandeja')
+  const isBandejaComentariosActive = pathname.startsWith('/admin/comentarios')
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
   return (
@@ -407,8 +473,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {NAV_GROUPS.map((group, idx) => {
             const groupItems = filterAndSort(group.items)
             if (groupItems.length === 0) return null
-            const isOpen     = openGroups[group.key]
-            const esMensajes = group.key === 'mensajes'
+            const isOpen       = openGroups[group.key]
+            const esMensajes   = group.key === 'mensajes'
+            const esComentarios = group.key === 'comentarios'
             return (
               <div key={group.key} className={idx > 0 ? 'mt-1' : ''}>
                 <button
@@ -422,6 +489,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         {unreadTotal > 99 ? '99+' : unreadTotal}
                       </span>
                     )}
+                    {esComentarios && nuevosComentarios > 0 && (
+                      <span className="bg-orange-500 text-white rounded-full text-xs font-bold px-1.5 py-0.5 min-w-[18px] text-center leading-none">
+                        {nuevosComentarios > 99 ? '99+' : nuevosComentarios}
+                      </span>
+                    )}
                   </div>
                   <svg className={cn('w-3 h-3 transition-transform flex-shrink-0', isOpen ? 'rotate-90' : '')} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
@@ -430,7 +502,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {isOpen && (
                   <div className="mt-0.5 ml-2 space-y-0.5">
                     {groupItems.map(item => {
-                      const esBandeja = item.href === '/admin/mensajes/bandeja'
+                      const esBandeja    = item.href === '/admin/mensajes/bandeja'
+                      const esPubs       = item.href === '/admin/comentarios/bandeja'
                       return (
                         <Link key={item.href} href={item.href}
                           className={cn(
@@ -444,6 +517,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                           {esBandeja && unreadTotal > 0 && !isBandejaActive && (
                             <span className="bg-green-500 text-white rounded-full text-xs font-bold px-1.5 py-0.5 min-w-[18px] text-center leading-none">
                               {unreadTotal > 99 ? '99+' : unreadTotal}
+                            </span>
+                          )}
+                          {esPubs && nuevosComentarios > 0 && !isBandejaComentariosActive && (
+                            <span className="bg-orange-500 text-white rounded-full text-xs font-bold px-1.5 py-0.5 min-w-[18px] text-center leading-none">
+                              {nuevosComentarios > 99 ? '99+' : nuevosComentarios}
                             </span>
                           )}
                         </Link>
@@ -542,6 +620,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </button>
           </div>
           <button onClick={() => setNotifToast(null)} className="text-gray-300 hover:text-gray-500 flex-shrink-0 -mt-0.5">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Toast comentarios nuevos */}
+      {commentToast && (
+        <div className="fixed bottom-20 right-5 z-50 bg-white border border-orange-200 shadow-xl rounded-xl p-3.5 flex items-start gap-3 w-72 animate-slide-up">
+          <div className="w-9 h-9 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0 text-lg mt-0.5">
+            💬
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-gray-900 mb-0.5">Comentarios</p>
+            <p className="text-xs text-gray-600">{commentToast}</p>
+            <button
+              onClick={() => { setCommentToast(null); router.push('/admin/comentarios/bandeja') }}
+              className="mt-1.5 text-xs font-semibold text-orange-600 hover:text-orange-800 transition-colors"
+            >
+              Ver comentarios →
+            </button>
+          </div>
+          <button onClick={() => setCommentToast(null)} className="text-gray-300 hover:text-gray-500 flex-shrink-0 -mt-0.5">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
