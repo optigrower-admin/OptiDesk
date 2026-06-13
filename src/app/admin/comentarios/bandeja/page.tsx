@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
@@ -108,7 +108,7 @@ function PubCard({ pub, selected, onClick }: { pub: Publicacion; selected: boole
 
 export default function ComentariosBandejaPage() {
   const router   = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const { profile } = useAuth()
 
   const [publicaciones, setPublicaciones] = useState<Publicacion[]>([])
@@ -129,8 +129,9 @@ export default function ComentariosBandejaPage() {
   const [dmText, setDmText]   = useState('')
   const [sendingDm, setSendingDm] = useState(false)
 
-  const [toast, setToast]         = useState<Toast | null>(null)
-  const [lastSynced, setLastSynced] = useState<Date | null>(null)
+  const [toast, setToast]          = useState<Toast | null>(null)
+  const [lastSynced, setLastSynced]  = useState<Date | null>(null)
+  const [pubsError, setPubsError]    = useState<string | null>(null)
   const toastRef      = useRef<ReturnType<typeof setTimeout> | null>(null)
   const filtroRef     = useRef(filtro)
   const selectedPubRef = useRef<Publicacion | null>(null)
@@ -147,12 +148,20 @@ export default function ComentariosBandejaPage() {
 
   const cargarPublicaciones = useCallback(async () => {
     setLoadingPubs(true)
+    setPubsError(null)
     try {
       const url = filtro === 'todos'
         ? '/api/admin/comentarios/publicaciones'
         : `/api/admin/comentarios/publicaciones?canal=${filtro}`
-      const res = await fetch(url)
-      if (res.ok) setPublicaciones(await res.json())
+      const res  = await fetch(url)
+      const data = await res.json()
+      if (res.ok) {
+        setPublicaciones(data)
+      } else {
+        setPubsError(`Error ${res.status}: ${data?.error ?? 'desconocido'}`)
+      }
+    } catch (e) {
+      setPubsError(`Error de conexión: ${String(e)}`)
     } finally {
       setLoadingPubs(false)
     }
@@ -383,10 +392,15 @@ export default function ComentariosBandejaPage() {
         <div className="flex-1 overflow-y-auto">
           {loadingPubs ? (
             <div className="p-8 text-center text-gray-400 text-sm">Cargando…</div>
+          ) : pubsError ? (
+            <div className="p-6 text-center">
+              <p className="text-red-500 text-xs font-semibold mb-1">Error al cargar</p>
+              <p className="text-red-400 text-xs break-words">{pubsError}</p>
+            </div>
           ) : pubs.length === 0 ? (
             <div className="p-8 text-center">
-              <p className="text-gray-400 text-sm mb-2">Sincronizando publicaciones…</p>
-              <p className="text-gray-300 text-xs">Trayendo posts de Facebook e Instagram automáticamente</p>
+              <p className="text-gray-400 text-sm mb-2">Sin publicaciones aún</p>
+              <p className="text-gray-300 text-xs">Haz clic en Sincronizar para traer los posts</p>
             </div>
           ) : (
             pubs.map(pub => (
