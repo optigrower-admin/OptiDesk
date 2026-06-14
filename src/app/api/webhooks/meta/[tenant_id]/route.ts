@@ -87,6 +87,12 @@ async function procesarMensajeMeta(body: unknown, tenantId: string) {
           continue
         }
 
+        // Comentarios de Facebook (feed webhook)
+        if (change.field === 'feed') {
+          await procesarComentarioFacebook(supabase, tenantId, value)
+          continue
+        }
+
         // Mensajes entrantes
         const messages = value.messages as Array<Record<string, unknown>> | undefined
         if (!messages?.length) continue
@@ -301,6 +307,66 @@ async function verificarLimiteDiario(
       .from('config_meta')
       .update({ mensajes_iniciados_hoy: 0, limite_reset_at: ahora.toISOString() })
       .eq('tenant_id', tenantId)
+  }
+}
+
+async function procesarComentarioFacebook(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  value: Record<string, unknown>
+) {
+  // Solo procesar comentarios nuevos, no ediciones ni borrados
+  if (value.item !== 'comment' || value.verb !== 'add') return
+
+  const postId      = String(value.post_id ?? '')
+  const commentId   = String(value.comment_id ?? '')
+  const message     = String(value.message ?? '')
+  const senderId    = String(value.sender_id ?? '')
+  const senderName  = String(value.sender_name ?? '')
+  const parentId    = value.parent_id ? String(value.parent_id) : null
+  const createdTime = value.created_time
+    ? new Date(Number(value.created_time) * 1000).toISOString()
+    : new Date().toISOString()
+
+  if (!postId || !commentId) return
+
+  // Buscar la publicación en DB (debe estar sincronizada previamente)
+  const { data: pub } = await supabase
+    .from('publicaciones')
+    .select('id, comentarios_count')
+    .eq('tenant_id', tenantId)
+    .eq('publicacion_id', postId)
+    .maybeSingle()
+
+  if (!pub) return // Post no sincronizado aún
+
+  // Si parent_id existe y es distinto del post_id, es una respuesta a otro comentario
+  const esRespuesta = parentId !== null && parentId !== postId
+
+  await supabase.from('comentarios').upsert({
+    tenant_id:      tenantId,
+    publicacion_id: pub.id,
+    canal:          'facebook',
+    comentario_id:  commentId,
+    texto:          message || null,
+    autor_id:       senderId || null,
+    autor_nombre:   senderName || null,
+    estado:         'nuevo',
+    es_respuesta:   esRespuesta,
+    created_at:     createdTime,
+  }, { onConflict: 'tenant_id,comentario_id', ignoreDuplicates: true })
+
+  // Actualizar contador con conteo real desde DB
+  if (!esRespuesta) {
+    const { count } = await supabase
+      .from('comentarios')
+      .select('*', { count: 'exact', head: true })
+      .eq('publicacion_id', pub.id)
+      .neq('es_respuesta', true)
+
+    await supabase.from('publicaciones')
+      .update({ comentarios_count: count ?? 0 })
+      .eq('id', pub.id)
   }
 }
 
