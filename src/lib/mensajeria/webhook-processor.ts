@@ -29,6 +29,7 @@ export async function procesarMensajeMeta(body: unknown, tenantId: string) {
       const changes = entry.changes as Array<Record<string, unknown>> | undefined
       if (changes?.length) {
         for (const change of changes) {
+          console.log(`[webhook] field=${change.field} item=${(change.value as Record<string,unknown>)?.item} verb=${(change.value as Record<string,unknown>)?.verb}`)
           if (objeto === 'page' && change.field === 'feed') {
             await procesarComentarioFacebook(supabase, tenantId, change.value as Record<string, unknown>)
           } else if (objeto === 'instagram' && change.field === 'comments') {
@@ -375,10 +376,14 @@ async function procesarComentarioFacebook(
   value: Record<string, unknown>
 ) {
   // Solo comentarios nuevos, no likes/reactions/edits/removes
-  if (value.item !== 'comment' || value.verb === 'remove') return
+  if (value.item !== 'comment' || value.verb === 'remove') {
+    console.log('[webhook:fb-feed] ignorando item/verb:', value.item, value.verb)
+    return
+  }
 
   const commentId   = String(value.comment_id ?? '')
   const postId      = String(value.post_id ?? '')
+  console.log(`[webhook:fb-comment] commentId=${commentId} postId=${postId}`)
   const parentId    = String(value.parent_id ?? '')
   const texto       = String(value.message ?? '')
   const from        = value.from as Record<string, string> | undefined
@@ -393,7 +398,11 @@ async function procesarComentarioFacebook(
     .eq('publicacion_id', postId)
     .maybeSingle()
 
-  if (!pub) return // publicación no sincronizada aún
+  if (!pub) {
+    console.log(`[webhook:fb-comment] publicación NO encontrada en DB para postId=${postId}`)
+    return
+  }
+  console.log(`[webhook:fb-comment] publicación encontrada id=${pub.id}, insertando comentario`)
 
   await supabase.from('comentarios').upsert({
     tenant_id:           tenantId,

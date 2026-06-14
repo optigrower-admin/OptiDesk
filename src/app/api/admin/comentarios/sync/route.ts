@@ -36,18 +36,25 @@ export async function POST() {
     pageId  = cfg.messenger_page_id
   }
 
-  // Single subscription call covering all needed webhook fields (FB feed + IG comments)
+  // Suscribir la página al webhook del app — solo campos válidos para Page
   if (pageId && fbToken) {
-    fetch(
-      `https://graph.facebook.com/v20.0/${pageId}/subscribed_apps?access_token=${fbToken}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subscribed_fields: 'messages,messaging_postbacks,message_deliveries,message_reads,feed,instagram_manage_messages,comments',
-        }),
-      }
-    ).catch(() => {})
+    try {
+      const subRes = await fetch(
+        `https://graph.facebook.com/v20.0/${pageId}/subscribed_apps`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            access_token: fbToken,
+            subscribed_fields: 'messages,messaging_postbacks,message_deliveries,message_reads,feed',
+          }),
+        }
+      )
+      const subData = await subRes.json()
+      console.log('[sync] subscribed_apps →', JSON.stringify(subData))
+    } catch (e) {
+      console.error('[sync] subscribed_apps error:', e)
+    }
   }
 
   // ── Facebook posts + comments ─────────────────────────────────────────────

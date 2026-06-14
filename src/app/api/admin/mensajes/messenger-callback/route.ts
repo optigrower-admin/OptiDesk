@@ -79,7 +79,7 @@ async function guardarMessenger(tenantId: string, pageId: string, pageToken: str
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscribed_fields: 'messages,messaging_postbacks,message_deliveries,message_reads' }),
+        body: JSON.stringify({ subscribed_fields: 'messages,messaging_postbacks,message_deliveries,message_reads,feed' }),
       }
     )
   } catch { /* no crítico — se puede hacer manualmente en Meta Developer Console */ }
