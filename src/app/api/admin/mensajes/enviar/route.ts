@@ -144,20 +144,17 @@ export async function POST(req: NextRequest) {
 
       } else if (conv.canal === 'instagram' && cfg.instagram_access_token_enc) {
         const token = await decryptToken(cfg.instagram_access_token_enc)
-        // Usar el IG Business Account ID explícitamente para Instagram DMs
-        const igEndpoint = cfg.instagram_account_id
-          ? `https://graph.facebook.com/v20.0/${cfg.instagram_account_id}/messages?access_token=${token}`
-          : `https://graph.facebook.com/v20.0/me/messages?access_token=${token}`
-        const r = await fetch(igEndpoint, {
+        const r = await fetch(`https://graph.facebook.com/v20.0/me/messages?access_token=${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             recipient: { id: conv.canal_contact_id },
             message: { text: contenido },
+            messaging_type: 'RESPONSE',
           }),
         })
         const result = await r.json()
-        console.log('[enviar:instagram]', r.status, JSON.stringify(result), 'endpoint=', igEndpoint.split('?')[0])
+        console.log('[enviar:instagram]', r.status, JSON.stringify(result))
         if (!r.ok) {
           const metaMsg = result?.error?.message ?? 'Error al enviar por Instagram'
           return NextResponse.json({ error: metaMsg, code: 'META_ERROR' }, { status: 422 })
