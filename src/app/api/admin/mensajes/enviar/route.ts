@@ -99,8 +99,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const usarHumanAgent = false // requiere App Review — deshabilitado hasta aprobación
-
   let metaMsgId: string | null = null
   let estadoEnvio = 'enviado'
 
@@ -119,46 +117,51 @@ export async function POST(req: NextRequest) {
           }),
         })
         const result = await r.json()
+        if (!r.ok) {
+          const metaMsg = result?.error?.message ?? 'Error al enviar por WhatsApp'
+          return NextResponse.json({ error: metaMsg, code: 'META_ERROR' }, { status: 422 })
+        }
         metaMsgId = result.messages?.[0]?.id ?? null
-        if (!r.ok) estadoEnvio = 'fallido'
 
       } else if (conv.canal === 'messenger' && cfg.messenger_access_token_enc) {
         const token = await decryptToken(cfg.messenger_access_token_enc)
-        const payload = {
-          recipient: { id: conv.canal_contact_id },
-          message: { text: contenido },
-          messaging_type: usarHumanAgent ? 'MESSAGE_TAG' : 'RESPONSE',
-          ...(usarHumanAgent ? { tag: 'HUMAN_AGENT' } : {}),
-        }
         const r = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            recipient: { id: conv.canal_contact_id },
+            message: { text: contenido },
+            messaging_type: 'RESPONSE',
+          }),
         })
         const result = await r.json()
-        console.log('[enviar:messenger]', r.status, JSON.stringify(result), 'humanAgent=', usarHumanAgent)
+        console.log('[enviar:messenger]', r.status, JSON.stringify(result))
+        if (!r.ok) {
+          const metaMsg = result?.error?.message ?? 'Error al enviar por Messenger'
+          return NextResponse.json({ error: metaMsg, code: 'META_ERROR' }, { status: 422 })
+        }
         metaMsgId = result.message_id ?? null
-        if (!r.ok) estadoEnvio = 'fallido'
 
       } else if (conv.canal === 'instagram' && cfg.instagram_access_token_enc) {
         const token = await decryptToken(cfg.instagram_access_token_enc)
-        const payload = {
-          recipient: { id: conv.canal_contact_id },
-          message: { text: contenido },
-          ...(usarHumanAgent ? { message_tag: 'HUMAN_AGENT' } : {}),
-        }
         const r = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            recipient: { id: conv.canal_contact_id },
+            message: { text: contenido },
+          }),
         })
         const result = await r.json()
-        console.log('[enviar:instagram]', r.status, JSON.stringify(result), 'humanAgent=', usarHumanAgent)
+        console.log('[enviar:instagram]', r.status, JSON.stringify(result))
+        if (!r.ok) {
+          const metaMsg = result?.error?.message ?? 'Error al enviar por Instagram'
+          return NextResponse.json({ error: metaMsg, code: 'META_ERROR' }, { status: 422 })
+        }
         metaMsgId = result.message_id ?? null
-        if (!r.ok) estadoEnvio = 'fallido'
       }
-    } catch {
-      estadoEnvio = 'fallido'
+    } catch (e) {
+      return NextResponse.json({ error: 'Error de red al contactar Meta', code: 'META_ERROR' }, { status: 502 })
     }
   }
 
