@@ -690,13 +690,6 @@ export default function BandejaPage() {
                   <span>Ventana de Instagram cerrada — el contacto no ha escrito en las últimas 24 h. Se requiere Acceso Avanzado a <strong>instagram_manage_messages</strong> (App Review) para responder.</span>
                 </div>
               )}
-              {/* Advertencia Instagram activa: limitación de modo desarrollo */}
-              {selectedConv?.canal === 'instagram' && !esNota && ventanaActiva === true && (
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2 text-xs text-amber-800">
-                  <span className="flex-shrink-0">⚠️</span>
-                  <span>Instagram solo permite mensajes a testers de tu app Meta hasta completar App Review (<strong>instagram_manage_messages</strong>).</span>
-                </div>
-              )}
               {/* Ventana activa — WhatsApp / Messenger / Instagram */}
               {['whatsapp', 'messenger', 'instagram'].includes(selectedConv?.canal ?? '') && !esNota && ventanaActiva === true && (
                 <div className="flex items-center gap-1.5 text-xs text-green-600 mb-1.5 px-0.5">
