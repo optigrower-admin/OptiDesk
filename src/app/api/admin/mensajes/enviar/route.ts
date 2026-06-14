@@ -150,7 +150,6 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             recipient: { id: conv.canal_contact_id },
             message: { text: contenido },
-            messaging_type: 'RESPONSE',
           }),
         })
         const result = await r.json()
