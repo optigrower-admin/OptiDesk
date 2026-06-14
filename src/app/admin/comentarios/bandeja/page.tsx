@@ -184,15 +184,9 @@ export default function ComentariosBandejaPage() {
   useEffect(() => {
     const silentSync = async () => {
       try {
-        const sr   = await fetch('/api/admin/comentarios/sync', { method: 'POST' })
-        const sdata = sr.ok ? await sr.json() as { comment_errors?: string[] } : {}
+        await fetch('/api/admin/comentarios/sync', { method: 'POST' })
         setLastSynced(new Date())
-        // Show warning if comments fetch failed (likely token scope issue)
-        if (sdata.comment_errors?.length) {
-          setPubsError(`⚠️ No se pudieron cargar comentarios: ${sdata.comment_errors[0]}. Reconecta Messenger en Mensajes → Configuración.`)
-        } else {
-          setPubsError(null)
-        }
+        setPubsError(null)
         // Reload publications respecting current filter
         const url = filtroRef.current !== 'todos'
           ? `/api/admin/comentarios/publicaciones?canal=${filtroRef.current}`
@@ -263,14 +257,10 @@ export default function ComentariosBandejaPage() {
     setSyncing(true)
     try {
       const res  = await fetch('/api/admin/comentarios/sync', { method: 'POST' })
-      const data = await res.json() as { ok?: boolean; facebook_posts?: number; facebook_comments?: number; instagram_posts?: number; instagram_comments?: number; comment_errors?: string[]; error?: string }
+      const data = await res.json() as { ok?: boolean; facebook_posts?: number; instagram_posts?: number; instagram_comments?: number; error?: string }
       if (res.ok && data.ok) {
-        const fbCom  = data.facebook_comments ?? 0
-        const igCom  = data.instagram_comments ?? 0
-        const errors = data.comment_errors ?? []
-        const msgBase = `Sincronizado: ${data.facebook_posts ?? 0} posts FB (${fbCom} com.) · ${data.instagram_posts ?? 0} posts IG (${igCom} com.)`
-        const msg = errors.length ? `${msgBase} — ⚠️ ${errors[0]}` : msgBase
-        showToast({ ok: errors.length === 0, msg })
+        const igCom = data.instagram_comments ?? 0
+        showToast({ ok: true, msg: `Sincronizado: ${data.facebook_posts ?? 0} posts FB · ${data.instagram_posts ?? 0} posts IG (${igCom} com.)` })
         await cargarPublicaciones()
         if (selectedPub) await cargarComentarios(selectedPub.id)
       } else {

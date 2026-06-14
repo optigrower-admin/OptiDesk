@@ -77,35 +77,15 @@ export async function POST() {
 
         if (!pub) continue
 
-        type FBComment = { id: string; message?: string; from?: { id?: string; name?: string }; created_time?: string }
-        const commRes  = await fetch(
-          `https://graph.facebook.com/v20.0/${post.id}/comments?fields=id,message,from%7Bid%2Cname%7D,created_time&limit=100&access_token=${fbToken}`
-        )
-        const commData = await commRes.json() as { data?: FBComment[]; error?: { message: string; code: number } }
-        if (!commRes.ok || commData.error) {
-          stats.comment_errors.push(`FB: ${commData.error?.message ?? `HTTP ${commRes.status}`}`)
-          continue
-        }
-        const comments = commData.data ?? []
-        stats.facebook_comments += comments.length
-
-        for (const c of comments) {
-          await admin.from('comentarios').upsert({
-            tenant_id:      tenantId,
-            publicacion_id: pub.id,
-            canal:          'facebook',
-            comentario_id:  c.id,
-            texto:          c.message ?? null,
-            autor_id:       c.from?.id ?? null,
-            autor_nombre:   c.from?.name ?? null,
-            estado:         'nuevo',
-            es_respuesta:   false,
-            created_at:     c.created_time ? new Date(c.created_time).toISOString() : new Date().toISOString(),
-          }, { onConflict: 'tenant_id,comentario_id', ignoreDuplicates: true })
-        }
+        // Facebook requires App Review (pages_read_engagement + Page Public Content Access)
+        // to read historical comments via API. New comments arrive via the feed webhook instead.
+        // We only update the count from what we already have in DB to avoid clearing it.
+        const { count: existingCount } = await admin.from('comentarios')
+          .select('*', { count: 'exact', head: true })
+          .eq('publicacion_id', pub.id)
 
         await admin.from('publicaciones')
-          .update({ comentarios_count: comments.length })
+          .update({ comentarios_count: existingCount ?? 0 })
           .eq('id', pub.id)
       }
     }
