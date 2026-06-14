@@ -524,12 +524,23 @@ export default function ComentariosBandejaPage() {
 
                       {/* Actions */}
                       <div className="flex items-center gap-3 mt-2.5 pt-2.5 border-t border-gray-50">
-                        <button
-                          onClick={() => { setReplyingTo(isReplying ? null : c.id); setReplyText('') }}
-                          className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
-                        >
-                          {isReplying ? 'Cancelar' : '↩ Responder públicamente'}
-                        </button>
+                        {c.canal === 'facebook' ? (
+                          <a
+                            href={selectedPub?.permalink ?? '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                          >
+                            ↗ Responder en Facebook
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => { setReplyingTo(isReplying ? null : c.id); setReplyText('') }}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                          >
+                            {isReplying ? 'Cancelar' : '↩ Responder públicamente'}
+                          </button>
+                        )}
                         {c.estado !== 'dm_enviado' && (
                           <button
                             onClick={() => { setDmTo(c); setDmText('') }}
@@ -556,8 +567,8 @@ export default function ComentariosBandejaPage() {
                         )}
                       </div>
 
-                      {/* Inline reply form */}
-                      {isReplying && (
+                      {/* Inline reply form — solo Instagram (FB requiere pages_manage_engagement) */}
+                      {isReplying && c.canal !== 'facebook' && (
                         <div className="mt-2.5 flex gap-2">
                           <input
                             type="text"
