@@ -345,9 +345,9 @@ export default function BandejaPage() {
     return () => clearInterval(t)
   }, [])
 
-  // Calcular ventana de 24 h cuando los mensajes están listos
+  // Calcular ventana de 24 h para WhatsApp, Messenger e Instagram
   useEffect(() => {
-    if (!selectedConv || selectedConv.canal !== 'whatsapp') {
+    if (!selectedConv || !['whatsapp', 'messenger', 'instagram'].includes(selectedConv.canal)) {
       setVentanaActiva(null); setVentanaExpiraAt(null); return
     }
     if (loadingMsgs) return
@@ -664,19 +664,34 @@ export default function BandejaPage() {
 
             {/* Input */}
             <div className={`bg-white border-t border-gray-200 p-3 flex-shrink-0 ${esNota ? 'bg-yellow-50' : ''}`}>
-              {/* Banner ventana 24 h (solo WhatsApp, no notas) */}
+              {/* Banner ventana cerrada — WhatsApp */}
               {selectedConv?.canal === 'whatsapp' && !esNota && ventanaActiva === false && (
                 <div className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2 text-xs text-amber-800">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="flex-shrink-0">⚠️</span>
-                    <span className="truncate">Ventana cerrada — el contacto no ha escrito en 24 h. Solo puedes enviar una plantilla.</span>
+                    <span className="truncate">Ventana cerrada — el contacto no ha escrito en 24 h. Solo puedes enviar una plantilla aprobada.</span>
                   </div>
                   <a href="/admin/mensajes/plantillas" className="flex-shrink-0 text-blue-700 font-semibold hover:underline whitespace-nowrap">
                     Ver plantillas →
                   </a>
                 </div>
               )}
-              {selectedConv?.canal === 'whatsapp' && !esNota && ventanaActiva === true && (
+              {/* Banner ventana cerrada — Messenger */}
+              {selectedConv?.canal === 'messenger' && !esNota && ventanaActiva === false && (
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mb-2 text-xs text-blue-800">
+                  <span className="flex-shrink-0">🔒</span>
+                  <span>Ventana de Messenger cerrada — el contacto no ha escrito en las últimas 24 h. Responder fuera de ese plazo requiere aprobación de Meta (App Review).</span>
+                </div>
+              )}
+              {/* Banner ventana cerrada — Instagram */}
+              {selectedConv?.canal === 'instagram' && !esNota && ventanaActiva === false && (
+                <div className="flex items-center gap-2 bg-pink-50 border border-pink-200 rounded-xl px-3 py-2 mb-2 text-xs text-pink-800">
+                  <span className="flex-shrink-0">🔒</span>
+                  <span>Ventana de Instagram cerrada — el contacto no ha escrito en las últimas 24 h. Se requiere Acceso Avanzado a <strong>instagram_manage_messages</strong> (App Review) para responder.</span>
+                </div>
+              )}
+              {/* Ventana activa — WhatsApp / Messenger / Instagram */}
+              {['whatsapp', 'messenger', 'instagram'].includes(selectedConv?.canal ?? '') && !esNota && ventanaActiva === true && (
                 <div className="flex items-center gap-1.5 text-xs text-green-600 mb-1.5 px-0.5">
                   <span>✓</span>
                   <span>
@@ -687,30 +702,40 @@ export default function BandejaPage() {
               )}
               {esNota && <div className="text-xs text-yellow-700 font-medium mb-1.5 px-1">📝 Nota interna — no se envía al cliente</div>}
               <div className="flex items-end gap-2">
-                <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }}
-                  placeholder={
-                    !esNota && ventanaActiva === false && selectedConv?.canal === 'whatsapp'
+                {(() => {
+                  const ventanaCerrada = !esNota && ventanaActiva === false && ['whatsapp', 'messenger', 'instagram'].includes(selectedConv?.canal ?? '')
+                  const placeholder = ventanaCerrada
+                    ? selectedConv?.canal === 'whatsapp'
                       ? 'Ventana cerrada — usa una plantilla para contactar'
-                      : esNota ? 'Escribe una nota interna...' : 'Escribe un mensaje... (Enter para enviar)'
-                  }
-                  rows={2}
-                  disabled={!esNota && ventanaActiva === false && selectedConv?.canal === 'whatsapp'}
-                  className={`flex-1 border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed ${esNota ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'}`}
-                />
-                <div className="flex flex-col gap-1.5 flex-shrink-0">
-                  <button onClick={() => setEsNota(!esNota)} title="Nota interna"
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm transition-colors ${esNota ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-                    📝
-                  </button>
-                  <button onClick={enviar} disabled={!input.trim() || sending || (!esNota && ventanaActiva === false && selectedConv?.canal === 'whatsapp')}
-                    className="w-9 h-9 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700 disabled:opacity-40 transition-colors">
-                    {sending
-                      ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      : <svg className="w-4 h-4 rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
-                    }
-                  </button>
-                </div>
+                      : 'Ventana cerrada — no puedes responder hasta que el contacto escriba'
+                    : esNota
+                      ? 'Escribe una nota interna...'
+                      : 'Escribe un mensaje... (Enter para enviar)'
+                  return (
+                    <>
+                      <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }}
+                        placeholder={placeholder}
+                        rows={2}
+                        disabled={ventanaCerrada}
+                        className={`flex-1 border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed ${esNota ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'}`}
+                      />
+                      <div className="flex flex-col gap-1.5 flex-shrink-0">
+                        <button onClick={() => setEsNota(!esNota)} title="Nota interna"
+                          className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm transition-colors ${esNota ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                          📝
+                        </button>
+                        <button onClick={enviar} disabled={!input.trim() || sending || ventanaCerrada}
+                          className="w-9 h-9 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700 disabled:opacity-40 transition-colors">
+                          {sending
+                            ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            : <svg className="w-4 h-4 rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
+                          }
+                        </button>
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             </div>
           </div>

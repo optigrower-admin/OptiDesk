@@ -77,24 +77,29 @@ export async function POST(req: NextRequest) {
 
     // Ventana de mensajería:
     //   WhatsApp  → 24 h (después requiere plantilla aprobada)
-    //   Messenger → 7 días usando etiqueta HUMAN_AGENT (gratis, sin plantilla)
-    //   Instagram → 7 días usando etiqueta HUMAN_AGENT (gratis, sin plantilla)
+    //   Messenger → 24 h (HUMAN_AGENT para >24h requiere App Review)
+    //   Instagram → 24 h (Advanced Access para >24h requiere App Review)
     if (conv.canal === 'whatsapp' && msDesdeUltimo >= 86_400_000) {
       return NextResponse.json({
         error: 'El contacto no ha escrito en las últimas 24 h. Debes enviar una plantilla aprobada por Meta.',
         code: 'VENTANA_CERRADA',
       }, { status: 403 })
     }
-    if ((conv.canal === 'messenger' || conv.canal === 'instagram') && msDesdeUltimo >= 604_800_000) {
+    if (conv.canal === 'messenger' && msDesdeUltimo >= 86_400_000) {
       return NextResponse.json({
-        error: 'Han pasado más de 7 días desde el último mensaje del contacto. No es posible responder.',
+        error: 'El contacto no ha escrito en las últimas 24 h. La ventana de Messenger está cerrada (se requiere App Review para responder después de 24h).',
+        code: 'VENTANA_CERRADA',
+      }, { status: 403 })
+    }
+    if (conv.canal === 'instagram' && msDesdeUltimo >= 86_400_000) {
+      return NextResponse.json({
+        error: 'El contacto no ha escrito en las últimas 24 h. La ventana de Instagram está cerrada (se requiere App Review para responder después de 24h).',
         code: 'VENTANA_CERRADA',
       }, { status: 403 })
     }
   }
 
-  // Dentro de la ventana extendida 24h–7días → etiquetar como HUMAN_AGENT (gratis)
-  const usarHumanAgent = msDesdeUltimo >= 86_400_000 && msDesdeUltimo < 604_800_000
+  const usarHumanAgent = false // requiere App Review — deshabilitado hasta aprobación
 
   let metaMsgId: string | null = null
   let estadoEnvio = 'enviado'
