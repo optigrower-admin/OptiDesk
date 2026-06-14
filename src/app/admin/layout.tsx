@@ -35,6 +35,13 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    key: 'ventas',
+    label: 'Ventas',
+    items: [
+      { href: '/admin/ventas', label: 'Pipeline', seccion: null, soloGerencia: false, defaultOrden: 55 },
+    ],
+  },
+  {
     key: 'mensajes',
     label: 'Mensajes',
     items: [
@@ -161,7 +168,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const [logoUrl, setLogoUrl]           = useState<string | null>(null)
   const [nombreNegocio, setNombreNegocio] = useState<string | null>(null)
-  const [openGroups, setOpenGroups]     = useState<Record<string, boolean>>({ 'serv-tec': true, 'mensajes': false, 'comentarios': false })
+  const [openGroups, setOpenGroups]     = useState<Record<string, boolean>>({ 'serv-tec': true, 'ventas': false, 'mensajes': false, 'comentarios': false })
 
   // ── Notificaciones ───────────────────────────────────────────────────────
   const [unreadTotal, setUnreadTotal]   = useState(0)
