@@ -119,32 +119,36 @@ export async function POST(req: NextRequest) {
 
       } else if (conv.canal === 'messenger' && cfg.messenger_access_token_enc) {
         const token = await decryptToken(cfg.messenger_access_token_enc)
+        const payload = {
+          recipient: { id: conv.canal_contact_id },
+          message: { text: contenido },
+          messaging_type: usarHumanAgent ? 'MESSAGE_TAG' : 'RESPONSE',
+          ...(usarHumanAgent ? { tag: 'HUMAN_AGENT' } : {}),
+        }
         const r = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            recipient: { id: conv.canal_contact_id },
-            message: { text: contenido },
-            messaging_type: usarHumanAgent ? 'MESSAGE_TAG' : 'RESPONSE',
-            ...(usarHumanAgent ? { tag: 'HUMAN_AGENT' } : {}),
-          }),
+          body: JSON.stringify(payload),
         })
         const result = await r.json()
+        console.log('[enviar:messenger]', r.status, JSON.stringify(result), 'humanAgent=', usarHumanAgent)
         metaMsgId = result.message_id ?? null
         if (!r.ok) estadoEnvio = 'fallido'
 
       } else if (conv.canal === 'instagram' && cfg.instagram_access_token_enc) {
         const token = await decryptToken(cfg.instagram_access_token_enc)
+        const payload = {
+          recipient: { id: conv.canal_contact_id },
+          message: { text: contenido },
+          ...(usarHumanAgent ? { message_tag: 'HUMAN_AGENT' } : {}),
+        }
         const r = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            recipient: { id: conv.canal_contact_id },
-            message: { text: contenido },
-            ...(usarHumanAgent ? { message_tag: 'HUMAN_AGENT' } : {}),
-          }),
+          body: JSON.stringify(payload),
         })
         const result = await r.json()
+        console.log('[enviar:instagram]', r.status, JSON.stringify(result), 'humanAgent=', usarHumanAgent)
         metaMsgId = result.message_id ?? null
         if (!r.ok) estadoEnvio = 'fallido'
       }
