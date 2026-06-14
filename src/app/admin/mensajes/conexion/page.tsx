@@ -26,7 +26,7 @@ const APP_ID = process.env.NEXT_PUBLIC_META_APP_ID
 // ── Scopes por canal ──────────────────────────────────────────────────────────
 const SCOPES = {
   whatsapp:  'whatsapp_business_management,whatsapp_business_messaging',
-  messenger: 'pages_show_list,pages_messaging,pages_read_engagement,pages_manage_metadata',
+  messenger: 'pages_show_list,pages_messaging,pages_read_engagement,pages_manage_metadata,pages_manage_engagement,pages_read_user_content',
   instagram: 'pages_show_list,instagram_manage_messages,instagram_manage_comments',
 }
 

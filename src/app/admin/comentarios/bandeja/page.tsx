@@ -172,7 +172,24 @@ export default function ComentariosBandejaPage() {
     setComentarios([])
     try {
       const res = await fetch(`/api/admin/comentarios/comentarios?publicacion_id=${pubId}`)
-      if (res.ok) setComentarios(await res.json())
+      if (res.ok) {
+        const data: Comentario[] = await res.json()
+        setComentarios(data)
+        // Auto-marcar como vistos y limpiar badge
+        const hayNuevos = data.some(c => c.estado === 'nuevo')
+        if (hayNuevos) {
+          fetch('/api/admin/comentarios/publicaciones', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ publicacion_id: pubId }),
+          })
+            .then(r => { if (r.ok) {
+              setComentarios(prev => prev.map(c => c.estado === 'nuevo' ? { ...c, estado: 'visto' } : c))
+              setPublicaciones(prev => prev.map(p => p.id === pubId ? { ...p, nuevos_comentarios: 0 } : p))
+            }})
+            .catch(() => {})
+        }
+      }
     } finally {
       setLoadingComments(false)
     }

@@ -404,6 +404,8 @@ async function procesarComentarioFacebook(
   }
   console.log(`[webhook:fb-comment] publicación encontrada id=${pub.id}, insertando comentario`)
 
+  const esRespuesta = Boolean(parentId && parentId !== postId)
+
   await supabase.from('comentarios').upsert({
     tenant_id:           tenantId,
     publicacion_id:      pub.id,
@@ -413,10 +415,22 @@ async function procesarComentarioFacebook(
     autor_id:            from?.id ?? null,
     autor_nombre:        from?.name ?? null,
     estado:              'nuevo',
-    es_respuesta:        Boolean(parentId && parentId !== postId),
+    es_respuesta:        esRespuesta,
     parent_comentario_id: parentId || null,
     created_at:          ts ? new Date(ts * 1000).toISOString() : new Date().toISOString(),
   }, { onConflict: 'tenant_id,comentario_id', ignoreDuplicates: true })
+
+  // Actualizar contador de la publicación
+  if (!esRespuesta) {
+    const { count } = await supabase
+      .from('comentarios')
+      .select('*', { count: 'exact', head: true })
+      .eq('publicacion_id', pub.id)
+      .neq('es_respuesta', true)
+    await supabase.from('publicaciones')
+      .update({ comentarios_count: count ?? 0 })
+      .eq('id', pub.id)
+  }
 }
 
 async function procesarComentarioInstagram(
