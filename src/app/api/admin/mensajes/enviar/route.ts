@@ -7,7 +7,7 @@ async function decryptToken(enc: string): Promise<string> {
     const { decrypt } = await import('@/lib/crypto')
     return decrypt(enc)
   } catch {
-    return enc // fallback: stored as plaintext (dev)
+    return enc
   }
 }
 
@@ -41,9 +41,23 @@ export async function POST(req: NextRequest) {
     .eq('tenant_id', perfil.tenant_id)
     .maybeSingle()
 
-  // ── Validaciones previas al envío (WhatsApp/Messenger, no notas internas) ──
+  // ── Consultar último mensaje entrante (una sola vez) ─────────────────────────
+  const { data: lastEntrante } = await admin
+    .from('mensajes')
+    .select('created_at')
+    .eq('conversacion_id', conversacion_id)
+    .eq('direccion', 'entrante')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const msDesdeUltimo = lastEntrante
+    ? Date.now() - new Date(lastEntrante.created_at).getTime()
+    : Infinity
+
+  // ── Validaciones previas al envío ────────────────────────────────────────────
   if ((conv.canal === 'whatsapp' || conv.canal === 'messenger' || conv.canal === 'instagram') && tipo !== 'nota_interna') {
-    // 1. Límite diario: solo WhatsApp (solo cuenta plantillas — conversaciones iniciadas por el negocio)
+    // Límite diario: solo WhatsApp plantillas
     if (conv.canal === 'whatsapp') {
       const efectiveLimite = cfg?.negocio_verificado ? (cfg?.limite_diario_wa ?? 1000) : 250
       const hoyUTC = new Date(); hoyUTC.setUTCHours(0, 0, 0, 0)
@@ -54,35 +68,33 @@ export async function POST(req: NextRequest) {
         .eq('tipo', 'plantilla')
         .eq('direccion', 'saliente')
         .gte('created_at', hoyUTC.toISOString())
-      const hoy = plantillasHoy ?? 0
-      if (hoy >= efectiveLimite - 2) {
+      if ((plantillasHoy ?? 0) >= efectiveLimite - 2) {
         return NextResponse.json({
-          error: `Límite diario de WhatsApp alcanzado (${hoy}/${efectiveLimite} plantillas). No puedes enviar más plantillas hoy.`,
+          error: `Límite diario de WhatsApp alcanzado (${plantillasHoy}/${efectiveLimite} plantillas). No puedes enviar más plantillas hoy.`,
         }, { status: 429 })
       }
     }
 
-    // 2. Ventana de 24 h: aplica a WhatsApp y Messenger
-    const { data: lastEntrante } = await admin
-      .from('mensajes')
-      .select('created_at')
-      .eq('conversacion_id', conversacion_id)
-      .eq('direccion', 'entrante')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    const ventanaActiva = lastEntrante
-      ? Date.now() - new Date(lastEntrante.created_at).getTime() < 86_400_000
-      : false
-    if (!ventanaActiva) {
-      const errorMsg = conv.canal === 'whatsapp'
-        ? 'El contacto no ha escrito en las últimas 24 h. Debes enviar una plantilla aprobada por Meta.'
-        : conv.canal === 'instagram'
-        ? 'El contacto no ha escrito en las últimas 24 h (ventana estándar de Instagram cerrada).'
-        : 'El contacto no ha escrito en las últimas 24 h (ventana estándar de Messenger cerrada).'
-      return NextResponse.json({ error: errorMsg, code: 'VENTANA_CERRADA' }, { status: 403 })
+    // Ventana de mensajería:
+    //   WhatsApp  → 24 h (después requiere plantilla aprobada)
+    //   Messenger → 7 días usando etiqueta HUMAN_AGENT (gratis, sin plantilla)
+    //   Instagram → 7 días usando etiqueta HUMAN_AGENT (gratis, sin plantilla)
+    if (conv.canal === 'whatsapp' && msDesdeUltimo >= 86_400_000) {
+      return NextResponse.json({
+        error: 'El contacto no ha escrito en las últimas 24 h. Debes enviar una plantilla aprobada por Meta.',
+        code: 'VENTANA_CERRADA',
+      }, { status: 403 })
+    }
+    if ((conv.canal === 'messenger' || conv.canal === 'instagram') && msDesdeUltimo >= 604_800_000) {
+      return NextResponse.json({
+        error: 'Han pasado más de 7 días desde el último mensaje del contacto. No es posible responder.',
+        code: 'VENTANA_CERRADA',
+      }, { status: 403 })
     }
   }
+
+  // Dentro de la ventana extendida 24h–7días → etiquetar como HUMAN_AGENT (gratis)
+  const usarHumanAgent = msDesdeUltimo >= 86_400_000 && msDesdeUltimo < 604_800_000
 
   let metaMsgId: string | null = null
   let estadoEnvio = 'enviado'
@@ -104,6 +116,7 @@ export async function POST(req: NextRequest) {
         const result = await r.json()
         metaMsgId = result.messages?.[0]?.id ?? null
         if (!r.ok) estadoEnvio = 'fallido'
+
       } else if (conv.canal === 'messenger' && cfg.messenger_access_token_enc) {
         const token = await decryptToken(cfg.messenger_access_token_enc)
         const r = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, {
@@ -112,12 +125,14 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             recipient: { id: conv.canal_contact_id },
             message: { text: contenido },
-            messaging_type: 'RESPONSE',
+            messaging_type: usarHumanAgent ? 'MESSAGE_TAG' : 'RESPONSE',
+            ...(usarHumanAgent ? { tag: 'HUMAN_AGENT' } : {}),
           }),
         })
         const result = await r.json()
         metaMsgId = result.message_id ?? null
         if (!r.ok) estadoEnvio = 'fallido'
+
       } else if (conv.canal === 'instagram' && cfg.instagram_access_token_enc) {
         const token = await decryptToken(cfg.instagram_access_token_enc)
         const r = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, {
@@ -126,6 +141,7 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             recipient: { id: conv.canal_contact_id },
             message: { text: contenido },
+            ...(usarHumanAgent ? { message_tag: 'HUMAN_AGENT' } : {}),
           }),
         })
         const result = await r.json()
@@ -161,8 +177,7 @@ export async function POST(req: NextRequest) {
     }).eq('id', conversacion_id)
   }
 
-  // Solo cuenta conversaciones iniciadas por el NEGOCIO (plantillas enviadas fuera de la ventana 24h).
-  // Respuestas dentro de la ventana son "service conversations" — gratis e ilimitadas desde jun 2023.
+  // Solo cuenta plantillas de WhatsApp enviadas fuera de la ventana de 24h
   if (conv.canal === 'whatsapp' && tipo === 'plantilla' && estadoEnvio !== 'fallido' && cfg) {
     const ahora = new Date()
     const mismodia = new Date(cfg.limite_reset_at ?? 0).toDateString() === ahora.toDateString()
