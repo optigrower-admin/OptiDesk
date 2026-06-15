@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ETAPAS, ETAPA_MAP, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
+import VincularClienteModal from './VincularClienteModal'
 
 type Usuario = { nombre: string; email: string; rol: string } | null
 
@@ -77,6 +78,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
   const [sending, setSending]               = useState(false)
   const [saving, setSaving]                 = useState(false)
   const [tabDer, setTabDer]                 = useState<TabDerecha>('datos')
+  const [vincularOpen, setVincularOpen]     = useState(false)
 
   // Campos editables
   const [motoInteres, setMotoInteres]   = useState(lead.moto_interes ?? '')
@@ -173,6 +175,20 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
   const etapaActual = ETAPA_MAP[etapa]
 
   return (
+    <>
+    {vincularOpen && lead.cliente && (
+      <VincularClienteModal
+        tenantId={tenantId}
+        clienteOrigenId={lead.cliente.id}
+        clienteOrigenNombre={lead.cliente.nombre ?? 'Sin nombre'}
+        onConfirm={(_nuevoId, nuevoNombre) => {
+          setVincularOpen(false)
+          alert(`✅ Vinculado correctamente a "${nuevoNombre}". Recargando...`)
+          window.location.reload()
+        }}
+        onCancel={() => setVincularOpen(false)}
+      />
+    )}
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden">
 
@@ -365,9 +381,17 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
                     {lead.cliente?.celular && <p className="text-sm text-gray-600">{lead.cliente.celular}</p>}
                     {lead.lead_source && <p className="text-xs text-gray-400 mt-1">Origen: {lead.lead_source}</p>}
                     {lead.cliente?.id && (
-                      <a href={`/admin/clientes/${lead.cliente.id}`} className="text-xs text-blue-600 hover:underline mt-1 inline-block">
-                        Ver perfil completo →
-                      </a>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <a href={`/admin/clientes/${lead.cliente.id}`} className="text-xs text-blue-600 hover:underline">
+                          Ver perfil completo →
+                        </a>
+                        <button
+                          onClick={() => setVincularOpen(true)}
+                          className="text-xs text-purple-600 hover:underline"
+                        >
+                          🔗 Vincular a otro cliente
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -530,5 +554,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
         </div>
       </div>
     </div>
+    </>
   )
 }
