@@ -203,6 +203,12 @@ function MotosContent() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    <Link
+                      href={`/admin/motos/${m.id}`}
+                      className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50 transition-colors font-medium"
+                    >
+                      Ver perfil →
+                    </Link>
                     <button
                       onClick={() => abrirEditar(m)}
                       className="text-xs text-gray-400 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition-colors"

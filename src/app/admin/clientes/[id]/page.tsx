@@ -338,7 +338,7 @@ export default function ClienteDetallePage() {
             <p className="col-span-2 text-center text-gray-400 text-sm py-10">Sin motos registradas</p>
           )}
           {motos.map(m => (
-            <Link key={m.id} href={`/admin/motos?placa=${m.placa}`}
+            <Link key={m.id} href={`/admin/motos/${m.id}`}
               className="bg-white border border-gray-100 rounded-xl px-4 py-3 hover:bg-blue-50 hover:border-blue-200 transition-colors shadow-sm flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-xl flex-shrink-0">🏍️</div>
               <div className="min-w-0">
