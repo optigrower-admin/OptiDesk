@@ -143,16 +143,31 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
 
   const guardarVenta = async () => {
     setSaving(true)
-    await supabase.from('conversaciones').update({
-      moto_interes:         motoInteres || null,
-      valor_estimado_venta: presupuesto ? parseFloat(presupuesto) : null,
-      proxima_accion:       proxAccion || null,
-      proxima_accion_fecha: proxFecha ? new Date(proxFecha).toISOString() : null,
-      etapa_venta:          etapa,
-      updated_at:           new Date().toISOString(),
-    }).eq('id', lead.id)
-    if (etapa !== lead.etapa_venta) onEtapaChange(lead.id, etapa)
-    setSaving(false)
+    try {
+      const res = await fetch('/api/admin/ventas/guardar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversacion_id:      lead.id,
+          moto_interes:         motoInteres || null,
+          valor_estimado_venta: presupuesto ? parseFloat(presupuesto) : null,
+          proxima_accion:       proxAccion || null,
+          proxima_accion_fecha: proxFecha ? new Date(proxFecha).toISOString() : null,
+          etapa_venta:          etapa,
+        }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json.error ?? 'Error al guardar')
+      }
+      if (etapa !== lead.etapa_venta) onEtapaChange(lead.id, etapa)
+      // Refresh historial if etapa changed
+      if (etapa !== lead.etapa_venta) cargar()
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const etapaActual = ETAPA_MAP[etapa]

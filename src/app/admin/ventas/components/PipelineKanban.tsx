@@ -7,7 +7,6 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { createPortal } from 'react-dom'
-import { createClient } from '@/lib/supabase/client'
 import { ETAPAS, ETAPA_MAP, formatCOP, type EtapaVenta } from '@/lib/ventas/pipeline'
 import LeadCard, { type LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
@@ -71,8 +70,6 @@ function KanbanColumn({
 }
 
 export default function PipelineKanban({ leadsIniciales, tenantId }: Props) {
-  const supabase = createClient()
-
   const [leads, setLeads]             = useState<LeadData[]>(leadsIniciales)
   const [activeId, setActiveId]       = useState<string | null>(null)
   const [fichaId, setFichaId]         = useState<string | null>(null)
@@ -93,14 +90,22 @@ export default function PipelineKanban({ leadsIniciales, tenantId }: Props) {
   }
 
   async function persistirEtapa(id: string, etapa: EtapaVenta, motivoPerdida?: string, detallePerdida?: string) {
-    const update: Record<string, unknown> = {
-      etapa_venta: etapa,
-      updated_at:  new Date().toISOString(),
-    }
+    const body: Record<string, unknown> = { conversacion_id: id, etapa_venta: etapa }
     if (etapa === 'perdido' && motivoPerdida) {
-      update.motivo_perdida = motivoPerdida + (detallePerdida ? ` — ${detallePerdida}` : '')
+      body.motivo_perdida = motivoPerdida + (detallePerdida ? ` — ${detallePerdida}` : '')
     }
-    await supabase.from('conversaciones').update(update).eq('id', id)
+    const res = await fetch('/api/admin/ventas/guardar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      console.error('[Kanban] Error al guardar etapa:', json.error)
+      // Revert optimistic update
+      const original = leadsIniciales.find(l => l.id === id)?.etapa_venta ?? 'nuevo'
+      moverLead(id, original)
+    }
   }
 
   function onDragStart({ active }: DragStartEvent) {
