@@ -350,8 +350,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
                     {lead.cliente?.celular && <p className="text-sm text-gray-600">{lead.cliente.celular}</p>}
                     {lead.lead_source && <p className="text-xs text-gray-400 mt-1">Origen: {lead.lead_source}</p>}
                     {lead.cliente?.id && (
-                      <a href={`/admin/clientes/${lead.cliente.id}`} className="text-xs text-blue-600 hover:underline mt-1 inline-block">
-                        Ver perfil completo →
+                      <a href="/admin/clientes" className="text-xs text-blue-600 hover:underline mt-1 inline-block">
+                        Ver en clientes →
                       </a>
                     )}
                   </div>
