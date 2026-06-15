@@ -14,6 +14,11 @@ export const ETAPA_MAP = Object.fromEntries(ETAPAS.map(e => [e.id, e])) as Recor
 
 export const ETAPAS_ACTIVAS: EtapaVenta[] = ['nuevo', 'calificado', 'demo', 'propuesta', 'negociacion']
 
+// Numeric order for comparing etapa priority (higher = more advanced)
+export const ETAPA_ORDEN: Record<EtapaVenta, number> = {
+  nuevo: 0, calificado: 1, demo: 2, propuesta: 3, negociacion: 4, ganado: 5, perdido: 6,
+}
+
 export function formatCOP(value: number | null | undefined): string {
   if (!value) return '—'
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value)

@@ -28,7 +28,10 @@ export default function VistaLista({ leads, tenantId }: Props) {
 
   const fichaLead = fichaId ? leads.find(l => l.id === fichaId) ?? null : null
 
-  const canales = useMemo(() => [...new Set(leads.map(l => l.canal))], [leads])
+  const canales = useMemo(
+    () => [...new Set(leads.flatMap(l => l.todas_conversaciones.map(c => c.canal)))],
+    [leads]
+  )
 
   const filtrados = useMemo(() => {
     let r = leads
@@ -47,7 +50,7 @@ export default function VistaLista({ leads, tenantId }: Props) {
     }
 
     if (canalFiltro !== 'todos') {
-      r = r.filter(l => l.canal === canalFiltro)
+      r = r.filter(l => l.todas_conversaciones.some(c => c.canal === canalFiltro))
     }
 
     r = [...r].sort((a, b) => {
@@ -151,7 +154,6 @@ export default function VistaLista({ leads, tenantId }: Props) {
             {filtrados.map((lead, i) => {
               const etapaConfig = ETAPA_MAP[lead.etapa_venta]
               const seguim      = estadoSeguimiento(lead.proxima_accion_fecha)
-              const canalCls    = CANAL_BADGE[lead.canal] ?? CANAL_BADGE.manual
 
               return (
                 <tr key={lead.id}
@@ -188,11 +190,16 @@ export default function VistaLista({ leads, tenantId }: Props) {
                     </span>
                   </td>
 
-                  {/* Canal */}
+                  {/* Canales */}
                   <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${canalCls}`}>
-                      {lead.canal.charAt(0).toUpperCase() + lead.canal.slice(1)}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {lead.todas_conversaciones.map(c => (
+                        <span key={c.id} className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${CANAL_BADGE[c.canal] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {c.canal === 'whatsapp' ? '📱' : c.canal === 'instagram' ? '📸' : c.canal === 'messenger' ? '💬' : '✍️'}
+                          {' '}{c.canal.charAt(0).toUpperCase() + c.canal.slice(1)}
+                        </span>
+                      ))}
+                    </div>
                   </td>
 
                   {/* Valor */}

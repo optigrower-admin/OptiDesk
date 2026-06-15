@@ -5,6 +5,13 @@ import { ETAPAS, ETAPA_MAP, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import VincularClienteModal from './VincularClienteModal'
 
+const CANAL_ICON: Record<string, string> = {
+  whatsapp: '📱', messenger: '💬', instagram: '📸', manual: '✍️',
+}
+const CANAL_LABEL: Record<string, string> = {
+  whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram', manual: 'Manual',
+}
+
 type Usuario = { nombre: string; email: string; rol: string } | null
 
 type Mensaje = {
@@ -79,6 +86,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
   const [saving, setSaving]                 = useState(false)
   const [tabDer, setTabDer]                 = useState<TabDerecha>('datos')
   const [vincularOpen, setVincularOpen]     = useState(false)
+  const [convActivaId, setConvActivaId]     = useState(lead.id)
 
   // Campos editables
   const [motoInteres, setMotoInteres]   = useState(lead.moto_interes ?? '')
@@ -94,7 +102,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
       supabase
         .from('mensajes')
         .select('id,direccion,tipo,contenido,created_at,estado_envio,enviado_por,usuarios(nombre,email,rol)')
-        .eq('conversacion_id', lead.id)
+        .eq('conversacion_id', convActivaId)
         .order('created_at')
         .limit(200),
       lead.cliente?.id
@@ -116,7 +124,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
     setOrdenes((ords ?? []) as Orden[])
     setHistorialEtapas((hist ?? []) as EtapaHistorial[])
     setRecordatorios((recs ?? []) as Recordatorio[])
-  }, [lead.id, lead.cliente?.id])
+  }, [lead.id, lead.cliente?.id, convActivaId])
 
   useEffect(() => { cargar() }, [cargar])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [mensajes])
@@ -129,7 +137,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
       const res = await fetch('/api/admin/mensajes/enviar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          conversacion_id: lead.id,
+          conversacion_id: convActivaId,
           contenido: texto,
           tipo: tipoMsg === 'nota' ? 'nota_interna' : 'texto',
         }),
@@ -212,6 +220,32 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
 
           {/* ── Chat (55%) ── */}
           <div className="w-[55%] flex flex-col border-r">
+
+            {/* Canal tabs — solo si el cliente tiene múltiples conversaciones */}
+            {lead.todas_conversaciones.length > 1 && (
+              <div className="flex border-b bg-gray-50 px-2 pt-1.5 gap-0.5 flex-shrink-0">
+                {lead.todas_conversaciones.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => setConvActivaId(c.id)}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-t-lg text-xs font-semibold transition-colors border-b-2 ${
+                      convActivaId === c.id
+                        ? 'bg-white border-blue-600 text-blue-700'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <span>{CANAL_ICON[c.canal] ?? '💭'}</span>
+                    <span>{CANAL_LABEL[c.canal] ?? c.canal}</span>
+                    {c.no_leidos_count > 0 && (
+                      <span className="bg-green-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold">
+                        {c.no_leidos_count > 9 ? '9+' : c.no_leidos_count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 bg-gray-50">
               {mensajes.length === 0 && (
                 <p className="text-center text-sm text-gray-400 py-8">Sin mensajes aún</p>

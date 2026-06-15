@@ -3,27 +3,30 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ETAPA_MAP, tiempoSinResponder, estadoSeguimiento, formatCOP, type EtapaVenta } from '@/lib/ventas/pipeline'
 
+export type ConvCanal = { id: string; canal: string; no_leidos_count: number }
+
 export type LeadData = {
-  id: string
+  id: string                    // conversacion_id primaria (más avanzada en etapa)
   etapa_venta: EtapaVenta
   etapa_venta_orden: number
   moto_interes: string | null
   valor_estimado_venta: number | null
   proxima_accion: string | null
   proxima_accion_fecha: string | null
-  canal: string
+  canal: string                 // canal de la conversación primaria
   lead_source: string | null
-  no_leidos_count: number
+  no_leidos_count: number       // total sumado de todas las conversaciones
   sin_respuesta_asesor_desde: string | null
   cliente: { id: string; nombre: string | null; celular: string | null } | null
   leads_campana: { utm_campaign: string | null }[] | null
+  todas_conversaciones: ConvCanal[]  // todas las conversaciones del cliente
 }
 
-const CANAL_BADGE: Record<string, { label: string; cls: string }> = {
-  whatsapp:  { label: 'WhatsApp',  cls: 'bg-green-100 text-green-700' },
-  messenger: { label: 'Messenger', cls: 'bg-blue-100 text-blue-700'   },
-  instagram: { label: 'Instagram', cls: 'bg-pink-100 text-pink-700'   },
-  manual:    { label: 'Manual',    cls: 'bg-gray-100 text-gray-600'   },
+const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
+  whatsapp:  { label: 'WhatsApp',  cls: 'bg-green-100 text-green-700', icon: '📱' },
+  messenger: { label: 'Messenger', cls: 'bg-blue-100 text-blue-700',   icon: '💬' },
+  instagram: { label: 'Instagram', cls: 'bg-pink-100 text-pink-700',   icon: '📸' },
+  manual:    { label: 'Manual',    cls: 'bg-gray-100 text-gray-600',   icon: '✍️' },
 }
 
 function formatHora(dateStr: string) {
@@ -48,8 +51,10 @@ export default function LeadCard({ lead, onClick, overlay }: Props) {
   const sinResponder  = tiempoSinResponder(lead.sin_respuesta_asesor_desde)
   const seguimiento   = estadoSeguimiento(lead.proxima_accion_fecha)
   const esUrgente     = sinResponder.urgente || seguimiento === 'vencido'
-  const canal         = CANAL_BADGE[lead.canal] ?? CANAL_BADGE.manual
   const campana       = lead.leads_campana?.[0]?.utm_campaign
+  const canales       = lead.todas_conversaciones.length > 0
+    ? lead.todas_conversaciones
+    : [{ id: lead.id, canal: lead.canal, no_leidos_count: lead.no_leidos_count }]
 
   return (
     <div
@@ -92,9 +97,22 @@ export default function LeadCard({ lead, onClick, overlay }: Props) {
         </span>
       </div>
 
-      {/* Canal + origen */}
+      {/* Canales + origen */}
       <div className="flex flex-wrap gap-1 mb-2">
-        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${canal.cls}`}>{canal.label}</span>
+        {canales.map(c => {
+          const cfg = CANAL_BADGE[c.canal] ?? CANAL_BADGE.manual
+          return (
+            <span key={c.id} className={`text-xs px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5 ${cfg.cls}`}>
+              <span>{cfg.icon}</span>
+              <span>{cfg.label}</span>
+              {c.no_leidos_count > 0 && (
+                <span className="ml-0.5 bg-green-500 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[9px] font-bold">
+                  {c.no_leidos_count > 9 ? '9+' : c.no_leidos_count}
+                </span>
+              )}
+            </span>
+          )
+        })}
         {campana && (
           <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium truncate max-w-[80px]">
             {campana}
