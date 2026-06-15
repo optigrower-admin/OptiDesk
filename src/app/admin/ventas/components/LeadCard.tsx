@@ -84,6 +84,14 @@ export default function LeadCard({ lead, onClick, overlay }: Props) {
         <p className="text-xs font-semibold text-emerald-700 mb-2">{formatCOP(lead.valor_estimado_venta)}</p>
       )}
 
+      {/* Etapa badge visible en la tarjeta */}
+      <div className="mb-2">
+        <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-white"
+          style={{ background: ETAPA_MAP[lead.etapa_venta].color }}>
+          {ETAPA_MAP[lead.etapa_venta].label}
+        </span>
+      </div>
+
       {/* Canal + origen */}
       <div className="flex flex-wrap gap-1 mb-2">
         <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${canal.cls}`}>{canal.label}</span>
