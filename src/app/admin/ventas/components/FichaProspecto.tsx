@@ -183,7 +183,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
         clienteOrigenNombre={lead.cliente.nombre ?? 'Sin nombre'}
         onConfirm={(_nuevoId, nuevoNombre) => {
           setVincularOpen(false)
-          alert(`✅ Vinculado correctamente a "${nuevoNombre}". Recargando...`)
+          alert(`✅ Vinculado a "${nuevoNombre}". Para desvincular entra al perfil del cliente. Recargando...`)
           window.location.reload()
         }}
         onCancel={() => setVincularOpen(false)}

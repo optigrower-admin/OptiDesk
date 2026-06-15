@@ -38,16 +38,5 @@ export async function GET(req: Request) {
     .in('id', ids)
 
   console.log(`[cron/recordatorios] Procesados ${ids.length} recordatorios`)
-
-  // Borrar clientes fusionados con más de 48h de antigüedad
-  const limite48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
-  const { count: borrados } = await supabase
-    .from('clientes')
-    .delete({ count: 'exact' })
-    .not('fusionado_con_id', 'is', null)
-    .lt('fusionado_at', limite48h)
-
-  if (borrados) console.log(`[cron/recordatorios] ${borrados} clientes fusionados eliminados`)
-
-  return NextResponse.json({ procesados: ids.length, clientes_borrados: borrados ?? 0 })
+  return NextResponse.json({ procesados: ids.length })
 }

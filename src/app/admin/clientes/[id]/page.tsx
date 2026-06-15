@@ -34,6 +34,10 @@ type VentaMoto = {
   id: string; modelo: string; valor_venta: number
   metodo_pago: string | null; financiacion: boolean; fecha_venta: string
 }
+type ClienteVinculado = {
+  id: string; nombre: string; celular: string | null; fusionado_at: string
+  canales: string[]
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function formatFecha(d: string) {
@@ -71,9 +75,11 @@ export default function ClienteDetallePage() {
   const [motos, setMotos]             = useState<Moto[]>([])
   const [ordenes, setOrdenes]         = useState<Orden[]>([])
   const [conversaciones, setConvs]    = useState<Conversacion[]>([])
-  const [ventas, setVentas]           = useState<VentaMoto[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [tab, setTab]                 = useState<Tab>('ordenes')
+  const [ventas, setVentas]               = useState<VentaMoto[]>([])
+  const [vinculados, setVinculados]       = useState<ClienteVinculado[]>([])
+  const [loading, setLoading]             = useState(true)
+  const [tab, setTab]                     = useState<Tab>('ordenes')
+  const [desvinculando, setDesvinculando] = useState<string | null>(null)
 
   // Edit mode
   const [editando, setEditando]   = useState(false)
@@ -88,7 +94,7 @@ export default function ClienteDetallePage() {
     if (!profile?.tenant_id || !clienteId) return
     setLoading(true)
 
-    const [{ data: cli }, { data: mts }, { data: ords }, { data: convs }, { data: vnts }] = await Promise.all([
+    const [{ data: cli }, { data: mts }, { data: ords }, { data: convs }, { data: vnts }, { data: vinc }] = await Promise.all([
       supabase.from('clientes').select('id,nombre,cedula,celular,email,lead_source,created_at,whatsapp_number,messenger_id,instagram_id,notas')
         .eq('id', clienteId).eq('tenant_id', profile.tenant_id).single(),
       supabase.from('motos').select('id,placa,marca,modelo,año,color,kilometraje')
@@ -99,6 +105,8 @@ export default function ClienteDetallePage() {
         .eq('cliente_id', clienteId).order('updated_at', { ascending: false }),
       supabase.from('ventas_motos').select('id,modelo,valor_venta,metodo_pago,financiacion,fecha_venta')
         .eq('cliente_id', clienteId).order('fecha_venta', { ascending: false }),
+      supabase.from('clientes').select('id,nombre,celular,fusionado_at,conversaciones(canal)')
+        .eq('fusionado_con_id', clienteId).eq('tenant_id', profile.tenant_id),
     ])
 
     if (!cli) { router.push('/admin/clientes'); return }
@@ -108,6 +116,12 @@ export default function ClienteDetallePage() {
     setOrdenes((ords ?? []) as Orden[])
     setConvs((convs ?? []) as Conversacion[])
     setVentas((vnts ?? []) as VentaMoto[])
+    setVinculados(((vinc ?? []) as { id: string; nombre: string; celular: string | null; fusionado_at: string; conversaciones: { canal: string }[] }[])
+      .map(v => ({
+        id: v.id, nombre: v.nombre, celular: v.celular, fusionado_at: v.fusionado_at,
+        canales: [...new Set(v.conversaciones.map(c => c.canal))],
+      }))
+    )
     setLoading(false)
   }, [profile?.tenant_id, clienteId])
 
@@ -136,6 +150,18 @@ export default function ClienteDetallePage() {
     setSaving(false)
     setEditando(false)
     cargar()
+  }
+
+  const desvincular = async (vinculadoId: string) => {
+    if (!confirm('¿Desvincular este perfil? Las conversaciones seguirán en el cliente actual.')) return
+    setDesvinculando(vinculadoId)
+    const res = await fetch('/api/admin/clientes/desvincular', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cliente_id: vinculadoId }),
+    })
+    setDesvinculando(null)
+    if (res.ok) cargar()
+    else alert('Error al desvincular')
   }
 
   if (loading) {
@@ -200,6 +226,42 @@ export default function ClienteDetallePage() {
             Editar
           </button>
         </div>
+
+        {/* Perfiles vinculados */}
+        {vinculados.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-2">
+              🔗 Perfiles vinculados ({vinculados.length})
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {vinculados.map(v => (
+                <div key={v.id} className="flex items-center justify-between bg-purple-50 border border-purple-100 rounded-xl px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex gap-1">
+                      {v.canales.map(c => (
+                        <span key={c} className="text-base" title={c}>
+                          {c === 'whatsapp' ? '📱' : c === 'instagram' ? '📸' : c === 'messenger' ? '💬' : '✍️'}
+                        </span>
+                      ))}
+                      {v.canales.length === 0 && <span className="text-gray-300 text-xs">Sin canal</span>}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium text-purple-900 truncate">{v.nombre}</span>
+                      {v.celular && <span className="text-xs text-purple-600 ml-2">{v.celular}</span>}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => desvincular(v.id)}
+                    disabled={desvinculando === v.id}
+                    className="flex-shrink-0 text-xs text-red-500 hover:text-red-700 hover:underline disabled:opacity-40 ml-3"
+                  >
+                    {desvinculando === v.id ? 'Desvinculando...' : 'Desvincular'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-gray-100">

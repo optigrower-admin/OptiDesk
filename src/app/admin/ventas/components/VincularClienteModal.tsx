@@ -96,7 +96,7 @@ export default function VincularClienteModal({
           <h2 className="font-bold text-gray-900 text-base">Vincular a cliente existente</h2>
           <p className="text-xs text-gray-500 mt-0.5">
             Las conversaciones de <span className="font-semibold text-gray-700">{clienteOrigenNombre}</span> pasarán
-            al cliente que selecciones. El perfil temporal se eliminará en 48h.
+            al cliente que selecciones. El perfil original quedará vinculado y puedes desvincularlo cuando quieras.
           </p>
         </div>
 
@@ -164,7 +164,7 @@ export default function VincularClienteModal({
             <p className="text-xs text-blue-600">
               Todas las conversaciones de <strong>{clienteOrigenNombre}</strong> pasarán a{' '}
               <strong>{seleccionado.nombre}</strong>.
-              El perfil anterior se eliminará en 48h.
+              El perfil original quedará vinculado; puedes desvincularlo desde el perfil del cliente.
             </p>
           </div>
         )}
