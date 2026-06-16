@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import * as XLSX from 'xlsx'
 
+export const maxDuration = 60 // catálogos grandes (+18.000 filas) pueden tardar más que el límite por defecto
+
 // Columnas del Excel (índice 0-based, hoja "Pedido", datos desde fila 12)
 // col4 = Referencia, col5 = Descripción, col8 = Subgrupo/TipoMaterial
 // col13 = Precio publico con IVA (valor cacheado), col14 = Precio sin IVA
@@ -111,7 +113,7 @@ export async function POST(req: NextRequest) {
   }
 
   let insertados = 0
-  const BATCH = 500
+  const BATCH = 1500
   for (let i = 0; i < deduped.length; i += BATCH) {
     const batch = deduped.slice(i, i + BATCH)
     const { data, error } = await supabase

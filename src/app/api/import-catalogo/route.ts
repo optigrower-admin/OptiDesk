@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import * as XLSX from 'xlsx'
 
+export const maxDuration = 60 // catálogos grandes pueden tardar más que el límite por defecto
+
 // Mapeo de columnas del Excel UMA (índice 0-based)
 // Col E=4 código, F=5 descripción, I=8 subgrupo, N=13 precio_pub_iva,
 // O=14 precio_pub_sin_iva, P=15 descuento, Q=16 precio_dist, S=18 unidad_empaque, T=19 modelos
@@ -66,8 +68,8 @@ export async function POST(req: NextRequest) {
   const ignoreDuplicates = modo === 'agregar'
   let procesados = 0
 
-  // Upsert por lotes de 100
-  const BATCH = 100
+  // Upsert por lotes
+  const BATCH = 1500
   for (let i = 0; i < records.length; i += BATCH) {
     const batch = records.slice(i, i + BATCH)
     const { data, error } = await supabase.from('repuestos_uma')
