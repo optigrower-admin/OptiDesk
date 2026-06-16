@@ -504,7 +504,9 @@ export default function AdminRepuestosPage() {
                     <th className="text-left py-2.5 px-4 font-medium whitespace-nowrap">Fecha / Hora</th>
                     <th className="text-left py-2.5 px-3 font-medium">Repuesto</th>
                     <th className="text-left py-2.5 px-3 font-medium">Origen</th>
-                    <th className="text-left py-2.5 px-3 font-medium"># de Orden</th>
+                    <th className="text-left py-2.5 px-3 font-medium">Tipo Origen</th>
+                    <th className="text-left py-2.5 px-3 font-medium">ID Interno</th>
+                    <th className="text-left py-2.5 px-3 font-medium">Estado pago</th>
                     <th className="text-left py-2.5 px-3 font-medium">Cliente</th>
                     <th className="text-right py-2.5 px-3 font-medium">Costo</th>
                     <th className="text-right py-2.5 px-3 font-medium">P. Venta</th>
@@ -531,17 +533,29 @@ export default function AdminRepuestosPage() {
                         </td>
                         <td className="py-2.5 px-3">
                           {item.ordenes ? (
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${esVentaDirecta ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {esVentaDirecta ? 'Venta' : 'S.T.'}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {item.ordenes ? (
                             <a href={esVentaDirecta ? `/admin/repuestos/nueva-venta?id=${item.ordenes.id}` : `/admin/ordenes/${item.ordenes.id}`}
-                              className="flex items-center gap-1.5 hover:text-blue-700 transition-colors"
+                              className="text-gray-500 text-xs font-mono hover:text-blue-700 transition-colors"
                             >
-                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0 ${esVentaDirecta ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                                {esVentaDirecta ? 'Venta' : 'S.T.'}
-                              </span>
-                              <span className="text-gray-500 text-xs font-mono">#{item.ordenes.numero}</span>
-                              {esPendiente && (
-                                <span className="text-[10px] font-semibold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">Pendiente</span>
-                              )}
+                              #{item.ordenes.numero}
                             </a>
+                          ) : '—'}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {item.ordenes?.estado_pago ? (
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                              item.ordenes.estado_pago === 'pagado' ? 'bg-green-100 text-green-700' :
+                              item.ordenes.estado_pago === 'abono' ? 'bg-amber-100 text-amber-700' :
+                              'bg-red-100 text-red-600'
+                            }`}>
+                              {item.ordenes.estado_pago === 'pagado' ? 'Pagado' : item.ordenes.estado_pago === 'abono' ? 'Abono' : 'Pendiente'}
+                            </span>
                           ) : '—'}
                         </td>
                         <td className="py-2.5 px-3 text-xs text-gray-600 max-w-[120px]">
@@ -589,7 +603,7 @@ export default function AdminRepuestosPage() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-50">
-                    <td colSpan={5} className="py-2.5 px-4 text-xs text-gray-500 font-medium">{totalItems} ítems en total</td>
+                    <td colSpan={7} className="py-2.5 px-4 text-xs text-gray-500 font-medium">{totalItems} ítems en total</td>
                     <td className="py-2.5 px-3 text-right text-xs text-gray-500 font-medium whitespace-nowrap">{formatCOP(totalCosto)}</td>
                     <td className="py-2.5 px-3 text-right font-bold text-gray-900 whitespace-nowrap">{formatCOP(totalVentas)}</td>
                     <td />
