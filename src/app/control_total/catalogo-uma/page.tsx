@@ -110,7 +110,7 @@ export default function CatalogoUMAPage() {
             <span className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors px-4 py-2 text-sm ${importing ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-700 text-white hover:bg-blue-800 cursor-pointer'}`}>
               {importing ? 'Importando...' : 'Importar Excel'}
             </span>
-            <input type="file" accept=".xlsx,.xls" onChange={handleImport} className="hidden" disabled={importing} />
+            <input type="file" accept=".xlsx,.xls,.xlsm" onChange={handleImport} className="hidden" disabled={importing} />
           </label>
         </div>
       </div>

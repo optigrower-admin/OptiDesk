@@ -504,14 +504,14 @@ export default function ConfigServicioPage() {
                   ) : (
                     <>
                       <p className="text-sm font-medium text-gray-700">Seleccionar archivo Excel</p>
-                      <p className="text-xs text-gray-400">FORMATO REPUESTOS UMA .xlsx</p>
+                      <p className="text-xs text-gray-400">FORMATO REPUESTOS UMA .xlsx / .xlsm</p>
                     </>
                   )}
                 </div>
               </div>
               <input
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.xlsm"
                 className="sr-only"
                 onChange={(e) => {
                   setUploadFile(e.target.files?.[0] ?? null)
