@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -25,6 +26,15 @@ export async function POST(req: NextRequest) {
   if (tenant.nombre.trim().toLowerCase() !== confirmar_nombre.trim().toLowerCase()) {
     return NextResponse.json({ error: 'El nombre de confirmación no coincide' }, { status: 400 })
   }
+
+  // Borrar tablas que referencian clientes/motos sin CASCADE DELETE antes de
+  // llamar al RPC (que sí los elimina), para evitar FK constraint violations.
+  // conversaciones.cliente_id → clientes (sin CASCADE) y cascadea a mensajes,
+  // conversaciones_etiquetas y leads_campana automáticamente.
+  // ventas_motos referencia tanto clientes.id como motos.id (sin CASCADE).
+  const admin = createAdminClient()
+  await admin.from('conversaciones').delete().eq('tenant_id', tenant_id)
+  await admin.from('ventas_motos').delete().eq('tenant_id', tenant_id)
 
   // La función PostgreSQL corre como SECURITY DEFINER (privilegios postgres),
   // bypassea RLS completamente y maneja todo en una sola transacción atómica.
