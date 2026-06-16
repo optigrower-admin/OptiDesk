@@ -124,6 +124,22 @@ export default function PermisosPage() {
     })
   }
 
+  const toggleGrupo = (secciones: SeccionDef[]) => {
+    const todosOn = secciones.every(s => {
+      const p = permisos.get(s.key)
+      return p === undefined ? true : p.habilitado
+    })
+    const nuevoValor = !todosOn
+    setPermisos((prev) => {
+      const next = new Map(prev)
+      for (const s of secciones) {
+        const actual = prev.get(s.key) ?? { habilitado: true, orden: s.defaultOrden }
+        next.set(s.key, { ...actual, habilitado: nuevoValor })
+      }
+      return next
+    })
+  }
+
   const mover = (seccion: string, dir: 'up' | 'down') => {
     const sorted = seccionesOrdenadas()
     const idx = sorted.findIndex((s) => s.key === seccion)
@@ -222,10 +238,20 @@ export default function PermisosPage() {
             {GRUPOS_ADMIN.map((grupo) => {
               const secsGrupo = grupo.secciones.filter(s => selectedRol === 'gerencia' || !s.soloGerencia)
               if (secsGrupo.length === 0) return null
+              const grupoOn = secsGrupo.every(s => {
+                const p = permisos.get(s.key)
+                return p === undefined ? true : p.habilitado
+              })
               return (
                 <div key={grupo.key}>
-                  <div className="px-5 py-2 bg-gray-50/60 text-xs font-semibold text-gray-400 uppercase tracking-wider border-t border-gray-100">
-                    {grupo.label}
+                  <div className="flex items-center justify-between px-5 py-2.5 bg-gray-50/60 border-t border-gray-100">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{grupo.label}</span>
+                    <button
+                      onClick={() => toggleGrupo(secsGrupo)}
+                      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${grupoOn ? 'bg-purple-600' : 'bg-gray-300'}`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${grupoOn ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
                   </div>
                   {secsGrupo.map((s) => {
                     const p = permisos.get(s.key) ?? { habilitado: true, orden: s.defaultOrden }
@@ -256,8 +282,14 @@ export default function PermisosPage() {
               if (standaloneVisible.length === 0) return null
               return (
                 <div>
-                  <div className="px-5 py-2 bg-gray-50/60 text-xs font-semibold text-gray-400 uppercase tracking-wider border-t border-gray-100">
-                    General
+                  <div className="flex items-center justify-between px-5 py-2.5 bg-gray-50/60 border-t border-gray-100">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">General</span>
+                    <button
+                      onClick={() => toggleGrupo(standaloneVisible)}
+                      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${standaloneVisible.every(s => { const p = permisos.get(s.key); return p === undefined ? true : p.habilitado }) ? 'bg-purple-600' : 'bg-gray-300'}`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${standaloneVisible.every(s => { const p = permisos.get(s.key); return p === undefined ? true : p.habilitado }) ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
                   </div>
                   {standaloneVisible.map((s) => {
                     const p = permisos.get(s.key) ?? { habilitado: true, orden: s.defaultOrden }

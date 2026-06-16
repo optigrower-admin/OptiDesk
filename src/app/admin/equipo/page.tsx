@@ -228,6 +228,30 @@ export default function EquipoPage() {
     clearPermisosCache(profile.tenant_id, rol)
   }
 
+  // Toggle todos los paneles de un grupo a la vez
+  const toggleGrupo = async (rol: Rol, secciones: SeccionDef[]) => {
+    if (!profile?.tenant_id) return
+    const todosOn = secciones.every(s => getPermiso(rol, s.key).habilitado)
+    const nuevoValor = !todosOn
+    await supabase.from('permisos_roles').upsert(
+      secciones.map(s => ({
+        tenant_id: profile.tenant_id,
+        rol,
+        seccion: s.key,
+        habilitado: nuevoValor,
+        orden: getPermiso(rol, s.key).orden || s.defaultOrden,
+      })),
+      { onConflict: 'tenant_id,rol,seccion' }
+    )
+    const mapa = new Map(permisosRef.current.get(rol) ?? [])
+    for (const s of secciones) {
+      mapa.set(s.key, { habilitado: nuevoValor, orden: getPermiso(rol, s.key).orden || s.defaultOrden })
+    }
+    permisosRef.current.set(rol, mapa)
+    setPermisosPorRol(new Map(permisosRef.current))
+    clearPermisosCache(profile.tenant_id, rol)
+  }
+
   const abrirEditModal = (u: UsuarioEquipo) => {
     setEditModal(u)
     setEditNombreModal(u.nombre)
@@ -522,10 +546,17 @@ export default function EquipoPage() {
                         {GRUPOS_ADMIN.map((grupo) => {
                           const secsGrupo = grupo.secciones.filter(s => rol === 'gerencia' || !s.soloGerencia)
                           if (secsGrupo.length === 0) return null
+                          const grupoOn = secsGrupo.every(s => getPermiso(rol, s.key).habilitado)
                           return (
                             <div key={grupo.key}>
-                              <div className="px-4 py-1.5 bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wider border-t border-gray-100 first:border-t-0">
-                                {grupo.label}
+                              <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-100 first:border-t-0">
+                                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{grupo.label}</span>
+                                <button
+                                  onClick={() => toggleGrupo(rol, secsGrupo)}
+                                  className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${grupoOn ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                >
+                                  <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${grupoOn ? 'translate-x-4' : ''}`} />
+                                </button>
                               </div>
                               {secsGrupo.map((s) => {
                                 const p = getPermiso(rol, s.key)
@@ -553,8 +584,14 @@ export default function EquipoPage() {
                           if (standaloneVisible.length === 0) return null
                           return (
                             <div>
-                              <div className="px-4 py-1.5 bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wider border-t border-gray-100">
-                                General
+                              <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-100">
+                                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">General</span>
+                                <button
+                                  onClick={() => toggleGrupo(rol, standaloneVisible)}
+                                  className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${standaloneVisible.every(s => getPermiso(rol, s.key).habilitado) ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                >
+                                  <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${standaloneVisible.every(s => getPermiso(rol, s.key).habilitado) ? 'translate-x-4' : ''}`} />
+                                </button>
                               </div>
                               {standaloneVisible.map((s) => {
                                 const p = getPermiso(rol, s.key)
