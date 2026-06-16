@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
     records.push({
       tenant_id: tenantId,
       codigo,
+      tipo: 'repuesto',
       descripcion,
       subgrupo: String(row[COL.subgrupo] ?? '').trim() || null,
       precio_publico_iva: parseNum(row[COL.precio_publico_iva]),
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
   for (let i = 0; i < records.length; i += BATCH) {
     const batch = records.slice(i, i + BATCH)
     const { data, error } = await supabase.from('repuestos_uma')
-      .upsert(batch, { onConflict: 'tenant_id,codigo', ignoreDuplicates })
+      .upsert(batch, { onConflict: 'tenant_id,codigo,tipo', ignoreDuplicates })
       .select('id')
 
     if (error) console.error('Error upsert batch:', error.message)

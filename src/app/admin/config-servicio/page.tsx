@@ -72,6 +72,13 @@ export default function ConfigServicioPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [modoUpload, setModoUpload] = useState<'agregar' | 'reemplazar'>('agregar')
+
+  /* ── Estado carga catálogo Lubricantes ── */
+  const [uploadFileLub, setUploadFileLub] = useState<File | null>(null)
+  const [uploadingLub, setUploadingLub] = useState(false)
+  const [uploadResultLub, setUploadResultLub] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [modoUploadLub, setModoUploadLub] = useState<'agregar' | 'reemplazar'>('agregar')
 
   /* ── Carga ── */
   const cargar = useCallback(async () => {
@@ -200,11 +207,13 @@ export default function ConfigServicioPage() {
 
   const handleUploadRepuestos = async () => {
     if (!uploadFile) return
+    if (modoUpload === 'reemplazar' && !confirm('Esto eliminará todo el catálogo de repuestos UMA actual antes de cargar el nuevo archivo. ¿Continuar?')) return
     setUploading(true)
     setUploadResult(null)
     try {
       const fd = new FormData()
       fd.append('file', uploadFile)
+      fd.append('modo', modoUpload)
       const res = await fetch('/api/repuestos-uma/upload', { method: 'POST', body: fd })
       const json = await res.json()
       if (!res.ok) {
@@ -218,6 +227,31 @@ export default function ConfigServicioPage() {
       setUploadResult({ ok: false, msg: 'Error de conexión' })
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handleUploadLubricantes = async () => {
+    if (!uploadFileLub) return
+    if (modoUploadLub === 'reemplazar' && !confirm('Esto eliminará todo el catálogo de lubricantes actual antes de cargar el nuevo archivo. ¿Continuar?')) return
+    setUploadingLub(true)
+    setUploadResultLub(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', uploadFileLub)
+      fd.append('modo', modoUploadLub)
+      const res = await fetch('/api/lubricantes/upload', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) {
+        setUploadResultLub({ ok: false, msg: json.error ?? 'Error al procesar el archivo' })
+      } else {
+        const dupMsg = json.duplicados > 0 ? ` (${json.duplicados} referencias duplicadas omitidas)` : ''
+        setUploadResultLub({ ok: true, msg: `✓ ${json.insertados.toLocaleString()} lubricantes actualizados de ${json.total.toLocaleString()}${dupMsg}` })
+        setUploadFileLub(null)
+      }
+    } catch {
+      setUploadResultLub({ ok: false, msg: 'Error de conexión' })
+    } finally {
+      setUploadingLub(false)
     }
   }
 
@@ -510,6 +544,20 @@ export default function ConfigServicioPage() {
             </button>
           </div>
 
+          <div className="flex items-center gap-4 text-sm">
+            <span className="text-gray-500">Al cargar:</span>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="modoUpload" checked={modoUpload === 'agregar'}
+                onChange={() => setModoUpload('agregar')} className="accent-purple-600" />
+              <span className="text-gray-700">Añadir / actualizar</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="modoUpload" checked={modoUpload === 'reemplazar'}
+                onChange={() => setModoUpload('reemplazar')} className="accent-purple-600" />
+              <span className="text-gray-700">Reemplazar todo</span>
+            </label>
+          </div>
+
           {uploadResult && (
             <div className={`flex items-start gap-2 px-4 py-3 rounded-lg text-sm ${
               uploadResult.ok
@@ -523,6 +571,115 @@ export default function ConfigServicioPage() {
 
           <p className="text-xs text-gray-400">
             El proceso puede tardar 1-2 minutos para archivos con +18.000 repuestos. No cierres la página durante la carga.
+          </p>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════
+          SECCIÓN 4 — CATÁLOGO LUBRICANTES
+      ══════════════════════════════════════════ */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-amber-600 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Catálogo Lubricantes</h2>
+            <p className="text-xs text-gray-500">
+              Carga el Excel de precios de lubricantes (&quot;SUGERIDO LUBRICANTES DEALER&quot;) — hoja &quot;Lista de Precios&quot;.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3 items-start">
+            <label className="flex-1 cursor-pointer">
+              <div className={`flex items-center gap-3 px-4 py-3 border-2 border-dashed rounded-xl transition-colors ${
+                uploadFileLub ? 'border-amber-400 bg-amber-50' : 'border-gray-300 hover:border-amber-300 hover:bg-amber-50/50'
+              }`}>
+                <svg className="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <div className="min-w-0">
+                  {uploadFileLub ? (
+                    <>
+                      <p className="text-sm font-semibold text-amber-800 truncate">{uploadFileLub.name}</p>
+                      <p className="text-xs text-amber-600">{(uploadFileLub.size / 1024 / 1024).toFixed(1)} MB</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-gray-700">Seleccionar archivo Excel</p>
+                      <p className="text-xs text-gray-400">FORMATO SUGERIDO LUBRICANTES .xlsx/.xlsm</p>
+                    </>
+                  )}
+                </div>
+              </div>
+              <input
+                type="file"
+                accept=".xlsx,.xls,.xlsm"
+                className="sr-only"
+                onChange={(e) => {
+                  setUploadFileLub(e.target.files?.[0] ?? null)
+                  setUploadResultLub(null)
+                }}
+              />
+            </label>
+
+            <button
+              onClick={handleUploadLubricantes}
+              disabled={!uploadFileLub || uploadingLub}
+              className="px-5 py-3 bg-amber-700 hover:bg-amber-800 disabled:bg-amber-200 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap flex items-center gap-2"
+            >
+              {uploadingLub ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Procesando...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Cargar catálogo
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-4 text-sm">
+            <span className="text-gray-500">Al cargar:</span>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="modoUploadLub" checked={modoUploadLub === 'agregar'}
+                onChange={() => setModoUploadLub('agregar')} className="accent-amber-600" />
+              <span className="text-gray-700">Añadir / actualizar</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="radio" name="modoUploadLub" checked={modoUploadLub === 'reemplazar'}
+                onChange={() => setModoUploadLub('reemplazar')} className="accent-amber-600" />
+              <span className="text-gray-700">Reemplazar todo</span>
+            </label>
+          </div>
+
+          {uploadResultLub && (
+            <div className={`flex items-start gap-2 px-4 py-3 rounded-lg text-sm ${
+              uploadResultLub.ok
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}>
+              <span className="flex-shrink-0 mt-0.5">{uploadResultLub.ok ? '✓' : '✗'}</span>
+              <span>{uploadResultLub.msg}</span>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-400">
+            El proceso puede tardar 1-2 minutos para archivos grandes. No cierres la página durante la carga.
           </p>
         </div>
       </div>

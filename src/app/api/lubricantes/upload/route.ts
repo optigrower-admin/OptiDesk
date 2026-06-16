@@ -2,20 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import * as XLSX from 'xlsx'
 
-// Columnas del Excel (índice 0-based, hoja "Pedido", datos desde fila 12)
-// col4 = Referencia, col5 = Descripción, col8 = Subgrupo/TipoMaterial
-// col13 = Precio publico con IVA (valor cacheado), col14 = Precio sin IVA
-// col18 = Unidad Empaque, col19 = Modelos
+// Columnas del Excel (índice 0-based, hoja "Lista de Precios", datos desde fila 13)
+// col3 = Referencia (D), col4 = Descripción (E), col5 = Modelo Aplicable (F)
+// col7 = Precio público con IVA (H), col8 = Precio público sin IVA (I)
+// col12 = Unidad Empaque (M)
 const COL = {
-  codigo: 4,
-  descripcion: 5,
-  subgrupo: 8,
-  precio_con_iva: 13,
-  precio_sin_iva: 14,
-  unidad_empaque: 18,
-  modelos: 19,
+  codigo: 3,
+  descripcion: 4,
+  modelos: 5,
+  precio_con_iva: 7,
+  precio_sin_iva: 8,
+  unidad_empaque: 12,
 }
-const FILA_INICIO = 11 // 0-based (fila 12 en Excel)
+const FILA_INICIO = 12 // 0-based (fila 13 en Excel)
+
+function calcularSubgrupo(descripcion: string): string {
+  const palabras = descripcion.trim().split(/\s+/).filter(Boolean)
+  if (palabras.length >= 2) return `${palabras[0]} ${palabras[1]}`
+  return palabras[0] ?? ''
+}
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -43,8 +48,8 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer())
   const workbook = XLSX.read(buffer, { type: 'buffer', cellFormula: false, cellHTML: false })
 
-  // Usar la hoja "Pedido" o la primera disponible
-  const sheetName = workbook.SheetNames.find((n) => n.toLowerCase().includes('pedido'))
+  // Usar la hoja "Lista de Precios" o la primera disponible
+  const sheetName = workbook.SheetNames.find((n) => n.toLowerCase().includes('precio'))
     ?? workbook.SheetNames[0]
   const sheet = workbook.Sheets[sheetName]
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: null })
@@ -79,9 +84,9 @@ export async function POST(req: NextRequest) {
     records.push({
       tenant_id: tenantId,
       codigo,
-      tipo: 'repuesto',
+      tipo: 'lubricante',
       descripcion,
-      subgrupo: String(row[COL.subgrupo] ?? '').trim() || null,
+      subgrupo: calcularSubgrupo(descripcion) || null,
       precio_publico_iva: precioConIva,
       precio_publico_sin_iva: precioSinIva,
       unidad_empaque: isNaN(unidadEmpaque) ? 1 : unidadEmpaque,
@@ -104,7 +109,7 @@ export async function POST(req: NextRequest) {
       .from('repuestos_uma')
       .delete()
       .eq('tenant_id', tenantId)
-      .eq('tipo', 'repuesto')
+      .eq('tipo', 'lubricante')
     if (delError) {
       return NextResponse.json({ error: delError.message }, { status: 500 })
     }

@@ -182,8 +182,9 @@ export default function AdminOrdenDetallePage() {
   const [nuevoNumOrden, setNuevoNumOrden] = useState('')
   // Edición de datos del ingreso
   const [categorias, setCategorias] = useState<Categoria[]>([])
-  const [editingOrden, setEditingOrden] = useState<'cliente' | 'descripcion' | 'categoria' | null>(null)
+  const [editingOrden, setEditingOrden] = useState<'cliente' | 'descripcion' | 'categoria' | 'placa' | null>(null)
   const [editCliente, setEditCliente] = useState('')
+  const [editPlaca, setEditPlaca] = useState('')
   const [editDescripcion, setEditDescripcion] = useState('')
   const [editCategoriaId, setEditCategoriaId] = useState('')
   const [editSubcategoriaId, setEditSubcategoriaId] = useState('')
@@ -234,6 +235,7 @@ export default function AdminOrdenDetallePage() {
       const ord = o as unknown as OrdenDetalle
       setOrden(ord)
       setEditCliente(ord.cliente)
+      setEditPlaca(ord.placa ?? '')
       setEditDescripcion(ord.descripcion ?? '')
       setEditCategoriaId(ord.categoria_servicio_id ?? '')
       setEditSubcategoriaId(ord.subcategoria_servicio_id ?? '')
@@ -243,6 +245,7 @@ export default function AdminOrdenDetallePage() {
       setMetodoPagoId((ord.metodos_pago as { id: string } | null)?.id ?? '')
 
       // Restaurar borrador de localStorage si existe (solo campos de estado/notas)
+      let draftAplicado = false
       try {
         const draft = localStorage.getItem(ORDEN_DRAFT_KEY(ordenId))
         if (draft) {
@@ -253,15 +256,17 @@ export default function AdminOrdenDetallePage() {
           setNotas(d.notas ?? (ord.notas ?? ''))
           setNumerosOrdenUMA(d.numerosOrdenUMA ?? (ord.numeros_orden_uma ?? []))
           setDirty(true)
-          return
+          draftAplicado = true
         }
       } catch { /* borrador inválido */ }
 
-      setEstado(ord.estado)
-      setMotivoPendiente(ord.motivo_pendiente ?? '')
-      setTelefono(soloDigitos(ord.telefono ?? ''))
-      setNotas(ord.notas ?? '')
-      setNumerosOrdenUMA(ord.numeros_orden_uma ?? [])
+      if (!draftAplicado) {
+        setEstado(ord.estado)
+        setMotivoPendiente(ord.motivo_pendiente ?? '')
+        setTelefono(soloDigitos(ord.telefono ?? ''))
+        setNotas(ord.notas ?? '')
+        setNumerosOrdenUMA(ord.numeros_orden_uma ?? [])
+      }
     }
     setItems((i as unknown as ItemOrden[]) ?? [])
     setMedios((m as unknown as Medio[]) ?? [])
@@ -378,7 +383,7 @@ export default function AdminOrdenDetallePage() {
     }
   }
 
-  const guardarCampoOrden = async (campo: 'cliente' | 'descripcion' | 'categoria') => {
+  const guardarCampoOrden = async (campo: 'cliente' | 'descripcion' | 'categoria' | 'placa') => {
     if (!orden) return
     setSavingOrden(true)
     const anterior: Record<string, unknown> = {}
@@ -386,6 +391,10 @@ export default function AdminOrdenDetallePage() {
     if (campo === 'cliente') {
       anterior.cliente = orden.cliente
       update.cliente = editCliente.trim()
+    }
+    if (campo === 'placa') {
+      anterior.placa = orden.placa
+      update.placa = editPlaca.trim().toUpperCase() || null
     }
     if (campo === 'descripcion') {
       anterior.descripcion = orden.descripcion
@@ -1021,6 +1030,37 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
           <div className="bg-white rounded-xl border border-gray-100 divide-y divide-gray-50 overflow-hidden">
             <div className="px-5 py-3 bg-gray-50">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Datos del ingreso</p>
+            </div>
+
+            {/* Placa */}
+            <div className="px-5 py-3">
+              {editingOrden === 'placa' ? (
+                <div className="space-y-2">
+                  <label className="text-xs text-gray-500 font-medium">Placa</label>
+                  <input autoFocus value={editPlaca} onChange={(e) => setEditPlaca(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm focus:outline-none" />
+                  <div className="flex gap-2">
+                    <button onClick={() => guardarCampoOrden('placa')} disabled={savingOrden}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                      {savingOrden ? '...' : 'Guardar'}
+                    </button>
+                    <button onClick={() => { setEditingOrden(null); setEditPlaca(orden.placa ?? '') }}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancelar</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-400">Placa</p>
+                    <p className="text-sm font-semibold text-gray-900">{orden.placa ?? '—'}</p>
+                  </div>
+                  <button onClick={() => setEditingOrden('placa')} className="text-gray-400 hover:text-blue-600 p-1">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Cliente */}

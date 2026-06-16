@@ -24,6 +24,7 @@ export default function RepuestosUMAPage() {
   const [busqueda, setBusqueda] = useState('')
   const [subgrupo, setSubgrupo] = useState('')
   const [subgrupos, setSubgrupos] = useState<string[]>([])
+  const [fuente, setFuente] = useState<'repuesto' | 'lubricante'>('repuesto')
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
@@ -33,6 +34,7 @@ export default function RepuestosUMAPage() {
       .from('repuestos_uma')
       .select('id, codigo, descripcion, subgrupo, cantidad, precio_publico_iva, precio_distribuidor_sin_iva, activo')
       .eq('tenant_id', profile.tenant_id)
+      .eq('tipo', fuente)
       .order('codigo')
 
     if (busqueda) {
@@ -49,13 +51,14 @@ export default function RepuestosUMAPage() {
         .from('repuestos_uma')
         .select('subgrupo')
         .eq('tenant_id', profile.tenant_id)
+        .eq('tipo', fuente)
         .not('subgrupo', 'is', null)
       const unique = Array.from(new Set((sg ?? []).map((r: { subgrupo: string }) => r.subgrupo))).sort()
       setSubgrupos(unique as string[])
     }
 
     setLoading(false)
-  }, [profile?.tenant_id, busqueda, subgrupo])
+  }, [profile?.tenant_id, busqueda, subgrupo, fuente])
 
   useEffect(() => { cargar() }, [cargar])
 
@@ -69,8 +72,21 @@ export default function RepuestosUMAPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Catálogo UMA</h1>
-          <p className="text-sm text-gray-500">{repuestos.length} repuestos mostrados</p>
+          <p className="text-sm text-gray-500">{repuestos.length} {fuente === 'repuesto' ? 'repuestos' : 'lubricantes'} mostrados</p>
         </div>
+      </div>
+
+      {/* Toggle Repuestos / Lubricantes */}
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit mb-4">
+        {(['repuesto', 'lubricante'] as const).map((f) => (
+          <button key={f}
+            onClick={() => { setFuente(f); setSubgrupo('') }}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              fuente === f ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+            }`}>
+            {f === 'repuesto' ? 'Repuestos' : 'Lubricantes'}
+          </button>
+        ))}
       </div>
 
       {/* Filtros */}

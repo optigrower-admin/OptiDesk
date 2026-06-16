@@ -68,6 +68,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
   const [tab, setTab] = useState<'uma' | 'externo'>('uma')
 
   /* ══ UMA ══════════════════════════════════════════ */
+  const [umaFuente, setUmaFuente] = useState<'repuesto' | 'lubricante'>('repuesto')
   const [umaRef, setUmaRef] = useState('')
   const [umaSub, setUmaSub] = useState('')
   const [umaDesc, setUmaDesc] = useState('')
@@ -114,7 +115,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
   /* ── Reset al abrir ── */
   useEffect(() => {
     if (open) {
-      setUmaSelId(null); setUmaErrPrecio('')
+      setUmaSelId(null); setUmaErrPrecio(''); setUmaFuente('repuesto')
       setExtSelId(null)
       setShowForm(false); setFError(''); setFSinDatos(false)
     }
@@ -127,7 +128,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
       let q = supabase
         .from('repuestos_uma')
         .select('id, codigo, descripcion, subgrupo, unidad_empaque, precio_publico_iva')
-        .eq('tenant_id', tenantId).eq('activo', true)
+        .eq('tenant_id', tenantId).eq('activo', true).eq('tipo', umaFuente)
       if (umaRef) q = q.ilike('codigo', `%${umaRef}%`)
       if (umaSub) q = q.ilike('subgrupo', `%${umaSub}%`)
       if (umaDesc) q = q.ilike('descripcion', `%${umaDesc}%`)
@@ -136,7 +137,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
       setUmaTruncado(rows.length > 500)
       setUmaRows(rows.slice(0, 500))
     } finally { setUmaLoading(false) }
-  }, [supabase, tenantId, umaRef, umaSub, umaDesc])
+  }, [supabase, tenantId, umaFuente, umaRef, umaSub, umaDesc])
 
   /* ══ Búsqueda EXTERNOS (manual) ═════════════════════ */
   const buscarExt = useCallback(async () => {
@@ -307,6 +308,19 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
       {/* ════════════════════ TAB UMA ════════════════════ */}
       {tab === 'uma' && (
         <div className="space-y-3">
+
+          {/* Toggle Repuestos / Lubricantes */}
+          <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">
+            {(['repuesto', 'lubricante'] as const).map((f) => (
+              <button key={f}
+                onClick={() => { setUmaFuente(f); setUmaSelId(null); setUmaRows([]); setUmaBuscado(false) }}
+                className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                  umaFuente === f ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                }`}>
+                {f === 'repuesto' ? 'Repuestos' : 'Lubricantes'}
+              </button>
+            ))}
+          </div>
 
           {/* Filtros + botón buscar */}
           <div className="flex gap-2 flex-wrap items-center">

@@ -39,6 +39,7 @@ export default function CatalogoUMAPage() {
     let query = supabase.from('repuestos_uma')
       .select('id, codigo, descripcion, subgrupo, cantidad, precio_publico_iva, activo')
       .eq('tenant_id', tenantId)
+      .eq('tipo', 'repuesto')
       .order('codigo')
       .limit(500)
     if (busqueda) {
