@@ -24,6 +24,7 @@ interface OrdenDetalle {
   numero: number
   placa: string
   cliente: string
+  telefono: string | null
   estado: string
   estado_pago: string
   valor_total: number
@@ -67,6 +68,7 @@ export default function ResumenMecanicoPage() {
   // Inline edit states
   const [editField, setEditField] = useState<string | null>(null)
   const [editCliente, setEditCliente] = useState('')
+  const [editTelefono, setEditTelefono] = useState('')
   const [editDescripcion, setEditDescripcion] = useState('')
   const [editCategoriaId, setEditCategoriaId] = useState('')
   const [editSubcategoriaId, setEditSubcategoriaId] = useState('')
@@ -77,7 +79,7 @@ export default function ResumenMecanicoPage() {
     Promise.all([
       supabase
         .from('ordenes')
-        .select(`id, numero, placa, cliente, estado, estado_pago, valor_total, descripcion,
+        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, descripcion,
           categoria_servicio_id, subcategoria_servicio_id,
           categorias_servicio(nombre), subcategorias_servicio(nombre),
           metodos_pago(nombre),
@@ -99,6 +101,7 @@ export default function ResumenMecanicoPage() {
         const o = ordenData as unknown as OrdenDetalle
         setOrden(o)
         setEditCliente(o.cliente)
+        setEditTelefono(o.telefono ?? '')
         setEditDescripcion(o.descripcion ?? '')
         setEditCategoriaId(o.categoria_servicio_id ?? '')
         setEditSubcategoriaId(o.subcategoria_servicio_id ?? '')
@@ -111,12 +114,13 @@ export default function ResumenMecanicoPage() {
 
   const subcategoriasEdit = categorias.find((c) => c.id === editCategoriaId)?.subcategorias_servicio ?? []
 
-  const guardarCampo = async (campo: 'cliente' | 'descripcion' | 'categoria') => {
+  const guardarCampo = async (campo: 'cliente' | 'telefono' | 'descripcion' | 'categoria') => {
     if (!orden) return
     setSaving(true)
     const anterior: Record<string, unknown> = {}
     const update: Record<string, unknown> = {}
     if (campo === 'cliente') { anterior.cliente = orden.cliente; update.cliente = editCliente.trim() }
+    if (campo === 'telefono') { anterior.telefono = orden.telefono; update.telefono = editTelefono.trim() || null }
     if (campo === 'descripcion') { anterior.descripcion = orden.descripcion; update.descripcion = editDescripcion.trim() || null }
     if (campo === 'categoria') {
       anterior.categoria_servicio_id = orden.categoria_servicio_id
@@ -138,7 +142,7 @@ export default function ResumenMecanicoPage() {
 
     const { data } = await supabase
       .from('ordenes')
-      .select(`id, numero, placa, cliente, estado, estado_pago, valor_total, descripcion,
+      .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, descripcion,
         categoria_servicio_id, subcategoria_servicio_id,
         categorias_servicio(nombre), subcategorias_servicio(nombre),
         metodos_pago(nombre),
@@ -153,6 +157,7 @@ export default function ResumenMecanicoPage() {
   const cancelar = () => {
     if (!orden) return
     setEditCliente(orden.cliente)
+    setEditTelefono(orden.telefono ?? '')
     setEditDescripcion(orden.descripcion ?? '')
     setEditCategoriaId(orden.categoria_servicio_id ?? '')
     setEditSubcategoriaId(orden.subcategoria_servicio_id ?? '')
@@ -192,8 +197,8 @@ export default function ResumenMecanicoPage() {
           </svg>
         </button>
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Orden #{orden.numero}</h1>
-          <p className="text-xs text-gray-400 font-mono">{orden.placa}</p>
+          <h1 className="text-xl font-bold text-gray-900 font-mono">{orden.placa}</h1>
+          <p className="text-xs text-gray-400">Orden #{orden.numero}</p>
         </div>
         <div className="ml-auto flex flex-col items-end gap-1">
           <OrderStatus estado={orden.estado} />
@@ -232,6 +237,44 @@ export default function ResumenMecanicoPage() {
                 <p className="text-sm font-semibold text-gray-900">{orden.cliente}</p>
               </div>
               <button onClick={() => setEditField('cliente')} className="text-gray-400 hover:text-blue-600 p-1">
+                <PencilIcon />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Celular */}
+        <div className="px-4 py-3">
+          {editField === 'telefono' ? (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Celular</label>
+              <input
+                type="tel"
+                value={editTelefono}
+                onChange={(e) => setEditTelefono(e.target.value)}
+                autoFocus
+                placeholder="310 000 0000"
+                className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm focus:outline-none"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => guardarCampo('telefono')} disabled={saving}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                  {saving ? '...' : 'Guardar'}
+                </button>
+                <button onClick={cancelar} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-400">Celular</p>
+                <p className="text-sm font-semibold text-gray-900">
+                  {orden.telefono || <span className="text-gray-400 italic font-normal">Sin celular</span>}
+                </p>
+              </div>
+              <button onClick={() => setEditField('telefono')} className="text-gray-400 hover:text-blue-600 p-1">
                 <PencilIcon />
               </button>
             </div>
