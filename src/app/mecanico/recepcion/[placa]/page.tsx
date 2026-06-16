@@ -28,10 +28,9 @@ export default function RecepcionPage() {
   const [placa, setPlaca] = useState(params.placa === 'nueva' ? '' : String(params.placa))
   const [cliente, setCliente] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  const [telefono, setTelefono] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
   const [subcategoriaId, setSubcategoriaId] = useState('')
-  const [numerosOrdenUMA, setNumerosOrdenUMA] = useState<string[]>([])
-  const [nuevoNumOrden, setNuevoNumOrden] = useState('')
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [archivos, setArchivos] = useState<File[]>([])
   const [previews, setPreviews] = useState<{ url: string; tipo: 'imagen' | 'video' }[]>([])
@@ -49,10 +48,10 @@ export default function RecepcionPage() {
         const d = JSON.parse(saved)
         if (d.placa) setPlaca(d.placa)
         if (d.cliente) setCliente(d.cliente)
+        if (d.telefono) setTelefono(d.telefono)
         if (d.descripcion) setDescripcion(d.descripcion)
         if (d.categoriaId) setCategoriaId(d.categoriaId)
         if (d.subcategoriaId) setSubcategoriaId(d.subcategoriaId)
-        if (d.numerosOrdenUMA) setNumerosOrdenUMA(d.numerosOrdenUMA)
       }
     } catch { /* borrador inválido */ }
   }, [params.placa])
@@ -61,12 +60,12 @@ export default function RecepcionPage() {
     if (params.placa !== 'nueva') return
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, descripcion, categoriaId, subcategoriaId, numerosOrdenUMA }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, descripcion, categoriaId, subcategoriaId }))
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [placa, cliente, descripcion, categoriaId, subcategoriaId, numerosOrdenUMA, params.placa])
+  }, [placa, cliente, telefono, descripcion, categoriaId, subcategoriaId, params.placa])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -80,7 +79,6 @@ export default function RecepcionPage() {
   }, [profile?.tenant_id])
 
   const subcategorias = categorias.find((c) => c.id === categoriaId)?.subcategorias_servicio ?? []
-  const esUMACategoria = categorias.find((c) => c.id === categoriaId)?.nombre?.toLowerCase().includes('uma') ?? false
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -126,7 +124,7 @@ export default function RecepcionPage() {
       // Crear/vincular moto y cliente silenciosamente
       const { motoId, clienteId } = await upsertMotoCliente({
         supabase, tenantId: profile.tenant_id,
-        placa: placaNorm, clienteNombre: cliente,
+        placa: placaNorm, clienteNombre: cliente, celular: telefono || null,
         motoId: panelResult.motoId, clienteId: panelResult.clienteId,
         motoExtras: panelResult.motoExtras,
       })
@@ -137,6 +135,7 @@ export default function RecepcionPage() {
           tenant_id: profile.tenant_id,
           placa: placaNorm,
           cliente,
+          telefono: telefono || null,
           descripcion,
           categoria_servicio_id: categoriaId || null,
           subcategoria_servicio_id: subcategoriaId || null,
@@ -145,7 +144,6 @@ export default function RecepcionPage() {
           numero: 0,
           moto_id: motoId,
           cliente_id: clienteId,
-          numeros_orden_uma: esUMACategoria ? numerosOrdenUMA : [],
         })
         .select('id')
         .single()
@@ -203,7 +201,10 @@ export default function RecepcionPage() {
           <ClienteMotoPanel
             tenantId={profile.tenant_id}
             placa={placa}
-            onAutoFill={({ nombre }) => { if (nombre) setCliente(nombre) }}
+            onAutoFill={({ nombre, celular }) => {
+              if (nombre) setCliente(nombre)
+              if (celular && !telefono) setTelefono(celular)
+            }}
             onResult={setPanelResult}
           />
         )}
@@ -216,6 +217,17 @@ export default function RecepcionPage() {
             required
             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Nombre del cliente"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Celular (opcional)</label>
+          <input
+            type="tel"
+            value={telefono}
+            onChange={(e) => setTelefono(e.target.value)}
+            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="310 000 0000"
           />
         </div>
 
@@ -253,61 +265,6 @@ export default function RecepcionPage() {
               <option value="">Seleccionar</option>
               {subcategorias.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
-          </div>
-        )}
-
-        {esUMACategoria && (
-          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-            <label className="block text-sm font-medium text-gray-700"># Orden UMA (opcional)</label>
-            {numerosOrdenUMA.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {numerosOrdenUMA.map((num, idx) => (
-                  <div key={idx} className="flex items-center gap-1.5 bg-purple-50 border border-purple-200 rounded-lg px-3 py-1.5">
-                    <span className="font-mono text-sm font-semibold text-purple-800">{num}</span>
-                    <button
-                      type="button"
-                      onClick={() => setNumerosOrdenUMA((prev) => prev.filter((_, i) => i !== idx))}
-                      className="text-purple-300 hover:text-red-500 transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={nuevoNumOrden}
-                onChange={(e) => setNuevoNumOrden(e.target.value.replace(/\D/g, ''))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    const num = nuevoNumOrden.trim()
-                    if (num && !numerosOrdenUMA.includes(num)) setNumerosOrdenUMA((prev) => [...prev, num])
-                    setNuevoNumOrden('')
-                  }
-                }}
-                placeholder="Ej: 349384"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const num = nuevoNumOrden.trim()
-                  if (!num || numerosOrdenUMA.includes(num)) return
-                  setNumerosOrdenUMA((prev) => [...prev, num])
-                  setNuevoNumOrden('')
-                }}
-                disabled={!nuevoNumOrden.trim()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors"
-              >
-                + Agregar
-              </button>
-            </div>
           </div>
         )}
 
