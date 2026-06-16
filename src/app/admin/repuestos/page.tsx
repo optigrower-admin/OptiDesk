@@ -62,8 +62,6 @@ function formatAuditDate(iso: string): string {
     ' ' + d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })
 }
 
-function soloD(v: string) { return v.replace(/\D/g, '') }
-
 export default function AdminRepuestosPage() {
   const { profile } = useAuth()
   const supabase = createClient()
@@ -83,8 +81,6 @@ export default function AdminRepuestosPage() {
   const [ventas, setVentas] = useState<ItemVenta[]>([])
   const [tenantNombre, setTenantNombre] = useState('Motospace')
   const [loadingVentas, setLoadingVentas] = useState(false)
-  const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; precio: string; cantidad: string } | null>(null)
-  const [savingItem, setSavingItem] = useState(false)
   const [showAudit, setShowAudit] = useState(false)
   const [auditLabel, setAuditLabel] = useState('')
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
@@ -198,23 +194,6 @@ export default function AdminRepuestosPage() {
       const newTotal = ((rest as { precio_venta: number; cantidad: number }[]) ?? []).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
       await supabase.from('ordenes').update({ valor_total: newTotal }).eq('id', item.ordenes.id)
     }
-    await cargarVentas()
-  }
-
-  const handleSaveEdit = async () => {
-    if (!editingItem) return
-    setSavingItem(true)
-    const precio = parseInt(soloD(editingItem.precio) || '0', 10)
-    const cantidad = Math.max(1, parseInt(editingItem.cantidad) || 1)
-    await supabase.from('items_orden').update({ descripcion: editingItem.descripcion.trim(), precio_venta: precio, cantidad }).eq('id', editingItem.id)
-    const item = ventas.find((i) => i.id === editingItem.id)
-    if (item?.ordenes) {
-      const { data: all } = await supabase.from('items_orden').select('precio_venta, cantidad').eq('orden_id', item.ordenes.id)
-      const newTotal = ((all as { precio_venta: number; cantidad: number }[]) ?? []).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-      await supabase.from('ordenes').update({ valor_total: newTotal }).eq('id', item.ordenes.id)
-    }
-    setEditingItem(null)
-    setSavingItem(false)
     await cargarVentas()
   }
 
@@ -535,46 +514,6 @@ export default function AdminRepuestosPage() {
                 <tbody>
                   {ventas.map((item) => {
                     const esVentaDirecta = item.ordenes?.tipo_orden === 'venta_repuestos'
-                    if (editingItem?.id === item.id) {
-                      return (
-                        <tr key={item.id} className="border-b bg-amber-50">
-                          <td className="py-2 px-4 text-xs text-gray-400 whitespace-nowrap">{formatFechaHora(item.created_at)}</td>
-                          <td className="py-2 px-3" colSpan={2}>
-                            <input autoFocus value={editingItem.descripcion}
-                              onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
-                              className="w-full px-2 py-1.5 border border-amber-400 rounded-lg text-sm focus:outline-none"
-                            />
-                          </td>
-                          <td className="py-2 px-3 text-xs text-gray-400">{item.ordenes ? `#${item.ordenes.numero}` : '—'}</td>
-                          <td className="py-2 px-3 text-xs text-gray-500 truncate max-w-[100px]">{item.ordenes?.cliente ?? '—'}</td>
-                          <td className="py-2 px-3">
-                            <input type="number" min={1} value={editingItem.cantidad}
-                              onChange={(e) => setEditingItem({ ...editingItem, cantidad: e.target.value })}
-                              className="w-14 px-2 py-1.5 border border-amber-400 rounded-lg text-sm text-center focus:outline-none"
-                            />
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="flex items-center border border-amber-400 rounded-lg overflow-hidden bg-white">
-                              <span className="px-1.5 text-gray-400 text-xs border-r border-amber-200 py-1.5">$</span>
-                              <input type="text" inputMode="numeric"
-                                value={editingItem.precio ? parseInt(editingItem.precio, 10).toLocaleString('es-CO') : ''}
-                                onChange={(e) => setEditingItem({ ...editingItem, precio: soloD(e.target.value) })}
-                                className="w-24 px-2 py-1.5 text-sm font-mono text-right focus:outline-none"
-                              />
-                            </div>
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="flex gap-1 justify-end">
-                              <button onClick={handleSaveEdit} disabled={savingItem}
-                                className="px-2 py-1 bg-amber-500 text-white rounded text-xs font-semibold disabled:opacity-50">
-                                {savingItem ? '...' : 'OK'}
-                              </button>
-                              <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    }
                     const esPendiente = item.ordenes?.estado_pago === 'pendiente' || item.ordenes?.estado_pago === 'abono'
                     return (
                       <tr key={item.id} className={`border-b group ${esPendiente ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}`}>
@@ -592,7 +531,7 @@ export default function AdminRepuestosPage() {
                         </td>
                         <td className="py-2.5 px-3">
                           {item.ordenes ? (
-                            <a href={esVentaDirecta ? `/admin/repuestos/venta/${item.ordenes.id}` : `/admin/ordenes/${item.ordenes.id}`}
+                            <a href={esVentaDirecta ? `/admin/repuestos/nueva-venta?id=${item.ordenes.id}` : `/admin/ordenes/${item.ordenes.id}`}
                               className="flex items-center gap-1.5 hover:text-blue-700 transition-colors"
                             >
                               <span className={`px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0 ${esVentaDirecta ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
@@ -626,14 +565,14 @@ export default function AdminRepuestosPage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
                             </button>
-                            {esVentaDirecta && (
-                              <button onClick={() => setEditingItem({ id: item.id, descripcion: item.descripcion, precio: String(item.precio_venta), cantidad: String(item.cantidad) })}
+                            {esVentaDirecta && item.ordenes && (
+                              <Link href={`/admin/repuestos/nueva-venta?id=${item.ordenes.id}`}
                                 className="text-gray-400 hover:text-amber-600 p-1.5 rounded hover:bg-amber-50" title="Editar"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
-                              </button>
+                              </Link>
                             )}
                             {esVentaDirecta && (
                               <button onClick={() => handleDeleteItem(item)} className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50" title="Eliminar">

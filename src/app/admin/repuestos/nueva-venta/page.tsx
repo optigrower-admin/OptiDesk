@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
@@ -11,10 +11,11 @@ import { ConsultaRepuestos } from '@/components/ConsultaRepuestos'
 import { ClienteMotoPanel } from '@/components/ClienteMotoPanel'
 import { formatCOP, generarCodigoExterno, normalizarPlaca } from '@/lib/utils'
 import { upsertMotoCliente } from '@/lib/clienteMoto'
-import { registrarSalida } from '@/lib/movimientos'
+import { registrarSalida, registrarDevolucion } from '@/lib/movimientos'
 import type { ClienteMotoPanelResult } from '@/components/ClienteMotoPanel'
 
 interface ItemVenta {
+  id?: string
   descripcion: string
   origen: 'uma' | 'externo'
   repuesto_uma_id?: string
@@ -58,8 +59,10 @@ const externoInit: ExternoForm = { nombre: '', costo: '', precio_venta: '', cant
 const DRAFT_KEY = 'optiDesk_venta_directa_draft'
 const PANEL_INIT: ClienteMotoPanelResult = { motoId: null, clienteId: null, motoExtras: { marca: '', modelo: '', año: '', color: '' }, isKnownMoto: false }
 
-export default function NuevaVentaPage() {
+function NuevaVentaContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const editId = searchParams.get('id')
   const { profile } = useAuth()
   const supabase = createClient()
 
@@ -74,6 +77,7 @@ export default function NuevaVentaPage() {
   const [loadingHistorial, setLoadingHistorial] = useState(false)
 
   const [items, setItems] = useState<ItemVenta[]>([])
+  const [originalItems, setOriginalItems] = useState<ItemVenta[]>([])
   const [showConsulta, setShowConsulta] = useState(false)
   const [showExternoForm, setShowExternoForm] = useState(false)
   const [externoForm, setExternoForm] = useState<ExternoForm>(externoInit)
@@ -85,11 +89,13 @@ export default function NuevaVentaPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
+  const [loadingEdit, setLoadingEdit] = useState(!!editId)
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const placaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ─── Borrador ────────────────────────────────────────────
+  // ─── Borrador (solo en modo creación) ───────────────────
   useEffect(() => {
+    if (editId) return
     try {
       const saved = localStorage.getItem(DRAFT_KEY)
       if (saved) {
@@ -100,9 +106,10 @@ export default function NuevaVentaPage() {
         if (d.placa) setPlaca(d.placa)
       }
     } catch { /* borrador inválido */ }
-  }, [])
+  }, [editId])
 
   useEffect(() => {
+    if (editId) return
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ cliente, cedula, celular, placa }))
@@ -110,7 +117,35 @@ export default function NuevaVentaPage() {
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [cliente, cedula, celular, placa])
+  }, [editId, cliente, cedula, celular, placa])
+
+  // ─── Cargar venta existente (modo edición) ──────────────
+  useEffect(() => {
+    if (!editId) return
+    let activo = true
+    ;(async () => {
+      const [{ data: orden }, { data: itemsData }] = await Promise.all([
+        supabase.from('ordenes').select('cliente, cedula, celular, placa, estado_pago, metodo_pago_id, moto_id, cliente_id').eq('id', editId).single(),
+        supabase.from('items_orden').select('id, descripcion, origen, repuesto_uma_id, repuesto_externo_id, cantidad, costo, precio_venta').eq('orden_id', editId),
+      ])
+      if (!activo) return
+      if (orden) {
+        const o = orden as { cliente: string; cedula: string | null; celular: string | null; placa: string | null; estado_pago: string | null; metodo_pago_id: string | null; moto_id: string | null; cliente_id: string | null }
+        setCliente(o.cliente ?? '')
+        setCedula(o.cedula ?? '')
+        setCelular(o.celular ?? '')
+        setPlaca(o.placa ?? '')
+        setPagado(o.estado_pago !== 'pendiente')
+        setMetodoPagoId(o.metodo_pago_id ?? '')
+        setPanelResult({ motoId: o.moto_id, clienteId: o.cliente_id, motoExtras: { marca: '', modelo: '', año: '', color: '' }, isKnownMoto: !!o.moto_id })
+      }
+      const loadedItems = ((itemsData as ItemVenta[]) ?? []).filter((i) => i.origen === 'uma' || i.origen === 'externo')
+      setItems(loadedItems)
+      setOriginalItems(loadedItems)
+      setLoadingEdit(false)
+    })()
+    return () => { activo = false }
+  }, [editId])
 
   // ─── Historial de placa ──────────────────────────────────
   const buscarHistorialPlaca = useCallback(async (placaNorm: string) => {
@@ -212,6 +247,76 @@ export default function NuevaVentaPage() {
         motoExtras: panelResult.motoExtras,
       })
 
+      if (editId) {
+        // ─── Modo edición: actualizar orden y reconciliar ítems ───
+        const { error: updErr } = await supabase.from('ordenes').update({
+          placa: placaNorm || null,
+          cliente,
+          cedula: cedula || null,
+          celular: celular || null,
+          estado_pago: estadoPago,
+          valor_total: total,
+          valor_abono: valorAbonoNum,
+          metodo_pago_id: metodoPagoId || null,
+          moto_id: motoId,
+          cliente_id: clienteId,
+        }).eq('id', editId)
+        if (updErr) throw updErr
+
+        const removidos = originalItems.filter((orig) => !items.some((i) => i.id === orig.id))
+        const agregados = items.filter((i) => !i.id)
+
+        if (removidos.length > 0) {
+          await supabase.from('items_orden').delete().in('id', removidos.map((i) => i.id as string))
+          await Promise.all(
+            removidos.map((item) =>
+              registrarDevolucion(supabase, {
+                tenantId: profile.tenant_id,
+                repuesto_uma_id: item.repuesto_uma_id ?? null,
+                repuesto_externo_id: item.repuesto_externo_id ?? null,
+                cantidad: item.cantidad,
+                costo_unitario: item.costo,
+                precio_unitario: item.precio_venta,
+                orden_id: editId,
+                registrado_por: profile.id,
+              })
+            )
+          )
+        }
+
+        if (agregados.length > 0) {
+          await supabase.from('items_orden').insert(
+            agregados.map((item) => ({
+              orden_id: editId,
+              descripcion: item.descripcion,
+              origen: item.origen,
+              repuesto_uma_id: item.repuesto_uma_id ?? null,
+              repuesto_externo_id: item.repuesto_externo_id ?? null,
+              cantidad: item.cantidad,
+              costo: item.costo,
+              precio_venta: item.precio_venta,
+            }))
+          )
+          await Promise.all(
+            agregados.map((item) =>
+              registrarSalida(supabase, 'venta_directa', {
+                tenantId: profile.tenant_id,
+                repuesto_uma_id: item.repuesto_uma_id ?? null,
+                repuesto_externo_id: item.repuesto_externo_id ?? null,
+                cantidad: item.cantidad,
+                costo_unitario: item.costo,
+                precio_unitario: item.precio_venta,
+                orden_id: editId,
+                registrado_por: profile.id,
+              })
+            )
+          )
+        }
+
+        router.push('/admin/repuestos')
+        return
+      }
+
       const { data: orden, error: ordenErr } = await supabase
         .from('ordenes')
         .insert({
@@ -288,6 +393,16 @@ export default function NuevaVentaPage() {
     falta_revision: 'Falta revisión', en_proceso: 'En proceso', pendiente: 'Pendiente', listo: 'Cerrada',
   }
 
+  if (loadingEdit) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto space-y-5">
+        <div className="h-6 bg-gray-100 rounded w-1/3 animate-pulse" />
+        <div className="h-40 bg-gray-100 rounded-xl animate-pulse" />
+        <div className="h-40 bg-gray-100 rounded-xl animate-pulse" />
+      </div>
+    )
+  }
+
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
       {/* Header */}
@@ -297,7 +412,7 @@ export default function NuevaVentaPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 className="text-xl font-bold text-gray-900">Nueva venta directa</h1>
+        <h1 className="text-xl font-bold text-gray-900">{editId ? 'Editar venta directa' : 'Nueva venta directa'}</h1>
         {draftSaved && <span className="text-xs text-green-600 ml-auto">Borrador guardado</span>}
       </div>
 
@@ -598,7 +713,7 @@ export default function NuevaVentaPage() {
       </div>
 
       <Button className="w-full" size="lg" onClick={handleGuardar} loading={saving}>
-        Registrar venta{placaNorm ? ` — vincular a ${placaNorm}` : ''}
+        {editId ? 'Guardar cambios' : `Registrar venta${placaNorm ? ` — vincular a ${placaNorm}` : ''}`}
       </Button>
 
       {profile?.tenant_id && (
@@ -610,5 +725,13 @@ export default function NuevaVentaPage() {
         />
       )}
     </div>
+  )
+}
+
+export default function NuevaVentaPage() {
+  return (
+    <Suspense>
+      <NuevaVentaContent />
+    </Suspense>
   )
 }
