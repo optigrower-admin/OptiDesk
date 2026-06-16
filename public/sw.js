@@ -1,26 +1,12 @@
-const CACHE_NAME = 'optidesk-v1'
-const STATIC_ASSETS = [
-  '/',
-  '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-]
-
-self.addEventListener('install', (event) => {
-  // Ignorar errores de caché: si algún asset no existe, el SW igual se instala
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
-      .catch(() => {})
-  )
+self.addEventListener('install', () => {
   self.skipWaiting()
 })
 
 self.addEventListener('activate', (event) => {
+  // Purgar cualquier caché de versiones anteriores de este Service Worker
+  // (versiones viejas sí guardaban HTML/JS, lo que mezclaba despliegues entre sí)
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
   )
   self.clients.claim()
 })
@@ -76,19 +62,8 @@ self.addEventListener('push', (event) => {
   )
 })
 
-self.addEventListener('fetch', (event) => {
-  // Solo cachear requests GET de assets estáticos
-  if (event.request.method !== 'GET') return
-  if (event.request.url.includes('/api/')) return
-
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Actualizar cache con respuesta fresca
-        const clone = response.clone()
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
-        return response
-      })
-      .catch(() => caches.match(event.request))
-  )
-})
+// No interceptamos requests de navegación ni de chunks de Next.js (_next/static):
+// cachear esas respuestas mezclaba HTML/JS de distintos despliegues entre sí
+// (la HTML de un deploy viejo con chunks de uno nuevo, o viceversa), lo que producía
+// errores de hidratación de React y pantalla en blanco justo después de cada deploy.
+// El navegador maneja esas requests directamente, sin paso por el Service Worker.
