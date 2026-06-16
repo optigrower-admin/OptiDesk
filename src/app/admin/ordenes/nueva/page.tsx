@@ -6,9 +6,11 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
 import { ClienteMotoPanel } from '@/components/ClienteMotoPanel'
+import { BuscarClienteModal } from '@/components/BuscarClienteModal'
 import { normalizarPlaca } from '@/lib/utils'
 import { upsertMotoCliente } from '@/lib/clienteMoto'
 import type { ClienteMotoPanelResult } from '@/components/ClienteMotoPanel'
+import type { ClienteEncontrado } from '@/components/BuscarClienteModal'
 
 interface Categoria {
   id: string
@@ -38,10 +40,13 @@ export default function NuevaOrdenAdminPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [archivos, setArchivos] = useState<File[]>([])
   const [previews, setPreviews] = useState<{ url: string; tipo: 'imagen' | 'video' }[]>([])
+  const [tipoOrden, setTipoOrden] = useState<'servicio' | 'venta_repuestos'>('servicio')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
   const [panelResult, setPanelResult] = useState<ClienteMotoPanelResult>(PANEL_INIT)
+  const [buscandoCliente, setBuscandoCliente] = useState(false)
+  const [clienteIdSeleccionado, setClienteIdSeleccionado] = useState<string | null>(null)
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -84,6 +89,14 @@ export default function NuevaOrdenAdminPage() {
       .then(({ data }) => setCategorias((data as Categoria[]) ?? []))
   }, [profile?.tenant_id])
 
+  function seleccionarCliente(c: ClienteEncontrado) {
+    setCliente(c.nombre)
+    if (c.cedula)  setCedula(c.cedula)
+    if (c.celular) setTelefono(c.celular)
+    setClienteIdSeleccionado(c.id)
+    setBuscandoCliente(false)
+  }
+
   const subcategorias = categorias.find((c) => c.id === categoriaId)?.subcategorias_servicio ?? []
   const esUMACategoria = categorias.find(c => c.id === categoriaId)?.nombre?.toLowerCase().includes('uma') ?? false
 
@@ -114,7 +127,7 @@ export default function NuevaOrdenAdminPage() {
     try {
       const placaNorm = normalizarPlaca(placa)
 
-      if (placaNorm) {
+      if (placaNorm && tipoOrden === 'servicio') {
         const { data: activa } = await supabase
           .from('ordenes')
           .select('numero')
@@ -133,8 +146,9 @@ export default function NuevaOrdenAdminPage() {
       const { motoId, clienteId } = await upsertMotoCliente({
         supabase, tenantId: profile.tenant_id,
         placa: placaNorm || null, clienteNombre: cliente,
-        cedula: cedula || null, celular: null,
-        motoId: panelResult.motoId, clienteId: panelResult.clienteId,
+        cedula: cedula || null, celular: telefono || null,
+        motoId: panelResult.motoId,
+        clienteId: clienteIdSeleccionado ?? panelResult.clienteId,
         motoExtras: panelResult.motoExtras,
       })
 
@@ -143,13 +157,14 @@ export default function NuevaOrdenAdminPage() {
         .insert({
           tenant_id: profile.tenant_id,
           placa: placaNorm || null,
-          cliente,
+          cliente: cliente || '—',
           telefono: telefono || null,
           cedula: cedula || null,
           descripcion,
           categoria_servicio_id: categoriaId || null,
           subcategoria_servicio_id: subcategoriaId || null,
-          tipo_servicio: tipoServicio,
+          tipo_orden: tipoOrden,
+          tipo_servicio: tipoOrden === 'servicio' ? tipoServicio : 'terceros',
           numero_ot: tipoServicio === 'uma' ? (numeroOt || null) : null,
           numeros_orden_uma: esUMACategoria ? numerosOrdenUMA : [],
           mecanico_id: profile.id,
@@ -181,6 +196,7 @@ export default function NuevaOrdenAdminPage() {
   }
 
   return (
+    <>
     <div className="p-6 max-w-2xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
         <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-600">
@@ -188,7 +204,9 @@ export default function NuevaOrdenAdminPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 className="text-xl font-bold text-gray-900">Nueva orden de servicio</h1>
+        <h1 className="text-xl font-bold text-gray-900">
+          {tipoOrden === 'venta_repuestos' ? 'Nueva venta de repuesto' : 'Nueva orden de servicio'}
+        </h1>
         {draftSaved && <span className="text-xs text-green-600 ml-auto">Borrador guardado</span>}
       </div>
 
@@ -197,57 +215,81 @@ export default function NuevaOrdenAdminPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Tipo de servicio */}
+
+        {/* Tipo de entrada */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-          <h2 className="font-semibold text-gray-900">Tipo de servicio</h2>
+          <h2 className="font-semibold text-gray-900">Tipo de entrada</h2>
           <div className="flex gap-2">
-            {([
-              { value: 'terceros', label: 'Terceros / Independiente' },
-              { value: 'uma', label: 'UMA (Autorizado)' },
-            ] as { value: 'terceros' | 'uma'; label: string }[]).map((t) => (
-              <button
-                type="button"
-                key={t.value}
-                onClick={() => setTipoServicio(t.value)}
-                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                  tipoServicio === t.value
-                    ? t.value === 'uma' ? 'bg-purple-700 text-white' : 'bg-amber-500 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+            <button type="button" onClick={() => setTipoOrden('servicio')}
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${tipoOrden === 'servicio' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+              🔧 Servicio técnico
+            </button>
+            <button type="button" onClick={() => setTipoOrden('venta_repuestos')}
+              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${tipoOrden === 'venta_repuestos' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+              🛒 Venta de repuesto
+            </button>
           </div>
         </div>
 
-        {/* Moto y cliente */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-          <h2 className="font-semibold text-gray-900">Moto y cliente</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Placa</label>
-              <input
-                value={placa}
-                onChange={(e) => setPlaca(e.target.value.toUpperCase().replace(/\s+/g, ''))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono uppercase"
-                placeholder="ABC123"
-                maxLength={10}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Cédula</label>
-              <input
-                value={cedula}
-                onChange={(e) => setCedula(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                placeholder="Número de cédula"
-              />
+        {/* Tipo de servicio (solo servicio técnico) */}
+        {tipoOrden === 'servicio' && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+            <h2 className="font-semibold text-gray-900">Tipo de servicio</h2>
+            <div className="flex gap-2">
+              {([
+                { value: 'terceros', label: 'Terceros / Independiente' },
+                { value: 'uma', label: 'UMA (Autorizado)' },
+              ] as { value: 'terceros' | 'uma'; label: string }[]).map((t) => (
+                <button
+                  type="button"
+                  key={t.value}
+                  onClick={() => setTipoServicio(t.value)}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                    tipoServicio === t.value
+                      ? t.value === 'uma' ? 'bg-purple-700 text-white' : 'bg-amber-500 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
             </div>
           </div>
+        )}
 
-          {/* Panel inteligente moto + cliente */}
-          {profile?.tenant_id && (
+        {/* Datos del cliente / Moto */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+          <h2 className="font-semibold text-gray-900">
+            {tipoOrden === 'venta_repuestos' ? 'Datos del cliente (opcional)' : 'Moto y cliente'}
+          </h2>
+
+          {/* Placa y cédula — solo en servicio técnico */}
+          {tipoOrden === 'servicio' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Placa</label>
+                <input
+                  value={placa}
+                  onChange={(e) => setPlaca(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono uppercase"
+                  placeholder="ABC123"
+                  maxLength={10}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Cédula</label>
+                <input
+                  value={cedula}
+                  onChange={(e) => setCedula(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  placeholder="Número de cédula"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Panel inteligente moto + cliente (solo servicio técnico) */}
+          {tipoOrden === 'servicio' && profile?.tenant_id && (
             <ClienteMotoPanel
               tenantId={profile.tenant_id}
               placa={placa}
@@ -261,13 +303,27 @@ export default function NuevaOrdenAdminPage() {
             />
           )}
 
+          {/* Nombre del cliente */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-gray-600">
+                  Cliente {tipoOrden === 'servicio' ? '*' : ''}
+                </label>
+                {profile?.tenant_id && (
+                  <button
+                    type="button"
+                    onClick={() => setBuscandoCliente(true)}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    🔍 Buscar existente
+                  </button>
+                )}
+              </div>
               <input
                 value={cliente}
                 onChange={(e) => setCliente(e.target.value)}
-                required
+                required={tipoOrden === 'servicio'}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                 placeholder="Nombre del cliente"
               />
@@ -278,15 +334,28 @@ export default function NuevaOrdenAdminPage() {
                 type="tel"
                 value={telefono}
                 onChange={(e) => setTelefono(e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg text-sm ${!telefono ? 'border-amber-300 bg-amber-50' : 'border-gray-200'}`}
+                className={`w-full px-3 py-2 border rounded-lg text-sm ${!telefono && tipoOrden === 'servicio' ? 'border-amber-300 bg-amber-50' : 'border-gray-200'}`}
                 placeholder="310 000 0000"
               />
             </div>
           </div>
+
+          {/* Cédula — solo para venta_repuestos (en servicio va arriba junto a placa) */}
+          {tipoOrden === 'venta_repuestos' && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Cédula / ID</label>
+              <input
+                value={cedula}
+                onChange={(e) => setCedula(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                placeholder="Número de cédula (opcional)"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Servicio — categorías + # Orden UMA */}
-        {tipoServicio === 'uma' && (
+        {/* Servicio — categorías + # Orden UMA (solo servicio técnico UMA) */}
+        {tipoOrden === 'servicio' && tipoServicio === 'uma' && (
           <div className="space-y-3">
             <div className="bg-white rounded-xl border border-purple-200 p-5 space-y-3">
               <h2 className="font-semibold text-gray-900">Servicio UMA</h2>
@@ -310,7 +379,6 @@ export default function NuevaOrdenAdminPage() {
               )}
             </div>
 
-            {/* # Orden UMA — solo si categoría seleccionada es UMA */}
             {esUMACategoria && <div className={`rounded-xl border p-5 space-y-3 transition-colors ${numerosOrdenUMA.length === 0 ? 'border-amber-300 bg-amber-50' : 'bg-white border-gray-200'}`}>
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-gray-900"># Orden UMA</h2>
@@ -320,8 +388,6 @@ export default function NuevaOrdenAdminPage() {
                   </span>
                 )}
               </div>
-
-              {/* Números ya ingresados */}
               {numerosOrdenUMA.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {numerosOrdenUMA.map((num, idx) => (
@@ -340,8 +406,6 @@ export default function NuevaOrdenAdminPage() {
                   ))}
                 </div>
               )}
-
-              {/* Input para agregar número */}
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -352,9 +416,7 @@ export default function NuevaOrdenAdminPage() {
                     if (e.key === 'Enter') {
                       e.preventDefault()
                       const num = nuevoNumOrden.trim()
-                      if (num && !numerosOrdenUMA.includes(num)) {
-                        setNumerosOrdenUMA((prev) => [...prev, num])
-                      }
+                      if (num && !numerosOrdenUMA.includes(num)) setNumerosOrdenUMA((prev) => [...prev, num])
                       setNuevoNumOrden('')
                     }
                   }}
@@ -375,7 +437,6 @@ export default function NuevaOrdenAdminPage() {
                   + Agregar
                 </button>
               </div>
-
               {numerosOrdenUMA.length === 0 && (
                 <p className="text-xs text-amber-700">
                   El número de orden UMA es requerido para este tipo de ingreso. Puedes agregarlo ahora o más adelante en el detalle del caso.
@@ -387,13 +448,15 @@ export default function NuevaOrdenAdminPage() {
 
         {/* Descripción del trabajo */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-          <h2 className="font-semibold text-gray-900">Descripción del trabajo</h2>
+          <h2 className="font-semibold text-gray-900">
+            {tipoOrden === 'venta_repuestos' ? 'Descripción / referencia' : 'Descripción del trabajo'}
+          </h2>
           <textarea
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
             rows={3}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none"
-            placeholder="Describe el trabajo a realizar..."
+            placeholder={tipoOrden === 'venta_repuestos' ? 'Repuestos vendidos, referencia...' : 'Describe el trabajo a realizar...'}
           />
         </div>
 
@@ -425,9 +488,18 @@ export default function NuevaOrdenAdminPage() {
         </div>
 
         <Button type="submit" className="w-full" size="lg" loading={saving}>
-          + Crear Entrada
+          {tipoOrden === 'venta_repuestos' ? '+ Registrar venta' : '+ Crear Entrada'}
         </Button>
       </form>
     </div>
+
+    {buscandoCliente && profile?.tenant_id && (
+      <BuscarClienteModal
+        tenantId={profile.tenant_id}
+        onSelect={seleccionarCliente}
+        onCancel={() => setBuscandoCliente(false)}
+      />
+    )}
+    </>
   )
 }

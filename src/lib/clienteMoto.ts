@@ -62,11 +62,13 @@ export async function upsertMotoCliente({
 
       if (existing) {
         finalClienteId = (existing as { id: string }).id
-        // Actualizar datos que pueden haber cambiado
-        await supabase
-          .from('clientes')
-          .update({ nombre: clienteNombre, celular: celular || null })
-          .eq('id', finalClienteId)
+        // Actualizar solo campos que vienen con valor (no pisar con vacíos)
+        const updateData: Record<string, string | null> = {}
+        if (clienteNombre) updateData.nombre = clienteNombre
+        if (celular)       updateData.celular = celular
+        if (Object.keys(updateData).length > 0) {
+          await supabase.from('clientes').update(updateData).eq('id', finalClienteId)
+        }
       }
     }
 

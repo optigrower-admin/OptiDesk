@@ -170,6 +170,12 @@ export default function AdminOrdenDetallePage() {
   const [moValor, setMoValor] = useState('')
   const [savingMO, setSavingMO] = useState(false)
   const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; precio: string } | null>(null)
+  const [editingRepuesto, setEditingRepuesto] = useState<ItemOrden | null>(null)
+  const [erDesc, setErDesc]     = useState('')
+  const [erCant, setErCant]     = useState(1)
+  const [erPrecio, setErPrecio] = useState('')
+  const [erCosto, setErCosto]   = useState('')
+  const [erSaving, setErSaving] = useState(false)
   const [notas, setNotas] = useState('')
   const [savedOk, setSavedOk] = useState(false)
   const [numerosOrdenUMA, setNumerosOrdenUMA] = useState<string[]>([])
@@ -522,6 +528,37 @@ export default function AdminOrdenDetallePage() {
     await cargar()
   }
 
+  const abrirEditarRepuesto = (item: ItemOrden) => {
+    setEditingRepuesto(item)
+    setErDesc(item.descripcion)
+    setErCant(item.cantidad)
+    setErPrecio(String(item.precio_venta))
+    setErCosto(String(item.costo))
+  }
+
+  const handleEditRepuesto = async () => {
+    if (!editingRepuesto || !erDesc.trim()) return
+    const precio = parseInt(erPrecio.replace(/\D/g, ''), 10) || 0
+    const costo  = parseInt(erCosto.replace(/\D/g, ''), 10)  || 0
+    const cant   = Math.max(1, erCant)
+    setErSaving(true)
+    await supabase.from('items_orden').update({
+      descripcion: erDesc.trim(),
+      cantidad: cant,
+      precio_venta: precio,
+      costo,
+    }).eq('id', editingRepuesto.id)
+    const nuevoTotal = items.map((i) =>
+      i.id === editingRepuesto.id
+        ? { ...i, descripcion: erDesc.trim(), cantidad: cant, precio_venta: precio, costo }
+        : i
+    ).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+    await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+    setErSaving(false)
+    setEditingRepuesto(null)
+    await cargar()
+  }
+
   const handleAddManoObra = async () => {
     const desc = moDescripcion.trim()
     const precio = parseInt(moValor.replace(/\D/g, ''), 10)
@@ -772,6 +809,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
   }
 
   return (
+    <>
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Dialog cambios sin guardar */}
       {showExitDialog && (
@@ -1191,86 +1229,57 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   </thead>
                   <tbody>
                     {repuestosItems.map((item) => (
-                      editingItem?.id === item.id ? (
-                        <tr key={item.id} className="border-b bg-blue-50">
-                          <td className="py-2 px-3" colSpan={2}>
-                            <input
-                              value={editingItem.descripcion}
-                              onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
-                              autoFocus
-                              className="w-full px-2 py-1.5 border border-blue-400 rounded-lg text-sm focus:outline-none"
-                            />
-                          </td>
-                          <td className="py-2 px-3 text-center text-gray-500 text-sm">{item.cantidad}</td>
-                          <td className="py-2 px-3">
-                            <input
-                              type="text" inputMode="numeric"
-                              value={editingItem.precio ? '$' + parseInt(editingItem.precio || '0', 10).toLocaleString('es-CO') : ''}
-                              onChange={(e) => setEditingItem({ ...editingItem, precio: e.target.value.replace(/\D/g, '') })}
-                              className="w-full px-2 py-1.5 border border-blue-400 rounded-lg text-sm font-mono text-right focus:outline-none"
-                            />
-                          </td>
-                          <td />
-                          <td className="py-2 px-3">
-                            <div className="flex gap-1 justify-end">
-                              <button onClick={handleEditItem} className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-semibold">OK</button>
-                              <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : (
-                        <tr key={item.id} className="border-b hover:bg-gray-50 group">
-                          <td className="py-3 px-4 text-gray-800">{item.descripcion}</td>
-                          <td className="py-3 px-4">
-                            <Badge variant={item.origen === 'uma' ? 'blue' : 'amber'}>
-                              {item.origen === 'uma' ? 'UMA' : 'Externo'}
-                            </Badge>
-                          </td>
-                          <td className="py-3 px-4 text-center text-gray-600">{item.cantidad}</td>
-                          <td className="py-3 px-4 text-right font-semibold">{formatCOP(item.precio_venta * item.cantidad)}</td>
-                          <td className="py-3 px-3">
-                            <div className="flex gap-1 justify-center">
-                              <button
-                                onClick={() => handleEstadoRepuesto(item, item.estado_repuesto === 'pedido' ? null : 'pedido')}
-                                title="Marcar como pedido / quitar"
-                                className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap transition-colors ${
-                                  item.estado_repuesto === 'pedido'
-                                    ? 'bg-amber-400 text-white'
-                                    : 'bg-amber-100 text-amber-600 hover:bg-amber-200'
-                                }`}
-                              >
-                                ⏳ Pedido
-                              </button>
-                              <button
-                                onClick={() => handleEstadoRepuesto(item, item.estado_repuesto === 'ok' ? null : 'ok')}
-                                title="Marcar como disponible / quitar"
-                                className={`px-2 py-1 rounded text-xs font-semibold transition-colors ${
-                                  item.estado_repuesto === 'ok'
-                                    ? 'bg-green-500 text-white'
-                                    : 'bg-green-100 text-green-700 hover:bg-green-200'
-                                }`}
-                              >
-                                ✅ OK
-                              </button>
-                            </div>
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => setEditingItem({ id: item.id, descripcion: item.descripcion, precio: String(item.precio_venta) })}
-                                className="text-gray-400 hover:text-blue-600 p-1">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                              <button onClick={() => handleDeleteItem(item)} className="text-gray-400 hover:text-red-500 p-1">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
+                      <tr key={item.id} className="border-b hover:bg-gray-50 group">
+                        <td className="py-3 px-4 text-gray-800">{item.descripcion}</td>
+                        <td className="py-3 px-4">
+                          <Badge variant={item.origen === 'uma' ? 'blue' : 'amber'}>
+                            {item.origen === 'uma' ? 'UMA' : 'Externo'}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-600">{item.cantidad}</td>
+                        <td className="py-3 px-4 text-right font-semibold">{formatCOP(item.precio_venta * item.cantidad)}</td>
+                        <td className="py-3 px-3">
+                          <div className="flex gap-1 justify-center">
+                            <button
+                              onClick={() => handleEstadoRepuesto(item, item.estado_repuesto === 'pedido' ? null : 'pedido')}
+                              title="Marcar como pedido / quitar"
+                              className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap transition-colors ${
+                                item.estado_repuesto === 'pedido'
+                                  ? 'bg-amber-400 text-white'
+                                  : 'bg-amber-100 text-amber-600 hover:bg-amber-200'
+                              }`}
+                            >
+                              ⏳ Pedido
+                            </button>
+                            <button
+                              onClick={() => handleEstadoRepuesto(item, item.estado_repuesto === 'ok' ? null : 'ok')}
+                              title="Marcar como disponible / quitar"
+                              className={`px-2 py-1 rounded text-xs font-semibold transition-colors ${
+                                item.estado_repuesto === 'ok'
+                                  ? 'bg-green-500 text-white'
+                                  : 'bg-green-100 text-green-700 hover:bg-green-200'
+                              }`}
+                            >
+                              ✅ OK
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => abrirEditarRepuesto(item)}
+                              className="text-gray-400 hover:text-blue-600 p-1">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button onClick={() => handleDeleteItem(item)} className="text-gray-400 hover:text-red-500 p-1">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
@@ -1819,5 +1828,119 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
       )}
 
     </div>
+
+    {/* ── Modal editar repuesto ── */}
+    {editingRepuesto && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+
+          {/* Header */}
+          <div className="bg-blue-600 px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-blue-200 uppercase tracking-widest">Editar repuesto</p>
+              <h2 className="text-white font-bold text-base truncate max-w-xs">{editingRepuesto.descripcion}</h2>
+            </div>
+            <button onClick={() => setEditingRepuesto(null)} className="text-blue-200 hover:text-white transition-colors">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="p-5 space-y-4">
+
+            {/* Descripción */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
+              <input
+                value={erDesc}
+                onChange={(e) => setErDesc(e.target.value)}
+                autoFocus
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Descripción del repuesto"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Cantidad */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={erCant}
+                  onChange={(e) => setErCant(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Costo */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Costo c/proveedor</label>
+                <div className="flex items-center border border-gray-300 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 bg-white">
+                  <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-2.5">$</span>
+                  <input
+                    type="text" inputMode="numeric"
+                    value={parseInt(erCosto.replace(/\D/g, '') || '0', 10) ? parseInt(erCosto.replace(/\D/g, ''), 10).toLocaleString('es-CO') : ''}
+                    onChange={(e) => setErCosto(e.target.value.replace(/\D/g, ''))}
+                    placeholder="0"
+                    className="flex-1 px-2 py-2.5 text-sm font-mono text-right focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Precio de venta */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Precio de venta (unitario)</label>
+              <div className="flex items-center border border-gray-300 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 bg-white">
+                <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-2.5">$</span>
+                <input
+                  type="text" inputMode="numeric"
+                  value={parseInt(erPrecio.replace(/\D/g, '') || '0', 10) ? parseInt(erPrecio.replace(/\D/g, ''), 10).toLocaleString('es-CO') : ''}
+                  onChange={(e) => setErPrecio(e.target.value.replace(/\D/g, ''))}
+                  placeholder="0"
+                  className="flex-1 px-2 py-2.5 text-sm font-mono text-right focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Total preview */}
+            {erPrecio && erCant > 0 && (
+              <div className="bg-blue-50 rounded-xl px-4 py-3 flex justify-between items-center">
+                <span className="text-sm text-blue-700">Total ({erCant} × {formatCOP(parseInt(erPrecio.replace(/\D/g, '') || '0', 10))})</span>
+                <span className="font-bold text-blue-900 text-base">
+                  {formatCOP((parseInt(erPrecio.replace(/\D/g, '') || '0', 10)) * erCant)}
+                </span>
+              </div>
+            )}
+
+            {/* Acciones */}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleEditRepuesto}
+                disabled={erSaving || !erDesc.trim()}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+              >
+                {erSaving && (
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                )}
+                Guardar cambios
+              </button>
+              <button
+                onClick={() => setEditingRepuesto(null)}
+                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
