@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import * as XLSX from 'xlsx'
 
 export const maxDuration = 60 // catálogos grandes pueden tardar más que el límite por defecto
@@ -42,12 +43,17 @@ export async function POST(req: NextRequest) {
   const tenantId = perfil.tenant_id as string
   if (!tenantId) return NextResponse.json({ error: 'Sin tenant asociado' }, { status: 400 })
 
-  const formData = await req.formData()
-  const file = formData.get('file') as File | null
-  if (!file) return NextResponse.json({ error: 'Archivo requerido' }, { status: 400 })
-  const modo = String(formData.get('modo') ?? 'agregar')
+  const { path, modo: modoRaw } = await req.json()
+  if (!path) return NextResponse.json({ error: 'Archivo requerido' }, { status: 400 })
+  if (!path.startsWith(`${tenantId}/`)) return NextResponse.json({ error: 'Archivo inválido' }, { status: 403 })
+  const modo = String(modoRaw ?? 'agregar')
 
-  const buffer = Buffer.from(await file.arrayBuffer())
+  const admin = createAdminClient()
+  const { data: blob, error: downloadError } = await admin.storage.from('catalogos-temp').download(path)
+  if (downloadError || !blob) {
+    return NextResponse.json({ error: 'No se pudo leer el archivo subido' }, { status: 400 })
+  }
+  const buffer = Buffer.from(await blob.arrayBuffer())
   const workbook = XLSX.read(buffer, { type: 'buffer', cellFormula: false, cellHTML: false })
 
   // Usar la hoja "Lista de Precios" o la primera disponible
@@ -132,6 +138,8 @@ export async function POST(req: NextRequest) {
     }
     insertados += data?.length ?? 0
   }
+
+  admin.storage.from('catalogos-temp').remove([path]).catch(() => {})
 
   return NextResponse.json({
     insertados,

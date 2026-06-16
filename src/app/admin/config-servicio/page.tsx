@@ -206,15 +206,25 @@ export default function ConfigServicioPage() {
   }
 
   const handleUploadRepuestos = async () => {
-    if (!uploadFile) return
+    if (!uploadFile || !profile?.tenant_id) return
     if (modoUpload === 'reemplazar' && !confirm('Esto eliminará todo el catálogo de repuestos UMA actual antes de cargar el nuevo archivo. ¿Continuar?')) return
     setUploading(true)
     setUploadResult(null)
     try {
-      const fd = new FormData()
-      fd.append('file', uploadFile)
-      fd.append('modo', modoUpload)
-      const res = await fetch('/api/repuestos-uma/upload', { method: 'POST', body: fd })
+      const ext = uploadFile.name.split('.').pop()?.toLowerCase() || 'xlsx'
+      const path = `${profile.tenant_id}/repuestos-${Date.now()}.${ext}`
+
+      const { error: uploadError } = await supabase.storage.from('catalogos-temp').upload(path, uploadFile)
+      if (uploadError) {
+        setUploadResult({ ok: false, msg: 'Error al subir el archivo' })
+        return
+      }
+
+      const res = await fetch('/api/repuestos-uma/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, modo: modoUpload }),
+      })
       const json = await res.json()
       if (!res.ok) {
         setUploadResult({ ok: false, msg: json.error ?? 'Error al procesar el archivo' })
@@ -231,15 +241,25 @@ export default function ConfigServicioPage() {
   }
 
   const handleUploadLubricantes = async () => {
-    if (!uploadFileLub) return
+    if (!uploadFileLub || !profile?.tenant_id) return
     if (modoUploadLub === 'reemplazar' && !confirm('Esto eliminará todo el catálogo de lubricantes actual antes de cargar el nuevo archivo. ¿Continuar?')) return
     setUploadingLub(true)
     setUploadResultLub(null)
     try {
-      const fd = new FormData()
-      fd.append('file', uploadFileLub)
-      fd.append('modo', modoUploadLub)
-      const res = await fetch('/api/lubricantes/upload', { method: 'POST', body: fd })
+      const ext = uploadFileLub.name.split('.').pop()?.toLowerCase() || 'xlsx'
+      const path = `${profile.tenant_id}/lubricantes-${Date.now()}.${ext}`
+
+      const { error: uploadError } = await supabase.storage.from('catalogos-temp').upload(path, uploadFileLub)
+      if (uploadError) {
+        setUploadResultLub({ ok: false, msg: 'Error al subir el archivo' })
+        return
+      }
+
+      const res = await fetch('/api/lubricantes/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, modo: modoUploadLub }),
+      })
       const json = await res.json()
       if (!res.ok) {
         setUploadResultLub({ ok: false, msg: json.error ?? 'Error al procesar el archivo' })
