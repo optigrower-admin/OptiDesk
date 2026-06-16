@@ -211,10 +211,19 @@ export default function ConfigServicioPage() {
     setUploading(true)
     setUploadResult(null)
     try {
-      const ext = uploadFile.name.split('.').pop()?.toLowerCase() || 'xlsx'
-      const path = `${profile.tenant_id}/repuestos-${Date.now()}.${ext}`
+      const urlRes = await fetch('/api/repuestos-uma/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: uploadFile.name }),
+      })
+      const urlJson = await urlRes.json()
+      if (!urlRes.ok) {
+        setUploadResult({ ok: false, msg: urlJson.error ?? 'Error al preparar la subida' })
+        return
+      }
+      const { path, token } = urlJson
 
-      const { error: uploadError } = await supabase.storage.from('catalogos-temp').upload(path, uploadFile)
+      const { error: uploadError } = await supabase.storage.from('catalogos-temp').uploadToSignedUrl(path, token, uploadFile)
       if (uploadError) {
         setUploadResult({ ok: false, msg: 'Error al subir el archivo' })
         return
@@ -246,10 +255,19 @@ export default function ConfigServicioPage() {
     setUploadingLub(true)
     setUploadResultLub(null)
     try {
-      const ext = uploadFileLub.name.split('.').pop()?.toLowerCase() || 'xlsx'
-      const path = `${profile.tenant_id}/lubricantes-${Date.now()}.${ext}`
+      const urlRes = await fetch('/api/lubricantes/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: uploadFileLub.name }),
+      })
+      const urlJson = await urlRes.json()
+      if (!urlRes.ok) {
+        setUploadResultLub({ ok: false, msg: urlJson.error ?? 'Error al preparar la subida' })
+        return
+      }
+      const { path, token } = urlJson
 
-      const { error: uploadError } = await supabase.storage.from('catalogos-temp').upload(path, uploadFileLub)
+      const { error: uploadError } = await supabase.storage.from('catalogos-temp').uploadToSignedUrl(path, token, uploadFileLub)
       if (uploadError) {
         setUploadResultLub({ ok: false, msg: 'Error al subir el archivo' })
         return
