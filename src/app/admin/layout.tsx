@@ -176,6 +176,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [notifPerm, setNotifPerm]       = useState<NotificationPermission>('default')
   const [showNotifModal, setShowNotifModal] = useState(false)
   const [pushStatus, setPushStatus]     = useState<'idle' | 'ok' | 'error'>('idle')
+  const [notifSupported, setNotifSupported] = useState(false)
 
   const prevConvsRef  = useRef<ConvSnap[]>([])
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -366,6 +367,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // ── Registrar SW ─────────────────────────────────────────────────────────
   useEffect(() => {
+    setNotifSupported('Notification' in window)
     if ('Notification' in window) setNotifPerm(Notification.permission)
 
     if ('serviceWorker' in navigator) {
@@ -568,7 +570,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
 
           {/* Botón de activar notificaciones */}
-          {'Notification' in (typeof window !== 'undefined' ? window : {}) && (
+          {notifSupported && (
             <button
               onClick={activarNotificaciones}
               title={notifPerm === 'granted' ? 'Haz clic para re-sincronizar notificaciones push' : 'Activar notificaciones del navegador'}
