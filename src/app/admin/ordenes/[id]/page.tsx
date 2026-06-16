@@ -671,12 +671,6 @@ export default function AdminOrdenDetallePage() {
   }
 
   const handleGuardar = async () => {
-    // Validar # Orden UMA obligatorio
-    if (esUMA && numerosOrdenUMA.length === 0) {
-      alert('Debes ingresar al menos un # de Orden UMA antes de guardar.')
-      return
-    }
-
     // Bloquear "Finalizado" si hay repuestos con estado "pedido"
     const repuestosPendientes = items.filter(
       (i) => i.origen !== 'mano_obra' && i.estado_repuesto === 'pedido'
@@ -1503,71 +1497,102 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
           </div>
 
           {/* # Orden UMA — solo para órdenes UMA */}
-          {esUMA && (
-            <div className={`bg-white rounded-xl border p-5 space-y-3 ${numerosOrdenUMA.length === 0 ? 'border-amber-300 bg-amber-50' : 'border-gray-100'}`}>
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-gray-900"># Orden UMA</h2>
-                {numerosOrdenUMA.length === 0 && (
-                  <span className="text-xs text-amber-600 font-medium">Requerido</span>
-                )}
-              </div>
+          {esUMA && (() => {
+            const noAplica = numerosOrdenUMA.includes('N/A')
+            const numeros = numerosOrdenUMA.filter((n) => n !== 'N/A')
+            const filled = noAplica || numeros.length > 0
+            return (
+              <div className={`bg-white rounded-xl border p-5 space-y-3 ${!filled ? 'border-amber-300 bg-amber-50' : 'border-gray-100'}`}>
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900"># Orden UMA</h2>
+                  {!filled && (
+                    <span className="text-xs text-amber-600 font-medium">Requerido</span>
+                  )}
+                </div>
 
-              {/* Lista de números ingresados */}
-              {numerosOrdenUMA.length > 0 && (
-                <div className="space-y-1">
-                  {numerosOrdenUMA.map((num, idx) => (
-                    <div key={idx} className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-1.5">
-                      <span className="font-mono text-sm font-semibold text-blue-800">{num}</span>
+                {/* Chip "No aplica" cuando está seleccionado */}
+                {noAplica && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-gray-100 border border-gray-300 rounded-lg px-3 py-1.5">
+                      <span className="text-sm font-medium text-gray-700">No aplica</span>
                       <button
-                        onClick={() => setNumerosOrdenUMA((prev) => prev.filter((_, i) => i !== idx))}
-                        className="text-blue-300 hover:text-red-500 transition-colors ml-2"
+                        onClick={() => setNumerosOrdenUMA((prev) => prev.filter((n) => n !== 'N/A'))}
+                        className="text-gray-400 hover:text-red-500 transition-colors"
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                )}
 
-              {/* Input para agregar */}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={nuevoNumOrden}
-                  onChange={(e) => setNuevoNumOrden(e.target.value.replace(/\D/g, ''))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && nuevoNumOrden.trim()) {
-                      const num = nuevoNumOrden.trim()
-                      if (!numerosOrdenUMA.includes(num)) {
-                        setNumerosOrdenUMA((prev) => [...prev, num])
-                      }
-                      setNuevoNumOrden('')
-                    }
-                  }}
-                  placeholder="Ej: 349384"
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-                <button
-                  onClick={() => {
-                    const num = nuevoNumOrden.trim()
-                    if (!num) return
-                    if (!numerosOrdenUMA.includes(num)) {
-                      setNumerosOrdenUMA((prev) => [...prev, num])
-                    }
-                    setNuevoNumOrden('')
-                  }}
-                  disabled={!nuevoNumOrden.trim()}
-                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 text-white rounded-lg text-sm font-semibold transition-colors"
-                >
-                  + Add
-                </button>
+                {/* Chips de números ingresados */}
+                {numeros.length > 0 && (
+                  <div className="space-y-1">
+                    {numeros.map((num, idx) => (
+                      <div key={idx} className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-1.5">
+                        <span className="font-mono text-sm font-semibold text-blue-800">{num}</span>
+                        <button
+                          onClick={() => setNumerosOrdenUMA((prev) => prev.filter((n) => n !== num))}
+                          className="text-blue-300 hover:text-red-500 transition-colors ml-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Input + botón No aplica (ocultos cuando "No aplica" está activo) */}
+                {!noAplica && (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={nuevoNumOrden}
+                        onChange={(e) => setNuevoNumOrden(e.target.value.replace(/\D/g, ''))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && nuevoNumOrden.trim()) {
+                            const num = nuevoNumOrden.trim()
+                            if (!numerosOrdenUMA.includes(num)) setNumerosOrdenUMA((prev) => [...prev, num])
+                            setNuevoNumOrden('')
+                          }
+                        }}
+                        placeholder="Ej: 349384"
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                      <button
+                        onClick={() => {
+                          const num = nuevoNumOrden.trim()
+                          if (!num || numerosOrdenUMA.includes(num)) return
+                          setNumerosOrdenUMA((prev) => [...prev, num])
+                          setNuevoNumOrden('')
+                        }}
+                        disabled={!nuevoNumOrden.trim()}
+                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 text-white rounded-lg text-sm font-semibold transition-colors"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => setNumerosOrdenUMA((prev) => [...prev.filter((n) => n !== 'N/A'), 'N/A'])}
+                      className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors"
+                    >
+                      No aplica
+                    </button>
+                  </>
+                )}
+
+                {!filled && (
+                  <p className="text-xs text-amber-600">Ingresa el número de orden UMA o selecciona "No aplica".</p>
+                )}
               </div>
-              <p className="text-xs text-gray-400">Presiona Enter o + Add para agregar. Puedes ingresar varios.</p>
-            </div>
-          )}
+            )
+          })()}
 
           {/* Estado */}
           <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">

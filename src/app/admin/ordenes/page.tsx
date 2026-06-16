@@ -429,9 +429,11 @@ export default function AdminOrdenesPage() {
                         (o) => o.tipo_servicio === 'uma' && o.numeros_orden_uma && o.numeros_orden_uma.length > 0
                       )
                       if (!umaOrden?.numeros_orden_uma?.length) return null
+                      const nums = umaOrden.numeros_orden_uma.filter((n) => n !== 'N/A')
+                      if (!nums.length) return null
                       return (
                         <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-mono font-medium flex-shrink-0">
-                          OT: {umaOrden.numeros_orden_uma.join(' / ')}
+                          OT: {nums.join(' / ')}
                         </span>
                       )
                     })()}
