@@ -271,7 +271,7 @@ export default function RecepcionPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             <span className="text-xs text-gray-500">Toca para agregar fotos/videos</span>
-            <input type="file" accept="image/*,video/*" multiple onChange={handleFileChange} className="hidden" capture="environment" />
+            <input type="file" accept="image/*,video/*" multiple onChange={handleFileChange} className="hidden" />
           </label>
           {previews.length > 0 && (
             <div className="grid grid-cols-4 gap-2 mt-3">

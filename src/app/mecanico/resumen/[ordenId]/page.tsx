@@ -370,7 +370,6 @@ export default function ResumenMecanicoPage() {
               type="file"
               accept="image/*,video/*"
               multiple
-              capture="environment"
               className="hidden"
               disabled={uploadingMedia}
               onChange={(e) => {
