@@ -16,7 +16,8 @@ interface UsuarioEquipo {
   activo: boolean
 }
 
-interface SeccionDef { key: string; label: string; defaultOrden: number }
+interface SeccionDef { key: string; label: string; defaultOrden: number; soloGerencia?: boolean }
+interface GrupoDef { key: string; label: string; secciones: SeccionDef[] }
 interface PermisoLocal { habilitado: boolean; orden: number }
 
 const ROL_LABEL: Record<Rol, string> = {
@@ -30,17 +31,56 @@ const ROL_COLOR: Record<Rol, string> = {
   mecanico: 'bg-blue-100 text-blue-700 border border-blue-200',
 }
 
-// Secciones del panel admin (aplica a gerencia y admin)
-const SECCIONES_ADMIN: SeccionDef[] = [
-  { key: 'servicio_tecnico', label: 'Servicio Técnico', defaultOrden: 10 },
-  { key: 'repuestos',        label: 'Repuestos',        defaultOrden: 20 },
-  { key: 'inventario',       label: 'Inventario',       defaultOrden: 30 },
-  { key: 'clientes',         label: 'Clientes',         defaultOrden: 40 },
-  { key: 'motos',            label: 'Motos',            defaultOrden: 50 },
-  { key: 'reportes',         label: 'Reportes',         defaultOrden: 60 },
-  { key: 'auditoria',        label: 'Auditoría',        defaultOrden: 70 },
+const GRUPOS_ADMIN: GrupoDef[] = [
+  {
+    key: 'serv-tec',
+    label: 'Serv Tec & Rep',
+    secciones: [
+      { key: 'servicio_tecnico', label: 'Servicio Técnico',  defaultOrden: 10 },
+      { key: 'repuestos',        label: 'Repuestos',         defaultOrden: 20 },
+      { key: 'inventario',       label: 'Inventario',        defaultOrden: 30 },
+      { key: 'clientes',         label: 'Clientes',          defaultOrden: 40 },
+      { key: 'motos',            label: 'Motos',             defaultOrden: 50 },
+      { key: 'config_servicio',  label: 'Config Serv. Téc.', defaultOrden: 85, soloGerencia: true },
+    ],
+  },
+  {
+    key: 'ventas',
+    label: 'Ventas',
+    secciones: [
+      { key: 'ventas', label: 'Pipeline', defaultOrden: 55 },
+    ],
+  },
+  {
+    key: 'mensajes',
+    label: 'Mensajes',
+    secciones: [
+      { key: 'mensajes_bandeja',    label: 'Bandeja',         defaultOrden: 100 },
+      { key: 'mensajes_conexion',   label: 'Conexión Meta',   defaultOrden: 110, soloGerencia: true },
+      { key: 'mensajes_plantillas', label: 'Plantillas',      defaultOrden: 120 },
+      { key: 'mensajes_flujos',     label: 'Flujos',          defaultOrden: 130 },
+    ],
+  },
+  {
+    key: 'comentarios',
+    label: 'Comentarios',
+    secciones: [
+      { key: 'comentarios', label: 'Publicaciones', defaultOrden: 200 },
+    ],
+  },
 ]
-// Secciones del panel mecánico
+
+const STANDALONE_ADMIN: SeccionDef[] = [
+  { key: 'reportes',  label: 'Reportes',  defaultOrden: 60 },
+  { key: 'auditoria', label: 'Auditoría', defaultOrden: 70 },
+  { key: 'mi_equipo', label: 'Mi equipo', defaultOrden: 80, soloGerencia: true },
+]
+
+const SECCIONES_ADMIN: SeccionDef[] = [
+  ...GRUPOS_ADMIN.flatMap(g => g.secciones),
+  ...STANDALONE_ADMIN,
+]
+
 const SECCIONES_MECANICO: SeccionDef[] = [
   { key: 'servicio_tecnico', label: 'Inicio / Mis órdenes', defaultOrden: 10 },
   { key: 'recepcion',        label: 'Recepcionar moto',     defaultOrden: 20 },
@@ -442,14 +482,15 @@ export default function EquipoPage() {
       {tab === 'secciones' && (
         <div className="space-y-3">
           <p className="text-xs text-gray-500">
-            Activa o desactiva secciones para cada rol. Usa ↑↓ para cambiar el orden en que aparecen en el menú.
-            Los cambios aplican a todos los usuarios con ese rol en tu empresa.
+            Activa o desactiva paneles para cada rol. Los cambios aplican a todos los usuarios con ese rol en tu empresa.
           </p>
 
           {ROLES_ORDEN.map((rol) => {
             const abierto = expandidoRol === rol
-            const conteo = usuarios.filter((u) => u.rol === rol).length
-            const secciones = seccionesOrdenadas(rol)
+            const conteoUsuarios = usuarios.filter((u) => u.rol === rol).length
+            const conteoSecciones = rol !== 'mecanico'
+              ? SECCIONES_ADMIN.filter(s => rol === 'gerencia' || !s.soloGerencia).length
+              : SECCIONES_MECANICO.length
 
             return (
               <div key={rol} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
@@ -462,9 +503,9 @@ export default function EquipoPage() {
                     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${ROL_COLOR[rol]}`}>
                       {ROL_LABEL[rol]}
                     </span>
-                    <span className="text-xs text-gray-400">{conteo} usuario{conteo !== 1 ? 's' : ''}</span>
+                    <span className="text-xs text-gray-400">{conteoUsuarios} usuario{conteoUsuarios !== 1 ? 's' : ''}</span>
                     <span className="text-xs text-gray-300">·</span>
-                    <span className="text-xs text-gray-400">{secciones.length} secciones</span>
+                    <span className="text-xs text-gray-400">{conteoSecciones} paneles</span>
                   </div>
                   <svg className={`w-4 h-4 text-gray-400 transition-transform ${abierto ? 'rotate-90' : ''}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -474,44 +515,102 @@ export default function EquipoPage() {
 
                 {/* Secciones */}
                 {abierto && (
-                  <div className="border-t border-gray-100 divide-y divide-gray-50">
-                    {secciones.map((s, idx) => {
-                      const p = getPermiso(rol, s.key)
-                      return (
-                        <div key={s.key} className={`flex items-center gap-3 px-4 py-3 ${!p.habilitado ? 'opacity-50' : ''}`}>
-                          {/* Reorder buttons */}
-                          <div className="flex flex-col gap-0.5 flex-shrink-0">
-                            <button
-                              onClick={() => moverSeccion(rol, s.key, 'up')}
-                              disabled={idx === 0}
-                              className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed rounded hover:bg-gray-100 transition-colors"
-                            >
-                              ▲
-                            </button>
-                            <button
-                              onClick={() => moverSeccion(rol, s.key, 'down')}
-                              disabled={idx === secciones.length - 1}
-                              className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed rounded hover:bg-gray-100 transition-colors"
-                            >
-                              ▼
-                            </button>
-                          </div>
-
-                          {/* Label */}
-                          <p className={`flex-1 text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
-                            {s.label}
-                          </p>
-
-                          {/* Toggle */}
-                          <button
-                            onClick={() => toggleSeccion(rol, s.key)}
-                            className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${p.habilitado ? 'bg-blue-500' : 'bg-gray-300'}`}
-                          >
-                            <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${p.habilitado ? 'translate-x-4' : ''}`} />
-                          </button>
-                        </div>
-                      )
-                    })}
+                  <div className="border-t border-gray-100">
+                    {rol !== 'mecanico' ? (
+                      <>
+                        {/* Grupos con sus paneles */}
+                        {GRUPOS_ADMIN.map((grupo) => {
+                          const secsGrupo = grupo.secciones.filter(s => rol === 'gerencia' || !s.soloGerencia)
+                          if (secsGrupo.length === 0) return null
+                          return (
+                            <div key={grupo.key}>
+                              <div className="px-4 py-1.5 bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wider border-t border-gray-100 first:border-t-0">
+                                {grupo.label}
+                              </div>
+                              {secsGrupo.map((s) => {
+                                const p = getPermiso(rol, s.key)
+                                return (
+                                  <div key={s.key} className={`flex items-center justify-between px-4 py-3 border-t border-gray-50 ${!p.habilitado ? 'opacity-50' : ''}`}>
+                                    <p className={`text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
+                                      {s.label}
+                                      {s.soloGerencia && <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia</span>}
+                                    </p>
+                                    <button
+                                      onClick={() => toggleSeccion(rol, s.key)}
+                                      className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${p.habilitado ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                    >
+                                      <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${p.habilitado ? 'translate-x-4' : ''}`} />
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )
+                        })}
+                        {/* Standalone */}
+                        {(() => {
+                          const standaloneVisible = STANDALONE_ADMIN.filter(s => rol === 'gerencia' || !s.soloGerencia)
+                          if (standaloneVisible.length === 0) return null
+                          return (
+                            <div>
+                              <div className="px-4 py-1.5 bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wider border-t border-gray-100">
+                                General
+                              </div>
+                              {standaloneVisible.map((s) => {
+                                const p = getPermiso(rol, s.key)
+                                return (
+                                  <div key={s.key} className={`flex items-center justify-between px-4 py-3 border-t border-gray-50 ${!p.habilitado ? 'opacity-50' : ''}`}>
+                                    <p className={`text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
+                                      {s.label}
+                                      {s.soloGerencia && <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia</span>}
+                                    </p>
+                                    <button
+                                      onClick={() => toggleSeccion(rol, s.key)}
+                                      className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${p.habilitado ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                    >
+                                      <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${p.habilitado ? 'translate-x-4' : ''}`} />
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )
+                        })()}
+                      </>
+                    ) : (
+                      /* Mecanico: lista plana con reorden */
+                      <div className="divide-y divide-gray-50">
+                        {seccionesOrdenadas(rol).map((s, idx) => {
+                          const p = getPermiso(rol, s.key)
+                          const secciones = seccionesOrdenadas(rol)
+                          return (
+                            <div key={s.key} className={`flex items-center gap-3 px-4 py-3 ${!p.habilitado ? 'opacity-50' : ''}`}>
+                              <div className="flex flex-col gap-0.5 flex-shrink-0">
+                                <button
+                                  onClick={() => moverSeccion(rol, s.key, 'up')}
+                                  disabled={idx === 0}
+                                  className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed rounded hover:bg-gray-100 transition-colors"
+                                >▲</button>
+                                <button
+                                  onClick={() => moverSeccion(rol, s.key, 'down')}
+                                  disabled={idx === secciones.length - 1}
+                                  className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed rounded hover:bg-gray-100 transition-colors"
+                                >▼</button>
+                              </div>
+                              <p className={`flex-1 text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
+                                {s.label}
+                              </p>
+                              <button
+                                onClick={() => toggleSeccion(rol, s.key)}
+                                className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${p.habilitado ? 'bg-blue-500' : 'bg-gray-300'}`}
+                              >
+                                <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${p.habilitado ? 'translate-x-4' : ''}`} />
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

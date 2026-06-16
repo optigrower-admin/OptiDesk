@@ -31,31 +31,31 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/inventario',      label: 'Inventario',         seccion: 'inventario',       soloGerencia: false, defaultOrden: 30  },
       { href: '/admin/clientes',        label: 'Clientes',           seccion: 'clientes',         soloGerencia: false, defaultOrden: 40  },
       { href: '/admin/motos',           label: 'Motos',              seccion: 'motos',            soloGerencia: false, defaultOrden: 50  },
-      { href: '/admin/config-servicio', label: 'Config Serv. Téc.',  seccion: null,               soloGerencia: true,  defaultOrden: 85  },
+      { href: '/admin/config-servicio', label: 'Config Serv. Téc.',  seccion: 'config_servicio',  soloGerencia: true,  defaultOrden: 85  },
     ],
   },
   {
     key: 'ventas',
     label: 'Ventas',
     items: [
-      { href: '/admin/ventas', label: 'Pipeline', seccion: null, soloGerencia: false, defaultOrden: 55 },
+      { href: '/admin/ventas', label: 'Pipeline', seccion: 'ventas', soloGerencia: false, defaultOrden: 55 },
     ],
   },
   {
     key: 'mensajes',
     label: 'Mensajes',
     items: [
-      { href: '/admin/mensajes/bandeja',    label: 'Bandeja',       seccion: null, soloGerencia: false, defaultOrden: 100 },
-      { href: '/admin/mensajes/conexion',   label: 'Conexión Meta', seccion: null, soloGerencia: true,  defaultOrden: 110 },
-      { href: '/admin/mensajes/plantillas', label: 'Plantillas',    seccion: null, soloGerencia: false, defaultOrden: 120 },
-      { href: '/admin/mensajes/flujos',     label: 'Flujos',        seccion: null, soloGerencia: false, defaultOrden: 130 },
+      { href: '/admin/mensajes/bandeja',    label: 'Bandeja',       seccion: 'mensajes_bandeja',    soloGerencia: false, defaultOrden: 100 },
+      { href: '/admin/mensajes/conexion',   label: 'Conexión Meta', seccion: 'mensajes_conexion',   soloGerencia: true,  defaultOrden: 110 },
+      { href: '/admin/mensajes/plantillas', label: 'Plantillas',    seccion: 'mensajes_plantillas', soloGerencia: false, defaultOrden: 120 },
+      { href: '/admin/mensajes/flujos',     label: 'Flujos',        seccion: 'mensajes_flujos',     soloGerencia: false, defaultOrden: 130 },
     ],
   },
   {
     key: 'comentarios',
     label: 'Comentarios',
     items: [
-      { href: '/admin/comentarios/bandeja', label: 'Publicaciones', seccion: null, soloGerencia: false, defaultOrden: 200 },
+      { href: '/admin/comentarios/bandeja', label: 'Publicaciones', seccion: 'comentarios', soloGerencia: false, defaultOrden: 200 },
     ],
   },
 ]
@@ -63,7 +63,7 @@ const NAV_GROUPS: NavGroup[] = [
 const STANDALONE_NAV: NavItem[] = [
   { href: '/admin/reportes',  label: 'Reportes',  seccion: 'reportes',  soloGerencia: false, defaultOrden: 60  },
   { href: '/admin/auditoria', label: 'Auditoría', seccion: 'auditoria', soloGerencia: false, defaultOrden: 70  },
-  { href: '/admin/equipo',    label: 'Mi equipo', seccion: null,        soloGerencia: true,  defaultOrden: 80  },
+  { href: '/admin/equipo',    label: 'Mi equipo', seccion: 'mi_equipo', soloGerencia: true,  defaultOrden: 80  },
   { href: '/admin/perfil',    label: 'Mi perfil', seccion: null,        soloGerencia: false, defaultOrden: 999 },
 ]
 

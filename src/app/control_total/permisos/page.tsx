@@ -6,21 +6,63 @@ import { createClient } from '@/lib/supabase/client'
 interface Tenant { id: string; nombre: string }
 type Rol = 'gerencia' | 'admin' | 'mecanico'
 
-interface SeccionDef { key: string; label: string; descripcion: string; defaultOrden: number }
+interface SeccionDef { key: string; label: string; descripcion: string; defaultOrden: number; soloGerencia?: boolean }
+interface GrupoDef { key: string; label: string; secciones: SeccionDef[] }
 interface PermisoRow { tenant_id: string; rol: Rol; seccion: string; habilitado: boolean; orden: number }
 
-const SECCIONES_ADMIN: SeccionDef[] = [
-  { key: 'servicio_tecnico', label: 'Servicio Técnico', descripcion: 'Órdenes de trabajo',             defaultOrden: 10 },
-  { key: 'repuestos',        label: 'Repuestos',        descripcion: 'Ventas y catálogo',               defaultOrden: 20 },
-  { key: 'inventario',       label: 'Inventario',       descripcion: 'Movimientos y compras de stock',  defaultOrden: 30 },
-  { key: 'clientes',         label: 'Clientes',         descripcion: 'Base de datos de clientes',       defaultOrden: 40 },
-  { key: 'motos',            label: 'Motos',            descripcion: 'Base de datos de motos',          defaultOrden: 50 },
-  { key: 'reportes',         label: 'Reportes',         descripcion: 'Reportes y estadísticas',         defaultOrden: 60 },
-  { key: 'auditoria',        label: 'Auditoría',        descripcion: 'Log de cambios',                  defaultOrden: 70 },
+const GRUPOS_ADMIN: GrupoDef[] = [
+  {
+    key: 'serv-tec',
+    label: 'Serv Tec & Rep',
+    secciones: [
+      { key: 'servicio_tecnico', label: 'Servicio Técnico',  descripcion: 'Órdenes de trabajo',              defaultOrden: 10 },
+      { key: 'repuestos',        label: 'Repuestos',         descripcion: 'Ventas y catálogo de repuestos',  defaultOrden: 20 },
+      { key: 'inventario',       label: 'Inventario',        descripcion: 'Movimientos y compras de stock',  defaultOrden: 30 },
+      { key: 'clientes',         label: 'Clientes',          descripcion: 'Base de datos de clientes',       defaultOrden: 40 },
+      { key: 'motos',            label: 'Motos',             descripcion: 'Base de datos de motos',          defaultOrden: 50 },
+      { key: 'config_servicio',  label: 'Config Serv. Téc.', descripcion: 'Configuración y catálogos UMA',  defaultOrden: 85, soloGerencia: true },
+    ],
+  },
+  {
+    key: 'ventas',
+    label: 'Ventas',
+    secciones: [
+      { key: 'ventas', label: 'Pipeline', descripcion: 'Pipeline de ventas de motos', defaultOrden: 55 },
+    ],
+  },
+  {
+    key: 'mensajes',
+    label: 'Mensajes',
+    secciones: [
+      { key: 'mensajes_bandeja',    label: 'Bandeja',         descripcion: 'Bandeja de mensajes entrantes',      defaultOrden: 100 },
+      { key: 'mensajes_conexion',   label: 'Conexión Meta',   descripcion: 'Configuración WhatsApp / Meta',      defaultOrden: 110, soloGerencia: true },
+      { key: 'mensajes_plantillas', label: 'Plantillas',      descripcion: 'Plantillas de respuesta',            defaultOrden: 120 },
+      { key: 'mensajes_flujos',     label: 'Flujos',          descripcion: 'Flujos de automatización',           defaultOrden: 130 },
+    ],
+  },
+  {
+    key: 'comentarios',
+    label: 'Comentarios',
+    secciones: [
+      { key: 'comentarios', label: 'Publicaciones', descripcion: 'Comentarios de redes sociales', defaultOrden: 200 },
+    ],
+  },
 ]
+
+const STANDALONE_ADMIN: SeccionDef[] = [
+  { key: 'reportes',  label: 'Reportes',  descripcion: 'Reportes y estadísticas',  defaultOrden: 60 },
+  { key: 'auditoria', label: 'Auditoría', descripcion: 'Log de cambios y acciones', defaultOrden: 70 },
+  { key: 'mi_equipo', label: 'Mi equipo', descripcion: 'Gestión del equipo y permisos', defaultOrden: 80, soloGerencia: true },
+]
+
+const SECCIONES_ADMIN: SeccionDef[] = [
+  ...GRUPOS_ADMIN.flatMap(g => g.secciones),
+  ...STANDALONE_ADMIN,
+]
+
 const SECCIONES_MECANICO: SeccionDef[] = [
-  { key: 'servicio_tecnico', label: 'Inicio / Mis órdenes', descripcion: 'Ver sus órdenes del día',    defaultOrden: 10 },
-  { key: 'recepcion',        label: 'Recepcionar moto',     descripcion: 'Crear nueva orden de entrada', defaultOrden: 20 },
+  { key: 'servicio_tecnico', label: 'Inicio / Mis órdenes', descripcion: 'Ver sus órdenes del día',      defaultOrden: 10 },
+  { key: 'recepcion',        label: 'Recepcionar moto',     descripcion: 'Crear nueva orden de entrada',  defaultOrden: 20 },
 ]
 
 const SECCIONES_POR_ROL: Record<Rol, SeccionDef[]> = {
@@ -169,40 +211,106 @@ export default function PermisosPage() {
 
       {/* Secciones */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-3.5 border-b bg-gray-50 flex items-center justify-between">
+        <div className="px-5 py-3.5 border-b bg-gray-50">
           <p className="text-sm font-semibold text-gray-700">
-            Secciones para <span className="text-gray-900">{ROL_TABS.find(r => r.value === selectedRol)?.label}</span>
+            Paneles para <span className="text-gray-900">{ROL_TABS.find(r => r.value === selectedRol)?.label}</span>
           </p>
-          <p className="text-xs text-gray-400">Usa ↑↓ para reordenar</p>
         </div>
-        <div className="divide-y divide-gray-50">
-          {secciones.map((s, idx) => {
-            const p = permisos.get(s.key) ?? { habilitado: true, orden: s.defaultOrden }
-            return (
-              <div key={s.key} className={`flex items-center gap-3 px-5 py-3.5 ${!p.habilitado ? 'opacity-50' : ''}`}>
-                {/* Reorder */}
-                <div className="flex flex-col gap-0.5 flex-shrink-0">
-                  <button onClick={() => mover(s.key, 'up')} disabled={idx === 0}
-                    className="w-5 h-5 flex items-center justify-center text-xs text-gray-400 hover:text-gray-700 disabled:opacity-20 rounded hover:bg-gray-100">▲</button>
-                  <button onClick={() => mover(s.key, 'down')} disabled={idx === secciones.length - 1}
-                    className="w-5 h-5 flex items-center justify-center text-xs text-gray-400 hover:text-gray-700 disabled:opacity-20 rounded hover:bg-gray-100">▼</button>
-                </div>
 
-                <div className="flex-1">
-                  <p className={`text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>{s.label}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{s.descripcion}</p>
+        {selectedRol !== 'mecanico' ? (
+          <>
+            {GRUPOS_ADMIN.map((grupo) => {
+              const secsGrupo = grupo.secciones.filter(s => selectedRol === 'gerencia' || !s.soloGerencia)
+              if (secsGrupo.length === 0) return null
+              return (
+                <div key={grupo.key}>
+                  <div className="px-5 py-2 bg-gray-50/60 text-xs font-semibold text-gray-400 uppercase tracking-wider border-t border-gray-100">
+                    {grupo.label}
+                  </div>
+                  {secsGrupo.map((s) => {
+                    const p = permisos.get(s.key) ?? { habilitado: true, orden: s.defaultOrden }
+                    return (
+                      <div key={s.key} className={`flex items-center gap-3 px-5 py-3.5 border-t border-gray-50 ${!p.habilitado ? 'opacity-50' : ''}`}>
+                        <div className="flex-1">
+                          <p className={`text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
+                            {s.label}
+                            {s.soloGerencia && <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia</span>}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">{s.descripcion}</p>
+                        </div>
+                        <button
+                          onClick={() => toggle(s.key)}
+                          className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${p.habilitado ? 'bg-purple-600' : 'bg-gray-300'}`}
+                        >
+                          <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${p.habilitado ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
-
-                <button
-                  onClick={() => toggle(s.key)}
-                  className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${p.habilitado ? 'bg-purple-600' : 'bg-gray-300'}`}
-                >
-                  <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${p.habilitado ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+            {/* Standalone */}
+            {(() => {
+              const standaloneVisible = STANDALONE_ADMIN.filter(s => selectedRol === 'gerencia' || !s.soloGerencia)
+              if (standaloneVisible.length === 0) return null
+              return (
+                <div>
+                  <div className="px-5 py-2 bg-gray-50/60 text-xs font-semibold text-gray-400 uppercase tracking-wider border-t border-gray-100">
+                    General
+                  </div>
+                  {standaloneVisible.map((s) => {
+                    const p = permisos.get(s.key) ?? { habilitado: true, orden: s.defaultOrden }
+                    return (
+                      <div key={s.key} className={`flex items-center gap-3 px-5 py-3.5 border-t border-gray-50 ${!p.habilitado ? 'opacity-50' : ''}`}>
+                        <div className="flex-1">
+                          <p className={`text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
+                            {s.label}
+                            {s.soloGerencia && <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia</span>}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">{s.descripcion}</p>
+                        </div>
+                        <button
+                          onClick={() => toggle(s.key)}
+                          className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${p.habilitado ? 'bg-purple-600' : 'bg-gray-300'}`}
+                        >
+                          <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${p.habilitado ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </>
+        ) : (
+          /* Mecanico: lista plana con reorden */
+          <div className="divide-y divide-gray-50">
+            {secciones.map((s, idx) => {
+              const p = permisos.get(s.key) ?? { habilitado: true, orden: s.defaultOrden }
+              return (
+                <div key={s.key} className={`flex items-center gap-3 px-5 py-3.5 ${!p.habilitado ? 'opacity-50' : ''}`}>
+                  <div className="flex flex-col gap-0.5 flex-shrink-0">
+                    <button onClick={() => mover(s.key, 'up')} disabled={idx === 0}
+                      className="w-5 h-5 flex items-center justify-center text-xs text-gray-400 hover:text-gray-700 disabled:opacity-20 rounded hover:bg-gray-100">▲</button>
+                    <button onClick={() => mover(s.key, 'down')} disabled={idx === secciones.length - 1}
+                      className="w-5 h-5 flex items-center justify-center text-xs text-gray-400 hover:text-gray-700 disabled:opacity-20 rounded hover:bg-gray-100">▼</button>
+                  </div>
+                  <div className="flex-1">
+                    <p className={`text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>{s.label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{s.descripcion}</p>
+                  </div>
+                  <button
+                    onClick={() => toggle(s.key)}
+                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${p.habilitado ? 'bg-purple-600' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${p.habilitado ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Guardar */}
