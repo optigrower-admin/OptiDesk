@@ -169,7 +169,7 @@ export default function AdminOrdenDetallePage() {
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
   const [showConsulta, setShowConsulta] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [confirmando, setConfirmando] = useState(false)
+  const [confirmando] = useState(false) // kept for type compat
   const [moDescripcion, setMoDescripcion] = useState('')
   const [moValor, setMoValor] = useState('')
   const [savingMO, setSavingMO] = useState(false)
@@ -238,7 +238,12 @@ export default function AdminOrdenDetallePage() {
       supabase.from('pagos_orden').select('id, monto, metodo_pago_id, fecha, notas, metodos_pago(nombre)').eq('orden_id', ordenId).order('fecha', { ascending: true }),
     ])
     if (o) {
-      const ord = o as unknown as OrdenDetalle
+      let ord = o as unknown as OrdenDetalle
+      // Auto-confirmar: cuando un admin abre una orden en falta_revision la pasa a en_proceso
+      if (ord.estado === 'falta_revision') {
+        supabase.from('ordenes').update({ estado: 'en_proceso' }).eq('id', ordenId).then(() => {})
+        ord = { ...ord, estado: 'en_proceso' }
+      }
       setOrden(ord)
       setEditCliente(ord.cliente)
       setEditPlaca(ord.placa ?? '')
@@ -887,7 +892,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                 <p className="text-xs text-gray-500">El pago está completo</p>
               </div>
             </div>
-            <p className="text-sm text-gray-600">¿Deseas marcar esta orden como <strong>Finalizada</strong> antes de salir?</p>
+            <p className="text-sm text-gray-600">¿Deseas mover el estado de <strong>{orden?.placa ?? 'esta moto'}</strong> a <strong>Finalizado</strong>?</p>
             <div className="space-y-2">
               <button
                 disabled={savingFinalize}
@@ -1051,31 +1056,6 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
           </button>
         </div>
       </div>
-
-      {/* Banner de confirmación */}
-      {esFaltaRevision && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-5 flex items-center justify-between gap-4">
-          <div>
-            <p className="font-semibold text-red-800">Esta orden requiere tu revisión</p>
-            <p className="text-sm text-red-600 mt-0.5">
-              El Profesional Mecánica la registró. Revisa los datos, agrega el teléfono del cliente y confirma para ponerla en proceso.
-            </p>
-          </div>
-          <button
-            onClick={handleConfirmar}
-            disabled={confirmando}
-            className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap flex-shrink-0 inline-flex items-center gap-2"
-          >
-            {confirmando && (
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            )}
-            ✓ Confirmar orden
-          </button>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Columna izquierda — Descripción, Ítems y medios */}
@@ -1720,8 +1700,8 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
             <h2 className="font-semibold text-gray-900">Estado</h2>
             <div className="space-y-2">
               {([
-                { value: 'falta_revision', label: 'Falta revisión' },
                 { value: 'en_proceso', label: 'En proceso' },
+                { value: 'pendiente', label: 'Pendiente' },
                 { value: 'pagado', label: 'Pagado' },
                 { value: 'listo', label: 'Finalizado' },
               ] as { value: EstadoOrden; label: string }[]).map((s) => {
