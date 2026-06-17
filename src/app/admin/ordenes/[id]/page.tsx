@@ -620,36 +620,55 @@ export default function AdminOrdenDetallePage() {
       }
       const { url, key, nombreArchivo, contentType } = await presignRes.json()
 
-      // Leer el archivo completo como ArrayBuffer antes de enviar.
-      // En Android/OPPO, xhr.send(file) falla con archivos grandes desde content:// URIs
-      // porque el navegador no puede hacer streaming; arrayBuffer() lo carga en RAM primero.
-      let fileBuffer: ArrayBuffer
-      try {
-        fileBuffer = await file.arrayBuffer()
-      } catch (readErr) {
-        throw new Error(`No se pudo leer el archivo (${(file.size / 1024 / 1024).toFixed(1)} MB). Puede que el dispositivo no tenga suficiente memoria.`)
+      // Validar tamaño mínimo — OPPO a veces devuelve File vacío si el content:// no es accesible
+      if (file.size === 0) {
+        throw new Error('El archivo parece vacío (0 bytes). Puede que el video esté en la nube sin descargarse. Descárgalo primero e intenta de nuevo.')
       }
 
-      // Subir directo a R2 con XHR (XHR + ArrayBuffer es más confiable que fetch en Android)
+      // Leer con FileReader (más compatible en Android que arrayBuffer()).
+      // arrayBuffer() cuelga silenciosamente en OPPO para videos grandes via content:// URI;
+      // FileReader usa la API nativa de Android y dispara onerror en lugar de colgar.
+      const fileBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader()
+        // 3 minutos máx para leer; si OPPO no puede acceder al archivo, expirará con mensaje claro
+        const timer = setTimeout(() => {
+          reader.abort()
+          reject(new Error('El video tardó demasiado en leerse. Puede estar en la nube sin descargarse, o el dispositivo está ocupado. Intenta de nuevo.'))
+        }, 180_000)
+        reader.onprogress = (ev) => {
+          // Mostrar progreso de lectura (0-40%) separado del de subida (40-100%)
+          if (ev.lengthComputable) setUploadProgress(Math.round((ev.loaded / ev.total) * 40))
+        }
+        reader.onload = () => {
+          clearTimeout(timer)
+          resolve(reader.result as ArrayBuffer)
+        }
+        reader.onerror = () => {
+          clearTimeout(timer)
+          reject(new Error(`No se pudo leer el video: ${reader.error?.message ?? 'acceso denegado por el dispositivo'}. Intenta seleccionarlo de nuevo.`))
+        }
+        reader.readAsArrayBuffer(file)
+      })
+
+      // Subir directo a R2 con XHR + ArrayBuffer
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhr.open('PUT', url, true)
         xhr.setRequestHeader('Content-Type', contentType)
-        xhr.timeout = 600000 // 10 minutos (videos lentos en datos móviles)
+        xhr.timeout = 600000 // 10 minutos
         xhr.upload.onprogress = (ev) => {
-          if (ev.lengthComputable) setUploadProgress(Math.round((ev.loaded / ev.total) * 100))
+          if (ev.lengthComputable) setUploadProgress(40 + Math.round((ev.loaded / ev.total) * 60))
         }
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve()
           } else {
-            // Incluir respuesta de R2 para facilitar el diagnóstico
             const r2Body = xhr.responseText?.slice(0, 300) ?? ''
             reject(new Error(`R2 rechazó la subida (HTTP ${xhr.status})${r2Body ? `: ${r2Body}` : ''}. Intenta de nuevo.`))
           }
         }
         xhr.onerror = () => reject(new Error('Error de red al conectar con R2. Verifica tu conexión e intenta de nuevo.'))
-        xhr.ontimeout = () => reject(new Error('Tiempo agotado (10 min). El archivo es muy grande o la conexión es muy lenta.'))
+        xhr.ontimeout = () => reject(new Error('Tiempo agotado (10 min). Conexión muy lenta o archivo demasiado grande.'))
         xhr.send(fileBuffer)
       })
 
@@ -1649,7 +1668,9 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                     </svg>
-                    {uploadProgress > 0 && uploadProgress < 100 ? `${uploadProgress}%` : 'Subiendo...'}
+                    {uploadProgress > 0 && uploadProgress <= 40 ? `Leyendo ${uploadProgress * 2.5 | 0}%`
+                      : uploadProgress > 40 ? `Subiendo ${uploadProgress}%`
+                      : 'Preparando...'}
                   </span>
                 ) : (
                   <>
