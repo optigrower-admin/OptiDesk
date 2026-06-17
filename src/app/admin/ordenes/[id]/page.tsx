@@ -1815,13 +1815,16 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                 const totalPagadoOrden = pagosOrden.reduce((sum, p) => sum + p.monto, 0)
                 const pagoIncompleto = s.value === 'listo' && totalPagadoOrden < (orden.valor_total ?? 0)
                 const umaIncompleto = s.value === 'listo' && esUMA && numerosOrdenUMA.length === 0
-                const bloqueado = tieneRepPendientes || pagoIncompleto || umaIncompleto
+                const pagadoBloqueado = s.value === 'pagado' && totalPagadoOrden < (orden.valor_total ?? 0)
+                const bloqueado = tieneRepPendientes || pagoIncompleto || umaIncompleto || pagadoBloqueado
                 const titleMsg = tieneRepPendientes
                   ? 'Hay repuestos marcados como Pedido que aún no han llegado'
                   : pagoIncompleto
                   ? `Saldo pendiente: ${formatCOP((orden.valor_total ?? 0) - totalPagadoOrden)}`
                   : umaIncompleto
                   ? 'Agrega el # de Orden UMA o selecciona "No aplica" antes de finalizar'
+                  : pagadoBloqueado
+                  ? `Saldo pendiente: ${formatCOP((orden.valor_total ?? 0) - totalPagadoOrden)}`
                   : undefined
                 return (
                   <button
@@ -1845,6 +1848,9 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                     )}
                     {!tieneRepPendientes && !pagoIncompleto && umaIncompleto && (
                       <span className="ml-2 text-xs text-amber-400">⚠ # UMA</span>
+                    )}
+                    {pagadoBloqueado && (
+                      <span className="ml-2 text-xs text-red-300">saldo pendiente</span>
                     )}
                   </button>
                 )
