@@ -42,6 +42,7 @@ export default function RecepcionPage() {
   const [archivos, setArchivos] = useState<File[]>([])
   const [previews, setPreviews] = useState<{ url: string; tipo: 'imagen' | 'video' }[]>([])
   const [saving, setSaving] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState('')
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
   const [panelResult, setPanelResult] = useState<ClienteMotoPanelResult>(PANEL_INIT)
@@ -89,14 +90,25 @@ export default function RecepcionPage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
-    const validos = files.filter((f) =>
-      !(f.type.startsWith('video/') && f.size > 500 * 1024 * 1024) &&
-      !(f.type.startsWith('image/') && f.size > 20 * 1024 * 1024)
-    )
+    const rechazados: string[] = []
+    const validos = files.filter((f) => {
+      if (f.type.startsWith('video/') && f.size > 200 * 1024 * 1024) {
+        rechazados.push(`${f.name} (máx 200 MB para videos)`)
+        return false
+      }
+      if (f.type.startsWith('image/') && f.size > 20 * 1024 * 1024) {
+        rechazados.push(`${f.name} (máx 20 MB para fotos)`)
+        return false
+      }
+      return true
+    })
+    if (rechazados.length) setError(`Archivos rechazados: ${rechazados.join(', ')}`)
     setArchivos((prev) => [...prev, ...validos])
     validos.forEach((f) => {
       setPreviews((prev) => [...prev, { url: URL.createObjectURL(f), tipo: f.type.startsWith('video/') ? 'video' : 'imagen' }])
     })
+    // Limpiar el input para permitir re-seleccionar el mismo archivo
+    e.target.value = ''
   }
 
   const removeFile = (idx: number) => {
@@ -157,15 +169,33 @@ export default function RecepcionPage() {
 
       if (ordenErr || !orden) throw ordenErr ?? new Error('No se pudo crear la orden')
 
-      for (const file of archivos) {
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('orden_id', (orden as { id: string }).id)
-        formData.append('tipo', file.type.startsWith('video/') ? 'video' : 'imagen')
-        await fetch('/api/upload', { method: 'POST', body: formData })
+      const erroresUpload: string[] = []
+      for (let i = 0; i < archivos.length; i++) {
+        const file = archivos[i]
+        const esVideo = file.type.startsWith('video/')
+        setUploadProgress(`Subiendo ${esVideo ? 'video' : 'foto'} ${i + 1} de ${archivos.length}...`)
+        try {
+          const formData = new FormData()
+          formData.append('file', file)
+          formData.append('orden_id', (orden as { id: string }).id)
+          formData.append('tipo', esVideo ? 'video' : 'imagen')
+          const res = await fetch('/api/upload', { method: 'POST', body: formData })
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}))
+            erroresUpload.push(j.error ?? `Error al subir ${file.name}`)
+          }
+        } catch {
+          erroresUpload.push(`No se pudo subir ${file.name}`)
+        }
       }
+      setUploadProgress('')
 
       localStorage.removeItem(DRAFT_KEY)
+      if (erroresUpload.length) {
+        setError(`Orden creada, pero ${erroresUpload.join('; ')}`)
+        setSaving(false)
+        return
+      }
       router.push('/mecanico')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al guardar')
@@ -289,14 +319,25 @@ export default function RecepcionPage() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Fotos y videos</label>
-          <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 transition-colors bg-gray-50">
-            <svg className="w-6 h-6 text-gray-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span className="text-xs text-gray-500">Toca para agregar fotos/videos</span>
-            <input type="file" accept="image/*,video/*" multiple onChange={handleFileChange} className="hidden" />
-          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {/* Botón cámara — abre la cámara directamente (funciona en Android e iPhone) */}
+            <label className="flex flex-col items-center justify-center h-20 border-2 border-dashed border-blue-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors bg-white">
+              <svg className="w-6 h-6 text-blue-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span className="text-xs text-blue-600 font-medium">Cámara</span>
+              <input type="file" accept="image/*,video/*" capture="environment" onChange={handleFileChange} className="hidden" />
+            </label>
+            {/* Botón galería — abre el selector de archivos */}
+            <label className="flex flex-col items-center justify-center h-20 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors bg-white">
+              <svg className="w-6 h-6 text-gray-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-xs text-gray-500 font-medium">Galería</span>
+              <input type="file" accept="image/*,video/*" multiple onChange={handleFileChange} className="hidden" />
+            </label>
+          </div>
           {previews.length > 0 && (
             <div className="grid grid-cols-4 gap-2 mt-3">
               {previews.map((p, i) => (
@@ -318,7 +359,7 @@ export default function RecepcionPage() {
         </div>
 
         <Button type="submit" className="w-full" size="lg" loading={saving}>
-          Guardar recepción
+          {uploadProgress || 'Guardar recepción'}
         </Button>
       </form>
     </div>

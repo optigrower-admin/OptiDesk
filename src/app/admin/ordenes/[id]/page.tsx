@@ -1224,7 +1224,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                 <input
                   ref={fileInputMedioRef}
                   type="file"
-                  accept="image/*,video/mp4,video/quicktime"
+                  accept="image/*,video/*"
                   onChange={handleUploadMedio}
                   className="hidden"
                 />

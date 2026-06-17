@@ -3,10 +3,18 @@ import { createClient } from '@/lib/supabase/server'
 import { uploadToR2 } from '@/lib/r2'
 import { archiveToLimit, LIMITE_TRIGGER_BYTES } from '@/lib/archiveToLimit'
 
+export const maxDuration = 60
+
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
-const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime']
+// Android puede enviar video/3gpp (cámaras antiguas/nativas) o video/webm (Chrome)
+const ALLOWED_VIDEO_TYPES = [
+  'video/mp4', 'video/quicktime',
+  'video/3gpp', 'video/3gpp2',
+  'video/webm', 'video/x-matroska',
+  'video/mpeg',
+]
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024   // 20 MB
-const MAX_VIDEO_BYTES = 500 * 1024 * 1024  // 500 MB
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024  // 200 MB (reducido para mobile)
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
