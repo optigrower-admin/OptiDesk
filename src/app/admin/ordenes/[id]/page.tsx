@@ -256,8 +256,8 @@ export default function AdminOrdenDetallePage() {
           if (ds) localStorage.setItem(dk, JSON.stringify({ ...JSON.parse(ds), estado: 'en_proceso' }))
         } catch { /* ignore */ }
       }
-      // Auto-pagado: si los pagos ya cubren el total, marcar como pagado al cargar
-      if (ord.estado !== 'pagado' && ord.estado !== 'listo' && (ord.valor_total ?? 0) > 0 && pg) {
+      // Auto-pagado: solo desde en_proceso (no sobrescribir estados manuales como pendiente)
+      if (ord.estado === 'en_proceso' && (ord.valor_total ?? 0) > 0 && pg) {
         const pgList = pg as unknown as PagoOrden[]
         const totalPagadoCargado = pgList.reduce((s, p) => s + p.monto, 0)
         if (totalPagadoCargado > 0 && totalPagadoCargado >= (ord.valor_total ?? 0)) {
@@ -1814,11 +1814,14 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   items.some((i) => i.origen !== 'mano_obra' && i.estado_repuesto === 'pedido')
                 const totalPagadoOrden = pagosOrden.reduce((sum, p) => sum + p.monto, 0)
                 const pagoIncompleto = s.value === 'listo' && totalPagadoOrden < (orden.valor_total ?? 0)
-                const bloqueado = tieneRepPendientes || pagoIncompleto
+                const umaIncompleto = s.value === 'listo' && esUMA && numerosOrdenUMA.length === 0
+                const bloqueado = tieneRepPendientes || pagoIncompleto || umaIncompleto
                 const titleMsg = tieneRepPendientes
                   ? 'Hay repuestos marcados como Pedido que aún no han llegado'
                   : pagoIncompleto
                   ? `Saldo pendiente: ${formatCOP((orden.valor_total ?? 0) - totalPagadoOrden)}`
+                  : umaIncompleto
+                  ? 'Agrega el # de Orden UMA o selecciona "No aplica" antes de finalizar'
                   : undefined
                 return (
                   <button
@@ -1839,6 +1842,9 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                     {tieneRepPendientes && <span className="ml-2 text-xs text-amber-400">⏳ rep. pendientes</span>}
                     {!tieneRepPendientes && pagoIncompleto && (
                       <span className="ml-2 text-xs text-red-300">saldo pendiente</span>
+                    )}
+                    {!tieneRepPendientes && !pagoIncompleto && umaIncompleto && (
+                      <span className="ml-2 text-xs text-amber-400">⚠ # UMA</span>
                     )}
                   </button>
                 )
