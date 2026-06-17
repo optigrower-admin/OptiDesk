@@ -39,7 +39,7 @@ export default function NuevaOrdenAdminPage() {
   const [cedula, setCedula] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
-  const [subcategoriaId, setSubcategoriaId] = useState('')
+  const [subcategoriaIds, setSubcategoriaIds] = useState<string[]>([])
   const [tipoServicio, setTipoServicio] = useState<'terceros' | 'uma'>('terceros')
   const [numeroOt, setNumeroOt] = useState('')
   const [numerosOrdenUMA, setNumerosOrdenUMA] = useState<string[]>([])
@@ -67,7 +67,7 @@ export default function NuevaOrdenAdminPage() {
         if (d.cedula) setCedula(d.cedula)
         if (d.descripcion) setDescripcion(d.descripcion)
         if (d.categoriaId) setCategoriaId(d.categoriaId)
-        if (d.subcategoriaId) setSubcategoriaId(d.subcategoriaId)
+        if (d.subcategoriaIds) setSubcategoriaIds(d.subcategoriaIds)
         if (d.tipoServicio) setTipoServicio(d.tipoServicio)
         if (d.numeroOt) setNumeroOt(d.numeroOt)
         if (d.numerosOrdenUMA) setNumerosOrdenUMA(d.numerosOrdenUMA)
@@ -78,12 +78,12 @@ export default function NuevaOrdenAdminPage() {
   useEffect(() => {
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, cedula, descripcion, categoriaId, subcategoriaId, tipoServicio, numeroOt, numerosOrdenUMA }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, cedula, descripcion, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA }))
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [placa, cliente, telefono, cedula, descripcion, categoriaId, subcategoriaId, tipoServicio, numeroOt, numerosOrdenUMA])
+  }, [placa, cliente, telefono, cedula, descripcion, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -169,7 +169,8 @@ export default function NuevaOrdenAdminPage() {
           cedula: cedula || null,
           descripcion,
           categoria_servicio_id: categoriaId || null,
-          subcategoria_servicio_id: subcategoriaId || null,
+          subcategoria_servicio_id: subcategoriaIds[0] || null,
+          subcategoria_servicio_ids: subcategoriaIds,
           tipo_orden: tipoOrden,
           tipo_servicio: tipoOrden === 'servicio' ? tipoServicio : 'terceros',
           numero_ot: tipoServicio === 'uma' ? (numeroOt || null) : null,
@@ -368,21 +369,31 @@ export default function NuevaOrdenAdminPage() {
               <h2 className="font-semibold text-gray-900">Servicio UMA</h2>
               <select
                 value={categoriaId}
-                onChange={(e) => { setCategoriaId(e.target.value); setSubcategoriaId('') }}
+                onChange={(e) => { setCategoriaId(e.target.value); setSubcategoriaIds([]) }}
                 className="w-full px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-sm"
               >
                 <option value="">Seleccionar subcategoría</option>
                 {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
               {subcategorias.length > 0 && (
-                <select
-                  value={subcategoriaId}
-                  onChange={(e) => setSubcategoriaId(e.target.value)}
-                  className="w-full px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-sm"
-                >
-                  <option value="">Seleccionar subcategoría</option>
-                  {subcategorias.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-                </select>
+                <div className="flex flex-wrap gap-2">
+                  {subcategorias.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSubcategoriaIds(prev =>
+                        prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
+                      )}
+                      className={`px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-colors ${
+                        subcategoriaIds.includes(s.id)
+                          ? 'border-purple-600 bg-purple-600 text-white'
+                          : 'border-purple-200 bg-purple-50 text-purple-700 hover:border-purple-400'
+                      }`}
+                    >
+                      {s.nombre}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
 

@@ -113,6 +113,7 @@ interface OrdenDetalle {
   numeros_orden_uma: string[]
   categoria_servicio_id: string | null
   subcategoria_servicio_id: string | null
+  subcategoria_servicio_ids: string[] | null
   tenant_id: string
   created_at: string
   fecha_finalizacion: string | null
@@ -190,7 +191,7 @@ export default function AdminOrdenDetallePage() {
   const [editPlaca, setEditPlaca] = useState('')
   const [editDescripcion, setEditDescripcion] = useState('')
   const [editCategoriaId, setEditCategoriaId] = useState('')
-  const [editSubcategoriaId, setEditSubcategoriaId] = useState('')
+  const [editSubcategoriaIds, setEditSubcategoriaIds] = useState<string[]>([])
   const [savingOrden, setSavingOrden] = useState(false)
   const [showAudit, setShowAudit] = useState(false)
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
@@ -225,7 +226,7 @@ export default function AdminOrdenDetallePage() {
     if (!profile?.tenant_id) return
     const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }] = await Promise.all([
       supabase.from('ordenes')
-        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, descripcion, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, tenant_id, created_at, fecha_finalizacion, moto_id,
+        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, descripcion, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
         .eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto').eq('orden_id', ordenId),
@@ -241,7 +242,11 @@ export default function AdminOrdenDetallePage() {
       setEditPlaca(ord.placa ?? '')
       setEditDescripcion(ord.descripcion ?? '')
       setEditCategoriaId(ord.categoria_servicio_id ?? '')
-      setEditSubcategoriaId(ord.subcategoria_servicio_id ?? '')
+      setEditSubcategoriaIds(
+        ord.subcategoria_servicio_ids?.length
+          ? ord.subcategoria_servicio_ids
+          : ord.subcategoria_servicio_id ? [ord.subcategoria_servicio_id] : []
+      )
 
       setEstadoPago(ord.estado_pago)
       setValorAbono(String(ord.valor_abono ?? 0))
@@ -407,7 +412,8 @@ export default function AdminOrdenDetallePage() {
       anterior.categoria_servicio_id = orden.categoria_servicio_id
       anterior.subcategoria_servicio_id = orden.subcategoria_servicio_id
       update.categoria_servicio_id = editCategoriaId || null
-      update.subcategoria_servicio_id = editSubcategoriaId || null
+      update.subcategoria_servicio_id = editSubcategoriaIds[0] || null
+      update.subcategoria_servicio_ids = editSubcategoriaIds
     }
     await supabase.from('ordenes').update(update).eq('id', ordenId)
     await registrarAuditoria(supabase, {
@@ -938,7 +944,12 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
             {orden.categorias_servicio && (
               <p className="text-sm text-gray-400">
                 {orden.categorias_servicio.nombre}
-                {orden.subcategorias_servicio && ` · ${orden.subcategorias_servicio.nombre}`}
+                {(() => {
+                  const allSubs = categorias.flatMap(c => c.subcategorias_servicio)
+                  const ids = orden.subcategoria_servicio_ids?.length ? orden.subcategoria_servicio_ids : orden.subcategoria_servicio_id ? [orden.subcategoria_servicio_id] : []
+                  const nombres = ids.map(id => allSubs.find(s => s.id === id)?.nombre ?? orden.subcategorias_servicio?.nombre).filter(Boolean)
+                  return nombres.length > 0 ? ` · ${nombres.join(' · ')}` : null
+                })()}
               </p>
             )}
             <div className="flex flex-wrap gap-3 mt-1">
@@ -1129,7 +1140,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   <div className="flex flex-wrap gap-2">
                     {categorias.map((c) => (
                       <button key={c.id} type="button"
-                        onClick={() => { setEditCategoriaId(editCategoriaId === c.id ? '' : c.id); setEditSubcategoriaId('') }}
+                        onClick={() => { setEditCategoriaId(editCategoriaId === c.id ? '' : c.id); setEditSubcategoriaIds([]) }}
                         className={`px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-colors ${
                           editCategoriaId === c.id ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300'
                         }`}>
@@ -1140,11 +1151,21 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   {(() => {
                     const subs = categorias.find((c) => c.id === editCategoriaId)?.subcategorias_servicio ?? []
                     return subs.length > 0 ? (
-                      <select value={editSubcategoriaId} onChange={(e) => setEditSubcategoriaId(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                        <option value="">Sin subcategoría</option>
-                        {subs.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-                      </select>
+                      <div className="flex flex-wrap gap-2">
+                        {subs.map((s) => (
+                          <button key={s.id} type="button"
+                            onClick={() => setEditSubcategoriaIds(prev =>
+                              prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
+                            )}
+                            className={`px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-colors ${
+                              editSubcategoriaIds.includes(s.id)
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300'
+                            }`}>
+                            {s.nombre}
+                          </button>
+                        ))}
+                      </div>
                     ) : null
                   })()}
                   <div className="flex gap-2">
@@ -1152,7 +1173,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                       className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
                       {savingOrden ? '...' : 'Guardar'}
                     </button>
-                    <button onClick={() => { setEditingOrden(null); setEditCategoriaId(orden.categoria_servicio_id ?? ''); setEditSubcategoriaId(orden.subcategoria_servicio_id ?? '') }}
+                    <button onClick={() => { setEditingOrden(null); setEditCategoriaId(orden.categoria_servicio_id ?? ''); setEditSubcategoriaIds(orden.subcategoria_servicio_ids?.length ? orden.subcategoria_servicio_ids : orden.subcategoria_servicio_id ? [orden.subcategoria_servicio_id] : []) }}
                       className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancelar</button>
                   </div>
                 </div>
@@ -1163,7 +1184,15 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                       <p className="text-xs text-gray-400">Tipo de ingreso</p>
                       <p className="text-sm font-semibold text-gray-900">
                         {orden.categorias_servicio?.nombre
-                          ? <>{orden.categorias_servicio.nombre}{orden.subcategorias_servicio && <span className="text-gray-500 font-normal"> · {orden.subcategorias_servicio.nombre}</span>}</>
+                          ? <>
+                              {orden.categorias_servicio.nombre}
+                              {(() => {
+                                const allSubs = categorias.flatMap(c => c.subcategorias_servicio)
+                                const ids = orden.subcategoria_servicio_ids?.length ? orden.subcategoria_servicio_ids : orden.subcategoria_servicio_id ? [orden.subcategoria_servicio_id] : []
+                                const nombres = ids.map(id => allSubs.find(s => s.id === id)?.nombre ?? orden.subcategorias_servicio?.nombre).filter(Boolean)
+                                return nombres.length > 0 ? <span className="text-gray-500 font-normal"> · {nombres.join(' · ')}</span> : null
+                              })()}
+                            </>
                           : <span className="text-gray-400 italic font-normal">Sin tipo</span>
                         }
                       </p>

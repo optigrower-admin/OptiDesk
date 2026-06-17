@@ -31,6 +31,7 @@ interface OrdenDetalle {
   descripcion: string | null
   categoria_servicio_id: string | null
   subcategoria_servicio_id: string | null
+  subcategoria_servicio_ids: string[] | null
   categorias_servicio: { nombre: string } | null
   subcategorias_servicio: { nombre: string } | null
   metodos_pago: { nombre: string } | null
@@ -71,7 +72,7 @@ export default function ResumenMecanicoPage() {
   const [editTelefono, setEditTelefono] = useState('')
   const [editDescripcion, setEditDescripcion] = useState('')
   const [editCategoriaId, setEditCategoriaId] = useState('')
-  const [editSubcategoriaId, setEditSubcategoriaId] = useState('')
+  const [editSubcategoriaIds, setEditSubcategoriaIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export default function ResumenMecanicoPage() {
       supabase
         .from('ordenes')
         .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, descripcion,
-          categoria_servicio_id, subcategoria_servicio_id,
+          categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids,
           categorias_servicio(nombre), subcategorias_servicio(nombre),
           metodos_pago(nombre),
           items_orden(id, descripcion, origen, cantidad, precio_venta)`)
@@ -104,7 +105,11 @@ export default function ResumenMecanicoPage() {
         setEditTelefono(o.telefono ?? '')
         setEditDescripcion(o.descripcion ?? '')
         setEditCategoriaId(o.categoria_servicio_id ?? '')
-        setEditSubcategoriaId(o.subcategoria_servicio_id ?? '')
+        setEditSubcategoriaIds(
+          o.subcategoria_servicio_ids?.length
+            ? o.subcategoria_servicio_ids
+            : o.subcategoria_servicio_id ? [o.subcategoria_servicio_id] : []
+        )
       }
       setCategorias((cats as unknown as Categoria[]) ?? [])
       setMedios((mediosData as unknown as Medio[]) ?? [])
@@ -126,7 +131,8 @@ export default function ResumenMecanicoPage() {
       anterior.categoria_servicio_id = orden.categoria_servicio_id
       anterior.subcategoria_servicio_id = orden.subcategoria_servicio_id
       update.categoria_servicio_id = editCategoriaId || null
-      update.subcategoria_servicio_id = editSubcategoriaId || null
+      update.subcategoria_servicio_id = editSubcategoriaIds[0] || null
+      update.subcategoria_servicio_ids = editSubcategoriaIds
     }
     await supabase.from('ordenes').update(update).eq('id', ordenId)
     await registrarAuditoria(supabase, {
@@ -160,7 +166,7 @@ export default function ResumenMecanicoPage() {
     setEditTelefono(orden.telefono ?? '')
     setEditDescripcion(orden.descripcion ?? '')
     setEditCategoriaId(orden.categoria_servicio_id ?? '')
-    setEditSubcategoriaId(orden.subcategoria_servicio_id ?? '')
+    setEditSubcategoriaIds(orden.subcategoria_servicio_ids?.length ? orden.subcategoria_servicio_ids : orden.subcategoria_servicio_id ? [orden.subcategoria_servicio_id] : [])
     setEditField(null)
   }
 
@@ -291,7 +297,7 @@ export default function ResumenMecanicoPage() {
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => { setEditCategoriaId(editCategoriaId === c.id ? '' : c.id); setEditSubcategoriaId('') }}
+                    onClick={() => { setEditCategoriaId(editCategoriaId === c.id ? '' : c.id); setEditSubcategoriaIds([]) }}
                     className={`px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-colors ${
                       editCategoriaId === c.id
                         ? 'border-blue-600 bg-blue-600 text-white'
@@ -303,16 +309,21 @@ export default function ResumenMecanicoPage() {
                 ))}
               </div>
               {subcategoriasEdit.length > 0 && (
-                <select
-                  value={editSubcategoriaId}
-                  onChange={(e) => setEditSubcategoriaId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                >
-                  <option value="">Sin subcategoría</option>
+                <div className="flex flex-wrap gap-2">
                   {subcategoriasEdit.map((s) => (
-                    <option key={s.id} value={s.id}>{s.nombre}</option>
+                    <button key={s.id} type="button"
+                      onClick={() => setEditSubcategoriaIds(prev =>
+                        prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
+                      )}
+                      className={`px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-colors ${
+                        editSubcategoriaIds.includes(s.id)
+                          ? 'border-blue-600 bg-blue-600 text-white'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300'
+                      }`}>
+                      {s.nombre}
+                    </button>
                   ))}
-                </select>
+                </div>
               )}
               <div className="flex gap-2">
                 <button onClick={() => guardarCampo('categoria')} disabled={saving}
@@ -332,9 +343,12 @@ export default function ResumenMecanicoPage() {
                   {orden.categorias_servicio?.nombre
                     ? <>
                         {orden.categorias_servicio.nombre}
-                        {orden.subcategorias_servicio && (
-                          <span className="text-gray-500 font-normal"> · {orden.subcategorias_servicio.nombre}</span>
-                        )}
+                        {(() => {
+                          const allSubs = categorias.flatMap(c => c.subcategorias_servicio)
+                          const ids = orden.subcategoria_servicio_ids?.length ? orden.subcategoria_servicio_ids : orden.subcategoria_servicio_id ? [orden.subcategoria_servicio_id] : []
+                          const nombres = ids.map(id => allSubs.find(s => s.id === id)?.nombre ?? orden.subcategorias_servicio?.nombre).filter(Boolean)
+                          return nombres.length > 0 ? <span className="text-gray-500 font-normal"> · {nombres.join(' · ')}</span> : null
+                        })()}
                       </>
                     : <span className="text-gray-400 italic font-normal">Sin tipo</span>
                   }

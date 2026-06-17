@@ -37,7 +37,7 @@ export default function RecepcionPage() {
   const [descripcion, setDescripcion] = useState('')
   const [telefono, setTelefono] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
-  const [subcategoriaId, setSubcategoriaId] = useState('')
+  const [subcategoriaIds, setSubcategoriaIds] = useState<string[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [archivos, setArchivos] = useState<File[]>([])
   const [previews, setPreviews] = useState<{ url: string; tipo: 'imagen' | 'video' }[]>([])
@@ -59,7 +59,7 @@ export default function RecepcionPage() {
         if (d.telefono) setTelefono(d.telefono)
         if (d.descripcion) setDescripcion(d.descripcion)
         if (d.categoriaId) setCategoriaId(d.categoriaId)
-        if (d.subcategoriaId) setSubcategoriaId(d.subcategoriaId)
+        if (d.subcategoriaIds) setSubcategoriaIds(d.subcategoriaIds)
       }
     } catch { /* borrador inválido */ }
   }, [params.placa])
@@ -68,12 +68,12 @@ export default function RecepcionPage() {
     if (params.placa !== 'nueva') return
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, descripcion, categoriaId, subcategoriaId }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, descripcion, categoriaId, subcategoriaIds }))
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [placa, cliente, telefono, descripcion, categoriaId, subcategoriaId, params.placa])
+  }, [placa, cliente, telefono, descripcion, categoriaId, subcategoriaIds, params.placa])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -157,7 +157,8 @@ export default function RecepcionPage() {
           telefono: telefono || null,
           descripcion,
           categoria_servicio_id: categoriaId || null,
-          subcategoria_servicio_id: subcategoriaId || null,
+          subcategoria_servicio_id: subcategoriaIds[0] || null,
+          subcategoria_servicio_ids: subcategoriaIds,
           mecanico_id: profile.id,
           estado: 'falta_revision',
           numero: 0,
@@ -277,7 +278,7 @@ export default function RecepcionPage() {
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => { setCategoriaId(categoriaId === c.id ? '' : c.id); setSubcategoriaId('') }}
+                  onClick={() => { setCategoriaId(categoriaId === c.id ? '' : c.id); setSubcategoriaIds([]) }}
                   className={`px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
                     categoriaId === c.id
                       ? 'border-blue-600 bg-blue-600 text-white'
@@ -294,14 +295,24 @@ export default function RecepcionPage() {
         {subcategorias.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Subcategoría</label>
-            <select
-              value={subcategoriaId}
-              onChange={(e) => setSubcategoriaId(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Seleccionar</option>
-              {subcategorias.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
+            <div className="flex flex-wrap gap-2">
+              {subcategorias.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSubcategoriaIds(prev =>
+                    prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
+                  )}
+                  className={`px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-colors ${
+                    subcategoriaIds.includes(s.id)
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300'
+                  }`}
+                >
+                  {s.nombre}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
