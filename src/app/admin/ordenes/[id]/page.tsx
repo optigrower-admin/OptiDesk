@@ -546,6 +546,8 @@ export default function AdminOrdenDetallePage() {
   const handleDeleteItem = async (item: ItemOrden) => {
     if (!confirm(`¿Eliminar "${item.descripcion}"?`)) return
     await supabase.from('items_orden').delete().eq('id', item.id)
+    const nuevoTotal = items.filter((i) => i.id !== item.id).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+    await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
     // Devolver al inventario si era UMA
     await registrarDevolucion(supabase, {
       tenantId: orden!.tenant_id,
