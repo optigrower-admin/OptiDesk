@@ -6,6 +6,7 @@ export interface MotoExtras {
   modelo: string
   año: string
   color: string
+  kilometraje: string
 }
 
 export interface UpsertMotoClienteParams {
@@ -44,6 +45,7 @@ export async function upsertMotoCliente({
         modelo: motoExtras?.modelo || null,
         año: motoExtras?.año ? parseInt(motoExtras.año) : null,
         color: motoExtras?.color || null,
+        kilometraje: motoExtras?.kilometraje ? parseInt(motoExtras.kilometraje.replace(/\./g, '')) : null,
       })
       .select('id')
       .single()

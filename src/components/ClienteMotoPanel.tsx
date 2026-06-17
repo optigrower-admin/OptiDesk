@@ -24,6 +24,7 @@ interface MotoRow {
   modelo: string | null
   año: number | null
   color: string | null
+  kilometraje: number | null
   cliente_id: string | null
   clientes: ClienteRow | null
 }
@@ -36,7 +37,13 @@ interface Props {
   onResult: (result: ClienteMotoPanelResult) => void
 }
 
-const EMPTY_EXTRAS: MotoExtras = { marca: '', modelo: '', año: '', color: '' }
+const EMPTY_EXTRAS: MotoExtras = { marca: '', modelo: '', año: '', color: '', kilometraje: '' }
+
+const formatKm = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  if (!digits) return ''
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+}
 
 export function ClienteMotoPanel({ tenantId, placa, cedula, onAutoFill, onResult }: Props) {
   const supabase = createClient()
@@ -81,7 +88,7 @@ export function ClienteMotoPanel({ tenantId, placa, cedula, onAutoFill, onResult
       setLoadingMoto(true)
       const { data } = await supabase
         .from('motos')
-        .select('id, marca, modelo, año, color, cliente_id, clientes:cliente_id(id, nombre, cedula, celular)')
+        .select('id, marca, modelo, año, color, kilometraje, cliente_id, clientes:cliente_id(id, nombre, cedula, celular)')
         .eq('tenant_id', tenantId)
         .eq('placa', norm)
         .maybeSingle()
@@ -159,6 +166,7 @@ export function ClienteMotoPanel({ tenantId, placa, cedula, onAutoFill, onResult
                   {[moto.marca, moto.modelo].filter(Boolean).join(' ')}
                   {moto.año ? ` ${moto.año}` : ''}
                   {moto.color ? ` · ${moto.color}` : ''}
+                  {moto.kilometraje ? ` · ${moto.kilometraje.toLocaleString('es-CO')} km` : ''}
                 </p>
               ) : (
                 <p className="text-xs text-blue-500 italic mt-0.5">Sin datos del vehículo</p>
@@ -186,23 +194,41 @@ export function ClienteMotoPanel({ tenantId, placa, cedula, onAutoFill, onResult
             <span className="text-xs text-amber-700">Primera vez en el taller — datos opcionales</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {([
-              { key: 'marca' as const, placeholder: 'Marca (ej: Honda)' },
-              { key: 'modelo' as const, placeholder: 'Modelo (ej: CB 125)' },
-              { key: 'año' as const, placeholder: 'Año (ej: 2022)' },
-              { key: 'color' as const, placeholder: 'Color' },
-            ]).map((f) => (
-              <input
-                key={f.key}
-                type={f.key === 'año' ? 'number' : 'text'}
-                value={extras[f.key]}
-                onChange={(e) => setExtras((p) => ({ ...p, [f.key]: e.target.value }))}
-                placeholder={f.placeholder}
-                min={f.key === 'año' ? 1990 : undefined}
-                max={f.key === 'año' ? 2030 : undefined}
-                className="px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
-              />
-            ))}
+            {/* Marca y modelo combinados */}
+            <input
+              type="text"
+              value={extras.marca}
+              onChange={(e) => setExtras((p) => ({ ...p, marca: e.target.value, modelo: '' }))}
+              placeholder="Marca y modelo (ej: Honda CRX 200)"
+              className="col-span-2 px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+            />
+            {/* Kilometraje */}
+            <input
+              type="text"
+              inputMode="numeric"
+              value={extras.kilometraje}
+              onChange={(e) => setExtras((p) => ({ ...p, kilometraje: formatKm(e.target.value) }))}
+              placeholder="Kilometraje (ej: 12.500)"
+              className="px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+            />
+            {/* Año */}
+            <input
+              type="number"
+              value={extras.año}
+              onChange={(e) => setExtras((p) => ({ ...p, año: e.target.value }))}
+              placeholder="Año (ej: 2022)"
+              min={1990}
+              max={2030}
+              className="px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+            />
+            {/* Color */}
+            <input
+              type="text"
+              value={extras.color}
+              onChange={(e) => setExtras((p) => ({ ...p, color: e.target.value }))}
+              placeholder="Color"
+              className="px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+            />
           </div>
         </div>
       )}

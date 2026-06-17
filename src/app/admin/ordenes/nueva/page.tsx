@@ -19,7 +19,14 @@ interface Categoria {
 }
 
 const DRAFT_KEY = 'optiDesk_admin_orden_draft'
-const PANEL_INIT: ClienteMotoPanelResult = { motoId: null, clienteId: null, motoExtras: { marca: '', modelo: '', año: '', color: '' }, isKnownMoto: false }
+const PANEL_INIT: ClienteMotoPanelResult = { motoId: null, clienteId: null, motoExtras: { marca: '', modelo: '', año: '', color: '', kilometraje: '' }, isKnownMoto: false }
+
+const formatTelefono = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 10)
+  if (digits.length <= 3) return digits
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+}
 
 export default function NuevaOrdenAdminPage() {
   const router = useRouter()
@@ -333,9 +340,9 @@ export default function NuevaOrdenAdminPage() {
               <input
                 type="tel"
                 value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
+                onChange={(e) => setTelefono(formatTelefono(e.target.value))}
                 className={`w-full px-3 py-2 border rounded-lg text-sm ${!telefono && tipoOrden === 'servicio' ? 'border-amber-300 bg-amber-50' : 'border-gray-200'}`}
-                placeholder="310 000 0000"
+                placeholder="(310) 000-0000"
               />
             </div>
           </div>
