@@ -46,11 +46,12 @@ export async function deleteFromR2(key: string): Promise<void> {
   )
 }
 
-export async function getSignedDownloadUrl(key: string, expiresIn = 3600): Promise<string> {
+export async function getSignedDownloadUrl(key: string, expiresIn = 3600, filename?: string): Promise<string> {
   const client = getS3Client()
   const command = new GetObjectCommand({
     Bucket: process.env.R2_BUCKET_NAME!,
     Key: key,
+    ...(filename ? { ResponseContentDisposition: `attachment; filename="${filename}"` } : {}),
   })
   return getSignedUrl(client, command, { expiresIn })
 }

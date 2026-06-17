@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (!perfil) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 403 })
 
   const { data: medio } = await supabase.from('medios')
-    .select('url, storage_location, drive_url, tenant_id')
+    .select('url, storage_location, drive_url, tenant_id, nombre_archivo')
     .eq('id', params.id)
     .single()
 
@@ -20,11 +20,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: 'Sin acceso' }, { status: 403 })
   }
 
+  const isDownload = req.nextUrl.searchParams.get('download') === '1'
+
   if (medio.storage_location === 'drive') {
     return NextResponse.redirect(medio.drive_url ?? '/', 302)
   }
 
-  const signedUrl = await getSignedDownloadUrl(medio.url, 3600)
+  const filename = isDownload ? (medio.nombre_archivo ?? undefined) : undefined
+  const signedUrl = await getSignedDownloadUrl(medio.url, 3600, filename)
   return NextResponse.redirect(signedUrl, 302)
 }
 
