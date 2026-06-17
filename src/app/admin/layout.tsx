@@ -462,7 +462,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-gray-50">
+      {profile?.isStaging && (
+        <div className="flex-shrink-0 bg-amber-400 text-amber-900 text-xs font-semibold text-center py-1 px-4 flex items-center justify-center gap-2">
+          <span>⚠️</span>
+          <span>ENTORNO DE PRUEBA — los datos aquí son independientes de producción</span>
+          <span>⚠️</span>
+        </div>
+      )}
+      <div className="flex flex-1 min-h-0">
       <aside className="w-48 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
         {/* Logo */}
         <div className="p-4 border-b">
@@ -685,6 +693,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

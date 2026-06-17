@@ -18,6 +18,7 @@ const navItems = [
   { href: '/control_total/storage',       label: 'Storage' },
   { href: '/control_total/auditoria',     label: 'Auditoría global' },
   { href: '/control_total/herramientas',  label: 'Herramientas' },
+  { href: '/control_total/sandbox',       label: 'Entornos de prueba' },
 ]
 
 const ROLES = [

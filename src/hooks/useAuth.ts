@@ -9,8 +9,13 @@ interface UsuarioProfile {
   email: string
   rol: 'mecanico' | 'admin' | 'gerencia' | 'control_total'
   tenant_id: string
+  sandbox_tenant_id: string | null
   pin: string | null
+  isStaging?: boolean
 }
+
+const detectStaging = () =>
+  typeof window !== 'undefined' && window.location.hostname.includes('staging')
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
@@ -19,14 +24,23 @@ export function useAuth() {
 
   useEffect(() => {
     const supabase = createClient()
+    const isStaging = detectStaging()
 
     const fetchProfile = async (authUser: User) => {
       const { data } = await supabase
         .from('usuarios')
-        .select('id, nombre, email, rol, tenant_id, pin')
+        .select('id, nombre, email, rol, tenant_id, sandbox_tenant_id, pin')
         .eq('id', authUser.id)
         .single()
-      setProfile(data)
+
+      if (!data) { setProfile(null); return }
+
+      // En staging, si el usuario tiene sandbox asignado, se usa ese tenant
+      // en todos los componentes que lean profile.tenant_id
+      const effectiveTenantId =
+        isStaging && data.sandbox_tenant_id ? data.sandbox_tenant_id : data.tenant_id
+
+      setProfile({ ...data, tenant_id: effectiveTenantId, isStaging })
     }
 
     supabase.auth.getUser().then(({ data: { user } }) => {

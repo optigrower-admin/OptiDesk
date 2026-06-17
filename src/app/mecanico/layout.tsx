@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { usePermisos } from '@/hooks/usePermisos'
+import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 
 const ALL_NAV = [
@@ -46,6 +47,7 @@ export default function MecanicoLayout({ children }: { children: React.ReactNode
   const router = useRouter()
   const supabase = createClient()
   const { tienePermiso } = usePermisos()
+  const { profile } = useAuth()
 
   const navItems = ALL_NAV.filter((item) => item.seccion === null || tienePermiso(item.seccion))
 
@@ -56,6 +58,11 @@ export default function MecanicoLayout({ children }: { children: React.ReactNode
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      {profile?.isStaging && (
+        <div className="bg-amber-400 text-amber-900 text-xs font-semibold text-center py-1 px-4">
+          ⚠️ ENTORNO DE PRUEBA
+        </div>
+      )}
       <header className="sticky top-0 z-10 bg-blue-700 text-white px-4 py-3 flex items-center justify-between shadow">
         <div>
           <span className="font-bold text-lg">OptiDesk</span>
