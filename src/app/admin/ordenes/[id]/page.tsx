@@ -249,6 +249,7 @@ export default function AdminOrdenDetallePage() {
   const [lavaMotoMetodo, setLavaMotoMetodo] = useState('')
   const [savingLavaMoto, setSavingLavaMoto] = useState(false)
   const [lavaMotoError, setLavaMotoError] = useState('')
+  const [showLavaMotoModal, setShowLavaMotoModal] = useState(false)
   const fileInputMedioRef = useRef<HTMLInputElement>(null)
   const fileInputVideoRef = useRef<HTMLInputElement>(null)
 
@@ -896,6 +897,7 @@ export default function AdminOrdenDetallePage() {
 
       setLavaMotoCantidad(1)
       setLavaMotoMetodo('')
+      setShowLavaMotoModal(false)
       await cargar()
     } catch (err) {
       setLavaMotoError((err as Error).message ?? 'Error al registrar el servicio. Intenta de nuevo.')
@@ -1220,6 +1222,75 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </div>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal lava moto */}
+      {showLavaMotoModal && lavaMotoConfig && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-xs w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900">Servicio de Lavado</h3>
+              <button
+                onClick={() => setShowLavaMotoModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Cantidad */}
+            <div className="flex items-center justify-center gap-6 py-2">
+              <button
+                onClick={() => setLavaMotoCantidad((c) => Math.max(1, c - 1))}
+                className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xl font-bold flex items-center justify-center transition-colors"
+              >−</button>
+              <div className="text-center">
+                <span className="text-4xl font-bold text-gray-900">{lavaMotoCantidad}</span>
+                <p className="text-xs text-gray-400 mt-0.5">lavados</p>
+              </div>
+              <button
+                onClick={() => setLavaMotoCantidad((c) => c + 1)}
+                className="w-10 h-10 rounded-full bg-cyan-100 hover:bg-cyan-200 text-cyan-700 text-xl font-bold flex items-center justify-center transition-colors"
+              >+</button>
+            </div>
+
+            {/* Resumen de precio */}
+            <div className="bg-cyan-50 rounded-xl px-4 py-3 space-y-1 text-center">
+              <p className="text-xs text-gray-500">Precio al cliente</p>
+              <p className="text-2xl font-bold text-cyan-700">{formatCOP(lavaMotoConfig.precio_venta * lavaMotoCantidad)}</p>
+              <p className="text-xs text-gray-400">Costo proveedor: {formatCOP(lavaMotoConfig.costo * lavaMotoCantidad)}</p>
+            </div>
+
+            {/* Método de pago del costo */}
+            <div>
+              <p className="text-xs font-medium text-gray-600 mb-1.5">¿Con qué se paga el costo al proveedor?</p>
+              <select
+                value={lavaMotoMetodo}
+                onChange={(e) => setLavaMotoMetodo(e.target.value)}
+                className={`w-full px-3 py-2.5 border rounded-xl text-sm ${!lavaMotoMetodo ? 'border-gray-300 text-gray-400' : 'border-cyan-300 text-gray-900'}`}
+              >
+                <option value="">Selecciona método *</option>
+                {metodosPago.map((m) => (
+                  <option key={m.id} value={m.id}>{m.nombre}</option>
+                ))}
+              </select>
+            </div>
+
+            {lavaMotoError && (
+              <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{lavaMotoError}</p>
+            )}
+
+            <button
+              onClick={handleAddLavaMoto}
+              disabled={savingLavaMoto || !lavaMotoMetodo}
+              className="w-full py-3 px-4 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-sm font-semibold transition-colors"
+            >
+              {savingLavaMoto ? 'Registrando...' : 'Registrar lavado'}
+            </button>
           </div>
         </div>
       )}
@@ -2130,20 +2201,16 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 {/* ── Lava Moto ── */}
                 {lavaMotoConfig?.activo && (
                   <div className="border-t border-cyan-100 pt-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-cyan-700">Lava Moto</span>
-                      <span className="text-xs text-gray-400">· costo proveedor: {formatCOP(lavaMotoConfig.costo)} · precio: {formatCOP(lavaMotoConfig.precio_venta)}</span>
-                    </div>
-
-                    {/* Historial lava moto */}
                     {lavaMotoOrdenes.map((lm) => (
                       <div key={lm.id} className="flex items-center justify-between p-2.5 bg-cyan-50 border border-cyan-100 rounded-lg group">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-bold text-cyan-800">{lm.cantidad}x Lava Moto = {formatCOP(lm.precio_venta_unitario * lm.cantidad)}</span>
+                            <span className="text-sm font-bold text-cyan-800">
+                              {lm.cantidad > 1 ? `${lm.cantidad}× ` : ''}Lava Moto — {formatCOP(lm.precio_venta_unitario * lm.cantidad)}
+                            </span>
                             {lm.metodos_pago && (
-                              <span className="text-xs bg-red-100 border border-red-200 text-red-700 px-1.5 py-0.5 rounded font-medium">
-                                Costo {formatCOP(lm.costo_unitario * lm.cantidad)} vía {(lm.metodos_pago as { nombre: string }).nombre}
+                              <span className="text-xs bg-white border border-cyan-200 text-cyan-700 px-1.5 py-0.5 rounded font-medium">
+                                costo {formatCOP(lm.costo_unitario * lm.cantidad)} · {(lm.metodos_pago as { nombre: string }).nombre}
                               </span>
                             )}
                           </div>
@@ -2154,7 +2221,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <button
                           onClick={() => handleDeleteLavaMoto(lm.id)}
                           className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1 flex-shrink-0"
-                          title="Eliminar registro de lava moto"
+                          title="Eliminar"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -2162,50 +2229,13 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         </button>
                       </div>
                     ))}
-
-                    {/* Formulario agregar lava moto */}
                     {estadoPagoCalc !== 'pagado' && (
-                      <div className="space-y-2">
-                        <div className="flex gap-2">
-                          <div className="flex items-center gap-2 bg-white border border-cyan-200 rounded-lg px-2 py-1.5">
-                            <span className="text-xs text-gray-500">Cant.</span>
-                            <button
-                              onClick={() => setLavaMotoCantidad((c) => Math.max(1, c - 1))}
-                              className="w-5 h-5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center"
-                            >−</button>
-                            <span className="text-sm font-bold text-gray-900 w-4 text-center">{lavaMotoCantidad}</span>
-                            <button
-                              onClick={() => setLavaMotoCantidad((c) => c + 1)}
-                              className="w-5 h-5 rounded-full bg-cyan-100 hover:bg-cyan-200 text-cyan-700 text-xs font-bold flex items-center justify-center"
-                            >+</button>
-                          </div>
-                          <div className="flex-1 text-xs text-gray-500 flex items-center">
-                            Precio: <span className="ml-1 font-semibold text-cyan-700">{formatCOP(lavaMotoConfig.precio_venta * lavaMotoCantidad)}</span>
-                            <span className="mx-1">|</span>
-                            Costo: <span className="ml-1 font-semibold text-red-600">{formatCOP(lavaMotoConfig.costo * lavaMotoCantidad)}</span>
-                          </div>
-                        </div>
-                        <select
-                          value={lavaMotoMetodo}
-                          onChange={(e) => setLavaMotoMetodo(e.target.value)}
-                          className={`w-full px-3 py-2 border rounded-lg text-sm ${!lavaMotoMetodo ? 'border-gray-300 text-gray-400' : 'border-cyan-200 text-gray-900'}`}
-                        >
-                          <option value="">Método de pago del costo *</option>
-                          {metodosPago.map((m) => (
-                            <option key={m.id} value={m.id}>{m.nombre}</option>
-                          ))}
-                        </select>
-                        <button
-                          onClick={handleAddLavaMoto}
-                          disabled={savingLavaMoto || !lavaMotoMetodo}
-                          className="w-full py-2 px-3 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors"
-                        >
-                          {savingLavaMoto ? 'Registrando...' : '+ Agregar Lava Moto'}
-                        </button>
-                        {lavaMotoError && (
-                          <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{lavaMotoError}</p>
-                        )}
-                      </div>
+                      <button
+                        onClick={() => { setLavaMotoCantidad(1); setLavaMotoMetodo(''); setLavaMotoError(''); setShowLavaMotoModal(true) }}
+                        className="w-full py-2 px-3 border-2 border-dashed border-cyan-200 hover:border-cyan-400 hover:bg-cyan-50 text-cyan-600 hover:text-cyan-800 rounded-lg text-xs font-medium transition-colors"
+                      >
+                        + Añadir servicio lavado
+                      </button>
                     )}
                   </div>
                 )}
