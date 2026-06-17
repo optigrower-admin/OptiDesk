@@ -229,6 +229,7 @@ export default function AdminOrdenDetallePage() {
   const [uploadingMedio, setUploadingMedio] = useState(false)
   const [pagoError, setPagoError] = useState('')
   const fileInputMedioRef = useRef<HTMLInputElement>(null)
+  const fileInputVideoRef = useRef<HTMLInputElement>(null)
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
@@ -550,27 +551,59 @@ export default function AdminOrdenDetallePage() {
     setMedios((prev) => prev.filter((m) => m.id !== id))
   }
 
-  const handleUploadMedio = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadMedio = async (e: React.ChangeEvent<HTMLInputElement>, tipoForzado?: 'imagen' | 'video') => {
     const file = e.target.files?.[0]
     if (!file || !orden) return
     setUploadingMedio(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      fd.append('orden_id', ordenId)
-      const videoExts = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.3gp', '.m4v', '.wmv', '.flv'])
-      const esVideoAdmin = file.type.startsWith('video/') || videoExts.has('.' + (file.name.split('.').pop() ?? '').toLowerCase())
-      fd.append('tipo', esVideoAdmin ? 'video' : 'imagen')
-      const res = await fetch('/api/upload', { method: 'POST', body: fd })
-      if (res.ok) {
+      const videoExts = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.3gp', '.m4v', '.wmv', '.flv', '.ts'])
+      const esVideo = tipoForzado === 'video' ||
+        (tipoForzado !== 'imagen' && (
+          file.type.startsWith('video/') ||
+          videoExts.has('.' + (file.name.split('.').pop() ?? '').toLowerCase())
+        ))
+      const tipo: 'imagen' | 'video' = esVideo ? 'video' : 'imagen'
+
+      // Obtener URL pre-firmada (el archivo nunca pasa por Vercel → sin límite de 4.5 MB)
+      const presignRes = await fetch('/api/upload/presign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orden_id: ordenId, tipo, filename: file.name, filetype: file.type }),
+      })
+      if (!presignRes.ok) {
+        const err = await presignRes.json()
+        alert(err.error ?? 'Error al preparar la subida')
+        return
+      }
+      const { url, key, nombreArchivo, contentType } = await presignRes.json()
+
+      // Subir directo a R2 (sin pasar por Vercel)
+      const uploadRes = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: file,
+      })
+      if (!uploadRes.ok) {
+        alert('Error al subir el archivo al almacenamiento. Intenta de nuevo.')
+        return
+      }
+
+      // Registrar en Supabase
+      const regRes = await fetch('/api/upload/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orden_id: ordenId, key, tipo, nombre_archivo: nombreArchivo, tamano_bytes: file.size }),
+      })
+      if (regRes.ok) {
         await cargar()
       } else {
-        const err = await res.json()
-        alert(err.error ?? 'Error al subir archivo')
+        const err = await regRes.json()
+        alert(err.error ?? 'Error al registrar el archivo')
       }
     } finally {
       setUploadingMedio(false)
       if (fileInputMedioRef.current) fileInputMedioRef.current.value = ''
+      if (fileInputVideoRef.current) fileInputVideoRef.current.value = ''
     }
   }
 
@@ -1394,35 +1427,48 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold text-gray-900">Fotos y videos</h2>
               <div className="flex items-center gap-2">
+                {/* Input fotos (OPPO necesita input separado para imágenes) */}
                 <input
                   ref={fileInputMedioRef}
                   type="file"
-                  accept="image/*,video/*"
-                  onChange={handleUploadMedio}
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/*"
+                  onChange={(e) => handleUploadMedio(e, 'imagen')}
                   className="hidden"
                 />
-                <button
-                  onClick={() => fileInputMedioRef.current?.click()}
-                  disabled={uploadingMedio}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-xs font-medium transition-colors"
-                >
-                  {uploadingMedio ? (
-                    <>
-                      <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                      </svg>
-                      Subiendo...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Agregar foto/video
-                    </>
-                  )}
-                </button>
+                {/* Input videos con tipos explícitos (OPPO ColorOS ignora video/* genérico) */}
+                <input
+                  ref={fileInputVideoRef}
+                  type="file"
+                  accept="video/mp4,video/3gpp,video/3gpp2,video/webm,video/quicktime,video/x-matroska,video/mpeg,.mp4,.3gp,.mov,.avi,.mkv,.webm,.m4v,.wmv,.flv,application/octet-stream"
+                  onChange={(e) => handleUploadMedio(e, 'video')}
+                  className="hidden"
+                />
+                {uploadingMedio ? (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-300 text-white rounded-lg text-xs font-medium">
+                    <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Subiendo...
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => fileInputMedioRef.current?.click()}
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
+                      title="Agregar foto"
+                    >
+                      📷 Foto
+                    </button>
+                    <button
+                      onClick={() => fileInputVideoRef.current?.click()}
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-medium transition-colors"
+                      title="Agregar video (hasta 1 minuto)"
+                    >
+                      🎥 Video
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             <MediaGallery medios={medios} onDelete={handleDeleteMedio} />
