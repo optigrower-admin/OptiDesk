@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth'
 interface Subcategoria { id: string; nombre: string; activo: boolean }
 interface Categoria { id: string; nombre: string; activo: boolean; subcategorias_servicio: Subcategoria[] }
 interface MetodoPago { id: string; nombre: string; activo: boolean }
+interface LavaMotoConfig { id?: string; costo: number; precio_venta: number; activo: boolean }
 
 /* ─── Helpers ────────────────────────────────────────────── */
 function ToggleSwitch({ activo, onChange }: { activo: boolean; onChange: () => void }) {
@@ -80,19 +81,31 @@ export default function ConfigServicioPage() {
   const [uploadResultLub, setUploadResultLub] = useState<{ ok: boolean; msg: string } | null>(null)
   const [modoUploadLub, setModoUploadLub] = useState<'agregar' | 'reemplazar'>('agregar')
 
+  /* ── Estado lava moto ── */
+  const [lavaMotoConfig, setLavaMotoConfig] = useState<LavaMotoConfig>({ costo: 0, precio_venta: 0, activo: false })
+  const [editingLavaMoto, setEditingLavaMoto] = useState(false)
+  const [lavaCostoEdit, setLavaCostoEdit] = useState('')
+  const [lavaPrecioEdit, setLavaPrecioEdit] = useState('')
+  const [savingLavaMoto, setSavingLavaMoto] = useState(false)
+  const [lavaMotoMsg, setLavaMotoMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
   /* ── Carga ── */
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
-    const [{ data: cats }, { data: mets }] = await Promise.all([
+    const [{ data: cats }, { data: mets }, { data: lmCfg }] = await Promise.all([
       supabase.from('categorias_servicio')
         .select('id, nombre, activo, subcategorias_servicio(id, nombre, activo)')
         .eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('metodos_pago')
         .select('id, nombre, activo')
         .eq('tenant_id', profile.tenant_id).order('nombre'),
+      supabase.from('lava_moto_config')
+        .select('id, costo, precio_venta, activo')
+        .eq('tenant_id', profile.tenant_id).maybeSingle(),
     ])
     setCategorias((cats as Categoria[]) ?? [])
     setMetodos((mets as MetodoPago[]) ?? [])
+    setLavaMotoConfig((lmCfg as LavaMotoConfig | null) ?? { costo: 0, precio_venta: 0, activo: false })
     setLoading(false)
   }, [profile?.tenant_id])
 
@@ -203,6 +216,35 @@ export default function ConfigServicioPage() {
     await supabase.from('metodos_pago').update({ nombre: editNombreMetodo.trim() }).eq('id', id)
     setEditandoMetodo(null)
     await cargar()
+  }
+
+  /* ── Lava moto: acciones ── */
+  const toggleLavaMoto = async () => {
+    if (!profile?.tenant_id) return
+    if (lavaMotoConfig.id) {
+      await supabase.from('lava_moto_config').update({ activo: !lavaMotoConfig.activo }).eq('id', lavaMotoConfig.id)
+      setLavaMotoConfig((prev) => ({ ...prev, activo: !prev.activo }))
+    } else {
+      await supabase.from('lava_moto_config').insert({ tenant_id: profile.tenant_id, activo: true, costo: 0, precio_venta: 0 })
+      await cargar()
+    }
+  }
+
+  const guardarLavaMoto = async () => {
+    if (!profile?.tenant_id) return
+    const costo = parseInt(lavaCostoEdit.replace(/\D/g, ''), 10) || 0
+    const precio_venta = parseInt(lavaPrecioEdit.replace(/\D/g, ''), 10) || 0
+    setSavingLavaMoto(true)
+    if (lavaMotoConfig.id) {
+      await supabase.from('lava_moto_config').update({ costo, precio_venta }).eq('id', lavaMotoConfig.id)
+    } else {
+      await supabase.from('lava_moto_config').insert({ tenant_id: profile.tenant_id, costo, precio_venta, activo: lavaMotoConfig.activo })
+    }
+    await cargar()
+    setEditingLavaMoto(false)
+    setSavingLavaMoto(false)
+    setLavaMotoMsg({ ok: true, text: 'Precios actualizados correctamente' })
+    setTimeout(() => setLavaMotoMsg(null), 3000)
   }
 
   const handleUploadRepuestos = async () => {
@@ -502,6 +544,114 @@ export default function ConfigServicioPage() {
           </div>
         </div>
 
+      </div>
+
+      {/* ══════════════════════════════════════════
+          SECCIÓN LAVA MOTO
+      ══════════════════════════════════════════ */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Servicio Lava Moto</h2>
+              <p className="text-xs text-gray-400">
+                Costo al proveedor y precio de venta al cliente · {lavaMotoConfig.activo ? 'Activo' : 'Inactivo'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {profile?.rol === 'gerencia' && !editingLavaMoto && (
+              <button
+                onClick={() => {
+                  setLavaCostoEdit(String(lavaMotoConfig.costo))
+                  setLavaPrecioEdit(String(lavaMotoConfig.precio_venta))
+                  setEditingLavaMoto(true)
+                }}
+                className="text-gray-400 hover:text-blue-600 transition-colors p-1"
+                title="Editar precios"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={profile?.rol === 'gerencia' ? toggleLavaMoto : undefined}
+              disabled={profile?.rol !== 'gerencia'}
+              className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${lavaMotoConfig.activo ? 'bg-green-500' : 'bg-gray-300'} ${profile?.rol !== 'gerencia' ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${lavaMotoConfig.activo ? 'translate-x-4' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+        {editingLavaMoto && profile?.rol === 'gerencia' ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Costo proveedor ($)</label>
+                <input
+                  type="text" inputMode="numeric"
+                  value={lavaCostoEdit ? '$' + parseInt(lavaCostoEdit || '0', 10).toLocaleString('es-CO') : ''}
+                  onChange={(e) => setLavaCostoEdit(e.target.value.replace(/\D/g, ''))}
+                  placeholder="$0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Precio de venta ($)</label>
+                <input
+                  type="text" inputMode="numeric"
+                  value={lavaPrecioEdit ? '$' + parseInt(lavaPrecioEdit || '0', 10).toLocaleString('es-CO') : ''}
+                  onChange={(e) => setLavaPrecioEdit(e.target.value.replace(/\D/g, ''))}
+                  placeholder="$0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setEditingLavaMoto(false)}
+                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium">
+                Cancelar
+              </button>
+              <button onClick={guardarLavaMoto} disabled={savingLavaMoto}
+                className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 disabled:bg-cyan-300 text-white rounded-lg text-xs font-semibold transition-colors">
+                {savingLavaMoto ? 'Guardando...' : 'Guardar precios'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-gray-50 rounded-lg px-4 py-3">
+              <p className="text-xs text-gray-400 mb-1">Costo proveedor</p>
+              <p className="text-xl font-bold text-gray-900 font-mono">
+                ${lavaMotoConfig.costo.toLocaleString('es-CO')}
+              </p>
+            </div>
+            <div className="bg-cyan-50 rounded-lg px-4 py-3">
+              <p className="text-xs text-cyan-500 mb-1">Precio de venta</p>
+              <p className="text-xl font-bold text-cyan-700 font-mono">
+                ${lavaMotoConfig.precio_venta.toLocaleString('es-CO')}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {profile?.rol !== 'gerencia' && (
+          <p className="text-xs text-gray-400 mt-3">Solo el rol Gerencia puede modificar estos precios.</p>
+        )}
+        {lavaMotoMsg && (
+          <p className={`text-xs mt-3 font-medium ${lavaMotoMsg.ok ? 'text-green-600' : 'text-red-600'}`}>
+            {lavaMotoMsg.ok ? '✓' : '✗'} {lavaMotoMsg.text}
+          </p>
+        )}
       </div>
 
       {/* ══════════════════════════════════════════

@@ -154,6 +154,17 @@ interface PagoOrden {
   metodos_pago: { nombre: string } | null
 }
 
+interface LavaMotoConfig { id?: string; costo: number; precio_venta: number; activo: boolean }
+interface LavaMotoOrden {
+  id: string
+  cantidad: number
+  costo_unitario: number
+  precio_venta_unitario: number
+  metodo_pago_id: string | null
+  created_at: string
+  metodos_pago: { nombre: string } | null
+}
+
 const ORDEN_DRAFT_KEY = (id: string) => `optiDesk_orden_draft_${id}`
 
 export default function AdminOrdenDetallePage() {
@@ -230,12 +241,19 @@ export default function AdminOrdenDetallePage() {
   const [uploadError, setUploadError] = useState('')
   const [uploadProgress, setUploadProgress] = useState(0)
   const [pagoError, setPagoError] = useState('')
+  // Lava moto
+  const [lavaMotoConfig, setLavaMotoConfig] = useState<LavaMotoConfig | null>(null)
+  const [lavaMotoOrdenes, setLavaMotoOrdenes] = useState<LavaMotoOrden[]>([])
+  const [lavaMotoCantidad, setLavaMotoCantidad] = useState(1)
+  const [lavaMotoMetodo, setLavaMotoMetodo] = useState('')
+  const [savingLavaMoto, setSavingLavaMoto] = useState(false)
+  const [lavaMotoError, setLavaMotoError] = useState('')
   const fileInputMedioRef = useRef<HTMLInputElement>(null)
   const fileInputVideoRef = useRef<HTMLInputElement>(null)
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
-    const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }] = await Promise.all([
+    const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }, { data: lmCfg }, { data: lmOrd }] = await Promise.all([
       supabase.from('ordenes')
         .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, descripcion, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
@@ -245,6 +263,8 @@ export default function AdminOrdenDetallePage() {
       supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', profile.tenant_id).eq('activo', true),
       supabase.from('categorias_servicio').select('id, nombre, subcategorias_servicio(id, nombre)').eq('tenant_id', profile.tenant_id).eq('activo', true).order('orden'),
       supabase.from('pagos_orden').select('id, monto, metodo_pago_id, fecha, notas, metodos_pago(nombre)').eq('orden_id', ordenId).order('fecha', { ascending: true }),
+      supabase.from('lava_moto_config').select('id, costo, precio_venta, activo').eq('tenant_id', profile.tenant_id).maybeSingle(),
+      supabase.from('lava_moto_ordenes').select('id, cantidad, costo_unitario, precio_venta_unitario, metodo_pago_id, created_at, metodos_pago(nombre)').eq('orden_id', ordenId).order('created_at'),
     ])
     if (o) {
       let ord = o as unknown as OrdenDetalle
@@ -263,7 +283,10 @@ export default function AdminOrdenDetallePage() {
       if (ord.estado === 'en_proceso' && (ord.valor_total ?? 0) > 0 && pg) {
         const pgList = pg as unknown as PagoOrden[]
         const totalPagadoCargado = pgList.reduce((s, p) => s + p.monto, 0)
-        if (totalPagadoCargado > 0 && totalPagadoCargado >= (ord.valor_total ?? 0)) {
+        const lmOrds = (lmOrd ?? []) as unknown as LavaMotoOrden[]
+        const lmTotalCargado = lmOrds.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+        const valorConLMCargado = (ord.valor_total ?? 0) + lmTotalCargado
+        if (totalPagadoCargado > 0 && totalPagadoCargado >= valorConLMCargado) {
           supabase.from('ordenes').update({ estado: 'pagado' }).eq('id', ordenId).then(() => {})
           ord = { ...ord, estado: 'pagado' }
           try {
@@ -317,6 +340,8 @@ export default function AdminOrdenDetallePage() {
     setMetodosPago((mp as unknown as { id: string; nombre: string }[]) ?? [])
     setCategorias((cats as unknown as Categoria[]) ?? [])
     setPagosOrden((pg as unknown as PagoOrden[]) ?? [])
+    setLavaMotoConfig((lmCfg as LavaMotoConfig | null) ?? null)
+    setLavaMotoOrdenes((lmOrd as unknown as LavaMotoOrden[]) ?? [])
   }, [ordenId, profile?.tenant_id])
 
   useEffect(() => { cargar() }, [cargar])
@@ -782,9 +807,10 @@ export default function AdminOrdenDetallePage() {
         setPagoError(`Error: ${pagoInsertError.message}`)
         return
       }
-      // Recalcular estado_pago y valor_abono en ordenes
+      // Recalcular estado_pago y valor_abono en ordenes (incluye lava moto en el total)
       const nuevosPagos = [...pagosOrden, { id: '', monto, metodo_pago_id: nuevoPagoMetodo || null, fecha: new Date().toISOString(), notas: nuevoPagoNotas || null, metodos_pago: null }]
-      const nuevoEstadoPago = calcularEstadoPago(nuevosPagos, orden.valor_total)
+      const lmTotalPago = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+      const nuevoEstadoPago = calcularEstadoPago(nuevosPagos, (orden.valor_total ?? 0) + lmTotalPago)
       const totalPagado = nuevosPagos.reduce((s, p) => s + p.monto, 0)
       const ahora = new Date().toISOString()
       const autoEstadoOrden = nuevoEstadoPago === 'pagado' && !['listo', 'pagado'].includes(orden.estado)
@@ -827,12 +853,45 @@ export default function AdminOrdenDetallePage() {
     if (!confirm('¿Eliminar este pago?') || !orden) return
     await supabase.from('pagos_orden').delete().eq('id', pagoId)
     const pagosRestantes = pagosOrden.filter((p) => p.id !== pagoId)
-    const nuevoEstadoPago = calcularEstadoPago(pagosRestantes, orden.valor_total)
+    const lmTotal = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+    const totalConLM = (orden.valor_total ?? 0) + lmTotal
+    const nuevoEstadoPago = calcularEstadoPago(pagosRestantes, totalConLM)
     const totalPagado = pagosRestantes.reduce((s, p) => s + p.monto, 0)
     await supabase.from('ordenes').update({
       estado_pago: nuevoEstadoPago,
       valor_abono: totalPagado,
     }).eq('id', ordenId)
+    await cargar()
+  }
+
+  const handleAddLavaMoto = async () => {
+    if (!lavaMotoConfig || !orden) return
+    if (!lavaMotoMetodo) { setLavaMotoError('Selecciona el método de pago del costo del lavado.'); return }
+    setSavingLavaMoto(true)
+    setLavaMotoError('')
+    try {
+      await supabase.from('lava_moto_ordenes').insert({
+        orden_id: ordenId,
+        tenant_id: orden.tenant_id,
+        cantidad: lavaMotoCantidad,
+        costo_unitario: lavaMotoConfig.costo,
+        precio_venta_unitario: lavaMotoConfig.precio_venta,
+        metodo_pago_id: lavaMotoMetodo,
+        registrado_por: profile?.id ?? null,
+      })
+      setLavaMotoCantidad(1)
+      setLavaMotoMetodo('')
+      await cargar()
+    } catch {
+      setLavaMotoError('Error al registrar el servicio. Intenta de nuevo.')
+    } finally {
+      setSavingLavaMoto(false)
+    }
+  }
+
+  const handleDeleteLavaMoto = async (id: string) => {
+    if (!confirm('¿Eliminar este servicio de lavado?')) return
+    await supabase.from('lava_moto_ordenes').delete().eq('id', id)
     await cargar()
   }
 
@@ -846,10 +905,12 @@ export default function AdminOrdenDetallePage() {
       return
     }
 
-    // Bloquear "Finalizado" si el pago no está completo
+    // Bloquear "Finalizado" si el pago no está completo (incluye lava moto)
     const totalPagadoGuardar = pagosOrden.reduce((s, p) => s + p.monto, 0)
-    if (estado === 'listo' && totalPagadoGuardar < (orden?.valor_total ?? 0)) {
-      const saldoFaltante = (orden?.valor_total ?? 0) - totalPagadoGuardar
+    const lmTotalGuardar = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+    const valorTotalConLMGuardar = (orden?.valor_total ?? 0) + lmTotalGuardar
+    if (estado === 'listo' && totalPagadoGuardar < valorTotalConLMGuardar) {
+      const saldoFaltante = valorTotalConLMGuardar - totalPagadoGuardar
       alert(`No puedes finalizar la orden — falta por pagar ${formatCOP(saldoFaltante)}. Registra el pago completo antes de finalizar.`)
       return
     }
@@ -865,8 +926,9 @@ export default function AdminOrdenDetallePage() {
 
     setSaving(true)
     try {
-      // El estado_pago se calcula automáticamente desde pagos_orden
-      const estadoPagoCalculado = calcularEstadoPago(pagosOrden, orden?.valor_total ?? 0)
+      // El estado_pago se calcula automáticamente desde pagos_orden (total incluye lava moto)
+      const lmTotalGs = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+      const estadoPagoCalculado = calcularEstadoPago(pagosOrden, (orden?.valor_total ?? 0) + lmTotalGs)
       const totalPagado = pagosOrden.reduce((s, p) => s + p.monto, 0)
 
       const ahora = new Date().toISOString()
@@ -1895,18 +1957,20 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                 const tieneRepPendientes = s.value === 'listo' &&
                   items.some((i) => i.origen !== 'mano_obra' && i.estado_repuesto === 'pedido')
                 const totalPagadoOrden = pagosOrden.reduce((sum, p) => sum + p.monto, 0)
-                const pagoIncompleto = s.value === 'listo' && totalPagadoOrden < (orden.valor_total ?? 0)
+                const lmTotalBtn = lavaMotoOrdenes.reduce((sum, r) => sum + r.precio_venta_unitario * r.cantidad, 0)
+                const valorConLMBtn = (orden.valor_total ?? 0) + lmTotalBtn
+                const pagoIncompleto = s.value === 'listo' && totalPagadoOrden < valorConLMBtn
                 const umaIncompleto = s.value === 'listo' && esUMA && numerosOrdenUMA.length === 0
-                const pagadoBloqueado = s.value === 'pagado' && totalPagadoOrden < (orden.valor_total ?? 0)
+                const pagadoBloqueado = s.value === 'pagado' && totalPagadoOrden < valorConLMBtn
                 const bloqueado = tieneRepPendientes || pagoIncompleto || umaIncompleto || pagadoBloqueado
                 const titleMsg = tieneRepPendientes
                   ? 'Hay repuestos marcados como Pedido que aún no han llegado'
                   : pagoIncompleto
-                  ? `Saldo pendiente: ${formatCOP((orden.valor_total ?? 0) - totalPagadoOrden)}`
+                  ? `Saldo pendiente: ${formatCOP(valorConLMBtn - totalPagadoOrden)}`
                   : umaIncompleto
                   ? 'Agrega el # de Orden UMA o selecciona "No aplica" antes de finalizar'
                   : pagadoBloqueado
-                  ? `Saldo pendiente: ${formatCOP((orden.valor_total ?? 0) - totalPagadoOrden)}`
+                  ? `Saldo pendiente: ${formatCOP(valorConLMBtn - totalPagadoOrden)}`
                   : undefined
                 return (
                   <button
@@ -1951,8 +2015,10 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
           {/* Pago consecutivo */}
           {(() => {
             const totalPagado = pagosOrden.reduce((s, p) => s + p.monto, 0)
-            const saldoPendiente = (orden.valor_total ?? 0) - totalPagado
-            const estadoPagoCalc = calcularEstadoPago(pagosOrden, orden.valor_total ?? 0)
+            const lmTotal = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+            const totalAPagar = (orden.valor_total ?? 0) + lmTotal
+            const saldoPendiente = totalAPagar - totalPagado
+            const estadoPagoCalc = calcularEstadoPago(pagosOrden, totalAPagar)
             const estadoColor = estadoPagoCalc === 'pagado' ? 'bg-green-100 text-green-700 border-green-200'
               : estadoPagoCalc === 'abono' ? 'bg-amber-100 text-amber-700 border-amber-200'
               : 'bg-gray-100 text-gray-600 border-gray-200'
@@ -1971,9 +2037,27 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                 {/* Resumen */}
                 <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
                   <div className="flex justify-between text-xs text-gray-500">
-                    <span>Total a pagar</span>
+                    <span>Servicio técnico</span>
                     <span className="font-semibold text-gray-900">{formatCOP(orden.valor_total ?? 0)}</span>
                   </div>
+                  {lmTotal > 0 && (
+                    <div className="flex justify-between text-xs text-cyan-600">
+                      <span>Lava Moto ({lavaMotoOrdenes.reduce((s, r) => s + r.cantidad, 0)} und.)</span>
+                      <span className="font-semibold">+ {formatCOP(lmTotal)}</span>
+                    </div>
+                  )}
+                  {lmTotal > 0 && (
+                    <div className="flex justify-between text-xs font-semibold border-t border-gray-200 pt-1.5">
+                      <span className="text-gray-700">Total a pagar</span>
+                      <span className="text-gray-900">{formatCOP(totalAPagar)}</span>
+                    </div>
+                  )}
+                  {lmTotal === 0 && (
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Total a pagar</span>
+                      <span className="font-semibold text-gray-900">{formatCOP(totalAPagar)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Total pagado</span>
                     <span className="font-semibold text-green-700">{formatCOP(totalPagado)}</span>
@@ -2017,6 +2101,89 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                         </button>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* ── Lava Moto ── */}
+                {lavaMotoConfig?.activo && (
+                  <div className="border-t border-cyan-100 pt-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-cyan-700">Lava Moto</span>
+                      <span className="text-xs text-gray-400">· costo proveedor: {formatCOP(lavaMotoConfig.costo)} · precio: {formatCOP(lavaMotoConfig.precio_venta)}</span>
+                    </div>
+
+                    {/* Historial lava moto */}
+                    {lavaMotoOrdenes.map((lm) => (
+                      <div key={lm.id} className="flex items-center justify-between p-2.5 bg-cyan-50 border border-cyan-100 rounded-lg group">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-cyan-800">{lm.cantidad}x Lava Moto = {formatCOP(lm.precio_venta_unitario * lm.cantidad)}</span>
+                            {lm.metodos_pago && (
+                              <span className="text-xs bg-red-100 border border-red-200 text-red-700 px-1.5 py-0.5 rounded font-medium">
+                                Costo {formatCOP(lm.costo_unitario * lm.cantidad)} vía {(lm.metodos_pago as { nombre: string }).nombre}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {new Date(lm.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })} · {new Date(lm.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteLavaMoto(lm.id)}
+                          className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1 flex-shrink-0"
+                          title="Eliminar registro de lava moto"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Formulario agregar lava moto */}
+                    {estadoPagoCalc !== 'pagado' && (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <div className="flex items-center gap-2 bg-white border border-cyan-200 rounded-lg px-2 py-1.5">
+                            <span className="text-xs text-gray-500">Cant.</span>
+                            <button
+                              onClick={() => setLavaMotoCantidad((c) => Math.max(1, c - 1))}
+                              className="w-5 h-5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center"
+                            >−</button>
+                            <span className="text-sm font-bold text-gray-900 w-4 text-center">{lavaMotoCantidad}</span>
+                            <button
+                              onClick={() => setLavaMotoCantidad((c) => c + 1)}
+                              className="w-5 h-5 rounded-full bg-cyan-100 hover:bg-cyan-200 text-cyan-700 text-xs font-bold flex items-center justify-center"
+                            >+</button>
+                          </div>
+                          <div className="flex-1 text-xs text-gray-500 flex items-center">
+                            Precio: <span className="ml-1 font-semibold text-cyan-700">{formatCOP(lavaMotoConfig.precio_venta * lavaMotoCantidad)}</span>
+                            <span className="mx-1">|</span>
+                            Costo: <span className="ml-1 font-semibold text-red-600">{formatCOP(lavaMotoConfig.costo * lavaMotoCantidad)}</span>
+                          </div>
+                        </div>
+                        <select
+                          value={lavaMotoMetodo}
+                          onChange={(e) => setLavaMotoMetodo(e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-lg text-sm ${!lavaMotoMetodo ? 'border-gray-300 text-gray-400' : 'border-cyan-200 text-gray-900'}`}
+                        >
+                          <option value="">Método de pago del costo *</option>
+                          {metodosPago.map((m) => (
+                            <option key={m.id} value={m.id}>{m.nombre}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={handleAddLavaMoto}
+                          disabled={savingLavaMoto || !lavaMotoMetodo}
+                          className="w-full py-2 px-3 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors"
+                        >
+                          {savingLavaMoto ? 'Registrando...' : '+ Agregar Lava Moto'}
+                        </button>
+                        {lavaMotoError && (
+                          <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{lavaMotoError}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
