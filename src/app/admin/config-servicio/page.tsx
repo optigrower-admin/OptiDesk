@@ -221,28 +221,40 @@ export default function ConfigServicioPage() {
   /* ── Lava moto: acciones ── */
   const toggleLavaMoto = async () => {
     if (!profile?.tenant_id) return
-    if (lavaMotoConfig.id) {
-      await supabase.from('lava_moto_config').update({ activo: !lavaMotoConfig.activo }).eq('id', lavaMotoConfig.id)
-      setLavaMotoConfig((prev) => ({ ...prev, activo: !prev.activo }))
-    } else {
-      await supabase.from('lava_moto_config').insert({ tenant_id: profile.tenant_id, activo: true, costo: 0, precio_venta: 0 })
-      await cargar()
+    const newActivo = !lavaMotoConfig.activo
+    const { error } = await supabase.from('lava_moto_config')
+      .upsert({
+        tenant_id: profile.tenant_id,
+        activo: newActivo,
+        costo: lavaMotoConfig.costo,
+        precio_venta: lavaMotoConfig.precio_venta,
+      }, { onConflict: 'tenant_id' })
+    if (error) {
+      setLavaMotoMsg({ ok: false, text: 'Error al cambiar estado: ' + error.message })
+      return
     }
+    await cargar()
   }
 
   const guardarLavaMoto = async () => {
     if (!profile?.tenant_id) return
-    const costo = parseInt(lavaCostoEdit.replace(/\D/g, ''), 10) || 0
-    const precio_venta = parseInt(lavaPrecioEdit.replace(/\D/g, ''), 10) || 0
+    const costo = parseInt(lavaCostoEdit || '0', 10) || 0
+    const precio_venta = parseInt(lavaPrecioEdit || '0', 10) || 0
     setSavingLavaMoto(true)
-    if (lavaMotoConfig.id) {
-      await supabase.from('lava_moto_config').update({ costo, precio_venta }).eq('id', lavaMotoConfig.id)
-    } else {
-      await supabase.from('lava_moto_config').insert({ tenant_id: profile.tenant_id, costo, precio_venta, activo: lavaMotoConfig.activo })
+    const { error } = await supabase.from('lava_moto_config')
+      .upsert({
+        tenant_id: profile.tenant_id,
+        costo,
+        precio_venta,
+        activo: lavaMotoConfig.activo,
+      }, { onConflict: 'tenant_id' })
+    setSavingLavaMoto(false)
+    if (error) {
+      setLavaMotoMsg({ ok: false, text: 'Error al guardar: ' + error.message })
+      return
     }
     await cargar()
     setEditingLavaMoto(false)
-    setSavingLavaMoto(false)
     setLavaMotoMsg({ ok: true, text: 'Precios actualizados correctamente' })
     setTimeout(() => setLavaMotoMsg(null), 3000)
   }
@@ -599,7 +611,7 @@ export default function ConfigServicioPage() {
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Costo proveedor ($)</label>
                 <input
                   type="text" inputMode="numeric"
-                  value={lavaCostoEdit ? '$' + parseInt(lavaCostoEdit || '0', 10).toLocaleString('es-CO') : ''}
+                  value={lavaCostoEdit ? '$' + Number(lavaCostoEdit).toLocaleString('es-CO') : ''}
                   onChange={(e) => setLavaCostoEdit(e.target.value.replace(/\D/g, ''))}
                   placeholder="$0"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cyan-400"
@@ -609,7 +621,7 @@ export default function ConfigServicioPage() {
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Precio de venta ($)</label>
                 <input
                   type="text" inputMode="numeric"
-                  value={lavaPrecioEdit ? '$' + parseInt(lavaPrecioEdit || '0', 10).toLocaleString('es-CO') : ''}
+                  value={lavaPrecioEdit ? '$' + Number(lavaPrecioEdit).toLocaleString('es-CO') : ''}
                   onChange={(e) => setLavaPrecioEdit(e.target.value.replace(/\D/g, ''))}
                   placeholder="$0"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cyan-400"
