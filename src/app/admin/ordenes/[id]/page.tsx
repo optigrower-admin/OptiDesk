@@ -620,12 +620,22 @@ export default function AdminOrdenDetallePage() {
       }
       const { url, key, nombreArchivo, contentType } = await presignRes.json()
 
-      // Subir directo a R2 con XHR (mejor compatibilidad Android/OPPO para archivos grandes)
+      // Leer el archivo completo como ArrayBuffer antes de enviar.
+      // En Android/OPPO, xhr.send(file) falla con archivos grandes desde content:// URIs
+      // porque el navegador no puede hacer streaming; arrayBuffer() lo carga en RAM primero.
+      let fileBuffer: ArrayBuffer
+      try {
+        fileBuffer = await file.arrayBuffer()
+      } catch (readErr) {
+        throw new Error(`No se pudo leer el archivo (${(file.size / 1024 / 1024).toFixed(1)} MB). Puede que el dispositivo no tenga suficiente memoria.`)
+      }
+
+      // Subir directo a R2 con XHR (XHR + ArrayBuffer es más confiable que fetch en Android)
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhr.open('PUT', url, true)
         xhr.setRequestHeader('Content-Type', contentType)
-        xhr.timeout = 300000 // 5 minutos
+        xhr.timeout = 600000 // 10 minutos (videos lentos en datos móviles)
         xhr.upload.onprogress = (ev) => {
           if (ev.lengthComputable) setUploadProgress(Math.round((ev.loaded / ev.total) * 100))
         }
@@ -633,12 +643,14 @@ export default function AdminOrdenDetallePage() {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve()
           } else {
-            reject(new Error(`Error ${xhr.status} al subir. Verifica conexión e intenta de nuevo.`))
+            // Incluir respuesta de R2 para facilitar el diagnóstico
+            const r2Body = xhr.responseText?.slice(0, 300) ?? ''
+            reject(new Error(`R2 rechazó la subida (HTTP ${xhr.status})${r2Body ? `: ${r2Body}` : ''}. Intenta de nuevo.`))
           }
         }
-        xhr.onerror = () => reject(new Error('Error de red al subir el archivo. Verifica tu conexión.'))
-        xhr.ontimeout = () => reject(new Error('Tiempo agotado. El archivo puede ser muy grande o la conexión es lenta.'))
-        xhr.send(file)
+        xhr.onerror = () => reject(new Error('Error de red al conectar con R2. Verifica tu conexión e intenta de nuevo.'))
+        xhr.ontimeout = () => reject(new Error('Tiempo agotado (10 min). El archivo es muy grande o la conexión es muy lenta.'))
+        xhr.send(fileBuffer)
       })
 
       // Registrar en Supabase
