@@ -1,6 +1,40 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Badge } from '@/components/ui/Badge'
+
+function VideoThumb({ src }: { src: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [ready, setReady] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  return (
+    <div className="relative w-full h-full bg-gray-900">
+      {!failed && (
+        <video
+          ref={videoRef}
+          src={src}
+          className={`w-full h-full object-cover transition-opacity duration-300 ${ready ? 'opacity-100' : 'opacity-0'}`}
+          preload="metadata"
+          muted
+          playsInline
+          onLoadedMetadata={() => {
+            if (videoRef.current) videoRef.current.currentTime = 0.001
+          }}
+          onSeeked={() => setReady(true)}
+          onError={() => setFailed(true)}
+        />
+      )}
+      {/* Icono play siempre visible encima del frame */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className={`rounded-full p-2.5 ${ready ? 'bg-black/40' : 'bg-black/60'}`}>
+          <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function ConfirmDeleteModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
   return (
@@ -86,12 +120,7 @@ export function MediaGallery({ medios, onDelete }: {
                   }}
                 />
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-gray-800 gap-1">
-                  <svg className="w-8 h-8 text-white opacity-80" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                  <span className="text-white text-xs opacity-60">Video</span>
-                </div>
+                <VideoThumb src={getMediaUrl(medio)} />
               )}
             </button>
 
