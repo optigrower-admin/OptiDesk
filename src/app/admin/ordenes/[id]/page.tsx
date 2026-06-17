@@ -227,6 +227,8 @@ export default function AdminOrdenDetallePage() {
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [tenantNombre, setTenantNombre] = useState('Motospace')
   const [uploadingMedio, setUploadingMedio] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [pagoError, setPagoError] = useState('')
   const fileInputMedioRef = useRef<HTMLInputElement>(null)
   const fileInputVideoRef = useRef<HTMLInputElement>(null)
@@ -552,15 +554,29 @@ export default function AdminOrdenDetallePage() {
   }
 
   const handleUploadMedio = async (e: React.ChangeEvent<HTMLInputElement>, tipoForzado?: 'imagen' | 'video') => {
-    const file = e.target.files?.[0]
-    if (!file || !orden) return
     setUploadingMedio(true)
+    setUploadError('')
+    setUploadProgress(0)
     try {
+      const file = e.target.files?.[0]
+      if (!file) {
+        setUploadError('No se pudo leer el archivo. Intenta seleccionarlo de nuevo.')
+        return
+      }
+      if (!orden) return
       const videoExts = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.3gp', '.m4v', '.wmv', '.flv', '.ts'])
+      // OPPO a veces entrega URIs como nombre; extraer extensión del type o usar mp4/jpg por defecto
+      const rawName = file.name || ''
+      const extFromName = rawName.includes('.') ? rawName.split('.').pop()?.toLowerCase() ?? '' : ''
+      const extFromType = file.type.startsWith('video/') ? (file.type.split('/')[1]?.split(';')[0] ?? 'mp4')
+        : file.type.startsWith('image/') ? (file.type.split('/')[1]?.split(';')[0] ?? 'jpg') : ''
+      const ext = extFromName || extFromType
+      const safeName = ext ? `archivo_${Date.now()}.${ext}` : `archivo_${Date.now()}`
+      const filename = rawName && rawName.length < 200 && !rawName.startsWith('content://') ? rawName : safeName
       const esVideo = tipoForzado === 'video' ||
         (tipoForzado !== 'imagen' && (
           file.type.startsWith('video/') ||
-          videoExts.has('.' + (file.name.split('.').pop() ?? '').toLowerCase())
+          videoExts.has('.' + ext)
         ))
       const tipo: 'imagen' | 'video' = esVideo ? 'video' : 'imagen'
 
@@ -568,25 +584,35 @@ export default function AdminOrdenDetallePage() {
       const presignRes = await fetch('/api/upload/presign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orden_id: ordenId, tipo, filename: file.name, filetype: file.type }),
+        body: JSON.stringify({ orden_id: ordenId, tipo, filename, filetype: file.type }),
       })
       if (!presignRes.ok) {
         const err = await presignRes.json()
-        alert(err.error ?? 'Error al preparar la subida')
+        setUploadError(err.error ?? 'Error al preparar la subida')
         return
       }
       const { url, key, nombreArchivo, contentType } = await presignRes.json()
 
-      // Subir directo a R2 (sin pasar por Vercel)
-      const uploadRes = await fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': contentType },
-        body: file,
+      // Subir directo a R2 con XHR (mejor compatibilidad Android/OPPO para archivos grandes)
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('PUT', url, true)
+        xhr.setRequestHeader('Content-Type', contentType)
+        xhr.timeout = 300000 // 5 minutos
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) setUploadProgress(Math.round((ev.loaded / ev.total) * 100))
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve()
+          } else {
+            reject(new Error(`Error ${xhr.status} al subir. Verifica conexión e intenta de nuevo.`))
+          }
+        }
+        xhr.onerror = () => reject(new Error('Error de red al subir el archivo. Verifica tu conexión.'))
+        xhr.ontimeout = () => reject(new Error('Tiempo agotado. El archivo puede ser muy grande o la conexión es lenta.'))
+        xhr.send(file)
       })
-      if (!uploadRes.ok) {
-        alert('Error al subir el archivo al almacenamiento. Intenta de nuevo.')
-        return
-      }
 
       // Registrar en Supabase
       const regRes = await fetch('/api/upload/register', {
@@ -598,10 +624,13 @@ export default function AdminOrdenDetallePage() {
         await cargar()
       } else {
         const err = await regRes.json()
-        alert(err.error ?? 'Error al registrar el archivo')
+        setUploadError(err.error ?? 'Error al registrar el archivo')
       }
+    } catch (err) {
+      setUploadError((err as Error).message ?? 'Error inesperado al subir. Intenta de nuevo.')
     } finally {
       setUploadingMedio(false)
+      setUploadProgress(0)
       if (fileInputMedioRef.current) fileInputMedioRef.current.value = ''
       if (fileInputVideoRef.current) fileInputVideoRef.current.value = ''
     }
@@ -1444,12 +1473,12 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   className="hidden"
                 />
                 {uploadingMedio ? (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-300 text-white rounded-lg text-xs font-medium">
-                    <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium min-w-[90px] justify-center">
+                    <svg className="animate-spin w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                     </svg>
-                    Subiendo...
+                    {uploadProgress > 0 && uploadProgress < 100 ? `${uploadProgress}%` : 'Subiendo...'}
                   </span>
                 ) : (
                   <>
@@ -1471,6 +1500,13 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                 )}
               </div>
             </div>
+            {uploadError && (
+              <div className="mx-0 mb-3 flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+                <span className="text-red-500 text-sm flex-shrink-0">⚠️</span>
+                <p className="text-xs text-red-700">{uploadError}</p>
+                <button onClick={() => setUploadError('')} className="ml-auto text-red-400 hover:text-red-600 text-xs">✕</button>
+              </div>
+            )}
             <MediaGallery medios={medios} onDelete={handleDeleteMedio} />
           </div>
 
