@@ -161,6 +161,7 @@ interface LavaMotoOrden {
   costo_unitario: number
   precio_venta_unitario: number
   metodo_pago_id: string | null
+  pago_costo_id: string | null
   created_at: string
   metodos_pago: { nombre: string } | null
 }
@@ -264,7 +265,7 @@ export default function AdminOrdenDetallePage() {
       supabase.from('categorias_servicio').select('id, nombre, subcategorias_servicio(id, nombre)').eq('tenant_id', profile.tenant_id).eq('activo', true).order('orden'),
       supabase.from('pagos_orden').select('id, monto, metodo_pago_id, fecha, notas, metodos_pago(nombre)').eq('orden_id', ordenId).order('fecha', { ascending: true }),
       supabase.from('lava_moto_config').select('id, costo, precio_venta, activo').eq('tenant_id', profile.tenant_id).maybeSingle(),
-      supabase.from('lava_moto_ordenes').select('id, cantidad, costo_unitario, precio_venta_unitario, metodo_pago_id, created_at, metodos_pago(nombre)').eq('orden_id', ordenId).order('created_at'),
+      supabase.from('lava_moto_ordenes').select('id, cantidad, costo_unitario, precio_venta_unitario, metodo_pago_id, pago_costo_id, created_at, metodos_pago(nombre)').eq('orden_id', ordenId).order('created_at'),
     ])
     if (o) {
       let ord = o as unknown as OrdenDetalle
@@ -781,10 +782,11 @@ export default function AdminOrdenDetallePage() {
     setSavingMO(false)
   }
 
+  // Solo cuenta pagos positivos del cliente; los negativos son egresos (costos lava moto)
   const calcularEstadoPago = (pagos: PagoOrden[], valorTotal: number): EstadoPago => {
-    const totalPagado = pagos.reduce((s, p) => s + p.monto, 0)
-    if (totalPagado <= 0) return 'pendiente'
-    if (totalPagado >= valorTotal) return 'pagado'
+    const totalCliente = pagos.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+    if (totalCliente <= 0) return 'pendiente'
+    if (totalCliente >= valorTotal) return 'pagado'
     return 'abono'
   }
 
@@ -807,11 +809,11 @@ export default function AdminOrdenDetallePage() {
         setPagoError(`Error: ${pagoInsertError.message}`)
         return
       }
-      // Recalcular estado_pago y valor_abono en ordenes (incluye lava moto en el total)
+      // Recalcular estado_pago y valor_abono (solo pagos positivos del cliente)
       const nuevosPagos = [...pagosOrden, { id: '', monto, metodo_pago_id: nuevoPagoMetodo || null, fecha: new Date().toISOString(), notas: nuevoPagoNotas || null, metodos_pago: null }]
       const lmTotalPago = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
       const nuevoEstadoPago = calcularEstadoPago(nuevosPagos, (orden.valor_total ?? 0) + lmTotalPago)
-      const totalPagado = nuevosPagos.reduce((s, p) => s + p.monto, 0)
+      const totalPagado = nuevosPagos.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
       const ahora = new Date().toISOString()
       const autoEstadoOrden = nuevoEstadoPago === 'pagado' && !['listo', 'pagado'].includes(orden.estado)
         ? 'pagado' : null
@@ -850,13 +852,18 @@ export default function AdminOrdenDetallePage() {
   }
 
   const handleDeletePago = async (pagoId: string) => {
+    const pago = pagosOrden.find((p) => p.id === pagoId)
+    if (pago && pago.monto < 0) {
+      alert('Este egreso corresponde al costo de Lava Moto. Para eliminarlo, borra el registro de Lava Moto.')
+      return
+    }
     if (!confirm('¿Eliminar este pago?') || !orden) return
     await supabase.from('pagos_orden').delete().eq('id', pagoId)
     const pagosRestantes = pagosOrden.filter((p) => p.id !== pagoId)
     const lmTotal = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
     const totalConLM = (orden.valor_total ?? 0) + lmTotal
     const nuevoEstadoPago = calcularEstadoPago(pagosRestantes, totalConLM)
-    const totalPagado = pagosRestantes.reduce((s, p) => s + p.monto, 0)
+    const totalPagado = pagosRestantes.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
     await supabase.from('ordenes').update({
       estado_pago: nuevoEstadoPago,
       valor_abono: totalPagado,
@@ -870,28 +877,69 @@ export default function AdminOrdenDetallePage() {
     setSavingLavaMoto(true)
     setLavaMotoError('')
     try {
-      await supabase.from('lava_moto_ordenes').insert({
+      const costoTotal = lavaMotoConfig.costo * lavaMotoCantidad
+      const precioTotal = lavaMotoConfig.precio_venta * lavaMotoCantidad
+
+      // 1. Insertar egreso negativo en pagos_orden para registrar el costo del proveedor
+      const { data: pagoEgreso, error: errPago } = await supabase.from('pagos_orden').insert({
+        orden_id: ordenId,
+        tenant_id: orden.tenant_id,
+        monto: -costoTotal,
+        metodo_pago_id: lavaMotoMetodo,
+        notas: `Costo Lava Moto (${lavaMotoCantidad}×${formatCOP(lavaMotoConfig.costo)})`,
+        registrado_por: profile?.id ?? null,
+      }).select('id').single()
+      if (errPago) throw new Error(errPago.message)
+
+      // 2. Insertar registro de lava moto vinculado al egreso
+      const { error: errLM } = await supabase.from('lava_moto_ordenes').insert({
         orden_id: ordenId,
         tenant_id: orden.tenant_id,
         cantidad: lavaMotoCantidad,
         costo_unitario: lavaMotoConfig.costo,
         precio_venta_unitario: lavaMotoConfig.precio_venta,
         metodo_pago_id: lavaMotoMetodo,
+        pago_costo_id: (pagoEgreso as { id: string } | null)?.id ?? null,
         registrado_por: profile?.id ?? null,
       })
+      if (errLM) throw new Error(errLM.message)
+
+      // 3. Actualizar valor_abono y estado_pago de la orden
+      const todosLosPagos = [...pagosOrden, { monto: -costoTotal }]
+      const lmTotalNuevo = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0) + precioTotal
+      const nuevoTotal = (orden.valor_total ?? 0) + lmTotalNuevo
+      const totalCliente = todosLosPagos.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+      const nuevoEstado = calcularEstadoPago(pagosOrden, (orden.valor_total ?? 0) + lmTotalNuevo)
+      await supabase.from('ordenes').update({
+        estado_pago: nuevoEstado,
+        valor_abono: totalCliente,
+      }).eq('id', ordenId)
+
       setLavaMotoCantidad(1)
       setLavaMotoMetodo('')
       await cargar()
-    } catch {
-      setLavaMotoError('Error al registrar el servicio. Intenta de nuevo.')
+    } catch (err) {
+      setLavaMotoError((err as Error).message ?? 'Error al registrar el servicio. Intenta de nuevo.')
     } finally {
       setSavingLavaMoto(false)
     }
   }
 
   const handleDeleteLavaMoto = async (id: string) => {
-    if (!confirm('¿Eliminar este servicio de lavado?')) return
+    if (!confirm('¿Eliminar este servicio de lavado?') || !orden) return
+    const lm = lavaMotoOrdenes.find((r) => r.id === id)
+    // Eliminar el egreso vinculado en pagos_orden
+    if (lm?.pago_costo_id) {
+      await supabase.from('pagos_orden').delete().eq('id', lm.pago_costo_id)
+    }
     await supabase.from('lava_moto_ordenes').delete().eq('id', id)
+    // Recalcular estado_pago sin este lava moto
+    const lmRestantes = lavaMotoOrdenes.filter((r) => r.id !== id)
+    const lmTotal = lmRestantes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+    const pagosRestantes = lm?.pago_costo_id ? pagosOrden.filter((p) => p.id !== lm.pago_costo_id) : pagosOrden
+    const totalCliente = pagosRestantes.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+    const nuevoEstado = calcularEstadoPago(pagosRestantes, (orden.valor_total ?? 0) + lmTotal)
+    await supabase.from('ordenes').update({ estado_pago: nuevoEstado, valor_abono: totalCliente }).eq('id', ordenId)
     await cargar()
   }
 
@@ -926,10 +974,10 @@ export default function AdminOrdenDetallePage() {
 
     setSaving(true)
     try {
-      // El estado_pago se calcula automáticamente desde pagos_orden (total incluye lava moto)
+      // El estado_pago se calcula automáticamente; valor_abono solo cuenta pagos del cliente
       const lmTotalGs = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
       const estadoPagoCalculado = calcularEstadoPago(pagosOrden, (orden?.valor_total ?? 0) + lmTotalGs)
-      const totalPagado = pagosOrden.reduce((s, p) => s + p.monto, 0)
+      const totalPagado = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
 
       const ahora = new Date().toISOString()
       const esFinalizacion = estado === 'listo' && orden?.estado !== 'listo'
@@ -2014,11 +2062,13 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
 
           {/* Pago consecutivo */}
           {(() => {
-            const totalPagado = pagosOrden.reduce((s, p) => s + p.monto, 0)
+            const totalPagadoCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+            const totalEgresosLM = pagosOrden.filter((p) => p.monto < 0).reduce((s, p) => s + Math.abs(p.monto), 0)
             const lmTotal = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
             const totalAPagar = (orden.valor_total ?? 0) + lmTotal
-            const saldoPendiente = totalAPagar - totalPagado
+            const saldoPendiente = totalAPagar - totalPagadoCliente
             const estadoPagoCalc = calcularEstadoPago(pagosOrden, totalAPagar)
+            const totalPagado = totalPagadoCliente
             const estadoColor = estadoPagoCalc === 'pagado' ? 'bg-green-100 text-green-700 border-green-200'
               : estadoPagoCalc === 'abono' ? 'bg-amber-100 text-amber-700 border-amber-200'
               : 'bg-gray-100 text-gray-600 border-gray-200'
@@ -2060,8 +2110,14 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   )}
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Total pagado</span>
-                    <span className="font-semibold text-green-700">{formatCOP(totalPagado)}</span>
+                    <span className="font-semibold text-green-700">{formatCOP(totalPagadoCliente)}</span>
                   </div>
+                  {totalEgresosLM > 0 && (
+                    <div className="flex justify-between text-xs text-red-500">
+                      <span>Egresos Lava Moto</span>
+                      <span className="font-semibold">− {formatCOP(totalEgresosLM)}</span>
+                    </div>
+                  )}
                   {saldoPendiente > 0 && (
                     <div className="flex justify-between text-xs font-semibold border-t border-gray-200 pt-1.5">
                       <span className="text-red-600">Saldo pendiente</span>
@@ -2073,34 +2129,42 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                 {/* Historial de pagos */}
                 {pagosOrden.length > 0 && (
                   <div className="space-y-1.5">
-                    {pagosOrden.map((pago, idx) => (
-                      <div key={pago.id} className="flex items-center justify-between p-2.5 bg-green-50 border border-green-100 rounded-lg group">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-gray-500">#{idx + 1}</span>
-                            <span className="text-sm font-bold text-green-800">{formatCOP(pago.monto)}</span>
-                            {pago.metodos_pago && (
-                              <span className="text-xs bg-white border border-green-200 text-green-700 px-1.5 py-0.5 rounded font-medium">
-                                {(pago.metodos_pago as { nombre: string }).nombre}
+                    {pagosOrden.map((pago, idx) => {
+                      const esEgreso = pago.monto < 0
+                      return (
+                        <div key={pago.id} className={`flex items-center justify-between p-2.5 rounded-lg border group ${esEgreso ? 'bg-red-50 border-red-100' : 'bg-green-50 border-green-100'}`}>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {!esEgreso && <span className="text-xs font-semibold text-gray-500">#{pagosOrden.filter(p => p.monto > 0).indexOf(pago) + 1}</span>}
+                              {esEgreso && <span className="text-xs font-semibold text-red-400">Egreso</span>}
+                              <span className={`text-sm font-bold ${esEgreso ? 'text-red-700' : 'text-green-800'}`}>
+                                {esEgreso ? '− ' : ''}{formatCOP(Math.abs(pago.monto))}
                               </span>
-                            )}
+                              {pago.metodos_pago && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${esEgreso ? 'bg-white border border-red-200 text-red-600' : 'bg-white border border-green-200 text-green-700'}`}>
+                                  {(pago.metodos_pago as { nombre: string }).nombre}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {new Date(pago.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })} · {new Date(pago.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                            </p>
+                            {pago.notas && <p className={`text-xs italic mt-0.5 ${esEgreso ? 'text-red-400' : 'text-gray-500'}`}>{pago.notas}</p>}
                           </div>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {new Date(pago.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })} · {new Date(pago.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                          </p>
-                          {pago.notas && <p className="text-xs text-gray-500 italic mt-0.5">{pago.notas}</p>}
+                          {!esEgreso && (
+                            <button
+                              onClick={() => handleDeletePago(pago.id)}
+                              className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1 flex-shrink-0"
+                              title="Eliminar pago"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
-                        <button
-                          onClick={() => handleDeletePago(pago.id)}
-                          className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1 flex-shrink-0"
-                          title="Eliminar pago"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
 
