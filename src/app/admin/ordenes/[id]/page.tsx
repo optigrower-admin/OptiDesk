@@ -212,6 +212,11 @@ export default function AdminOrdenDetallePage() {
   const [savingFinalize, setSavingFinalize] = useState(false)
   const [pendingNavBack, setPendingNavBack] = useState(false)
 
+  // Refs para interceptar navegación sin crear listeners nuevos en cada render
+  const dirtyRef = useRef(false)
+  const ordenEstadoRef = useRef<string | undefined>(undefined)
+  const skipNextPopstate = useRef(false)
+
   // Pagos consecutivos
   const [pagosOrden, setPagosOrden] = useState<PagoOrden[]>([])
   const [nuevoPagoMonto, setNuevoPagoMonto] = useState('')
@@ -298,6 +303,33 @@ export default function AdminOrdenDetallePage() {
       if (data) setTenantNombre((data as { nombre: string }).nombre)
     })
   }, [profile?.tenant_id])
+
+  // Interceptar cierre/recarga del navegador cuando hay cambios sin guardar
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (dirtyRef.current) { e.preventDefault(); e.returnValue = '' }
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
+
+  // Interceptar botón atrás del dispositivo/navegador dentro del SPA
+  useEffect(() => {
+    const onPopState = () => {
+      if (skipNextPopstate.current) { skipNextPopstate.current = false; return }
+      if (dirtyRef.current) {
+        window.history.pushState(null, '', window.location.href)
+        setPendingNavBack(true)
+        setShowExitDialog(true)
+      } else if (ordenEstadoRef.current === 'pagado') {
+        window.history.pushState(null, '', window.location.href)
+        setPendingNavBack(true)
+        setShowFinalizeDialog(true)
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   // Guardar borrador automáticamente cuando cambian los campos del sidebar
   useEffect(() => {
@@ -748,6 +780,10 @@ export default function AdminOrdenDetallePage() {
     }
   }
 
+  // Mantener refs sincronizados con el estado actual (se ejecuta en cada render)
+  dirtyRef.current = dirty
+  ordenEstadoRef.current = orden?.estado
+
   if (!orden) return <div className="p-8 text-center text-gray-500">Cargando...</div>
 
   const repuestosItems = items.filter((i) => i.origen !== 'mano_obra')
@@ -854,7 +890,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   await handleGuardar()
                   setSavingFromDialog(false)
                   setShowExitDialog(false)
-                  if (pendingNavBack) router.back()
+                  if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
                 }}
                 disabled={savingFromDialog}
                 className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-semibold transition-colors"
@@ -866,7 +902,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
                   setDirty(false)
                   setShowExitDialog(false)
-                  if (pendingNavBack) router.back()
+                  if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
                 }}
                 className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
               >
@@ -904,14 +940,14 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   }).eq('id', ordenId)
                   setSavingFinalize(false)
                   setShowFinalizeDialog(false)
-                  if (pendingNavBack) router.back()
+                  if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
                 }}
                 className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 {savingFinalize ? 'Guardando...' : 'Sí, marcar como Finalizada'}
               </button>
               <button
-                onClick={() => { setShowFinalizeDialog(false); if (pendingNavBack) router.back() }}
+                onClick={() => { setShowFinalizeDialog(false); if (pendingNavBack) { skipNextPopstate.current = true; router.back() } }}
                 className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
               >
                 No, mantener como Pagada
@@ -982,6 +1018,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                 setPendingNavBack(true)
                 setShowFinalizeDialog(true)
               } else {
+                skipNextPopstate.current = true
                 router.back()
               }
             }}
