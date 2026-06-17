@@ -248,6 +248,12 @@ export default function AdminOrdenDetallePage() {
       if (ord.estado === 'falta_revision') {
         supabase.from('ordenes').update({ estado: 'en_proceso' }).eq('id', ordenId).then(() => {})
         ord = { ...ord, estado: 'en_proceso' }
+        // Actualizar draft para que no sobrescriba el estado auto-confirmado
+        try {
+          const dk = ORDEN_DRAFT_KEY(ordenId)
+          const ds = localStorage.getItem(dk)
+          if (ds) localStorage.setItem(dk, JSON.stringify({ ...JSON.parse(ds), estado: 'en_proceso' }))
+        } catch { /* ignore */ }
       }
       setOrden(ord)
       setEditCliente(ord.cliente)
@@ -703,6 +709,15 @@ export default function AdminOrdenDetallePage() {
       setNuevoPagoMonto('')
       setNuevoPagoMetodo('')
       setNuevoPagoNotas('')
+      if (autoEstadoOrden) {
+        // Reflejar el estado pagado de inmediato y actualizar draft para que cargar() no lo pise
+        setEstado('pagado' as EstadoOrden)
+        try {
+          const dk = ORDEN_DRAFT_KEY(ordenId)
+          const ds = localStorage.getItem(dk)
+          if (ds) localStorage.setItem(dk, JSON.stringify({ ...JSON.parse(ds), estado: 'pagado' }))
+        } catch { /* ignore */ }
+      }
       await cargar()
     } finally {
       setSavingPago(false)
