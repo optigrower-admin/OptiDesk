@@ -84,7 +84,7 @@ function formatAbonoDisplay(raw: string): string {
   return '$' + num.toLocaleString('es-CO')
 }
 
-type EstadoOrden = 'falta_revision' | 'en_proceso' | 'pendiente' | 'listo'
+type EstadoOrden = 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
 type EstadoPago = 'pagado' | 'abono' | 'pendiente'
 
 interface Categoria {
@@ -207,7 +207,9 @@ export default function AdminOrdenDetallePage() {
   // Control de cambios sin guardar
   const [dirty, setDirty] = useState(false)
   const [showExitDialog, setShowExitDialog] = useState(false)
+  const [showFinalizeDialog, setShowFinalizeDialog] = useState(false)
   const [savingFromDialog, setSavingFromDialog] = useState(false)
+  const [savingFinalize, setSavingFinalize] = useState(false)
   const [pendingNavBack, setPendingNavBack] = useState(false)
 
   // Pagos consecutivos
@@ -476,7 +478,9 @@ export default function AdminOrdenDetallePage() {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('orden_id', ordenId)
-      fd.append('tipo', file.type.startsWith('video/') ? 'video' : 'imagen')
+      const videoExts = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.3gp', '.m4v', '.wmv', '.flv'])
+      const esVideoAdmin = file.type.startsWith('video/') || videoExts.has('.' + (file.name.split('.').pop() ?? '').toLowerCase())
+      fd.append('tipo', esVideoAdmin ? 'video' : 'imagen')
       const res = await fetch('/api/upload', { method: 'POST', body: fd })
       if (res.ok) {
         await cargar()
@@ -641,11 +645,13 @@ export default function AdminOrdenDetallePage() {
       const nuevoEstadoPago = calcularEstadoPago(nuevosPagos, orden.valor_total)
       const totalPagado = nuevosPagos.reduce((s, p) => s + p.monto, 0)
       const ahora = new Date().toISOString()
+      const autoEstadoOrden = nuevoEstadoPago === 'pagado' && !['listo', 'pagado'].includes(orden.estado)
+        ? 'pagado' : null
       await supabase.from('ordenes').update({
         estado_pago: nuevoEstadoPago,
         valor_abono: totalPagado,
         metodo_pago_id: nuevoPagoMetodo || null,
-        ...(nuevoEstadoPago === 'pagado' && orden.estado !== 'listo' ? {} : {}),
+        ...(autoEstadoOrden ? { estado: autoEstadoOrden } : {}),
       }).eq('id', ordenId)
       if (pagoData) {
         await registrarAuditoria(supabase, {
@@ -866,6 +872,56 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
         </div>
       )}
 
+      {/* Dialog finalizar orden */}
+      {showFinalizeDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">Orden pagada</h3>
+                <p className="text-xs text-gray-500">El pago está completo</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600">¿Deseas marcar esta orden como <strong>Finalizada</strong> antes de salir?</p>
+            <div className="space-y-2">
+              <button
+                disabled={savingFinalize}
+                onClick={async () => {
+                  setSavingFinalize(true)
+                  await supabase.from('ordenes').update({
+                    estado: 'listo',
+                    fecha_finalizacion: new Date().toISOString(),
+                  }).eq('id', ordenId)
+                  setSavingFinalize(false)
+                  setShowFinalizeDialog(false)
+                  if (pendingNavBack) router.back()
+                }}
+                className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-xl text-sm font-semibold transition-colors"
+              >
+                {savingFinalize ? 'Guardando...' : 'Sí, marcar como Finalizada'}
+              </button>
+              <button
+                onClick={() => { setShowFinalizeDialog(false); if (pendingNavBack) router.back() }}
+                className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
+              >
+                No, mantener como Pagada
+              </button>
+              <button
+                onClick={() => { setShowFinalizeDialog(false); setPendingNavBack(false) }}
+                className="w-full py-1.5 text-gray-400 hover:text-gray-600 text-xs transition-colors"
+              >
+                Cancelar (quedarme aquí)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal seleccionar formato de impresión */}
       {showPrintModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -917,6 +973,9 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
               if (dirty) {
                 setPendingNavBack(true)
                 setShowExitDialog(true)
+              } else if (orden.estado === 'pagado') {
+                setPendingNavBack(true)
+                setShowFinalizeDialog(true)
               } else {
                 router.back()
               }
@@ -1663,7 +1722,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
               {([
                 { value: 'falta_revision', label: 'Falta revisión' },
                 { value: 'en_proceso', label: 'En proceso' },
-                { value: 'pendiente', label: 'Pendiente' },
+                { value: 'pagado', label: 'Pagado' },
                 { value: 'listo', label: 'Finalizado' },
               ] as { value: EstadoOrden; label: string }[]).map((s) => {
                 const tieneRepPendientes = s.value === 'listo' &&
@@ -1691,6 +1750,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                     }`}
                   >
                     {s.label}
+                    {s.value === 'pagado' && <span className="ml-1 text-xs opacity-60">(auto al pagar)</span>}
                     {tieneRepPendientes && <span className="ml-2 text-xs text-amber-400">⏳ rep. pendientes</span>}
                     {!tieneRepPendientes && pagoIncompleto && (
                       <span className="ml-2 text-xs text-red-300">saldo pendiente</span>

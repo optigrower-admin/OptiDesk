@@ -6,12 +6,14 @@ import { archiveToLimit, LIMITE_TRIGGER_BYTES } from '@/lib/archiveToLimit'
 export const maxDuration = 60
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
-// Android puede enviar video/3gpp (cámaras antiguas/nativas) o video/webm (Chrome)
+// Android puede enviar video/3gpp, video/webm, o application/octet-stream (OPPO/Huawei)
 const ALLOWED_VIDEO_TYPES = [
   'video/mp4', 'video/quicktime',
   'video/3gpp', 'video/3gpp2',
   'video/webm', 'video/x-matroska',
   'video/mpeg',
+  'application/octet-stream', // OPPO ColorOS / Huawei EMUI reportan este tipo para videos
+  '',                          // Algunos navegadores Android no reportan MIME
 ]
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024   // 20 MB
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024  // 200 MB (reducido para mobile)
@@ -39,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Tipo no permitido: ${file.type}` }, { status: 400 })
   }
   if (file.size > maxSize) {
-    return NextResponse.json({ error: `Archivo muy grande (máx ${isImage ? '20' : '500'} MB)` }, { status: 400 })
+    return NextResponse.json({ error: `Archivo muy grande (máx ${isImage ? '20' : '200'} MB)` }, { status: 400 })
   }
 
   // Obtener placa y número de orden para nombrar el archivo

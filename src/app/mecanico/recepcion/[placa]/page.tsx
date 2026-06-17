@@ -16,6 +16,11 @@ interface Categoria {
   subcategorias_servicio: { id: string; nombre: string }[]
 }
 
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.3gp', '.m4v', '.wmv', '.flv', '.ts'])
+const isVideoFile = (file: File): boolean =>
+  file.type.startsWith('video/') ||
+  VIDEO_EXTENSIONS.has('.' + (file.name.split('.').pop() ?? '').toLowerCase())
+
 const DRAFT_KEY = 'optiDesk_recepcion_draft'
 const PANEL_INIT: ClienteMotoPanelResult = { motoId: null, clienteId: null, motoExtras: { marca: '', modelo: '', año: '', color: '', kilometraje: '' }, isKnownMoto: false }
 
@@ -92,11 +97,11 @@ export default function RecepcionPage() {
     const files = Array.from(e.target.files ?? [])
     const rechazados: string[] = []
     const validos = files.filter((f) => {
-      if (f.type.startsWith('video/') && f.size > 200 * 1024 * 1024) {
+      if (isVideoFile(f) && f.size > 200 * 1024 * 1024) {
         rechazados.push(`${f.name} (máx 200 MB para videos)`)
         return false
       }
-      if (f.type.startsWith('image/') && f.size > 20 * 1024 * 1024) {
+      if (!isVideoFile(f) && f.size > 20 * 1024 * 1024) {
         rechazados.push(`${f.name} (máx 20 MB para fotos)`)
         return false
       }
@@ -105,7 +110,7 @@ export default function RecepcionPage() {
     if (rechazados.length) setError(`Archivos rechazados: ${rechazados.join(', ')}`)
     setArchivos((prev) => [...prev, ...validos])
     validos.forEach((f) => {
-      setPreviews((prev) => [...prev, { url: URL.createObjectURL(f), tipo: f.type.startsWith('video/') ? 'video' : 'imagen' }])
+      setPreviews((prev) => [...prev, { url: URL.createObjectURL(f), tipo: isVideoFile(f) ? 'video' : 'imagen' }])
     })
     // Limpiar el input para permitir re-seleccionar el mismo archivo
     e.target.value = ''
@@ -173,7 +178,7 @@ export default function RecepcionPage() {
       const erroresUpload: string[] = []
       for (let i = 0; i < archivos.length; i++) {
         const file = archivos[i]
-        const esVideo = file.type.startsWith('video/')
+        const esVideo = isVideoFile(file)
         setUploadProgress(`Subiendo ${esVideo ? 'video' : 'foto'} ${i + 1} de ${archivos.length}...`)
         try {
           const formData = new FormData()
