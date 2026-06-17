@@ -283,7 +283,7 @@ export default function AdminOrdenDetallePage() {
       // Auto-pagado: solo desde en_proceso (no sobrescribir estados manuales como pendiente)
       if (ord.estado === 'en_proceso' && (ord.valor_total ?? 0) > 0 && pg) {
         const pgList = pg as unknown as PagoOrden[]
-        const totalPagadoCargado = pgList.reduce((s, p) => s + p.monto, 0)
+        const totalPagadoCargado = pgList.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
         const lmOrds = (lmOrd ?? []) as unknown as LavaMotoOrden[]
         const lmTotalCargado = lmOrds.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
         const valorConLMCargado = (ord.valor_total ?? 0) + lmTotalCargado
@@ -852,11 +852,6 @@ export default function AdminOrdenDetallePage() {
   }
 
   const handleDeletePago = async (pagoId: string) => {
-    const pago = pagosOrden.find((p) => p.id === pagoId)
-    if (pago && pago.monto < 0) {
-      alert('Este egreso corresponde al costo de Lava Moto. Para eliminarlo, borra el registro de Lava Moto.')
-      return
-    }
     if (!confirm('¿Eliminar este pago?') || !orden) return
     await supabase.from('pagos_orden').delete().eq('id', pagoId)
     const pagosRestantes = pagosOrden.filter((p) => p.id !== pagoId)
@@ -877,21 +872,8 @@ export default function AdminOrdenDetallePage() {
     setSavingLavaMoto(true)
     setLavaMotoError('')
     try {
-      const costoTotal = lavaMotoConfig.costo * lavaMotoCantidad
       const precioTotal = lavaMotoConfig.precio_venta * lavaMotoCantidad
 
-      // 1. Insertar egreso negativo en pagos_orden para registrar el costo del proveedor
-      const { data: pagoEgreso, error: errPago } = await supabase.from('pagos_orden').insert({
-        orden_id: ordenId,
-        tenant_id: orden.tenant_id,
-        monto: -costoTotal,
-        metodo_pago_id: lavaMotoMetodo,
-        notas: `Costo Lava Moto (${lavaMotoCantidad}×${formatCOP(lavaMotoConfig.costo)})`,
-        registrado_por: profile?.id ?? null,
-      }).select('id').single()
-      if (errPago) throw new Error(errPago.message)
-
-      // 2. Insertar registro de lava moto vinculado al egreso
       const { error: errLM } = await supabase.from('lava_moto_ordenes').insert({
         orden_id: ordenId,
         tenant_id: orden.tenant_id,
@@ -899,16 +881,13 @@ export default function AdminOrdenDetallePage() {
         costo_unitario: lavaMotoConfig.costo,
         precio_venta_unitario: lavaMotoConfig.precio_venta,
         metodo_pago_id: lavaMotoMetodo,
-        pago_costo_id: (pagoEgreso as { id: string } | null)?.id ?? null,
+        pago_costo_id: null,
         registrado_por: profile?.id ?? null,
       })
       if (errLM) throw new Error(errLM.message)
 
-      // 3. Actualizar valor_abono y estado_pago de la orden
-      const todosLosPagos = [...pagosOrden, { monto: -costoTotal }]
       const lmTotalNuevo = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0) + precioTotal
-      const nuevoTotal = (orden.valor_total ?? 0) + lmTotalNuevo
-      const totalCliente = todosLosPagos.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+      const totalCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
       const nuevoEstado = calcularEstadoPago(pagosOrden, (orden.valor_total ?? 0) + lmTotalNuevo)
       await supabase.from('ordenes').update({
         estado_pago: nuevoEstado,
@@ -927,18 +906,11 @@ export default function AdminOrdenDetallePage() {
 
   const handleDeleteLavaMoto = async (id: string) => {
     if (!confirm('¿Eliminar este servicio de lavado?') || !orden) return
-    const lm = lavaMotoOrdenes.find((r) => r.id === id)
-    // Eliminar el egreso vinculado en pagos_orden
-    if (lm?.pago_costo_id) {
-      await supabase.from('pagos_orden').delete().eq('id', lm.pago_costo_id)
-    }
     await supabase.from('lava_moto_ordenes').delete().eq('id', id)
-    // Recalcular estado_pago sin este lava moto
     const lmRestantes = lavaMotoOrdenes.filter((r) => r.id !== id)
     const lmTotal = lmRestantes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-    const pagosRestantes = lm?.pago_costo_id ? pagosOrden.filter((p) => p.id !== lm.pago_costo_id) : pagosOrden
-    const totalCliente = pagosRestantes.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
-    const nuevoEstado = calcularEstadoPago(pagosRestantes, (orden.valor_total ?? 0) + lmTotal)
+    const totalCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+    const nuevoEstado = calcularEstadoPago(pagosOrden, (orden.valor_total ?? 0) + lmTotal)
     await supabase.from('ordenes').update({ estado_pago: nuevoEstado, valor_abono: totalCliente }).eq('id', ordenId)
     await cargar()
   }
@@ -954,7 +926,7 @@ export default function AdminOrdenDetallePage() {
     }
 
     // Bloquear "Finalizado" si el pago no está completo (incluye lava moto)
-    const totalPagadoGuardar = pagosOrden.reduce((s, p) => s + p.monto, 0)
+    const totalPagadoGuardar = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
     const lmTotalGuardar = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
     const valorTotalConLMGuardar = (orden?.valor_total ?? 0) + lmTotalGuardar
     if (estado === 'listo' && totalPagadoGuardar < valorTotalConLMGuardar) {
@@ -1062,6 +1034,11 @@ export default function AdminOrdenDetallePage() {
     const moHTML = manoObraItems.map((item, idx) =>
       `<tr><td style="padding:3px 0;border-bottom:1px dotted #ccc;">${idx + 1}. ${item.descripcion}</td><td style="padding:3px 0;border-bottom:1px dotted #ccc;text-align:right;white-space:nowrap;">$${item.precio_venta.toLocaleString('es-CO')}</td></tr>`
     ).join('')
+    const lmHTML = lavaMotoOrdenes.map((lm, idx) =>
+      `<tr><td style="padding:3px 0;border-bottom:1px dotted #ccc;">${idx + 1}. Lava Moto${lm.cantidad > 1 ? ` ×${lm.cantidad}` : ''}</td><td style="padding:3px 0;border-bottom:1px dotted #ccc;text-align:right;white-space:nowrap;">$${(lm.precio_venta_unitario * lm.cantidad).toLocaleString('es-CO')}</td></tr>`
+    ).join('')
+    const lmTotalPrint = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+    const totalConLM = total + lmTotalPrint
     const html = `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><title>Factura #${orden.numero}</title>
 <style>
@@ -1087,10 +1064,11 @@ ${fechaFin ? `<tr><td class="sm">Fecha salida:</td><td class="sm">${fechaFin}</t
 <hr>
 ${repuestosItems.length > 0 ? `<div class="b sm" style="margin:3px 0 4px">REPUESTOS</div><table>${repHTML}</table>` : ''}
 ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div class="b sm" style="margin:3px 0 4px">MANO DE OBRA</div><table>${moHTML}</table>` : ''}
+${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.length > 0) ? '<hr>' : ''}<div class="b sm" style="margin:3px 0 4px">LAVA MOTO</div><table>${lmHTML}</table>` : ''}
 <hr>
 <table><tr>
 <td class="b" style="font-size:${isTermica ? '14px' : '15px'}">TOTAL</td>
-<td class="b" style="text-align:right;font-size:${isTermica ? '14px' : '15px'}">$${total.toLocaleString('es-CO')}</td>
+<td class="b" style="text-align:right;font-size:${isTermica ? '14px' : '15px'}">$${totalConLM.toLocaleString('es-CO')}</td>
 </tr></table>
 <div class="c sm" style="margin:6px 0;font-style:italic">* Precios incluyen impuestos *</div>
 <hr>
@@ -1845,12 +1823,6 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
 
           {/* ── TOTAL GENERAL ── */}
           <div className="bg-gray-900 rounded-xl px-5 py-4 space-y-1.5">
-            {costoTotal > 0 && (
-              <div className="flex justify-between text-sm text-gray-400">
-                <span>Costo repuestos</span>
-                <span>{formatCOP(costoTotal)}</span>
-              </div>
-            )}
             <div className="flex justify-between text-sm text-gray-300">
               <span>Repuestos</span>
               <span>{formatCOP(totalRepuestos)}</span>
@@ -1863,12 +1835,6 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
               <span>Total</span>
               <span>{formatCOP(total)}</span>
             </div>
-            {costoTotal > 0 && total > 0 && (
-              <div className="flex justify-between text-sm text-green-400">
-                <span>Margen</span>
-                <span>{formatCOP(total - costoTotal)} ({Math.round((1 - costoTotal / total) * 100)}%)</span>
-              </div>
-            )}
           </div>
         </div>
 
@@ -2004,7 +1970,7 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
               ] as { value: EstadoOrden; label: string }[]).map((s) => {
                 const tieneRepPendientes = s.value === 'listo' &&
                   items.some((i) => i.origen !== 'mano_obra' && i.estado_repuesto === 'pedido')
-                const totalPagadoOrden = pagosOrden.reduce((sum, p) => sum + p.monto, 0)
+                const totalPagadoOrden = pagosOrden.filter((p) => p.monto > 0).reduce((sum, p) => sum + p.monto, 0)
                 const lmTotalBtn = lavaMotoOrdenes.reduce((sum, r) => sum + r.precio_venta_unitario * r.cantidad, 0)
                 const valorConLMBtn = (orden.valor_total ?? 0) + lmTotalBtn
                 const pagoIncompleto = s.value === 'listo' && totalPagadoOrden < valorConLMBtn
@@ -2063,7 +2029,6 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
           {/* Pago consecutivo */}
           {(() => {
             const totalPagadoCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
-            const totalEgresosLM = pagosOrden.filter((p) => p.monto < 0).reduce((s, p) => s + Math.abs(p.monto), 0)
             const lmTotal = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
             const totalAPagar = (orden.valor_total ?? 0) + lmTotal
             const saldoPendiente = totalAPagar - totalPagadoCliente
@@ -2112,12 +2077,6 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                     <span>Total pagado</span>
                     <span className="font-semibold text-green-700">{formatCOP(totalPagadoCliente)}</span>
                   </div>
-                  {totalEgresosLM > 0 && (
-                    <div className="flex justify-between text-xs text-red-500">
-                      <span>Egresos Lava Moto</span>
-                      <span className="font-semibold">− {formatCOP(totalEgresosLM)}</span>
-                    </div>
-                  )}
                   {saldoPendiente > 0 && (
                     <div className="flex justify-between text-xs font-semibold border-t border-gray-200 pt-1.5">
                       <span className="text-red-600">Saldo pendiente</span>
