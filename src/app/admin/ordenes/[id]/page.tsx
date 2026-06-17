@@ -846,7 +846,8 @@ export default function AdminOrdenDetallePage() {
       // Recalcular estado_pago y valor_abono (solo pagos positivos del cliente)
       const nuevosPagos = [...pagosOrden, { id: '', monto, metodo_pago_id: nuevoPagoMetodo || null, fecha: new Date().toISOString(), notas: nuevoPagoNotas || null, metodos_pago: null }]
       const lmTotalPago = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-      const nuevoEstadoPago = calcularEstadoPago(nuevosPagos, (orden.valor_total ?? 0) + lmTotalPago)
+      const totalItemsPago = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+      const nuevoEstadoPago = calcularEstadoPago(nuevosPagos, totalItemsPago + lmTotalPago)
       const totalPagado = nuevosPagos.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
       const ahora = new Date().toISOString()
       const autoEstadoOrden = nuevoEstadoPago === 'pagado' && !['listo', 'pagado'].includes(orden.estado)
@@ -890,7 +891,7 @@ export default function AdminOrdenDetallePage() {
     await supabase.from('pagos_orden').delete().eq('id', pagoId)
     const pagosRestantes = pagosOrden.filter((p) => p.id !== pagoId)
     const lmTotal = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-    const totalConLM = (orden.valor_total ?? 0) + lmTotal
+    const totalConLM = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotal
     const nuevoEstadoPago = calcularEstadoPago(pagosRestantes, totalConLM)
     const totalPagado = pagosRestantes.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
     await supabase.from('ordenes').update({
@@ -922,7 +923,7 @@ export default function AdminOrdenDetallePage() {
 
       const lmTotalNuevo = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0) + precioTotal
       const totalCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
-      const nuevoEstado = calcularEstadoPago(pagosOrden, (orden.valor_total ?? 0) + lmTotalNuevo)
+      const nuevoEstado = calcularEstadoPago(pagosOrden, items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotalNuevo)
       await supabase.from('ordenes').update({
         estado_pago: nuevoEstado,
         valor_abono: totalCliente,
@@ -945,7 +946,7 @@ export default function AdminOrdenDetallePage() {
     const lmRestantes = lavaMotoOrdenes.filter((r) => r.id !== id)
     const lmTotal = lmRestantes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
     const totalCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
-    const nuevoEstado = calcularEstadoPago(pagosOrden, (orden.valor_total ?? 0) + lmTotal)
+    const nuevoEstado = calcularEstadoPago(pagosOrden, items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotal)
     await supabase.from('ordenes').update({ estado_pago: nuevoEstado, valor_abono: totalCliente }).eq('id', ordenId)
     await cargar()
   }
@@ -963,7 +964,7 @@ export default function AdminOrdenDetallePage() {
     // Bloquear "Finalizado" si el pago no está completo (incluye lava moto)
     const totalPagadoGuardar = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
     const lmTotalGuardar = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-    const valorTotalConLMGuardar = (orden?.valor_total ?? 0) + lmTotalGuardar
+    const valorTotalConLMGuardar = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotalGuardar
     if (estado === 'listo' && totalPagadoGuardar < valorTotalConLMGuardar) {
       const saldoFaltante = valorTotalConLMGuardar - totalPagadoGuardar
       alert(`No puedes finalizar la orden — falta por pagar ${formatCOP(saldoFaltante)}. Registra el pago completo antes de finalizar.`)
@@ -983,7 +984,7 @@ export default function AdminOrdenDetallePage() {
     try {
       // El estado_pago se calcula automáticamente; valor_abono solo cuenta pagos del cliente
       const lmTotalGs = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-      const estadoPagoCalculado = calcularEstadoPago(pagosOrden, (orden?.valor_total ?? 0) + lmTotalGs)
+      const estadoPagoCalculado = calcularEstadoPago(pagosOrden, items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotalGs)
       const totalPagado = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
 
       const ahora = new Date().toISOString()
@@ -2078,7 +2079,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                   items.some((i) => i.origen !== 'mano_obra' && i.estado_repuesto === 'pedido')
                 const totalPagadoOrden = pagosOrden.filter((p) => p.monto > 0).reduce((sum, p) => sum + p.monto, 0)
                 const lmTotalBtn = lavaMotoOrdenes.reduce((sum, r) => sum + r.precio_venta_unitario * r.cantidad, 0)
-                const valorConLMBtn = (orden.valor_total ?? 0) + lmTotalBtn
+                const valorConLMBtn = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotalBtn
                 const pagoIncompleto = s.value === 'listo' && totalPagadoOrden < valorConLMBtn
                 const umaIncompleto = s.value === 'listo' && esUMA && numerosOrdenUMA.length === 0
                 const pagadoBloqueado = s.value === 'pagado' && totalPagadoOrden < valorConLMBtn
@@ -2136,7 +2137,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
           {(() => {
             const totalPagadoCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
             const lmTotal = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-            const totalAPagar = (orden.valor_total ?? 0) + lmTotal
+            const totalAPagar = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotal
             const saldoPendiente = totalAPagar - totalPagadoCliente
             const estadoPagoCalc = calcularEstadoPago(pagosOrden, totalAPagar)
             const totalPagado = totalPagadoCliente
@@ -2159,7 +2160,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Servicio técnico</span>
-                    <span className="font-semibold text-gray-900">{formatCOP(orden.valor_total ?? 0)}</span>
+                    <span className="font-semibold text-gray-900">{formatCOP(items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0))}</span>
                   </div>
                   {lmTotal > 0 && (
                     <div className="flex justify-between text-xs text-cyan-600">
