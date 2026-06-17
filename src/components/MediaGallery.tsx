@@ -2,6 +2,36 @@
 import { useState } from 'react'
 import { Badge } from '@/components/ui/Badge'
 
+function ConfirmDeleteModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mx-auto mb-4">
+          <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </div>
+        <h3 className="text-base font-semibold text-gray-900 text-center mb-1">¿Eliminar archivo?</h3>
+        <p className="text-sm text-gray-500 text-center mb-6">Esta acción no se puede deshacer.</p>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+          >
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface Medio {
   id: string
   url: string
@@ -16,6 +46,7 @@ export function MediaGallery({ medios, onDelete }: {
   onDelete?: (id: string) => void
 }) {
   const [viewing, setViewing] = useState<Medio | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Medio | null>(null)
 
   const getMediaUrl = (medio: Medio) => {
     if (medio.storage_location === 'drive') return medio.drive_url ?? '#'
@@ -86,7 +117,7 @@ export function MediaGallery({ medios, onDelete }: {
               </a>
               {onDelete && (
                 <button
-                  onClick={(e) => { e.stopPropagation(); onDelete(medio.id) }}
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(medio) }}
                   className="bg-white rounded-md p-1 shadow text-gray-600 hover:text-red-600"
                   title="Eliminar"
                 >
@@ -99,6 +130,14 @@ export function MediaGallery({ medios, onDelete }: {
           </div>
         ))}
       </div>
+
+      {/* Modal confirmar eliminación */}
+      {confirmDelete && onDelete && (
+        <ConfirmDeleteModal
+          onConfirm={() => { onDelete(confirmDelete.id); setConfirmDelete(null) }}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
 
       {/* Lightbox */}
       {viewing && (
