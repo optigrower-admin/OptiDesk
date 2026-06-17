@@ -211,6 +211,7 @@ export default function AdminOrdenDetallePage() {
   const [savingFromDialog, setSavingFromDialog] = useState(false)
   const [savingFinalize, setSavingFinalize] = useState(false)
   const [pendingNavBack, setPendingNavBack] = useState(false)
+  const [pendingNavUrl, setPendingNavUrl] = useState<string | null>(null)
 
   // Refs para interceptar navegación sin crear listeners nuevos en cada render
   const dirtyRef = useRef(false)
@@ -254,6 +255,20 @@ export default function AdminOrdenDetallePage() {
           const ds = localStorage.getItem(dk)
           if (ds) localStorage.setItem(dk, JSON.stringify({ ...JSON.parse(ds), estado: 'en_proceso' }))
         } catch { /* ignore */ }
+      }
+      // Auto-pagado: si los pagos ya cubren el total, marcar como pagado al cargar
+      if (ord.estado !== 'pagado' && ord.estado !== 'listo' && (ord.valor_total ?? 0) > 0 && pg) {
+        const pgList = pg as unknown as PagoOrden[]
+        const totalPagadoCargado = pgList.reduce((s, p) => s + p.monto, 0)
+        if (totalPagadoCargado > 0 && totalPagadoCargado >= (ord.valor_total ?? 0)) {
+          supabase.from('ordenes').update({ estado: 'pagado' }).eq('id', ordenId).then(() => {})
+          ord = { ...ord, estado: 'pagado' }
+          try {
+            const dk = ORDEN_DRAFT_KEY(ordenId)
+            const ds = localStorage.getItem(dk)
+            if (ds) localStorage.setItem(dk, JSON.stringify({ ...JSON.parse(ds), estado: 'pagado' }))
+          } catch { /* ignore */ }
+        }
       }
       setOrden(ord)
       setEditCliente(ord.cliente)
@@ -325,16 +340,38 @@ export default function AdminOrdenDetallePage() {
       if (skipNextPopstate.current) { skipNextPopstate.current = false; return }
       if (dirtyRef.current) {
         window.history.pushState(null, '', window.location.href)
-        setPendingNavBack(true)
+        setPendingNavBack(true); setPendingNavUrl(null)
         setShowExitDialog(true)
       } else if (ordenEstadoRef.current === 'pagado') {
         window.history.pushState(null, '', window.location.href)
-        setPendingNavBack(true)
+        setPendingNavBack(true); setPendingNavUrl(null)
         setShowFinalizeDialog(true)
       }
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  // Interceptar clics en enlaces internos cuando hay cambios o la orden está pagada
+  useEffect(() => {
+    const onLinkClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a')
+      if (!anchor) return
+      const href = anchor.getAttribute('href')
+      if (!href || href.startsWith('#') || href.startsWith('http') || href.startsWith('//')) return
+      if (href === window.location.pathname) return
+      if (dirtyRef.current) {
+        e.preventDefault(); e.stopPropagation()
+        setPendingNavUrl(href); setPendingNavBack(false)
+        setShowExitDialog(true)
+      } else if (ordenEstadoRef.current === 'pagado') {
+        e.preventDefault(); e.stopPropagation()
+        setPendingNavUrl(href); setPendingNavBack(false)
+        setShowFinalizeDialog(true)
+      }
+    }
+    document.addEventListener('click', onLinkClick, true)
+    return () => document.removeEventListener('click', onLinkClick, true)
   }, [])
 
   // Guardar borrador automáticamente cuando cambian los campos del sidebar
@@ -755,6 +792,15 @@ export default function AdminOrdenDetallePage() {
       return
     }
 
+    // Bloquear "Finalizado" en órdenes UMA sin número de orden UMA o "No aplica"
+    if (estado === 'listo') {
+      const esUMAGuardar = (orden?.categorias_servicio?.nombre ?? '').toLowerCase().includes('uma')
+      if (esUMAGuardar && numerosOrdenUMA.length === 0) {
+        alert('Para finalizar una orden UMA, agrega al menos un # de Orden UMA o selecciona "No aplica".')
+        return
+      }
+    }
+
     setSaving(true)
     try {
       // El estado_pago se calcula automáticamente desde pagos_orden
@@ -905,7 +951,8 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   await handleGuardar()
                   setSavingFromDialog(false)
                   setShowExitDialog(false)
-                  if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
+                  if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
+                  else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
                 }}
                 disabled={savingFromDialog}
                 className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-semibold transition-colors"
@@ -917,7 +964,8 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
                   setDirty(false)
                   setShowExitDialog(false)
-                  if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
+                  if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
+                  else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
                 }}
                 className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
               >
@@ -955,20 +1003,25 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                   }).eq('id', ordenId)
                   setSavingFinalize(false)
                   setShowFinalizeDialog(false)
-                  if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
+                  if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
+                  else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
                 }}
                 className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-xl text-sm font-semibold transition-colors"
               >
                 {savingFinalize ? 'Guardando...' : 'Sí, marcar como Finalizada'}
               </button>
               <button
-                onClick={() => { setShowFinalizeDialog(false); if (pendingNavBack) { skipNextPopstate.current = true; router.back() } }}
+                onClick={() => {
+                  setShowFinalizeDialog(false)
+                  if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
+                  else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
+                }}
                 className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
               >
                 No, mantener como Pagada
               </button>
               <button
-                onClick={() => { setShowFinalizeDialog(false); setPendingNavBack(false) }}
+                onClick={() => { setShowFinalizeDialog(false); setPendingNavBack(false); setPendingNavUrl(null) }}
                 className="w-full py-1.5 text-gray-400 hover:text-gray-600 text-xs transition-colors"
               >
                 Cancelar (quedarme aquí)
@@ -1027,10 +1080,10 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
           <button
             onClick={() => {
               if (dirty) {
-                setPendingNavBack(true)
+                setPendingNavBack(true); setPendingNavUrl(null)
                 setShowExitDialog(true)
               } else if (orden.estado === 'pagado') {
-                setPendingNavBack(true)
+                setPendingNavBack(true); setPendingNavUrl(null)
                 setShowFinalizeDialog(true)
               } else {
                 skipNextPopstate.current = true
