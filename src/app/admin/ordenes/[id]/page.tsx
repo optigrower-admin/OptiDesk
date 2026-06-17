@@ -11,6 +11,7 @@ import { PaymentStatus } from '@/components/PaymentStatus'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatCOP } from '@/lib/utils'
+import Link from 'next/link'
 import { registrarAuditoria } from '@/lib/audit'
 import { registrarSalida, registrarDevolucion } from '@/lib/movimientos'
 
@@ -119,6 +120,8 @@ interface OrdenDetalle {
   subcategorias_servicio: { nombre: string } | null
   metodos_pago: { id: string; nombre: string } | null
   usuarios: { nombre: string } | null
+  moto_id: string | null
+  motos: { id: string; marca: string | null; modelo: string | null; año: number | null; color: string | null; kilometraje: number | null } | null
 }
 
 interface ItemOrden {
@@ -222,8 +225,8 @@ export default function AdminOrdenDetallePage() {
     if (!profile?.tenant_id) return
     const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }] = await Promise.all([
       supabase.from('ordenes')
-        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, descripcion, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, tenant_id, created_at, fecha_finalizacion,
-          categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre)`)
+        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, descripcion, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, tenant_id, created_at, fecha_finalizacion, moto_id,
+          categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
         .eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto').eq('orden_id', ordenId),
       supabase.from('medios').select('id, url, tipo, nombre_archivo, storage_location, drive_url').eq('orden_id', ordenId),
@@ -1056,6 +1059,36 @@ ${manoObraItems.length > 0 ? `${repuestosItems.length > 0 ? '<hr>' : ''}<div cla
                 </div>
               )}
             </div>
+
+            {/* Vehículo */}
+            {orden.motos && (
+              <div className="px-5 py-3">
+                <p className="text-xs text-gray-400 mb-1">Vehículo</p>
+                <Link href={`/admin/motos/${orden.motos.id}`}
+                  className="group flex items-start gap-3 hover:bg-blue-50 -mx-2 px-2 py-1 rounded-lg transition-colors">
+                  <span className="text-xl mt-0.5">🏍️</span>
+                  <div className="min-w-0">
+                    {(orden.motos.marca || orden.motos.modelo) ? (
+                      <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">
+                        {[orden.motos.marca, orden.motos.modelo].filter(Boolean).join(' ')}
+                        {orden.motos.año ? ` ${orden.motos.año}` : ''}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic">Sin datos del vehículo</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {[
+                        orden.motos.color,
+                        orden.motos.kilometraje ? `${orden.motos.kilometraje.toLocaleString('es-CO')} km` : null,
+                      ].filter(Boolean).join(' · ') || null}
+                    </p>
+                  </div>
+                  <svg className="w-3.5 h-3.5 text-gray-300 group-hover:text-blue-400 ml-auto mt-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              </div>
+            )}
 
             {/* Cliente */}
             <div className="px-5 py-3">
