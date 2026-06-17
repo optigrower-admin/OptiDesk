@@ -423,6 +423,30 @@ export default function AdminOrdenesPage() {
                         ⏳ {grupo.repuestosPendientes} rep. pendiente{grupo.repuestosPendientes !== 1 ? 's' : ''}
                       </span>
                     )}
+                    {/* Badge tipo de ingreso del orden actual */}
+                    {ordenActual?.categorias_servicio?.nombre && (() => {
+                      const cat = ordenActual.categorias_servicio!.nombre
+                      const esUMA = cat.toLowerCase().includes('uma')
+                      return (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                          esUMA ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {cat}
+                        </span>
+                      )
+                    })()}
+                    {/* Alerta si hay alguna orden UMA activa sin # de orden */}
+                    {servicioOrdenes.some((o) => {
+                      if (o.estado === 'listo') return false
+                      const cat = o.categorias_servicio?.nombre ?? ''
+                      if (!cat.toLowerCase().includes('uma')) return false
+                      const nums = o.numeros_orden_uma ?? []
+                      return !nums.includes('N/A') && nums.filter((n) => n !== 'N/A').length === 0
+                    }) && (
+                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">
+                        # Orden Pendiente
+                      </span>
+                    )}
                     {/* # Orden UMA de la orden activa de servicio UMA */}
                     {(() => {
                       const umaOrden = grupo.ordenes.find(
@@ -465,14 +489,39 @@ export default function AdminOrdenesPage() {
                           </div>
                           <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400 flex-wrap">
                             {orden.usuarios?.nombre && <span>{orden.usuarios.nombre}</span>}
-                            {orden.categorias_servicio?.nombre && (
-                              <span className="bg-gray-100 px-1.5 py-0.5 rounded">{orden.categorias_servicio.nombre}</span>
-                            )}
+                            {orden.categorias_servicio?.nombre && (() => {
+                              const cat = orden.categorias_servicio!.nombre
+                              const esUMA = cat.toLowerCase().includes('uma')
+                              return (
+                                <span className={`px-1.5 py-0.5 rounded font-medium ${
+                                  esUMA ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {cat}
+                                </span>
+                              )
+                            })()}
                             <span>{new Date(orden.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</span>
                             {!orden.telefono && orden.estado !== 'listo' && (
                               <span className="text-amber-500 font-medium">Sin teléfono</span>
                             )}
                           </div>
+                          {/* Badge prominente si UMA sin # de orden */}
+                          {(() => {
+                            const cat = orden.categorias_servicio?.nombre ?? ''
+                            if (!cat.toLowerCase().includes('uma') || orden.estado === 'listo') return null
+                            const nums = orden.numeros_orden_uma ?? []
+                            if (nums.includes('N/A') || nums.filter((n) => n !== 'N/A').length > 0) return null
+                            return (
+                              <div className="mt-1.5">
+                                <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-1 rounded-lg">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                                  </svg>
+                                  # de Orden Pendiente
+                                </span>
+                              </div>
+                            )
+                          })()}
                         </div>
                         <div className="flex-shrink-0 ml-3">
                           <OrderStatus estado={orden.estado} />
