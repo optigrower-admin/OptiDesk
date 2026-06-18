@@ -169,6 +169,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [logoUrl, setLogoUrl]           = useState<string | null>(null)
   const [nombreNegocio, setNombreNegocio] = useState<string | null>(null)
   const [openGroups, setOpenGroups]     = useState<Record<string, boolean>>({ 'serv-tec': true, 'ventas': false, 'mensajes': false, 'comentarios': false })
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   // ── Notificaciones ───────────────────────────────────────────────────────
   const [unreadTotal, setUnreadTotal]   = useState(0)
@@ -444,6 +445,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [pathname])
 
+  // Cerrar el drawer móvil al navegar
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [pathname])
+
   const filterAndSort = (items: NavItem[]) =>
     items
       .filter(i => {
@@ -461,17 +467,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const isBandejaComentariosActive = pathname.startsWith('/admin/comentarios')
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
-  return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {profile?.isStaging && (
-        <div className="flex-shrink-0 bg-amber-400 text-amber-900 text-xs font-semibold text-center py-1 px-4 flex items-center justify-center gap-2">
-          <span>⚠️</span>
-          <span>ENTORNO DE PRUEBA — los datos aquí son independientes de producción</span>
-          <span>⚠️</span>
-        </div>
-      )}
-      <div className="flex flex-1 min-h-0">
-      <aside className="w-48 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
+  const totalAlertasMobile = unreadTotal + nuevosComentarios
+
+  const sidebarContent = (
+    <>
         {/* Logo */}
         <div className="p-4 border-b">
           <div className="flex items-center gap-2">
@@ -526,6 +525,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       const esPubs       = item.href === '/admin/comentarios/bandeja'
                       return (
                         <Link key={item.href} href={item.href}
+                          onClick={() => setMobileNavOpen(false)}
                           className={cn(
                             'flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-colors',
                             pathname.startsWith(item.href)
@@ -556,6 +556,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {standaloneItems.length > 0 && <div className="border-t border-gray-100 my-1" />}
           {standaloneItems.map(item => (
             <Link key={item.href} href={item.href}
+              onClick={() => setMobileNavOpen(false)}
               className={cn(
                 'block px-3 py-2 rounded-lg text-sm transition-colors',
                 pathname.startsWith(item.href)
@@ -611,6 +612,61 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             Cerrar sesión
           </button>
         </div>
+    </>
+  )
+
+  return (
+    <div className="flex flex-col h-screen bg-gray-50">
+      {profile?.isStaging && (
+        <div className="flex-shrink-0 bg-amber-400 text-amber-900 text-xs font-semibold text-center py-1 px-4 flex items-center justify-center gap-2">
+          <span>⚠️</span>
+          <span>ENTORNO DE PRUEBA — los datos aquí son independientes de producción</span>
+          <span>⚠️</span>
+        </div>
+      )}
+
+      {/* Top bar móvil — solo visible debajo de md, no afecta la vista de escritorio */}
+      <div className="md:hidden flex-shrink-0 bg-white border-b border-gray-200 flex items-center justify-between px-3 py-2.5">
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          className="p-1.5 -ml-1.5 text-gray-600 hover:bg-gray-100 rounded-lg relative"
+          aria-label="Abrir menú"
+        >
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+          {totalAlertasMobile > 0 && (
+            <span className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full text-[10px] font-bold min-w-[16px] h-[16px] flex items-center justify-center leading-none">
+              {totalAlertasMobile > 99 ? '99+' : totalAlertasMobile}
+            </span>
+          )}
+        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          {logoUrl ? (
+            <img src={logoUrl} alt="Logo" className="w-6 h-6 rounded-md object-contain bg-gray-50" onError={() => setLogoUrl(null)} />
+          ) : (
+            <div className="w-6 h-6 bg-blue-700 rounded-md flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-bold text-[10px]">OD</span>
+            </div>
+          )}
+          <span className="font-bold text-gray-900 text-sm truncate">{nombreNegocio || 'OptiDesk'}</span>
+        </div>
+        <div className="w-9" />
+      </div>
+
+      {/* Drawer móvil */}
+      {mobileNavOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileNavOpen(false)} />
+          <aside className="relative w-64 max-w-[80vw] h-full bg-white flex flex-col flex-shrink-0 shadow-2xl animate-slide-in-left">
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+
+      <div className="flex flex-1 min-h-0">
+      <aside className="hidden md:flex w-48 bg-white border-r border-gray-200 flex-col flex-shrink-0">
+        {sidebarContent}
       </aside>
 
       <main className="flex-1 overflow-y-auto">
