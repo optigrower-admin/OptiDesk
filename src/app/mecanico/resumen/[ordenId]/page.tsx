@@ -29,6 +29,8 @@ interface OrdenDetalle {
   estado_pago: string
   valor_total: number
   descripcion: string | null
+  created_at: string
+  fecha_finalizacion: string | null
   categoria_servicio_id: string | null
   subcategoria_servicio_id: string | null
   subcategoria_servicio_ids: string[] | null
@@ -81,6 +83,7 @@ export default function ResumenMecanicoPage() {
       supabase
         .from('ordenes')
         .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, descripcion,
+          created_at, fecha_finalizacion,
           categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids,
           categorias_servicio(nombre), subcategorias_servicio(nombre),
           metodos_pago(nombre),
@@ -149,6 +152,7 @@ export default function ResumenMecanicoPage() {
     const { data } = await supabase
       .from('ordenes')
       .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, descripcion,
+        created_at, fecha_finalizacion,
         categoria_servicio_id, subcategoria_servicio_id,
         categorias_servicio(nombre), subcategorias_servicio(nombre),
         metodos_pago(nombre),
@@ -210,6 +214,20 @@ export default function ResumenMecanicoPage() {
           <OrderStatus estado={orden.estado} />
           <PaymentStatus estado={orden.estado_pago as 'pagado' | 'abono' | 'pendiente'} />
         </div>
+      </div>
+
+      {/* Entrada / Salida (solo lectura — la edición es exclusiva de gerencia) */}
+      <div className="flex flex-wrap gap-3 text-xs text-gray-400 px-1">
+        <span>
+          <span className="font-medium text-gray-500">Entrada:</span>{' '}
+          {new Date(orden.created_at).toLocaleString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        </span>
+        {orden.fecha_finalizacion && (
+          <span className="text-green-600">
+            <span className="font-medium">Salida:</span>{' '}
+            {new Date(orden.fecha_finalizacion).toLocaleString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
       </div>
 
       {/* ── CAMPOS EDITABLES ── */}

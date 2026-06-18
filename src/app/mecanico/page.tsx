@@ -15,6 +15,7 @@ interface Orden {
   estado: string
   estado_pago: string
   created_at: string
+  fecha_finalizacion: string | null
   categorias_servicio: { nombre: string } | null
 }
 
@@ -40,7 +41,7 @@ export default function MecanicoHome() {
 
     let query = supabase
       .from('ordenes')
-      .select('id, numero, placa, cliente, estado, estado_pago, created_at, categorias_servicio(nombre)')
+      .select('id, numero, placa, cliente, estado, estado_pago, created_at, fecha_finalizacion, categorias_servicio(nombre)')
       .eq('tenant_id', profile.tenant_id)
       .eq('tipo_orden', 'servicio')
       .order('created_at', { ascending: false })
@@ -212,10 +213,17 @@ export default function MecanicoHome() {
                             <p className="text-xs text-gray-400 mt-0.5">{orden.categorias_servicio.nombre}</p>
                           )}
                           <p className="text-xs text-gray-400 mt-0.5">
-                            {new Date(orden.created_at).toLocaleDateString('es-CO', {
+                            Entrada: {new Date(orden.created_at).toLocaleDateString('es-CO', {
                               day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
                             })}
                           </p>
+                          {orden.fecha_finalizacion && (
+                            <p className="text-xs text-green-600 mt-0.5">
+                              Salida: {new Date(orden.fecha_finalizacion).toLocaleDateString('es-CO', {
+                                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                              })}
+                            </p>
+                          )}
                         </div>
                         <OrderStatus estado={orden.estado} />
                       </Link>

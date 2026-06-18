@@ -26,6 +26,7 @@ interface Orden {
   tipo_orden: string | null
   tipo_servicio: string | null
   created_at: string
+  fecha_finalizacion: string | null
   numeros_orden_uma: string[] | null
   categorias_servicio: { nombre: string } | null
   usuarios: { nombre: string } | null
@@ -45,7 +46,7 @@ interface Categoria {
 
 type FiltroEstado = 'todos' | 'activos' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'listo'
 
-const SELECT_FIELDS = 'id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, tipo_orden, tipo_servicio, created_at, numeros_orden_uma, categorias_servicio(nombre), usuarios:mecanico_id(nombre)'
+const SELECT_FIELDS = 'id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, tipo_orden, tipo_servicio, created_at, fecha_finalizacion, numeros_orden_uma, categorias_servicio(nombre), usuarios:mecanico_id(nombre)'
 
 export default function AdminOrdenesPage() {
   const { profile } = useAuth()
@@ -500,7 +501,10 @@ export default function AdminOrdenesPage() {
                                 </span>
                               )
                             })()}
-                            <span>{new Date(orden.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</span>
+                            <span>Entrada: {new Date(orden.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                            {orden.fecha_finalizacion && (
+                              <span className="text-green-600">Salida: {new Date(orden.fecha_finalizacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                            )}
                             {!orden.telefono && orden.estado !== 'listo' && (
                               <span className="text-amber-500 font-medium">Sin teléfono</span>
                             )}
