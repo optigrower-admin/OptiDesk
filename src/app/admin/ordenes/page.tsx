@@ -60,7 +60,27 @@ export default function AdminOrdenesPage() {
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
   const [loadingCSV, setLoadingCSV] = useState(false)
+  const [refreshTick, setRefreshTick] = useState(0)
   const cancelRef = useRef(false)
+  const hasLoadedRef = useRef(false)
+
+  useEffect(() => {
+    if (!profile?.tenant_id) return
+    const channel = supabase
+      .channel(`ordenes-list-${profile.tenant_id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ordenes', filter: `tenant_id=eq.${profile.tenant_id}` },
+        () => setRefreshTick((t) => t + 1)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'items_orden' },
+        () => setRefreshTick((t) => t + 1)
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [profile?.tenant_id])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -76,7 +96,7 @@ export default function AdminOrdenesPage() {
   useEffect(() => {
     if (!profile?.tenant_id) return
     cancelRef.current = false
-    setLoading(true)
+    if (!hasLoadedRef.current) setLoading(true)
 
     const run = async () => {
       let q = supabase
@@ -146,20 +166,22 @@ export default function AdminOrdenesPage() {
         }
       }
 
-      setGrupos(
-        Array.from(map.entries()).map(([placa, ords]) => ({
+      setGrupos((prev) => {
+        const expandidoPorPlaca = new Map(prev.map((g) => [g.placa, g.expandido]))
+        return Array.from(map.entries()).map(([placa, ords]) => ({
           placa,
           ordenes: ords,
-          expandido: false,
+          expandido: expandidoPorPlaca.get(placa) ?? false,
           repuestosPendientes: ords.reduce((s, o) => s + (pendientesPorOrden.get(o.id) ?? 0), 0),
         }))
-      )
+      })
+      hasLoadedRef.current = true
       setLoading(false)
     }
 
     run()
     return () => { cancelRef.current = true }
-  }, [profile?.tenant_id, busqueda, filtroEstado, filtroCategoria, fechaDesde, fechaHasta])
+  }, [profile?.tenant_id, busqueda, filtroEstado, filtroCategoria, fechaDesde, fechaHasta, refreshTick])
 
   const toggleGrupo = (placa: string) => {
     setGrupos((prev) => prev.map((g) => g.placa === placa ? { ...g, expandido: !g.expandido } : g))

@@ -188,7 +188,7 @@ export default function AdminOrdenDetallePage() {
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
   const [showConsulta, setShowConsulta] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [confirmando] = useState(false) // kept for type compat
+  const [confirmando, setConfirmando] = useState(false)
   const [moDescripcion, setMoDescripcion] = useState('')
   const [moValor, setMoValor] = useState('')
   const [savingMO, setSavingMO] = useState(false)

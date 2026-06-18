@@ -581,8 +581,8 @@ export default function ConfigServicioPage() {
             {profile?.rol === 'gerencia' && !editingLavaMoto && (
               <button
                 onClick={() => {
-                  setLavaCostoEdit(String(lavaMotoConfig.costo))
-                  setLavaPrecioEdit(String(lavaMotoConfig.precio_venta))
+                  setLavaCostoEdit(String(Math.round(lavaMotoConfig.costo)))
+                  setLavaPrecioEdit(String(Math.round(lavaMotoConfig.precio_venta)))
                   setEditingLavaMoto(true)
                 }}
                 className="text-gray-400 hover:text-blue-600 transition-colors p-1"

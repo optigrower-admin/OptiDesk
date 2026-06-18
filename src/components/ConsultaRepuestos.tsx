@@ -185,7 +185,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
   /* ── Seleccionar UMA para agregar ── */
   const selUMA = (r: RepuestoUMA) => {
     setUmaSelId(r.id)
-    setUmaPrecio(String(r.precio_publico_iva ?? 0))
+    setUmaPrecio(String(Math.round(r.precio_publico_iva ?? 0)))
     setUmaCant(1); setUmaErrPrecio('')
   }
 
@@ -212,7 +212,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
   const selExt = (r: RepuestoExterno) => {
     setExtSelId(r.id)
     setExtCant(1)
-    setExtPrecioSel(String(r.ultimo_precio_venta ?? 0))
+    setExtPrecioSel(String(Math.round(r.ultimo_precio_venta ?? 0)))
   }
 
   const confirmarExt = () => {

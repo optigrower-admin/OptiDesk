@@ -1,6 +1,6 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
@@ -34,10 +34,25 @@ export default function MecanicoHome() {
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
   const [loading, setLoading] = useState(true)
+  const [refreshTick, setRefreshTick] = useState(0)
+  const hasLoadedRef = useRef(false)
 
   useEffect(() => {
     if (!profile?.tenant_id) return
-    setLoading(true)
+    const channel = supabase
+      .channel(`ordenes-mecanico-${profile.tenant_id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ordenes', filter: `tenant_id=eq.${profile.tenant_id}` },
+        () => setRefreshTick((t) => t + 1)
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [profile?.tenant_id])
+
+  useEffect(() => {
+    if (!profile?.tenant_id) return
+    if (!hasLoadedRef.current) setLoading(true)
 
     let query = supabase
       .from('ordenes')
@@ -64,14 +79,18 @@ export default function MecanicoHome() {
         if (!map.has(o.placa)) map.set(o.placa, [])
         map.get(o.placa)!.push(o)
       }
-      setGrupos(Array.from(map.entries()).map(([placa, ordenes]) => ({
-        placa,
-        ordenes,
-        expandido: false,
-      })))
+      setGrupos((prev) => {
+        const expandidoPorPlaca = new Map(prev.map((g) => [g.placa, g.expandido]))
+        return Array.from(map.entries()).map(([placa, ordenes]) => ({
+          placa,
+          ordenes,
+          expandido: expandidoPorPlaca.get(placa) ?? false,
+        }))
+      })
+      hasLoadedRef.current = true
       setLoading(false)
     })
-  }, [profile?.tenant_id, busqueda, filtroEstado, fechaDesde, fechaHasta])
+  }, [profile?.tenant_id, busqueda, filtroEstado, fechaDesde, fechaHasta, refreshTick])
 
   const toggleGrupo = (placa: string) => {
     setGrupos((prev) => prev.map((g) => g.placa === placa ? { ...g, expandido: !g.expandido } : g))
