@@ -286,6 +286,16 @@ export default function AdminOrdenDetallePage() {
       // Auto-confirmar: cuando un admin abre una orden en falta_revision la pasa a en_proceso
       if (ord.estado === 'falta_revision') {
         supabase.from('ordenes').update({ estado: 'en_proceso' }).eq('id', ordenId).then(() => {})
+        registrarAuditoria(supabase, {
+          tenant_id: ord.tenant_id,
+          tabla: 'ordenes',
+          registro_id: ordenId,
+          tipo: 'edicion',
+          valor_anterior: { estado: 'falta_revision' },
+          valor_nuevo: { estado: 'en_proceso' },
+          descripcion: `Confirmó automáticamente orden #${ord.numero} al abrirla → en_proceso`,
+          usuario_id: profile?.id,
+        }).catch(() => {})
         ord = { ...ord, estado: 'en_proceso' }
         // Actualizar draft para que no sobrescriba el estado auto-confirmado
         try {
@@ -303,6 +313,16 @@ export default function AdminOrdenDetallePage() {
         const valorConLMCargado = (ord.valor_total ?? 0) + lmTotalCargado
         if (totalPagadoCargado > 0 && totalPagadoCargado >= valorConLMCargado) {
           supabase.from('ordenes').update({ estado: 'pagado' }).eq('id', ordenId).then(() => {})
+          registrarAuditoria(supabase, {
+            tenant_id: ord.tenant_id,
+            tabla: 'ordenes',
+            registro_id: ordenId,
+            tipo: 'edicion',
+            valor_anterior: { estado: 'en_proceso' },
+            valor_nuevo: { estado: 'pagado' },
+            descripcion: `Marcó automáticamente como pagado orden #${ord.numero} (pago completo recibido)`,
+            usuario_id: profile?.id,
+          }).catch(() => {})
           ord = { ...ord, estado: 'pagado' }
           try {
             const dk = ORDEN_DRAFT_KEY(ordenId)
@@ -587,6 +607,16 @@ export default function AdminOrdenDetallePage() {
   const handleEstadoRepuesto = async (item: ItemOrden, nuevoEstado: 'pedido' | 'ok' | null) => {
     await supabase.from('items_orden').update({ estado_repuesto: nuevoEstado }).eq('id', item.id)
     setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, estado_repuesto: nuevoEstado } : i))
+    await registrarAuditoria(supabase, {
+      tenant_id: orden!.tenant_id,
+      tabla: 'items_orden',
+      registro_id: item.id,
+      tipo: 'edicion',
+      valor_anterior: { estado_repuesto: item.estado_repuesto },
+      valor_nuevo: { estado_repuesto: nuevoEstado },
+      descripcion: `Cambió estado de "${item.descripcion}" a ${nuevoEstado ?? 'sin estado'} | orden #${orden?.numero}`,
+      usuario_id: profile?.id,
+    })
   }
 
   const handleDeleteMedio = async (id: string) => {
@@ -753,6 +783,7 @@ export default function AdminOrdenDetallePage() {
   const handleEditItem = async () => {
     if (!editingItem || !editingItem.descripcion.trim()) return
     const precio = parseInt(editingItem.precio.replace(/\D/g, ''), 10) || 0
+    const itemAnterior = items.find((i) => i.id === editingItem.id)
     await supabase.from('items_orden').update({
       descripcion: editingItem.descripcion.trim(),
       precio_venta: precio,
@@ -761,6 +792,16 @@ export default function AdminOrdenDetallePage() {
       i.id === editingItem.id ? { ...i, precio_venta: precio, descripcion: editingItem.descripcion.trim() } : i
     ).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
     await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+    await registrarAuditoria(supabase, {
+      tenant_id: orden!.tenant_id,
+      tabla: 'items_orden',
+      registro_id: editingItem.id,
+      tipo: 'edicion',
+      valor_anterior: { descripcion: itemAnterior?.descripcion, precio_venta: itemAnterior?.precio_venta },
+      valor_nuevo: { descripcion: editingItem.descripcion.trim(), precio_venta: precio },
+      descripcion: `Editó ítem "${editingItem.descripcion.trim()}" | orden #${orden?.numero}`,
+      usuario_id: profile?.id,
+    })
     setEditingItem(null)
     await cargar()
   }
@@ -791,6 +832,16 @@ export default function AdminOrdenDetallePage() {
         : i
     ).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
     await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+    await registrarAuditoria(supabase, {
+      tenant_id: orden!.tenant_id,
+      tabla: 'items_orden',
+      registro_id: editingRepuesto.id,
+      tipo: 'edicion',
+      valor_anterior: { descripcion: editingRepuesto.descripcion, cantidad: editingRepuesto.cantidad, precio_venta: editingRepuesto.precio_venta, costo: editingRepuesto.costo },
+      valor_nuevo: { descripcion: erDesc.trim(), cantidad: cant, precio_venta: precio, costo },
+      descripcion: `Editó repuesto "${erDesc.trim()}" | orden #${orden?.numero}`,
+      usuario_id: profile?.id,
+    })
     setErSaving(false)
     setEditingRepuesto(null)
     await cargar()
@@ -901,6 +952,7 @@ export default function AdminOrdenDetallePage() {
 
   const handleDeletePago = async (pagoId: string) => {
     if (!confirm('¿Eliminar este pago?') || !orden) return
+    const pagoEliminado = pagosOrden.find((p) => p.id === pagoId)
     await supabase.from('pagos_orden').delete().eq('id', pagoId)
     const pagosRestantes = pagosOrden.filter((p) => p.id !== pagoId)
     const lmTotal = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
@@ -911,6 +963,15 @@ export default function AdminOrdenDetallePage() {
       estado_pago: nuevoEstadoPago,
       valor_abono: totalPagado,
     }).eq('id', ordenId)
+    await registrarAuditoria(supabase, {
+      tenant_id: orden.tenant_id,
+      tabla: 'pagos_orden',
+      registro_id: pagoId,
+      tipo: 'eliminacion',
+      valor_anterior: pagoEliminado ? { monto: pagoEliminado.monto, metodo_pago_id: pagoEliminado.metodo_pago_id } : undefined,
+      descripcion: `Eliminó pago de $${(pagoEliminado?.monto ?? 0).toLocaleString('es-CO')} | orden #${orden.numero}`,
+      usuario_id: profile?.id,
+    })
     await cargar()
   }
 
@@ -922,7 +983,7 @@ export default function AdminOrdenDetallePage() {
     try {
       const precioTotal = lavaMotoConfig.precio_venta * lavaMotoCantidad
 
-      const { error: errLM } = await supabase.from('lava_moto_ordenes').insert({
+      const { data: lmData, error: errLM } = await supabase.from('lava_moto_ordenes').insert({
         orden_id: ordenId,
         tenant_id: orden.tenant_id,
         cantidad: lavaMotoCantidad,
@@ -931,7 +992,7 @@ export default function AdminOrdenDetallePage() {
         metodo_pago_id: lavaMotoMetodo,
         pago_costo_id: null,
         registrado_por: profile?.id ?? null,
-      })
+      }).select('id').single()
       if (errLM) throw new Error(errLM.message)
 
       const lmTotalNuevo = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0) + precioTotal
@@ -941,6 +1002,17 @@ export default function AdminOrdenDetallePage() {
         estado_pago: nuevoEstado,
         valor_abono: totalCliente,
       }).eq('id', ordenId)
+      if (lmData) {
+        await registrarAuditoria(supabase, {
+          tenant_id: orden.tenant_id,
+          tabla: 'lava_moto_ordenes',
+          registro_id: (lmData as { id: string }).id,
+          tipo: 'movimiento',
+          valor_nuevo: { cantidad: lavaMotoCantidad, precio_venta_unitario: lavaMotoConfig.precio_venta },
+          descripcion: `Agregó servicio de lavado ×${lavaMotoCantidad} ($${precioTotal.toLocaleString('es-CO')}) | orden #${orden.numero}`,
+          usuario_id: profile?.id,
+        })
+      }
 
       setLavaMotoCantidad(1)
       setLavaMotoMetodo('')
@@ -955,12 +1027,22 @@ export default function AdminOrdenDetallePage() {
 
   const handleDeleteLavaMoto = async (id: string) => {
     if (!confirm('¿Eliminar este servicio de lavado?') || !orden) return
+    const lmEliminado = lavaMotoOrdenes.find((r) => r.id === id)
     await supabase.from('lava_moto_ordenes').delete().eq('id', id)
     const lmRestantes = lavaMotoOrdenes.filter((r) => r.id !== id)
     const lmTotal = lmRestantes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
     const totalCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
     const nuevoEstado = calcularEstadoPago(pagosOrden, items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotal)
     await supabase.from('ordenes').update({ estado_pago: nuevoEstado, valor_abono: totalCliente }).eq('id', ordenId)
+    await registrarAuditoria(supabase, {
+      tenant_id: orden.tenant_id,
+      tabla: 'lava_moto_ordenes',
+      registro_id: id,
+      tipo: 'eliminacion',
+      valor_anterior: lmEliminado ? { cantidad: lmEliminado.cantidad, precio_venta_unitario: lmEliminado.precio_venta_unitario } : undefined,
+      descripcion: `Eliminó servicio de lavado | orden #${orden.numero}`,
+      usuario_id: profile?.id,
+    })
     await cargar()
   }
 

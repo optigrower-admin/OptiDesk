@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { registrarAuditoria } from '@/lib/audit'
 
 interface Usuario {
   id: string
@@ -78,7 +79,19 @@ export default function UsuariosPage() {
   }
 
   const toggleActivo = async (id: string, activo: boolean) => {
+    const u = usuarios.find((x) => x.id === id)
     await supabase.from('usuarios').update({ activo: !activo }).eq('id', id)
+    const { data: { user } } = await supabase.auth.getUser()
+    await registrarAuditoria(supabase, {
+      tenant_id: u?.tenant_id ?? '',
+      tabla: 'usuarios',
+      registro_id: id,
+      tipo: 'edicion',
+      valor_anterior: { activo },
+      valor_nuevo: { activo: !activo },
+      descripcion: `${!activo ? 'Activó' : 'Desactivó'} a "${u?.nombre}" (control_total)`,
+      usuario_id: user?.id,
+    })
     setUsuarios((prev) => prev.map((u) => u.id === id ? { ...u, activo: !activo } : u))
   }
 
@@ -130,12 +143,24 @@ export default function UsuariosPage() {
   const guardarCambios = async () => {
     if (!editando) return
     setSavingRol(true)
+    const nuevoNombre = editNombre.trim() || editando.nombre
     await supabase.from('usuarios').update({
       rol: editRol,
-      nombre: editNombre.trim() || editando.nombre,
+      nombre: nuevoNombre,
     }).eq('id', editando.id)
+    const { data: { user } } = await supabase.auth.getUser()
+    await registrarAuditoria(supabase, {
+      tenant_id: editando.tenant_id ?? '',
+      tabla: 'usuarios',
+      registro_id: editando.id,
+      tipo: 'edicion',
+      valor_anterior: { rol: editando.rol, nombre: editando.nombre },
+      valor_nuevo: { rol: editRol, nombre: nuevoNombre },
+      descripcion: `Editó a "${editando.nombre}" (rol ${editando.rol} → ${editRol}) — control_total`,
+      usuario_id: user?.id,
+    })
     setUsuarios((prev) => prev.map((u) =>
-      u.id === editando.id ? { ...u, rol: editRol, nombre: editNombre.trim() || u.nombre } : u
+      u.id === editando.id ? { ...u, rol: editRol, nombre: nuevoNombre } : u
     ))
     setEditando(null)
     setSavingRol(false)

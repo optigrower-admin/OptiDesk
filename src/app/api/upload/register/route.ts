@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { archiveToLimit, LIMITE_TRIGGER_BYTES } from '@/lib/archiveToLimit'
+import { registrarAuditoria } from '@/lib/audit'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -29,6 +30,18 @@ export async function POST(req: NextRequest) {
     storage_location: 'r2',
     subido_por: user.id,
   }).select('id, url, tipo').single()
+
+  if (medio) {
+    await registrarAuditoria(supabase, {
+      tenant_id: perfil.tenant_id,
+      tabla: 'medios',
+      registro_id: medio.id,
+      tipo: 'movimiento',
+      valor_nuevo: { tipo, nombre_archivo, orden_id },
+      descripcion: `Subió ${tipo === 'video' ? 'un video' : 'una foto'} (${nombre_archivo}) a la orden`,
+      usuario_id: user.id,
+    })
+  }
 
   await supabase.rpc('increment_tenant_storage', {
     p_tenant_id: perfil.tenant_id,

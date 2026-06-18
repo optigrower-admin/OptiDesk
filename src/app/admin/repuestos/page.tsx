@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
+import { registrarAuditoria } from '@/lib/audit'
 
 type Tab = 'catalogo' | 'ventas'
 type FiltroOrigen = 'todos' | 'uma' | 'terceros'
@@ -194,6 +195,15 @@ export default function AdminRepuestosPage() {
       const newTotal = ((rest as { precio_venta: number; cantidad: number }[]) ?? []).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
       await supabase.from('ordenes').update({ valor_total: newTotal }).eq('id', item.ordenes.id)
     }
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'items_orden',
+      registro_id: item.id,
+      tipo: 'eliminacion',
+      valor_anterior: { descripcion: item.descripcion, precio_venta: item.precio_venta, cantidad: item.cantidad },
+      descripcion: `Eliminó ítem "${item.descripcion}" de venta directa #${item.ordenes?.numero}`,
+      usuario_id: profile?.id,
+    })
     await cargarVentas()
   }
 

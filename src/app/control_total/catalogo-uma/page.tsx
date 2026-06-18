@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCOP } from '@/lib/utils'
+import { registrarAuditoria } from '@/lib/audit'
 
 interface Tenant { id: string; nombre: string }
 interface Repuesto {
@@ -81,7 +82,20 @@ export default function CatalogoUMAPage() {
   }
 
   const updateCantidad = async (id: string, cantidad: number) => {
+    const r = repuestos.find((x) => x.id === id)
+    if (r && r.cantidad === cantidad) return
     await supabase.from('repuestos_uma').update({ cantidad }).eq('id', id)
+    const { data: { user } } = await supabase.auth.getUser()
+    await registrarAuditoria(supabase, {
+      tenant_id: tenantId,
+      tabla: 'repuestos_uma',
+      registro_id: id,
+      tipo: 'edicion',
+      valor_anterior: { cantidad: r?.cantidad },
+      valor_nuevo: { cantidad },
+      descripcion: `Ajustó cantidad de "${r?.codigo} - ${r?.descripcion}" a ${cantidad} (control_total)`,
+      usuario_id: user?.id,
+    })
     setRepuestos((prev) => prev.map((r) => r.id === id ? { ...r, cantidad } : r))
   }
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
+import { registrarAuditoria } from '@/lib/audit'
 
 interface RepuestoUMA {
   id: string
@@ -63,7 +64,18 @@ export default function RepuestosUMAPage() {
   useEffect(() => { cargar() }, [cargar])
 
   const toggleActivo = async (id: string, activo: boolean) => {
+    const r = repuestos.find((x) => x.id === id)
     await supabase.from('repuestos_uma').update({ activo: !activo }).eq('id', id)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'repuestos_uma',
+      registro_id: id,
+      tipo: 'edicion',
+      valor_anterior: { activo },
+      valor_nuevo: { activo: !activo },
+      descripcion: `${!activo ? 'Activó' : 'Desactivó'} ${fuente === 'repuesto' ? 'repuesto' : 'lubricante'} "${r?.codigo} - ${r?.descripcion}"`,
+      usuario_id: profile?.id,
+    })
     setRepuestos((prev) => prev.map((r) => r.id === id ? { ...r, activo: !activo } : r))
   }
 

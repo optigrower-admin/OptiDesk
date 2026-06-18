@@ -8,6 +8,7 @@ import { ConsultaRepuestos } from '@/components/ConsultaRepuestos'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatCOP, generarCodigoExterno } from '@/lib/utils'
+import { registrarAuditoria } from '@/lib/audit'
 
 interface ItemOrdenLocal {
   id?: string
@@ -77,6 +78,15 @@ export default function RepuestosPage() {
         .single()
 
       if (externo) {
+        await registrarAuditoria(supabase, {
+          tenant_id: profile.tenant_id,
+          tabla: 'repuestos_externos',
+          registro_id: externo.id,
+          tipo: 'movimiento',
+          valor_nuevo: { codigo, nombre: externoForm.nombre, precio_venta: parseFloat(externoForm.precio_venta) },
+          descripcion: `Creó repuesto externo "${externoForm.nombre}" (${codigo})`,
+          usuario_id: profile.id,
+        })
         addItem({
           descripcion: externoForm.nombre,
           origen: 'externo',
@@ -114,6 +124,16 @@ export default function RepuestosPage() {
       // Actualizar total en orden
       const total = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
       await supabase.from('ordenes').update({ valor_total: total }).eq('id', ordenId)
+
+      await registrarAuditoria(supabase, {
+        tenant_id: profile?.tenant_id ?? '',
+        tabla: 'items_orden',
+        registro_id: ordenId,
+        tipo: 'movimiento',
+        valor_nuevo: { cantidad_items: items.length, total },
+        descripcion: `Guardó ${items.length} repuesto${items.length !== 1 ? 's' : ''} por ${formatCOP(total)} | orden`,
+        usuario_id: profile?.id,
+      })
 
       router.push(`/mecanico/resumen/${ordenId}`)
     } finally {

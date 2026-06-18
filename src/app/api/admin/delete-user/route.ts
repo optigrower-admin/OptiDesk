@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { registrarAuditoria } from '@/lib/audit'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -52,6 +53,16 @@ export async function POST(req: NextRequest) {
     // Luego eliminar de auth.users
     const { error: authError } = await admin.auth.admin.deleteUser(user_id)
     if (authError) throw new Error(authError.message)
+
+    await registrarAuditoria(supabase, {
+      tenant_id: target.tenant_id,
+      tabla: 'usuarios',
+      registro_id: user_id,
+      tipo: 'eliminacion',
+      valor_anterior: { nombre: target.nombre, rol: target.rol },
+      descripcion: `Eliminó al integrante "${target.nombre}" (${target.rol})`,
+      usuario_id: user.id,
+    })
 
     return NextResponse.json({ ok: true, mensaje: `Usuario "${target.nombre}" eliminado` })
   } catch (err: unknown) {

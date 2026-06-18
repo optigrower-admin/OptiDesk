@@ -12,6 +12,7 @@ import { ClienteMotoPanel } from '@/components/ClienteMotoPanel'
 import { formatCOP, generarCodigoExterno, normalizarPlaca } from '@/lib/utils'
 import { upsertMotoCliente } from '@/lib/clienteMoto'
 import { registrarSalida, registrarDevolucion } from '@/lib/movimientos'
+import { registrarAuditoria } from '@/lib/audit'
 import type { ClienteMotoPanelResult } from '@/components/ClienteMotoPanel'
 
 interface ItemVenta {
@@ -204,6 +205,15 @@ function NuevaVentaContent() {
         .select('id')
         .single()
       if (externo) {
+        await registrarAuditoria(supabase, {
+          tenant_id: profile.tenant_id,
+          tabla: 'repuestos_externos',
+          registro_id: (externo as { id: string }).id,
+          tipo: 'movimiento',
+          valor_nuevo: { codigo, nombre: externoForm.nombre, precio_venta: precio },
+          descripcion: `Creó repuesto externo "${externoForm.nombre}" (${codigo})`,
+          usuario_id: profile.id,
+        })
         addItem({
           descripcion: externoForm.nombre,
           origen: 'externo',
@@ -313,6 +323,16 @@ function NuevaVentaContent() {
           )
         }
 
+        await registrarAuditoria(supabase, {
+          tenant_id: profile.tenant_id,
+          tabla: 'ordenes',
+          registro_id: editId,
+          tipo: 'edicion',
+          valor_nuevo: { cliente, total, cantidad_items: items.length },
+          descripcion: `Editó venta directa de "${cliente}" — ${items.length} ítem${items.length !== 1 ? 's' : ''}, ${formatCOP(total)}`,
+          usuario_id: profile.id,
+        })
+
         router.push('/admin/repuestos')
         return
       }
@@ -369,6 +389,16 @@ function NuevaVentaContent() {
           })
         )
       )
+
+      await registrarAuditoria(supabase, {
+        tenant_id: profile.tenant_id,
+        tabla: 'ordenes',
+        registro_id: ordenData.id,
+        tipo: 'movimiento',
+        valor_nuevo: { cliente, total, cantidad_items: items.length },
+        descripcion: `Registró venta directa a "${cliente}" — ${items.length} ítem${items.length !== 1 ? 's' : ''}, ${formatCOP(total)}`,
+        usuario_id: profile.id,
+      })
 
       localStorage.removeItem(DRAFT_KEY)
       router.push('/admin/repuestos')

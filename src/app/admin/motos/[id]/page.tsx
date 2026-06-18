@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
+import { registrarAuditoria } from '@/lib/audit'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type Moto = {
@@ -222,12 +223,25 @@ export default function MotoPerfilPage() {
   const guardarEdicion = async () => {
     if (!moto) return
     setSaving(true)
-    await supabase.from('motos').update({
+    const nuevo = {
       marca: eMarca || null, modelo: eModelo || null,
       año: eAño ? parseInt(eAño) : null, color: eColor || null,
       kilometraje: eKm ? parseInt(eKm) : null, notas: eNotas || null,
+    }
+    await supabase.from('motos').update({
+      ...nuevo,
       updated_at: new Date().toISOString(),
     }).eq('id', moto.id)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'motos',
+      registro_id: moto.id,
+      tipo: 'edicion',
+      valor_anterior: { marca: moto.marca, modelo: moto.modelo, año: moto.año, color: moto.color, kilometraje: moto.kilometraje, notas: moto.notas },
+      valor_nuevo: nuevo,
+      descripcion: `Editó datos de la moto ${moto.placa}`,
+      usuario_id: profile?.id,
+    })
     setSaving(false); setEditando(false); cargar()
   }
 

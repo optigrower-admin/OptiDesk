@@ -58,7 +58,12 @@ export default function AdminAuditoriaPage() {
           <option value="">Todas las tablas</option>
           <option value="ordenes">Órdenes</option>
           <option value="items_orden">Ítems</option>
-          <option value="medios">Medios</option>
+          <option value="pagos_orden">Pagos</option>
+          <option value="lava_moto_ordenes">Lava moto</option>
+          <option value="medios">Fotos/Videos</option>
+          <option value="clientes">Clientes</option>
+          <option value="motos">Motos</option>
+          <option value="usuarios">Equipo</option>
           <option value="repuestos_uma">Repuestos UMA</option>
           <option value="repuestos_externos">Repuestos externos</option>
         </select>

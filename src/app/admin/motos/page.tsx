@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
+import { registrarAuditoria } from '@/lib/audit'
 
 interface Moto {
   id: string
@@ -110,13 +111,24 @@ function MotosContent() {
   const guardarEdicion = async () => {
     if (!editMoto) return
     setSaving(true)
-    await supabase.from('motos').update({
+    const nuevo = {
       marca: editMarca || null,
       modelo: editModelo || null,
       año: editAño ? parseInt(editAño) : null,
       color: editColor || null,
       notas: editNotas || null,
-    }).eq('id', editMoto.id)
+    }
+    await supabase.from('motos').update(nuevo).eq('id', editMoto.id)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'motos',
+      registro_id: editMoto.id,
+      tipo: 'edicion',
+      valor_anterior: { marca: editMoto.marca, modelo: editMoto.modelo, año: editMoto.año, color: editMoto.color },
+      valor_nuevo: nuevo,
+      descripcion: `Editó datos de la moto ${editMoto.placa}`,
+      usuario_id: profile?.id,
+    })
     setSaving(false)
     setEditMoto(null)
     await cargar()

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { registrarAuditoria } from '@/lib/audit'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -44,6 +45,16 @@ export async function POST(req: NextRequest) {
     await admin.auth.admin.deleteUser(authUser.user.id)
     return NextResponse.json({ error: profileError.message }, { status: 400 })
   }
+
+  await registrarAuditoria(supabase, {
+    tenant_id,
+    tabla: 'usuarios',
+    registro_id: authUser.user.id,
+    tipo: 'movimiento',
+    valor_nuevo: { nombre, email, rol },
+    descripcion: `Creó al integrante "${nombre}" (${rol})`,
+    usuario_id: user.id,
+  })
 
   return NextResponse.json({ id: authUser.user.id })
 }

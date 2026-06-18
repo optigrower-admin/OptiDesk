@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
+import { registrarAuditoria } from '@/lib/audit'
 
 interface Cliente {
   id: string
@@ -94,6 +95,16 @@ export default function ClientesPage() {
       celular: editCelular || null,
       notas: editNotas || null,
     }).eq('id', editCliente.id)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'clientes',
+      registro_id: editCliente.id,
+      tipo: 'edicion',
+      valor_anterior: { nombre: editCliente.nombre, cedula: editCliente.cedula, celular: editCliente.celular },
+      valor_nuevo: { nombre: editNombre, cedula: editCedula || null, celular: editCelular || null, notas: editNotas || null },
+      descripcion: `Editó datos del cliente "${editNombre}"`,
+      usuario_id: profile?.id,
+    })
     setSaving(false)
     setEditCliente(null)
     await cargar()

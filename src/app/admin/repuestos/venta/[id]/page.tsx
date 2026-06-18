@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { registrarAuditoria } from '@/lib/audit'
 
 interface OrdenVenta {
   id: string
@@ -174,6 +175,15 @@ export default function VentaDetallePage() {
     const remaining = items.filter((i) => i.id !== item.id)
     const newTotal = remaining.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
     await supabase.from('ordenes').update({ valor_total: newTotal }).eq('id', ordenId)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'items_orden',
+      registro_id: item.id,
+      tipo: 'eliminacion',
+      valor_anterior: { descripcion: item.descripcion, precio_venta: item.precio_venta, cantidad: item.cantidad },
+      descripcion: `Eliminó ítem "${item.descripcion}" de venta directa #${orden?.numero}`,
+      usuario_id: profile?.id,
+    })
     await cargar()
   }
 
@@ -182,6 +192,7 @@ export default function VentaDetallePage() {
     setSavingItem(true)
     const precio = parseInt(soloD(editingItem.precio) || '0', 10)
     const cantidad = Math.max(1, parseInt(editingItem.cantidad) || 1)
+    const itemAnterior = items.find((i) => i.id === editingItem.id)
     await supabase
       .from('items_orden')
       .update({ descripcion: editingItem.descripcion.trim(), precio_venta: precio, cantidad })
@@ -195,6 +206,16 @@ export default function VentaDetallePage() {
       0,
     )
     await supabase.from('ordenes').update({ valor_total: newTotal }).eq('id', ordenId)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'items_orden',
+      registro_id: editingItem.id,
+      tipo: 'edicion',
+      valor_anterior: { descripcion: itemAnterior?.descripcion, precio_venta: itemAnterior?.precio_venta, cantidad: itemAnterior?.cantidad },
+      valor_nuevo: { descripcion: editingItem.descripcion.trim(), precio_venta: precio, cantidad },
+      descripcion: `Editó ítem "${editingItem.descripcion.trim()}" de venta directa #${orden?.numero}`,
+      usuario_id: profile?.id,
+    })
     setEditingItem(null)
     setSavingItem(false)
     await cargar()

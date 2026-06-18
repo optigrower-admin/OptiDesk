@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
 import { ETAPA_MAP, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { registrarAuditoria } from '@/lib/audit'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type Cliente = {
@@ -147,6 +148,16 @@ export default function ClienteDetallePage() {
       email:   editEmail   || null,
       notas:   editNotas   || null,
     }).eq('id', cliente.id)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'clientes',
+      registro_id: cliente.id,
+      tipo: 'edicion',
+      valor_anterior: { nombre: cliente.nombre, cedula: cliente.cedula, celular: cliente.celular, email: cliente.email, notas: cliente.notas },
+      valor_nuevo: { nombre: editNombre, cedula: editCedula || null, celular: editCelular || null, email: editEmail || null, notas: editNotas || null },
+      descripcion: `Editó datos del cliente "${editNombre}"`,
+      usuario_id: profile?.id,
+    })
     setSaving(false)
     setEditando(false)
     cargar()

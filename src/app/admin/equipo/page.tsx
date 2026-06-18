@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { clearPermisosCache } from '@/hooks/usePermisos'
+import { registrarAuditoria } from '@/lib/audit'
 
 type Tab = 'integrantes' | 'secciones'
 type Rol = 'gerencia' | 'admin' | 'mecanico'
@@ -263,6 +264,16 @@ export default function EquipoPage() {
     if (!editModal || !editNombreModal.trim()) return
     setSavingNombre(true)
     await supabase.from('usuarios').update({ nombre: editNombreModal.trim() }).eq('id', editModal.id)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'usuarios',
+      registro_id: editModal.id,
+      tipo: 'edicion',
+      valor_anterior: { nombre: editModal.nombre },
+      valor_nuevo: { nombre: editNombreModal.trim() },
+      descripcion: `Editó nombre de integrante: "${editModal.nombre}" → "${editNombreModal.trim()}"`,
+      usuario_id: profile?.id,
+    })
     setUsuarios((prev) => prev.map((x) => x.id === editModal.id ? { ...x, nombre: editNombreModal.trim() } : x))
     setEditModal(null)
     setSavingNombre(false)
@@ -292,13 +303,34 @@ export default function EquipoPage() {
   // Toggle activo
   const toggleActivo = async (u: UsuarioEquipo) => {
     await supabase.from('usuarios').update({ activo: !u.activo }).eq('id', u.id)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'usuarios',
+      registro_id: u.id,
+      tipo: 'edicion',
+      valor_anterior: { activo: u.activo },
+      valor_nuevo: { activo: !u.activo },
+      descripcion: `${!u.activo ? 'Activó' : 'Desactivó'} a "${u.nombre}"`,
+      usuario_id: profile?.id,
+    })
     setUsuarios((prev) => prev.map((x) => x.id === u.id ? { ...x, activo: !u.activo } : x))
   }
 
   // Cambiar rol
   const guardarRol = async (id: string) => {
     setSavingRol(true)
+    const usuarioAnterior = usuarios.find((x) => x.id === id)
     await supabase.from('usuarios').update({ rol: nuevoRol }).eq('id', id)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'usuarios',
+      registro_id: id,
+      tipo: 'edicion',
+      valor_anterior: { rol: usuarioAnterior?.rol },
+      valor_nuevo: { rol: nuevoRol },
+      descripcion: `Cambió el rol de "${usuarioAnterior?.nombre}" de ${usuarioAnterior?.rol} a ${nuevoRol}`,
+      usuario_id: profile?.id,
+    })
     setUsuarios((prev) => prev.map((x) => x.id === id ? { ...x, rol: nuevoRol } : x))
     setEditandoRolId(null)
     setSavingRol(false)

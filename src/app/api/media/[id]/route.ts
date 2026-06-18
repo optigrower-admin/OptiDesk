@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getSignedDownloadUrl, deleteFromR2 } from '@/lib/r2'
+import { registrarAuditoria } from '@/lib/audit'
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createClient()
@@ -40,7 +41,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   if (!perfil) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 403 })
 
   const { data: medio } = await supabase.from('medios')
-    .select('url, storage_location, tenant_id, tamano_bytes, subido_por')
+    .select('url, storage_location, tenant_id, tamano_bytes, subido_por, nombre_archivo, tipo, orden_id')
     .eq('id', params.id)
     .single()
 
@@ -55,6 +56,16 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   }
 
   await supabase.from('medios').delete().eq('id', params.id)
+
+  await registrarAuditoria(supabase, {
+    tenant_id: medio.tenant_id,
+    tabla: 'medios',
+    registro_id: params.id,
+    tipo: 'eliminacion',
+    valor_anterior: { tipo: medio.tipo, nombre_archivo: medio.nombre_archivo, orden_id: medio.orden_id },
+    descripcion: `Eliminó ${medio.tipo === 'video' ? 'un video' : 'una foto'} (${medio.nombre_archivo ?? 'sin nombre'})`,
+    usuario_id: user.id,
+  })
 
   if (medio.tamano_bytes && medio.storage_location === 'r2') {
     await supabase.rpc('decrement_tenant_storage', {
