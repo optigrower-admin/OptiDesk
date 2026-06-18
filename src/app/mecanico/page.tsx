@@ -42,6 +42,7 @@ export default function MecanicoHome() {
       .from('ordenes')
       .select('id, numero, placa, cliente, estado, estado_pago, created_at, categorias_servicio(nombre)')
       .eq('tenant_id', profile.tenant_id)
+      .eq('tipo_orden', 'servicio')
       .order('created_at', { ascending: false })
 
     if (filtroEstado === 'activos') {
