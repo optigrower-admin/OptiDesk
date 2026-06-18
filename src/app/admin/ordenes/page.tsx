@@ -44,7 +44,7 @@ interface Categoria {
   nombre: string
 }
 
-type FiltroEstado = 'todos' | 'activos' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'listo'
+type FiltroEstado = 'todos' | 'activos' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
 
 const SELECT_FIELDS = 'id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, tipo_orden, tipo_servicio, created_at, fecha_finalizacion, numeros_orden_uma, categorias_servicio(nombre), usuarios:mecanico_id(nombre)'
 
@@ -59,6 +59,7 @@ export default function AdminOrdenesPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
+  const [filtroOrdenPendiente, setFiltroOrdenPendiente] = useState(false)
   const [loadingCSV, setLoadingCSV] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
   const cancelRef = useRef(false)
@@ -190,14 +191,25 @@ export default function AdminOrdenesPage() {
   const estadoActivo = (o: Orden) => ['falta_revision', 'en_proceso', 'pendiente'].includes(o.estado)
   const esServicio = (o: Orden) => o.tipo_orden !== 'venta_repuestos'
 
-  const totalOrdenes = grupos.reduce((s, g) => s + g.ordenes.filter(esServicio).length, 0)
+  const tieneOrdenUMAPendiente = (grupo: GrupoPlaca) =>
+    grupo.ordenes.filter(esServicio).some((o) => {
+      if (o.estado === 'listo') return false
+      const cat = o.categorias_servicio?.nombre ?? ''
+      if (!cat.toLowerCase().includes('uma')) return false
+      const nums = o.numeros_orden_uma ?? []
+      return !nums.includes('N/A') && nums.filter((n) => n !== 'N/A').length === 0
+    })
+
+  const gruposFiltrados = filtroOrdenPendiente ? grupos.filter(tieneOrdenUMAPendiente) : grupos
+
+  const totalOrdenes = gruposFiltrados.reduce((s, g) => s + g.ordenes.filter(esServicio).length, 0)
 
   const limpiarFechas = () => { setFechaDesde(''); setFechaHasta('') }
 
   const handleDescargarCSV = async () => {
     setLoadingCSV(true)
     try {
-      const todasOrdenes = grupos.flatMap((g) => g.ordenes).filter((o) => o.tipo_orden !== 'venta_repuestos')
+      const todasOrdenes = gruposFiltrados.flatMap((g) => g.ordenes).filter((o) => o.tipo_orden !== 'venta_repuestos')
       if (todasOrdenes.length === 0) return
       const ordenIds = todasOrdenes.map((o) => o.id)
 
@@ -214,7 +226,7 @@ export default function AdminOrdenesPage() {
 
       const ESTADO_LABELS: Record<string, string> = {
         falta_revision: 'Falta revisión', en_proceso: 'En proceso',
-        pendiente: 'Pendiente', listo: 'Finalizado',
+        pendiente: 'Pendiente', pagado: 'Pagado', listo: 'Finalizado',
       }
       const PAGO_LABELS: Record<string, string> = {
         pagado: 'Pagado', abono: 'Abono', pendiente: 'Pendiente',
@@ -287,12 +299,12 @@ export default function AdminOrdenesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Servicio Técnico</h1>
-          <p className="text-sm text-gray-500">{totalOrdenes} órdenes · {grupos.length} motos</p>
+          <p className="text-sm text-gray-500">{totalOrdenes} órdenes · {gruposFiltrados.length} motos</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleDescargarCSV}
-            disabled={loadingCSV || grupos.length === 0}
+            disabled={loadingCSV || gruposFiltrados.length === 0}
             className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
             title="Descargar CSV con los datos actuales"
           >
@@ -356,7 +368,8 @@ export default function AdminOrdenesPage() {
           { value: 'falta_revision', label: 'Falta revisión' },
           { value: 'en_proceso', label: 'En proceso' },
           { value: 'pendiente', label: 'Pendiente' },
-          { value: 'listo', label: 'Cerradas' },
+          { value: 'pagado', label: 'Pagado' },
+          { value: 'listo', label: 'Finalizado' },
         ] as { value: FiltroEstado; label: string }[]).map((f) => (
           <button
             key={f.value}
@@ -368,6 +381,15 @@ export default function AdminOrdenesPage() {
             {f.label}
           </button>
         ))}
+        <span className="w-px h-4 bg-gray-200 mx-1" />
+        <button
+          onClick={() => setFiltroOrdenPendiente((v) => !v)}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+            filtroOrdenPendiente ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600 hover:bg-red-100'
+          }`}
+        >
+          # Orden Pendiente
+        </button>
       </div>
 
       {/* Filtro fechas */}
@@ -403,7 +425,7 @@ export default function AdminOrdenesPage() {
             </div>
           ))}
         </div>
-      ) : grupos.length === 0 ? (
+      ) : gruposFiltrados.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -412,7 +434,7 @@ export default function AdminOrdenesPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {grupos.map((grupo) => {
+          {gruposFiltrados.map((grupo) => {
             const servicioOrdenes = grupo.ordenes.filter(esServicio)
             const ventaOrdenes = grupo.ordenes.filter((o) => !esServicio(o))
             const ordenActual = servicioOrdenes.find(estadoActivo) ?? servicioOrdenes[0]
@@ -459,13 +481,7 @@ export default function AdminOrdenesPage() {
                       )
                     })()}
                     {/* Alerta si hay alguna orden UMA activa sin # de orden */}
-                    {servicioOrdenes.some((o) => {
-                      if (o.estado === 'listo') return false
-                      const cat = o.categorias_servicio?.nombre ?? ''
-                      if (!cat.toLowerCase().includes('uma')) return false
-                      const nums = o.numeros_orden_uma ?? []
-                      return !nums.includes('N/A') && nums.filter((n) => n !== 'N/A').length === 0
-                    }) && (
+                    {tieneOrdenUMAPendiente(grupo) && (
                       <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">
                         # Orden Pendiente
                       </span>

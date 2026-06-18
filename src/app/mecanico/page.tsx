@@ -16,6 +16,7 @@ interface Orden {
   estado_pago: string
   created_at: string
   fecha_finalizacion: string | null
+  numeros_orden_uma: string[] | null
   categorias_servicio: { nombre: string } | null
 }
 
@@ -33,6 +34,7 @@ export default function MecanicoHome() {
   const [filtroEstado, setFiltroEstado] = useState<string>('todos')
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
+  const [filtroOrdenPendiente, setFiltroOrdenPendiente] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshTick, setRefreshTick] = useState(0)
   const hasLoadedRef = useRef(false)
@@ -56,7 +58,7 @@ export default function MecanicoHome() {
 
     let query = supabase
       .from('ordenes')
-      .select('id, numero, placa, cliente, estado, estado_pago, created_at, fecha_finalizacion, categorias_servicio(nombre)')
+      .select('id, numero, placa, cliente, estado, estado_pago, created_at, fecha_finalizacion, numeros_orden_uma, categorias_servicio(nombre)')
       .eq('tenant_id', profile.tenant_id)
       .eq('tipo_orden', 'servicio')
       .order('created_at', { ascending: false })
@@ -98,6 +100,17 @@ export default function MecanicoHome() {
 
   const estadoActivo = (o: Orden) => ['falta_revision', 'en_proceso', 'pendiente'].includes(o.estado)
 
+  const tieneOrdenUMAPendiente = (grupo: GrupoPlaca) =>
+    grupo.ordenes.some((o) => {
+      if (o.estado === 'listo') return false
+      const cat = o.categorias_servicio?.nombre ?? ''
+      if (!cat.toLowerCase().includes('uma')) return false
+      const nums = o.numeros_orden_uma ?? []
+      return !nums.includes('N/A') && nums.filter((n) => n !== 'N/A').length === 0
+    })
+
+  const gruposFiltrados = filtroOrdenPendiente ? grupos.filter(tieneOrdenUMAPendiente) : grupos
+
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -130,7 +143,8 @@ export default function MecanicoHome() {
           { value: 'falta_revision', label: 'Falta revisión' },
           { value: 'en_proceso', label: 'En proceso' },
           { value: 'pendiente', label: 'Pendiente' },
-          { value: 'listo', label: 'Listos' },
+          { value: 'pagado', label: 'Pagado' },
+          { value: 'listo', label: 'Finalizado' },
         ].map((f) => (
           <button
             key={f.value}
@@ -142,6 +156,15 @@ export default function MecanicoHome() {
             {f.label}
           </button>
         ))}
+        <span className="w-px h-4 bg-gray-200 mx-1 flex-shrink-0 self-center" />
+        <button
+          onClick={() => setFiltroOrdenPendiente((v) => !v)}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
+            filtroOrdenPendiente ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600 hover:bg-red-100'
+          }`}
+        >
+          # Orden Pendiente
+        </button>
       </div>
 
       {/* Filtro fechas */}
@@ -178,7 +201,7 @@ export default function MecanicoHome() {
             </div>
           ))}
         </div>
-      ) : grupos.length === 0 ? (
+      ) : gruposFiltrados.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -187,7 +210,7 @@ export default function MecanicoHome() {
         </div>
       ) : (
         <div className="space-y-3">
-          {grupos.map((grupo) => {
+          {gruposFiltrados.map((grupo) => {
             const ordenActual = grupo.ordenes.find(estadoActivo) ?? grupo.ordenes[0]
             return (
               <div key={grupo.placa} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -202,6 +225,11 @@ export default function MecanicoHome() {
                     {grupo.ordenes.length > 1 && (
                       <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full flex-shrink-0">
                         {grupo.ordenes.length}
+                      </span>
+                    )}
+                    {tieneOrdenUMAPendiente(grupo) && (
+                      <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">
+                        # Orden Pendiente
                       </span>
                     )}
                   </div>
