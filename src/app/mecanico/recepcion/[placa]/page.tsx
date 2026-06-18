@@ -40,6 +40,8 @@ export default function RecepcionPage() {
   const [placa, setPlaca] = useState(params.placa === 'nueva' ? '' : String(params.placa))
   const [cliente, setCliente] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  const [manifiestaCliente, setManifiestaCliente] = useState('')
+  const [diagnostico, setDiagnostico] = useState('')
   const [telefono, setTelefono] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
   const [subcategoriaIds, setSubcategoriaIds] = useState<string[]>([])
@@ -63,6 +65,8 @@ export default function RecepcionPage() {
         if (d.cliente) setCliente(d.cliente)
         if (d.telefono) setTelefono(d.telefono)
         if (d.descripcion) setDescripcion(d.descripcion)
+        if (d.manifiestaCliente) setManifiestaCliente(d.manifiestaCliente)
+        if (d.diagnostico) setDiagnostico(d.diagnostico)
         if (d.categoriaId) setCategoriaId(d.categoriaId)
         if (d.subcategoriaIds) setSubcategoriaIds(d.subcategoriaIds)
       }
@@ -73,12 +77,12 @@ export default function RecepcionPage() {
     if (params.placa !== 'nueva') return
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, descripcion, categoriaId, subcategoriaIds }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds }))
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [placa, cliente, telefono, descripcion, categoriaId, subcategoriaIds, params.placa])
+  }, [placa, cliente, telefono, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, params.placa])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -92,6 +96,7 @@ export default function RecepcionPage() {
   }, [profile?.tenant_id])
 
   const subcategorias = categorias.find((c) => c.id === categoriaId)?.subcategorias_servicio ?? []
+  const esGarantia = subcategorias.some((s) => subcategoriaIds.includes(s.id) && s.nombre.toLowerCase().includes('garant'))
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -160,7 +165,9 @@ export default function RecepcionPage() {
           placa: placaNorm,
           cliente,
           telefono: telefono || null,
-          descripcion,
+          descripcion: esGarantia ? null : descripcion,
+          manifiesta_cliente: esGarantia ? manifiestaCliente || null : null,
+          diagnostico: esGarantia ? diagnostico || null : null,
           categoria_servicio_id: categoriaId || null,
           subcategoria_servicio_id: subcategoriaIds[0] || null,
           subcategoria_servicio_ids: subcategoriaIds,
@@ -321,16 +328,41 @@ export default function RecepcionPage() {
           </div>
         )}
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Descripción del trabajo</label>
-          <textarea
-            value={descripcion}
-            onChange={(e) => setDescripcion(e.target.value)}
-            rows={3}
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            placeholder="Describe el trabajo a realizar..."
-          />
-        </div>
+        {esGarantia ? (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Manifiesta el Cliente:</label>
+              <textarea
+                value={manifiestaCliente}
+                onChange={(e) => setManifiestaCliente(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                placeholder="Qué reporta el cliente..."
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Diagnóstico:</label>
+              <textarea
+                value={diagnostico}
+                onChange={(e) => setDiagnostico(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                placeholder="Diagnóstico del taller..."
+              />
+            </div>
+          </>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Descripción del trabajo</label>
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              placeholder="Describe el trabajo a realizar..."
+            />
+          </div>
+        )}
 
 
         <div>

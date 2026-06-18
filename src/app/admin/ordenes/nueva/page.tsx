@@ -38,6 +38,8 @@ export default function NuevaOrdenAdminPage() {
   const [telefono, setTelefono] = useState('')
   const [cedula, setCedula] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  const [manifiestaCliente, setManifiestaCliente] = useState('')
+  const [diagnostico, setDiagnostico] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
   const [subcategoriaIds, setSubcategoriaIds] = useState<string[]>([])
   const [tipoServicio, setTipoServicio] = useState<'terceros' | 'uma'>('terceros')
@@ -66,6 +68,8 @@ export default function NuevaOrdenAdminPage() {
         if (d.telefono) setTelefono(d.telefono)
         if (d.cedula) setCedula(d.cedula)
         if (d.descripcion) setDescripcion(d.descripcion)
+        if (d.manifiestaCliente) setManifiestaCliente(d.manifiestaCliente)
+        if (d.diagnostico) setDiagnostico(d.diagnostico)
         if (d.categoriaId) setCategoriaId(d.categoriaId)
         if (d.subcategoriaIds) setSubcategoriaIds(d.subcategoriaIds)
         if (d.tipoServicio) setTipoServicio(d.tipoServicio)
@@ -78,12 +82,12 @@ export default function NuevaOrdenAdminPage() {
   useEffect(() => {
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, cedula, descripcion, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, cedula, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA }))
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [placa, cliente, telefono, cedula, descripcion, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA])
+  }, [placa, cliente, telefono, cedula, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -106,6 +110,7 @@ export default function NuevaOrdenAdminPage() {
 
   const subcategorias = categorias.find((c) => c.id === categoriaId)?.subcategorias_servicio ?? []
   const esUMACategoria = categorias.find(c => c.id === categoriaId)?.nombre?.toLowerCase().includes('uma') ?? false
+  const esGarantia = subcategorias.some((s) => subcategoriaIds.includes(s.id) && s.nombre.toLowerCase().includes('garant'))
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -167,7 +172,9 @@ export default function NuevaOrdenAdminPage() {
           cliente: cliente || '—',
           telefono: telefono || null,
           cedula: cedula || null,
-          descripcion,
+          descripcion: esGarantia ? null : descripcion,
+          manifiesta_cliente: esGarantia ? manifiestaCliente || null : null,
+          diagnostico: esGarantia ? diagnostico || null : null,
           categoria_servicio_id: categoriaId || null,
           subcategoria_servicio_id: subcategoriaIds[0] || null,
           subcategoria_servicio_ids: subcategoriaIds,
@@ -465,18 +472,43 @@ export default function NuevaOrdenAdminPage() {
         )}
 
         {/* Descripción del trabajo */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-          <h2 className="font-semibold text-gray-900">
-            {tipoOrden === 'venta_repuestos' ? 'Descripción / referencia' : 'Descripción del trabajo'}
-          </h2>
-          <textarea
-            value={descripcion}
-            onChange={(e) => setDescripcion(e.target.value)}
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none"
-            placeholder={tipoOrden === 'venta_repuestos' ? 'Repuestos vendidos, referencia...' : 'Describe el trabajo a realizar...'}
-          />
-        </div>
+        {esGarantia && tipoOrden !== 'venta_repuestos' ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+            <div>
+              <h2 className="font-semibold text-gray-900 mb-2">Manifiesta el Cliente:</h2>
+              <textarea
+                value={manifiestaCliente}
+                onChange={(e) => setManifiestaCliente(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none"
+                placeholder="Qué reporta el cliente..."
+              />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-900 mb-2">Diagnóstico:</h2>
+              <textarea
+                value={diagnostico}
+                onChange={(e) => setDiagnostico(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none"
+                placeholder="Diagnóstico del taller..."
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+            <h2 className="font-semibold text-gray-900">
+              {tipoOrden === 'venta_repuestos' ? 'Descripción / referencia' : 'Descripción del trabajo'}
+            </h2>
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none"
+              placeholder={tipoOrden === 'venta_repuestos' ? 'Repuestos vendidos, referencia...' : 'Describe el trabajo a realizar...'}
+            />
+          </div>
+        )}
 
         {/* Fotos */}
         <div>

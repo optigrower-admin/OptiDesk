@@ -17,6 +17,8 @@ interface Orden {
   created_at: string
   fecha_finalizacion: string | null
   numeros_orden_uma: string[] | null
+  categoria_servicio_id: string | null
+  subcategoria_servicio_ids: string[] | null
   categorias_servicio: { nombre: string } | null
 }
 
@@ -26,12 +28,21 @@ interface GrupoPlaca {
   expandido: boolean
 }
 
+interface Categoria {
+  id: string
+  nombre: string
+  subcategorias_servicio: { id: string; nombre: string }[]
+}
+
 export default function MecanicoHome() {
   const { profile } = useAuth()
   const supabase = createClient()
   const [grupos, setGrupos] = useState<GrupoPlaca[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<string>('todos')
+  const [filtroCategoria, setFiltroCategoria] = useState('todos')
+  const [filtroSubcategoria, setFiltroSubcategoria] = useState('todos')
+  const [categorias, setCategorias] = useState<Categoria[]>([])
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
   const [filtroOrdenPendiente, setFiltroOrdenPendiente] = useState(false)
@@ -54,11 +65,22 @@ export default function MecanicoHome() {
 
   useEffect(() => {
     if (!profile?.tenant_id) return
+    supabase
+      .from('categorias_servicio')
+      .select('id, nombre, subcategorias_servicio(id, nombre)')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('activo', true)
+      .order('orden')
+      .then(({ data }) => setCategorias((data as Categoria[]) ?? []))
+  }, [profile?.tenant_id])
+
+  useEffect(() => {
+    if (!profile?.tenant_id) return
     if (!hasLoadedRef.current) setLoading(true)
 
     let query = supabase
       .from('ordenes')
-      .select('id, numero, placa, cliente, estado, estado_pago, created_at, fecha_finalizacion, numeros_orden_uma, categorias_servicio(nombre)')
+      .select('id, numero, placa, cliente, estado, estado_pago, created_at, fecha_finalizacion, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_ids, categorias_servicio(nombre)')
       .eq('tenant_id', profile.tenant_id)
       .eq('tipo_orden', 'servicio')
       .order('created_at', { ascending: false })
@@ -68,6 +90,9 @@ export default function MecanicoHome() {
     } else if (filtroEstado !== 'todos') {
       query = query.eq('estado', filtroEstado)
     }
+
+    if (filtroCategoria !== 'todos') query = query.eq('categoria_servicio_id', filtroCategoria)
+    if (filtroSubcategoria !== 'todos') query = query.contains('subcategoria_servicio_ids', [filtroSubcategoria])
 
     if (busqueda) query = query.ilike('placa', `%${normalizarPlaca(busqueda)}%`)
     if (fechaDesde) query = query.gte('created_at', fechaDesde)
@@ -92,7 +117,7 @@ export default function MecanicoHome() {
       hasLoadedRef.current = true
       setLoading(false)
     })
-  }, [profile?.tenant_id, busqueda, filtroEstado, fechaDesde, fechaHasta, refreshTick])
+  }, [profile?.tenant_id, busqueda, filtroEstado, filtroCategoria, filtroSubcategoria, fechaDesde, fechaHasta, refreshTick])
 
   const toggleGrupo = (placa: string) => {
     setGrupos((prev) => prev.map((g) => g.placa === placa ? { ...g, expandido: !g.expandido } : g))
@@ -135,6 +160,57 @@ export default function MecanicoHome() {
         placeholder="Buscar por placa..."
         className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
       />
+
+      {categorias.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <button
+            onClick={() => { setFiltroCategoria('todos'); setFiltroSubcategoria('todos') }}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+              filtroCategoria === 'todos' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Todos
+          </button>
+          {categorias.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => { setFiltroCategoria(filtroCategoria === c.id ? 'todos' : c.id); setFiltroSubcategoria('todos') }}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                filtroCategoria === c.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {c.nombre}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(() => {
+        const subs = categorias.find((c) => c.id === filtroCategoria)?.subcategorias_servicio ?? []
+        return subs.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            <button
+              onClick={() => setFiltroSubcategoria('todos')}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                filtroSubcategoria === 'todos' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Todos
+            </button>
+            {subs.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setFiltroSubcategoria(filtroSubcategoria === s.id ? 'todos' : s.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                  filtroSubcategoria === s.id ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {s.nombre}
+              </button>
+            ))}
+          </div>
+        )
+      })()}
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {[

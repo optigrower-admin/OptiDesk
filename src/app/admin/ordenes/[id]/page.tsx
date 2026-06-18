@@ -27,6 +27,7 @@ interface AuditEntry {
 
 const AUDIT_FIELD_LABELS: Record<string, string> = {
   cliente: 'Cliente', descripcion: 'Descripción', estado: 'Estado',
+  manifiesta_cliente: 'Manifiesta el cliente', diagnostico: 'Diagnóstico',
   estado_pago: 'Pago', telefono: 'Teléfono', notas: 'Notas',
   valor_total: 'Total', valor_abono: 'Abono', motivo_pendiente: 'Motivo pendiente',
   numeros_orden_uma: '# Orden UMA', precio_venta: 'Precio', cantidad: 'Cantidad',
@@ -112,6 +113,8 @@ interface OrdenDetalle {
   valor_abono: number
   motivo_pendiente: string | null
   descripcion: string | null
+  manifiesta_cliente: string | null
+  diagnostico: string | null
   tipo_orden: string | null
   tipo_servicio: string | null
   numero_ot: string | null
@@ -209,6 +212,8 @@ export default function AdminOrdenDetallePage() {
   const [editCliente, setEditCliente] = useState('')
   const [editPlaca, setEditPlaca] = useState('')
   const [editDescripcion, setEditDescripcion] = useState('')
+  const [editManifiestaCliente, setEditManifiestaCliente] = useState('')
+  const [editDiagnostico, setEditDiagnostico] = useState('')
   const [editCategoriaId, setEditCategoriaId] = useState('')
   const [editSubcategoriaIds, setEditSubcategoriaIds] = useState<string[]>([])
   const [savingOrden, setSavingOrden] = useState(false)
@@ -270,7 +275,7 @@ export default function AdminOrdenDetallePage() {
     if (!profile?.tenant_id) return
     const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }, { data: lmCfg }, { data: lmOrd }] = await Promise.all([
       supabase.from('ordenes')
-        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, descripcion, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id,
+        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
         .eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto').eq('orden_id', ordenId),
@@ -335,6 +340,8 @@ export default function AdminOrdenDetallePage() {
       setEditCliente(ord.cliente)
       setEditPlaca(ord.placa ?? '')
       setEditDescripcion(ord.descripcion ?? '')
+      setEditManifiestaCliente(ord.manifiesta_cliente ?? '')
+      setEditDiagnostico(ord.diagnostico ?? '')
       setEditCategoriaId(ord.categoria_servicio_id ?? '')
       setEditSubcategoriaIds(
         ord.subcategoria_servicio_ids?.length
@@ -536,6 +543,15 @@ export default function AdminOrdenDetallePage() {
     }
   }
 
+  const esGarantia = (() => {
+    if (!orden) return false
+    const allSubs = categorias.flatMap((c) => c.subcategorias_servicio)
+    const ids = orden.subcategoria_servicio_ids?.length
+      ? orden.subcategoria_servicio_ids
+      : orden.subcategoria_servicio_id ? [orden.subcategoria_servicio_id] : []
+    return ids.some((id) => allSubs.find((s) => s.id === id)?.nombre.toLowerCase().includes('garant'))
+  })()
+
   const guardarCampoOrden = async (campo: 'cliente' | 'descripcion' | 'categoria' | 'placa') => {
     if (!orden) return
     setSavingOrden(true)
@@ -550,8 +566,15 @@ export default function AdminOrdenDetallePage() {
       update.placa = editPlaca.trim().toUpperCase() || null
     }
     if (campo === 'descripcion') {
-      anterior.descripcion = orden.descripcion
-      update.descripcion = editDescripcion.trim() || null
+      if (esGarantia) {
+        anterior.manifiesta_cliente = orden.manifiesta_cliente
+        anterior.diagnostico = orden.diagnostico
+        update.manifiesta_cliente = editManifiestaCliente.trim() || null
+        update.diagnostico = editDiagnostico.trim() || null
+      } else {
+        anterior.descripcion = orden.descripcion
+        update.descripcion = editDescripcion.trim() || null
+      }
     }
     if (campo === 'categoria') {
       anterior.categoria_servicio_id = orden.categoria_servicio_id
@@ -1848,22 +1871,69 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               )}
             </div>
 
-            {/* Descripción */}
+            {/* Descripción / Garantías */}
             <div className="px-5 py-3">
               {editingOrden === 'descripcion' ? (
-                <div className="space-y-2">
-                  <label className="text-xs text-gray-500 font-medium">Descripción del trabajo</label>
-                  <textarea autoFocus value={editDescripcion} onChange={(e) => setEditDescripcion(e.target.value)}
-                    rows={3} placeholder="Describe el trabajo..."
-                    className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm resize-none focus:outline-none" />
-                  <div className="flex gap-2">
-                    <button onClick={() => guardarCampoOrden('descripcion')} disabled={savingOrden}
-                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
-                      {savingOrden ? '...' : 'Guardar'}
-                    </button>
-                    <button onClick={() => { setEditingOrden(null); setEditDescripcion(orden.descripcion ?? '') }}
-                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancelar</button>
+                esGarantia ? (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <label className="text-xs text-gray-500 font-medium">Manifiesta el Cliente:</label>
+                      <textarea autoFocus value={editManifiestaCliente} onChange={(e) => setEditManifiestaCliente(e.target.value)}
+                        rows={3} placeholder="Qué reporta el cliente..."
+                        className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm resize-none focus:outline-none" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs text-gray-500 font-medium">Diagnóstico:</label>
+                      <textarea value={editDiagnostico} onChange={(e) => setEditDiagnostico(e.target.value)}
+                        rows={3} placeholder="Diagnóstico del taller..."
+                        className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm resize-none focus:outline-none" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => guardarCampoOrden('descripcion')} disabled={savingOrden}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                        {savingOrden ? '...' : 'Guardar'}
+                      </button>
+                      <button onClick={() => { setEditingOrden(null); setEditManifiestaCliente(orden.manifiesta_cliente ?? ''); setEditDiagnostico(orden.diagnostico ?? '') }}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancelar</button>
+                    </div>
                   </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-xs text-gray-500 font-medium">Descripción del trabajo</label>
+                    <textarea autoFocus value={editDescripcion} onChange={(e) => setEditDescripcion(e.target.value)}
+                      rows={3} placeholder="Describe el trabajo..."
+                      className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm resize-none focus:outline-none" />
+                    <div className="flex gap-2">
+                      <button onClick={() => guardarCampoOrden('descripcion')} disabled={savingOrden}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                        {savingOrden ? '...' : 'Guardar'}
+                      </button>
+                      <button onClick={() => { setEditingOrden(null); setEditDescripcion(orden.descripcion ?? '') }}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancelar</button>
+                    </div>
+                  </div>
+                )
+              ) : esGarantia ? (
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div>
+                      <p className="text-xs text-gray-400">Manifiesta el Cliente:</p>
+                      <p className="text-sm text-gray-900 mt-0.5 whitespace-pre-wrap">
+                        {orden.manifiesta_cliente || <span className="text-gray-400 italic">Sin información</span>}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400">Diagnóstico:</p>
+                      <p className="text-sm text-gray-900 mt-0.5 whitespace-pre-wrap">
+                        {orden.diagnostico || <span className="text-gray-400 italic">Sin información</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => setEditingOrden('descripcion')} className="text-gray-400 hover:text-blue-600 p-1 flex-shrink-0 mt-0.5">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
                 </div>
               ) : (
                 <div className="flex items-start justify-between gap-2">

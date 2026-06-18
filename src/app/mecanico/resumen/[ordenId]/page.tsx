@@ -29,6 +29,8 @@ interface OrdenDetalle {
   estado_pago: string
   valor_total: number
   descripcion: string | null
+  manifiesta_cliente: string | null
+  diagnostico: string | null
   created_at: string
   fecha_finalizacion: string | null
   categoria_servicio_id: string | null
@@ -74,6 +76,8 @@ export default function ResumenMecanicoPage() {
   const [editCliente, setEditCliente] = useState('')
   const [editTelefono, setEditTelefono] = useState('')
   const [editDescripcion, setEditDescripcion] = useState('')
+  const [editManifiestaCliente, setEditManifiestaCliente] = useState('')
+  const [editDiagnostico, setEditDiagnostico] = useState('')
   const [editCategoriaId, setEditCategoriaId] = useState('')
   const [editSubcategoriaIds, setEditSubcategoriaIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -84,6 +88,7 @@ export default function ResumenMecanicoPage() {
       supabase
         .from('ordenes')
         .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, descripcion,
+          manifiesta_cliente, diagnostico,
           created_at, fecha_finalizacion,
           categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids,
           categorias_servicio(nombre), subcategorias_servicio(nombre),
@@ -109,6 +114,8 @@ export default function ResumenMecanicoPage() {
         setEditCliente(o.cliente)
         setEditTelefono(o.telefono ?? '')
         setEditDescripcion(o.descripcion ?? '')
+        setEditManifiestaCliente(o.manifiesta_cliente ?? '')
+        setEditDiagnostico(o.diagnostico ?? '')
         setEditCategoriaId(o.categoria_servicio_id ?? '')
         setEditSubcategoriaIds(
           o.subcategoria_servicio_ids?.length
@@ -124,6 +131,14 @@ export default function ResumenMecanicoPage() {
 
   const subcategoriasEdit = categorias.find((c) => c.id === editCategoriaId)?.subcategorias_servicio ?? []
 
+  const esGarantia = (() => {
+    const allSubs = categorias.flatMap((c) => c.subcategorias_servicio)
+    const ids = orden?.subcategoria_servicio_ids?.length
+      ? orden.subcategoria_servicio_ids
+      : orden?.subcategoria_servicio_id ? [orden.subcategoria_servicio_id] : []
+    return ids.some((id) => allSubs.find((s) => s.id === id)?.nombre.toLowerCase().includes('garant'))
+  })()
+
   const guardarCampo = async (campo: 'placa' | 'cliente' | 'telefono' | 'descripcion' | 'categoria') => {
     if (!orden) return
     setSaving(true)
@@ -132,7 +147,17 @@ export default function ResumenMecanicoPage() {
     if (campo === 'placa') { anterior.placa = orden.placa; update.placa = editPlaca.trim().toUpperCase() }
     if (campo === 'cliente') { anterior.cliente = orden.cliente; update.cliente = editCliente.trim() }
     if (campo === 'telefono') { anterior.telefono = orden.telefono; update.telefono = editTelefono.trim() || null }
-    if (campo === 'descripcion') { anterior.descripcion = orden.descripcion; update.descripcion = editDescripcion.trim() || null }
+    if (campo === 'descripcion') {
+      if (esGarantia) {
+        anterior.manifiesta_cliente = orden.manifiesta_cliente
+        anterior.diagnostico = orden.diagnostico
+        update.manifiesta_cliente = editManifiestaCliente.trim() || null
+        update.diagnostico = editDiagnostico.trim() || null
+      } else {
+        anterior.descripcion = orden.descripcion
+        update.descripcion = editDescripcion.trim() || null
+      }
+    }
     if (campo === 'categoria') {
       anterior.categoria_servicio_id = orden.categoria_servicio_id
       anterior.subcategoria_servicio_id = orden.subcategoria_servicio_id
@@ -155,8 +180,9 @@ export default function ResumenMecanicoPage() {
     const { data } = await supabase
       .from('ordenes')
       .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, descripcion,
+        manifiesta_cliente, diagnostico,
         created_at, fecha_finalizacion,
-        categoria_servicio_id, subcategoria_servicio_id,
+        categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids,
         categorias_servicio(nombre), subcategorias_servicio(nombre),
         metodos_pago(nombre),
         items_orden(id, descripcion, origen, cantidad, precio_venta)`)
@@ -173,6 +199,8 @@ export default function ResumenMecanicoPage() {
     setEditCliente(orden.cliente)
     setEditTelefono(orden.telefono ?? '')
     setEditDescripcion(orden.descripcion ?? '')
+    setEditManifiestaCliente(orden.manifiesta_cliente ?? '')
+    setEditDiagnostico(orden.diagnostico ?? '')
     setEditCategoriaId(orden.categoria_servicio_id ?? '')
     setEditSubcategoriaIds(orden.subcategoria_servicio_ids?.length ? orden.subcategoria_servicio_ids : orden.subcategoria_servicio_id ? [orden.subcategoria_servicio_id] : [])
     setEditField(null)
@@ -417,28 +445,83 @@ export default function ResumenMecanicoPage() {
           )}
         </div>
 
-        {/* Descripción */}
+        {/* Descripción / Garantías */}
         <div className="px-4 py-3">
           {editField === 'descripcion' ? (
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Descripción del trabajo</label>
-              <textarea
-                value={editDescripcion}
-                onChange={(e) => setEditDescripcion(e.target.value)}
-                autoFocus
-                rows={3}
-                className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm resize-none focus:outline-none"
-                placeholder="Describe el trabajo a realizar..."
-              />
-              <div className="flex gap-2">
-                <button onClick={() => guardarCampo('descripcion')} disabled={saving}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
-                  {saving ? '...' : 'Guardar'}
-                </button>
-                <button onClick={cancelar} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">
-                  Cancelar
-                </button>
+            esGarantia ? (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Manifiesta el Cliente:</label>
+                  <textarea
+                    value={editManifiestaCliente}
+                    onChange={(e) => setEditManifiestaCliente(e.target.value)}
+                    autoFocus
+                    rows={3}
+                    className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm resize-none focus:outline-none"
+                    placeholder="Qué reporta el cliente..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Diagnóstico:</label>
+                  <textarea
+                    value={editDiagnostico}
+                    onChange={(e) => setEditDiagnostico(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm resize-none focus:outline-none"
+                    placeholder="Diagnóstico del taller..."
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => guardarCampo('descripcion')} disabled={saving}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                    {saving ? '...' : 'Guardar'}
+                  </button>
+                  <button onClick={cancelar} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">
+                    Cancelar
+                  </button>
+                </div>
               </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Descripción del trabajo</label>
+                <textarea
+                  value={editDescripcion}
+                  onChange={(e) => setEditDescripcion(e.target.value)}
+                  autoFocus
+                  rows={3}
+                  className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm resize-none focus:outline-none"
+                  placeholder="Describe el trabajo a realizar..."
+                />
+                <div className="flex gap-2">
+                  <button onClick={() => guardarCampo('descripcion')} disabled={saving}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                    {saving ? '...' : 'Guardar'}
+                  </button>
+                  <button onClick={cancelar} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )
+          ) : esGarantia ? (
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 space-y-2">
+                <div>
+                  <p className="text-xs text-gray-400">Manifiesta el Cliente:</p>
+                  <p className="text-sm text-gray-900 mt-0.5 whitespace-pre-wrap">
+                    {orden.manifiesta_cliente || <span className="text-gray-400 italic font-normal">Sin información</span>}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Diagnóstico:</p>
+                  <p className="text-sm text-gray-900 mt-0.5 whitespace-pre-wrap">
+                    {orden.diagnostico || <span className="text-gray-400 italic font-normal">Sin información</span>}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setEditField('descripcion')} className="text-gray-400 hover:text-blue-600 p-1 flex-shrink-0 mt-1">
+                <PencilIcon />
+              </button>
             </div>
           ) : (
             <div className="flex items-start justify-between gap-2">

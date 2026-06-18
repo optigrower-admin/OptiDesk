@@ -42,6 +42,7 @@ interface GrupoPlaca {
 interface Categoria {
   id: string
   nombre: string
+  subcategorias_servicio: { id: string; nombre: string }[]
 }
 
 type FiltroEstado = 'todos' | 'activos' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
@@ -56,6 +57,7 @@ export default function AdminOrdenesPage() {
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos')
   const [filtroCategoria, setFiltroCategoria] = useState('todos')
+  const [filtroSubcategoria, setFiltroSubcategoria] = useState('todos')
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
@@ -87,7 +89,7 @@ export default function AdminOrdenesPage() {
     if (!profile?.tenant_id) return
     supabase
       .from('categorias_servicio')
-      .select('id, nombre')
+      .select('id, nombre, subcategorias_servicio(id, nombre)')
       .eq('tenant_id', profile.tenant_id)
       .eq('activo', true)
       .order('orden')
@@ -113,6 +115,7 @@ export default function AdminOrdenesPage() {
         q = q.eq('estado', filtroEstado)
       }
       if (filtroCategoria !== 'todos') q = q.eq('categoria_servicio_id', filtroCategoria)
+      if (filtroSubcategoria !== 'todos') q = q.contains('subcategoria_servicio_ids', [filtroSubcategoria])
       if (busqueda) {
         const b = busqueda.trim()
         // Búsqueda por placa, nombre cliente o # orden UMA
@@ -182,7 +185,7 @@ export default function AdminOrdenesPage() {
 
     run()
     return () => { cancelRef.current = true }
-  }, [profile?.tenant_id, busqueda, filtroEstado, filtroCategoria, fechaDesde, fechaHasta, refreshTick])
+  }, [profile?.tenant_id, busqueda, filtroEstado, filtroCategoria, filtroSubcategoria, fechaDesde, fechaHasta, refreshTick])
 
   const toggleGrupo = (placa: string) => {
     setGrupos((prev) => prev.map((g) => g.placa === placa ? { ...g, expandido: !g.expandido } : g))
@@ -348,7 +351,7 @@ export default function AdminOrdenesPage() {
           {categorias.map((c) => (
             <button
               key={c.id}
-              onClick={() => setFiltroCategoria(filtroCategoria === c.id ? 'todos' : c.id)}
+              onClick={() => { setFiltroCategoria(filtroCategoria === c.id ? 'todos' : c.id); setFiltroSubcategoria('todos') }}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                 filtroCategoria === c.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
@@ -358,6 +361,35 @@ export default function AdminOrdenesPage() {
           ))}
         </div>
       )}
+
+      {/* Filtro: subcategoría (solo si la categoría seleccionada tiene subtipos) */}
+      {(() => {
+        const subs = categorias.find((c) => c.id === filtroCategoria)?.subcategorias_servicio ?? []
+        return subs.length > 0 && (
+          <div className="flex gap-2 flex-wrap items-center">
+            <span className="text-xs text-gray-500 font-medium">Subtipo:</span>
+            <button
+              onClick={() => setFiltroSubcategoria('todos')}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                filtroSubcategoria === 'todos' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Todos
+            </button>
+            {subs.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setFiltroSubcategoria(filtroSubcategoria === s.id ? 'todos' : s.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  filtroSubcategoria === s.id ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {s.nombre}
+              </button>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Filtro estado */}
       <div className="flex gap-2 flex-wrap items-center">
