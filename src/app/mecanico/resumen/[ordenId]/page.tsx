@@ -70,6 +70,7 @@ export default function ResumenMecanicoPage() {
 
   // Inline edit states
   const [editField, setEditField] = useState<string | null>(null)
+  const [editPlaca, setEditPlaca] = useState('')
   const [editCliente, setEditCliente] = useState('')
   const [editTelefono, setEditTelefono] = useState('')
   const [editDescripcion, setEditDescripcion] = useState('')
@@ -104,6 +105,7 @@ export default function ResumenMecanicoPage() {
       if (ordenData) {
         const o = ordenData as unknown as OrdenDetalle
         setOrden(o)
+        setEditPlaca(o.placa)
         setEditCliente(o.cliente)
         setEditTelefono(o.telefono ?? '')
         setEditDescripcion(o.descripcion ?? '')
@@ -122,11 +124,12 @@ export default function ResumenMecanicoPage() {
 
   const subcategoriasEdit = categorias.find((c) => c.id === editCategoriaId)?.subcategorias_servicio ?? []
 
-  const guardarCampo = async (campo: 'cliente' | 'telefono' | 'descripcion' | 'categoria') => {
+  const guardarCampo = async (campo: 'placa' | 'cliente' | 'telefono' | 'descripcion' | 'categoria') => {
     if (!orden) return
     setSaving(true)
     const anterior: Record<string, unknown> = {}
     const update: Record<string, unknown> = {}
+    if (campo === 'placa') { anterior.placa = orden.placa; update.placa = editPlaca.trim().toUpperCase() }
     if (campo === 'cliente') { anterior.cliente = orden.cliente; update.cliente = editCliente.trim() }
     if (campo === 'telefono') { anterior.telefono = orden.telefono; update.telefono = editTelefono.trim() || null }
     if (campo === 'descripcion') { anterior.descripcion = orden.descripcion; update.descripcion = editDescripcion.trim() || null }
@@ -166,6 +169,7 @@ export default function ResumenMecanicoPage() {
 
   const cancelar = () => {
     if (!orden) return
+    setEditPlaca(orden.placa)
     setEditCliente(orden.cliente)
     setEditTelefono(orden.telefono ?? '')
     setEditDescripcion(orden.descripcion ?? '')
@@ -232,6 +236,40 @@ export default function ResumenMecanicoPage() {
 
       {/* ── CAMPOS EDITABLES ── */}
       <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50 overflow-hidden">
+
+        {/* Placa */}
+        <div className="px-4 py-3">
+          {editField === 'placa' ? (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Placa</label>
+              <input
+                value={editPlaca}
+                onChange={(e) => setEditPlaca(e.target.value.toUpperCase())}
+                autoFocus
+                className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm font-mono focus:outline-none"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => guardarCampo('placa')} disabled={saving}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                  {saving ? '...' : 'Guardar'}
+                </button>
+                <button onClick={cancelar} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-400">Placa</p>
+                <p className="text-sm font-semibold text-gray-900 font-mono">{orden.placa}</p>
+              </div>
+              <button onClick={() => setEditField('placa')} className="text-gray-400 hover:text-blue-600 p-1">
+                <PencilIcon />
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Cliente */}
         <div className="px-4 py-3">
