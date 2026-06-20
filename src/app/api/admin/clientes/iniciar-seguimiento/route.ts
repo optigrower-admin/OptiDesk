@@ -6,11 +6,11 @@ import { NextRequest, NextResponse } from 'next/server'
 interface Body {
   primer_nombre: string
   segundo_nombre?: string | null
-  primer_apellido: string
+  primer_apellido?: string | null
   segundo_apellido?: string | null
   tipo_documento?: string | null
   numero_documento?: string | null
-  celular?: string | null
+  celular: string
   email?: string | null
 }
 
@@ -35,8 +35,11 @@ export async function POST(req: NextRequest) {
     tipo_documento, numero_documento, celular, email,
   } = await req.json() as Body
 
-  if (!primer_nombre?.trim() || !primer_apellido?.trim()) {
-    return NextResponse.json({ error: 'Falta el primer nombre o el primer apellido' }, { status: 400 })
+  if (!primer_nombre?.trim()) {
+    return NextResponse.json({ error: 'Falta el primer nombre' }, { status: 400 })
+  }
+  if (!celular?.trim()) {
+    return NextResponse.json({ error: 'Falta el número de celular' }, { status: 400 })
   }
 
   const nombreCompleto = [primer_nombre, segundo_nombre, primer_apellido, segundo_apellido]
@@ -48,36 +51,48 @@ export async function POST(req: NextRequest) {
       nombre: nombreCompleto,
       primerNombre: primer_nombre.trim(),
       segundoNombre: segundo_nombre?.trim() || undefined,
-      primerApellido: primer_apellido.trim(),
+      primerApellido: primer_apellido?.trim() || undefined,
       segundoApellido: segundo_apellido?.trim() || undefined,
       tipoDocumento: tipo_documento ?? undefined,
       cedula: numero_documento?.trim() || undefined,
-      celular: celular?.trim() || undefined,
+      celular: celular.trim(),
       email: email?.trim() || undefined,
       assignedTo: user.id,
     })
     if (!cliente) return NextResponse.json({ error: 'No se pudo crear el cliente' }, { status: 500 })
 
     const admin = createAdminClient()
-    const { error } = await admin.from('clientes')
-      .update({
-        en_seguimiento_ventas: true,
-        // Si el cliente ya existía (mismo documento/celular) y nadie lo tenía
-        // asignado, se asigna a quien lo está registrando ahora para que le
-        // aparezca de inmediato en su propia lista de Seguimiento Ventas.
-        assigned_to: cliente.assigned_to ?? user.id,
-        primer_nombre: primer_nombre.trim(),
-        segundo_nombre: segundo_nombre?.trim() || null,
-        primer_apellido: primer_apellido.trim(),
-        segundo_apellido: segundo_apellido?.trim() || null,
-        nombre: nombreCompleto,
-        tipo_documento: tipo_documento || 'CC',
-        cedula: numero_documento?.trim() || null,
-        celular: celular?.trim() || null,
-        email: email?.trim() || null,
-      })
+    const datosActualizados: Record<string, string | boolean | null> = {
+      en_seguimiento_ventas: true,
+      // Si el cliente ya existía (mismo documento/celular) y nadie lo tenía
+      // asignado, se asigna a quien lo está registrando ahora para que le
+      // aparezca de inmediato en su propia lista de Seguimiento Ventas.
+      assigned_to: cliente.assigned_to ?? user.id,
+      primer_nombre: primer_nombre.trim(),
+      segundo_nombre: segundo_nombre?.trim() || null,
+      primer_apellido: primer_apellido?.trim() || null,
+      segundo_apellido: segundo_apellido?.trim() || null,
+      nombre: nombreCompleto,
+      tipo_documento: tipo_documento || 'CC',
+      cedula: numero_documento?.trim() || null,
+      celular: celular.trim(),
+      email: email?.trim() || null,
+    }
+
+    let { error } = await admin.from('clientes')
+      .update(datosActualizados)
       .eq('id', cliente.id)
       .eq('tenant_id', perfil.tenant_id)
+
+    // Si la migración de tipo_documento no se ha corrido todavía, no se debe
+    // bloquear el guardado del resto de los datos por esa sola columna.
+    if (error?.code === '42703') {
+      delete datosActualizados.tipo_documento
+      ;({ error } = await admin.from('clientes')
+        .update(datosActualizados)
+        .eq('id', cliente.id)
+        .eq('tenant_id', perfil.tenant_id))
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

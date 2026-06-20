@@ -83,11 +83,18 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
   if (canal === 'messenger' && contactId) nuevo.messenger_id    = contactId
   if (canal === 'instagram' && contactId) nuevo.instagram_id    = contactId
 
-  const { data: creado, error } = await supabase
+  let { data: creado, error } = await supabase
     .from('clientes')
     .insert(nuevo)
     .select('*')
     .single()
+
+  // Si la migración de tipo_documento no se ha corrido todavía en esta base,
+  // no se debe bloquear la creación del cliente por esa sola columna.
+  if (error?.code === '42703' && 'tipo_documento' in nuevo) {
+    delete nuevo.tipo_documento
+    ;({ data: creado, error } = await supabase.from('clientes').insert(nuevo).select('*').single())
+  }
 
   if (error) throw new Error(error.message)
 

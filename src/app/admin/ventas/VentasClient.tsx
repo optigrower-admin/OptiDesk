@@ -35,7 +35,7 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError]     = useState('')
 
-  const valido = primerNombre.trim() !== '' && primerApellido.trim() !== ''
+  const valido = primerNombre.trim() !== '' && celular.trim() !== ''
 
   async function crear() {
     if (!valido) return
@@ -46,11 +46,11 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
         body: JSON.stringify({
           primer_nombre: primerNombre.trim(),
           segundo_nombre: segundoNombre.trim() || null,
-          primer_apellido: primerApellido.trim(),
+          primer_apellido: primerApellido.trim() || null,
           segundo_apellido: segundoApellido.trim() || null,
           tipo_documento: tipoDocumento,
           numero_documento: numeroDocumento || null,
-          celular: celular.trim() || null,
+          celular: celular.trim(),
           email: email.trim() || null,
         }),
       })
@@ -70,17 +70,19 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
         <p className="text-xs text-gray-500 mb-4">Para clientes que se gestionan en persona, sin chat previo.</p>
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
-            <input value={primerNombre} onChange={e => setPrimerNombre(e.target.value)} placeholder="Primer nombre"
+            <input value={primerNombre} onChange={e => setPrimerNombre(e.target.value)} placeholder="Primer nombre *"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={segundoNombre} onChange={e => setSegundoNombre(e.target.value)} placeholder="Segundo nombre"
+            <input value={segundoNombre} onChange={e => setSegundoNombre(e.target.value)} placeholder="Segundo nombre (opcional)"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <input value={primerApellido} onChange={e => setPrimerApellido(e.target.value)} placeholder="Primer apellido"
+            <input value={primerApellido} onChange={e => setPrimerApellido(e.target.value)} placeholder="Primer apellido (opcional)"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={segundoApellido} onChange={e => setSegundoApellido(e.target.value)} placeholder="Segundo apellido"
+            <input value={segundoApellido} onChange={e => setSegundoApellido(e.target.value)} placeholder="Segundo apellido (opcional)"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
+          <input value={celular} onChange={e => setCelular(e.target.value)} placeholder="Celular *"
+            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           <div className="grid grid-cols-[auto,1fr] gap-2">
             <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}
               className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -89,14 +91,13 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
             <input
               value={numeroDocumento ? Number(numeroDocumento).toLocaleString('es-CO') : ''}
               onChange={e => setNumeroDocumento(e.target.value.replace(/\D/g, ''))}
-              inputMode="numeric" placeholder="Número de documento"
+              inputMode="numeric" placeholder="Número de documento (opcional)"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-          <input value={celular} onChange={e => setCelular(e.target.value)} placeholder="Celular (opcional)"
-            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Correo electrónico (opcional)" type="email"
             className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
+        <p className="text-xs text-gray-400 mt-2">* Solo el primer nombre y el celular son obligatorios.</p>
         {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
         <div className="flex gap-2 mt-4">
           <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
