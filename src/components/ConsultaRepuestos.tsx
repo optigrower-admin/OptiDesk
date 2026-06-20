@@ -111,6 +111,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const [fSaving, setFSaving] = useState(false)
   const [fError, setFError] = useState('')
   const [fSinDatos, setFSinDatos] = useState(false)
+  const [confirmPrecioBajo, setConfirmPrecioBajo] = useState(false)
   // Autocomplete proveedor
   const [provSugg, setProvSugg] = useState<Proveedor[]>([])
   const [showProvDrop, setShowProvDrop] = useState(false)
@@ -123,6 +124,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       setUmaSelId(null); setUmaErrPrecio(''); setUmaFuente('repuesto')
       setExtSelId(null)
       setShowForm(false); setFError(''); setFSinDatos(false); setFCantidad(1)
+      setConfirmPrecioBajo(false)
       setInsumoValor('10000')
     }
   }, [open])
@@ -252,11 +254,17 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   }
 
   /* ── Guardar nuevo externo ── */
-  const guardarNuevoExt = async () => {
+  const guardarNuevoExt = async (forzado = false) => {
     if (!fDesc.trim()) { setFError('La descripción es obligatoria'); return }
-    const precio = parseInt(fPrecio.replace(/\D/g, ''), 10)
+    if (fPrecio.trim() === '') { setFError('Ingresa un precio de venta válido'); return }
+    const precio = parseInt(fPrecio.replace(/\D/g, ''), 10) || 0
     const costo = parseInt(fCosto.replace(/\D/g, ''), 10) || 0
-    if (!precio) { setFError('Ingresa un precio de venta válido'); return }
+
+    if (!forzado && costo > 0 && precio < costo) {
+      setConfirmPrecioBajo(true)
+      return
+    }
+    setConfirmPrecioBajo(false)
 
     // Sin proveedor: no se guarda nada en el catálogo de Externos/Propios
     // (ni proveedores ni repuestos_externos) — se agrega directo a esta orden.
@@ -780,7 +788,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                   className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={guardarNuevoExt} disabled={fSaving}
+                <button onClick={() => guardarNuevoExt()} disabled={fSaving}
                   className={`px-5 py-2 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 ${
                     fSinDatos ? 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300' : 'bg-green-600 hover:bg-green-700 disabled:bg-green-300'
                   }`}>
@@ -816,6 +824,30 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
             className="w-full px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white rounded-lg text-sm font-semibold transition-colors">
             + Agregar a la orden
           </button>
+        </div>
+      )}
+
+      {/* Confirmación: precio de venta menor al costo proveedor */}
+      {confirmPrecioBajo && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+            <h3 className="font-bold text-gray-900 mb-2">¿Precio de venta menor al costo?</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              El precio de venta (<strong>{formatCOP(parseInt(fPrecio.replace(/\D/g, '') || '0', 10))}</strong>) es menor
+              al costo con proveedor (<strong>{formatCOP(parseInt(fCosto.replace(/\D/g, '') || '0', 10))}</strong>).
+              ¿Estás seguro de continuar así?
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmPrecioBajo(false)}
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={() => guardarNuevoExt(true)} disabled={fSaving}
+                className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50">
+                {fSaving ? 'Guardando...' : 'Sí, continuar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Modal>
