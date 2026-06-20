@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
 import { PerfilExtras } from '@/components/PerfilExtras'
+import ConectarCorreo from '@/components/ConectarCorreo'
 
 type Periodo = 'hoy' | 'semana' | 'mes'
 
@@ -206,6 +207,9 @@ export default function AdminPerfilPage() {
           </div>
         </div>
       )}
+
+      {/* Conectar correo personal para Seguimiento Ventas */}
+      {profile?.id && <ConectarCorreo usuarioId={profile.id} />}
 
       {/* Fotos, videos y notas del perfil */}
       {profile?.id && profile?.tenant_id && (

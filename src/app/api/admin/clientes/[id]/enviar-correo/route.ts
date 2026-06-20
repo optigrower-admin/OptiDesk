@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { sendEmail } from '@/lib/email'
+import { sendEmailComoUsuario } from '@/lib/email'
 import { registrarAuditoria } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const cuerpo = reemplazar(plantilla.cuerpo_html)
 
   try {
-    await sendEmail(destinatario_email, asunto, cuerpo)
+    await sendEmailComoUsuario(user.id, destinatario_email, asunto, cuerpo)
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Error al enviar el correo' }, { status: 500 })
   }

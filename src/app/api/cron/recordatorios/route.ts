@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendEmail } from '@/lib/email'
+import { sendEmailComoUsuario } from '@/lib/email'
 
 export const dynamic = 'force-dynamic'
 
@@ -91,7 +91,7 @@ export async function GET(req: Request) {
   // Recordatorios vencidos pendientes de enviar por correo
   const { data: paraEmail } = await supabase
     .from('recordatorios')
-    .select('id, nota, email_destino')
+    .select('id, nota, email_destino, asignado_a')
     .eq('enviar_email', true)
     .is('email_enviado_at', null)
     .eq('completado', false)
@@ -100,9 +100,9 @@ export async function GET(req: Request) {
 
   let emailsEnviados = 0
   for (const r of paraEmail ?? []) {
-    if (!r.email_destino) continue
+    if (!r.email_destino || !r.asignado_a) continue
     try {
-      await sendEmail(r.email_destino, 'Recordatorio de seguimiento', `<p>${r.nota ?? 'Tienes un recordatorio pendiente.'}</p>`)
+      await sendEmailComoUsuario(r.asignado_a, r.email_destino, 'Recordatorio de seguimiento', `<p>${r.nota ?? 'Tienes un recordatorio pendiente.'}</p>`)
       await supabase.from('recordatorios').update({ email_enviado_at: new Date().toISOString() }).eq('id', r.id)
       emailsEnviados++
     } catch (e) {

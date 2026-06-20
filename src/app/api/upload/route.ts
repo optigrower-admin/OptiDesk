@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { uploadToR2 } from '@/lib/r2'
 import { archiveToLimit, LIMITE_TRIGGER_BYTES } from '@/lib/archiveToLimit'
+import { convertirAMp4 } from '@/lib/video'
 
-export const maxDuration = 60
+export const maxDuration = 120
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
 // Android puede enviar video/3gpp, video/webm, o application/octet-stream (OPPO/Huawei)
@@ -112,13 +113,24 @@ export async function POST(req: NextRequest) {
 
   const placa  = (orden?.placa ?? 'SIN_PLACA').replace(/[^a-zA-Z0-9]/g, '_')
   const numero = orden?.numero ?? 0
-  const ext    = (file.name.split('.').pop()?.toLowerCase()) ?? (isImage ? 'jpg' : 'mp4')
+  const extOriginal = (file.name.split('.').pop()?.toLowerCase()) ?? (isImage ? 'jpg' : 'mp4')
+  // Los videos siempre se guardan y descargan en .mp4, sin importar el formato
+  // con el que el celular los grabó (mov, 3gpp, webm, etc.)
+  const ext = isImage ? extOriginal : 'mp4'
+  const contentType = isImage ? file.type : 'video/mp4'
   const timestamp    = Date.now()
   const nombreArchivo = `${placa}_#${numero}_${timestamp}.${ext}`
   const key           = `${perfil.tenant_id}/${placa}/${nombreArchivo}`
 
-  const buffer = Buffer.from(await file.arrayBuffer())
-  await uploadToR2(key, buffer, file.type)
+  let buffer: Buffer = Buffer.from(await file.arrayBuffer())
+  if (!isImage && extOriginal !== 'mp4') {
+    try {
+      buffer = Buffer.from(await convertirAMp4(buffer, extOriginal))
+    } catch (e) {
+      console.error('[upload] Error convirtiendo video a mp4, se sube el original:', e)
+    }
+  }
+  await uploadToR2(key, buffer, contentType)
 
   const { data: medio } = await supabase
     .from('medios')
@@ -128,7 +140,7 @@ export async function POST(req: NextRequest) {
       url:              key,
       tipo,
       nombre_archivo:   nombreArchivo,
-      tamano_bytes:     file.size,
+      tamano_bytes:     buffer.length,
       storage_location: 'r2',
       subido_por:       user.id,
     })
@@ -137,7 +149,7 @@ export async function POST(req: NextRequest) {
 
   await supabase.rpc('increment_tenant_storage', {
     p_tenant_id: perfil.tenant_id,
-    p_bytes: file.size,
+    p_bytes: buffer.length,
   })
 
   // Auto-archivado: si el storage supera 8 GB y está habilitado, mover a Drive en background

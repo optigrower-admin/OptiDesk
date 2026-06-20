@@ -1,12 +1,35 @@
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { decrypt } from '@/lib/crypto'
 
-const FROM = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev'
+/**
+ * Envía un correo usando el Gmail que el propio usuario conectó en su perfil
+ * (Mi perfil → Conectar mi correo), vía SMTP con contraseña de aplicación.
+ * No depende de ningún proveedor externo ni de verificar un dominio.
+ */
+export async function sendEmailComoUsuario(usuarioId: string, to: string, subject: string, html: string) {
+  const admin = createAdminClient()
+  const { data: usuario } = await admin
+    .from('usuarios')
+    .select('email_smtp_usuario, email_smtp_app_password_enc')
+    .eq('id', usuarioId)
+    .single()
 
-export async function sendEmail(to: string, subject: string, html: string) {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) throw new Error('RESEND_API_KEY no configurada')
+  if (!usuario?.email_smtp_usuario || !usuario.email_smtp_app_password_enc) {
+    throw new Error('Este usuario no ha conectado su correo todavía (Mi perfil → Conectar mi correo)')
+  }
 
-  const resend = new Resend(apiKey)
-  const { error } = await resend.emails.send({ from: FROM, to, subject, html })
-  if (error) throw new Error(error.message)
+  const appPassword = decrypt(usuario.email_smtp_app_password_enc)
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: usuario.email_smtp_usuario, pass: appPassword },
+  })
+
+  await transporter.sendMail({
+    from: usuario.email_smtp_usuario,
+    to,
+    subject,
+    html,
+  })
 }

@@ -18,6 +18,7 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '550mb',
     },
+    serverComponentsExternalPackages: ['fluent-ffmpeg', 'ffmpeg-static'],
   },
 }
 
