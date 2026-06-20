@@ -102,42 +102,44 @@ export default function AdminRepuestosPage() {
     if (!profile?.tenant_id) return
     setLoadingCat(true)
 
+    const incluirUma = filtroOrigen !== 'terceros'
+    const incluirExt = filtroOrigen !== 'uma'
+
+    let qUma = supabase
+      .from('repuestos_uma')
+      .select('id, codigo, descripcion, subgrupo, modelo_aplicable, precio_publico_iva, precio_distribuidor_sin_iva, cantidad, activo')
+      .eq('tenant_id', profile.tenant_id)
+    if (busquedaRef) qUma = qUma.ilike('codigo', `%${busquedaRef}%`)
+    if (busquedaNombre) qUma = qUma.ilike('descripcion', `%${busquedaNombre}%`)
+    if (busquedaModelo) qUma = qUma.ilike('modelo_aplicable', `%${busquedaModelo}%`)
+
+    let qExt = supabase
+      .from('repuestos_externos')
+      .select('id, codigo, nombre, subgrupo, modelo_aplicable, ultimo_costo, ultimo_precio_venta')
+      .eq('tenant_id', profile.tenant_id)
+    if (busquedaRef) qExt = qExt.ilike('codigo', `%${busquedaRef}%`)
+    if (busquedaNombre) qExt = qExt.ilike('nombre', `%${busquedaNombre}%`)
+    if (busquedaModelo) qExt = qExt.ilike('modelo_aplicable', `%${busquedaModelo}%`)
+
     const [{ data: uma }, { data: ext }] = await Promise.all([
-      supabase
-        .from('repuestos_uma')
-        .select('id, codigo, descripcion, subgrupo, modelo_aplicable, precio_publico_iva, precio_distribuidor_sin_iva, cantidad, activo')
-        .eq('tenant_id', profile.tenant_id)
-        .order('codigo')
-        .limit(500),
-      supabase
-        .from('repuestos_externos')
-        .select('id, codigo, nombre, subgrupo, modelo_aplicable, ultimo_costo, ultimo_precio_venta')
-        .eq('tenant_id', profile.tenant_id)
-        .order('created_at', { ascending: false })
-        .limit(300),
+      incluirUma ? qUma.order('codigo').limit(1000) : Promise.resolve({ data: [] as unknown[] }),
+      incluirExt ? qExt.order('created_at', { ascending: false }).limit(1000) : Promise.resolve({ data: [] as unknown[] }),
     ])
 
-    const umaItems: ItemCatalogo[] = (uma ?? []).map((r: { id: string; codigo: string; descripcion: string; subgrupo: string | null; modelo_aplicable: string | null; precio_publico_iva: number | null; precio_distribuidor_sin_iva: number | null; cantidad: number; activo: boolean }) => ({
+    const umaItems: ItemCatalogo[] = ((uma ?? []) as { id: string; codigo: string; descripcion: string; subgrupo: string | null; modelo_aplicable: string | null; precio_publico_iva: number | null; precio_distribuidor_sin_iva: number | null; cantidad: number; activo: boolean }[]).map((r) => ({
       id: r.id, tipo: 'uma' as const, codigo: r.codigo, nombre: r.descripcion,
       subtipo: r.subgrupo, modelo_aplicable: r.modelo_aplicable,
       precio_venta: r.precio_publico_iva, costo: r.precio_distribuidor_sin_iva,
       stock: r.cantidad, activo: r.activo,
     }))
 
-    const extItems: ItemCatalogo[] = (ext ?? []).map((r: { id: string; codigo: string | null; nombre: string; subgrupo: string | null; modelo_aplicable: string | null; ultimo_costo: number | null; ultimo_precio_venta: number | null }) => ({
+    const extItems: ItemCatalogo[] = ((ext ?? []) as { id: string; codigo: string | null; nombre: string; subgrupo: string | null; modelo_aplicable: string | null; ultimo_costo: number | null; ultimo_precio_venta: number | null }[]).map((r) => ({
       id: r.id, tipo: 'externo' as const, codigo: r.codigo, nombre: r.nombre,
       subtipo: r.subgrupo, modelo_aplicable: r.modelo_aplicable,
       precio_venta: r.ultimo_precio_venta, costo: r.ultimo_costo, stock: null,
     }))
 
-    let todos: ItemCatalogo[] = [...umaItems, ...extItems]
-    if (filtroOrigen === 'uma') todos = umaItems
-    else if (filtroOrigen === 'terceros') todos = extItems
-    if (busquedaRef) { const b = busquedaRef.toLowerCase(); todos = todos.filter((i) => (i.codigo?.toLowerCase().includes(b) ?? false)) }
-    if (busquedaNombre) { const b = busquedaNombre.toLowerCase(); todos = todos.filter((i) => i.nombre.toLowerCase().includes(b)) }
-    if (busquedaModelo) { const b = busquedaModelo.toLowerCase(); todos = todos.filter((i) => (i.modelo_aplicable?.toLowerCase().includes(b) ?? false)) }
-
-    setCatalogo(todos)
+    setCatalogo([...umaItems, ...extItems])
     setLoadingCat(false)
   }, [profile?.tenant_id, filtroOrigen, busquedaRef, busquedaNombre, busquedaModelo])
 

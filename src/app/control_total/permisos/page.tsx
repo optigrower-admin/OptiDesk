@@ -18,6 +18,7 @@ const GRUPOS_ADMIN: GrupoDef[] = [
       { key: 'servicio_tecnico', label: 'Servicio Técnico',  descripcion: 'Órdenes de trabajo',              defaultOrden: 10 },
       { key: 'repuestos',        label: 'Repuestos',         descripcion: 'Ventas y catálogo de repuestos',  defaultOrden: 20 },
       { key: 'inventario',       label: 'Inventario',        descripcion: 'Movimientos y compras de stock',  defaultOrden: 30 },
+      { key: 'caja',             label: 'Caja',               descripcion: 'Entradas y salidas de dinero de Serv. Téc. y Repuestos', defaultOrden: 35 },
       { key: 'clientes',         label: 'Clientes',          descripcion: 'Base de datos de clientes',       defaultOrden: 40 },
       { key: 'motos',            label: 'Motos',             descripcion: 'Base de datos de motos',          defaultOrden: 50 },
       { key: 'config_servicio',  label: 'Config Serv. Téc.', descripcion: 'Configuración y catálogos UMA',  defaultOrden: 85, soloGerencia: true },
@@ -27,7 +28,8 @@ const GRUPOS_ADMIN: GrupoDef[] = [
     key: 'ventas',
     label: 'Ventas',
     secciones: [
-      { key: 'ventas', label: 'Pipeline', descripcion: 'Pipeline de ventas de motos', defaultOrden: 55 },
+      { key: 'ventas',        label: 'Seguimiento Ventas', descripcion: 'Seguimiento de clientes y ventas de motos', defaultOrden: 55 },
+      { key: 'config_ventas', label: 'Config Ventas',      descripcion: 'Catálogos administrables de Seguimiento Ventas', defaultOrden: 56, soloGerencia: true },
     ],
   },
   {

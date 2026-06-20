@@ -40,6 +40,7 @@ const GRUPOS_ADMIN: GrupoDef[] = [
       { key: 'servicio_tecnico', label: 'Servicio Técnico',  defaultOrden: 10 },
       { key: 'repuestos',        label: 'Repuestos',         defaultOrden: 20 },
       { key: 'inventario',       label: 'Inventario',        defaultOrden: 30 },
+      { key: 'caja',             label: 'Caja',               defaultOrden: 35 },
       { key: 'clientes',         label: 'Clientes',          defaultOrden: 40 },
       { key: 'motos',            label: 'Motos',             defaultOrden: 50 },
       { key: 'config_servicio',  label: 'Config Serv. Téc.', defaultOrden: 85, soloGerencia: true },
@@ -49,7 +50,8 @@ const GRUPOS_ADMIN: GrupoDef[] = [
     key: 'ventas',
     label: 'Ventas',
     secciones: [
-      { key: 'ventas', label: 'Pipeline', defaultOrden: 55 },
+      { key: 'ventas',        label: 'Seguimiento Ventas', defaultOrden: 55 },
+      { key: 'config_ventas', label: 'Config Ventas',      defaultOrden: 56, soloGerencia: true },
     ],
   },
   {
