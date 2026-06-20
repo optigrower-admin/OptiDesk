@@ -269,6 +269,7 @@ export default function RepuestosPage() {
           tenantId={profile.tenant_id}
           onAdd={addItem}
           permitirInsumos
+          puedeEliminar={profile.rol === 'gerencia'}
         />
       )}
     </div>

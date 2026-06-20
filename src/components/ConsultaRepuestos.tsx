@@ -3,6 +3,8 @@ import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
 import { formatCOP } from '@/lib/utils'
+import { registrarAuditoria } from '@/lib/audit'
+import { useAuth } from '@/hooks/useAuth'
 
 /* ─── Tipos ─────────────────────────────────────── */
 interface RepuestoUMA {
@@ -48,6 +50,7 @@ interface Props {
   tenantId: string
   onAdd: (item: ItemOrden) => void
   permitirInsumos?: boolean
+  puedeEliminar?: boolean
 }
 
 /* ─── Helpers ────────────────────────────────────── */
@@ -64,9 +67,12 @@ function fmtCOP(raw: string) {
 }
 
 /* ─── Componente ─────────────────────────────────── */
-export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsumos = false }: Props) {
+export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsumos = false, puedeEliminar = false }: Props) {
   const supabase = createClient()
+  const { profile } = useAuth()
   const [tab, setTab] = useState<'uma' | 'externo' | 'insumo'>('uma')
+  const [extPorEliminar, setExtPorEliminar] = useState<RepuestoExterno | null>(null)
+  const [extEliminando, setExtEliminando] = useState(false)
 
   /* ══ INSUMOS ═══════════════════════════════════════ */
   const [insumoValor, setInsumoValor] = useState('10000')
@@ -125,6 +131,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       setExtSelId(null)
       setShowForm(false); setFError(''); setFSinDatos(false); setFCantidad(1)
       setConfirmPrecioBajo(false)
+      setExtPorEliminar(null)
       setInsumoValor('10000')
     }
   }, [open])
@@ -237,6 +244,30 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
     })
     setExtSelId(null)
     onClose()
+  }
+
+  /* ── Eliminar un externo del catálogo (solo Gerencia) ── */
+  const eliminarExterno = async () => {
+    if (!extPorEliminar) return
+    setExtEliminando(true)
+    try {
+      const { error } = await supabase.from('repuestos_externos').delete().eq('id', extPorEliminar.id)
+      if (error) throw error
+      await registrarAuditoria(supabase, {
+        tenant_id: tenantId,
+        tabla: 'repuestos_externos',
+        registro_id: extPorEliminar.id,
+        tipo: 'eliminacion',
+        valor_anterior: { codigo: extPorEliminar.codigo, nombre: extPorEliminar.nombre },
+        descripcion: `Eliminó el repuesto externo "${extPorEliminar.nombre}" del catálogo`,
+        usuario_id: profile?.id,
+      })
+      setExtRows((prev) => prev.filter((r) => r.id !== extPorEliminar.id))
+      if (extSelId === extPorEliminar.id) setExtSelId(null)
+      setExtPorEliminar(null)
+    } finally {
+      setExtEliminando(false)
+    }
   }
 
   /* ── Agregar insumo (valor rápido, sin proveedor ni costo) ── */
@@ -545,6 +576,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                           <th className="text-center py-2.5 px-3 font-semibold text-xs">U.Emp</th>
                           <th className="text-right py-2.5 px-3 font-semibold text-xs">P. Venta</th>
                           <th className="py-2.5 px-3 w-24" />
+                          {puedeEliminar && <th className="py-2.5 px-3 w-10" />}
                         </tr>
                       </thead>
                       <tbody>
@@ -572,11 +604,21 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                                       </button>
                                   }
                                 </td>
+                                {puedeEliminar && (
+                                  <td className="py-2.5 px-3 text-right">
+                                    <button onClick={() => setExtPorEliminar(r)} title="Eliminar del catálogo"
+                                      className="text-gray-400 hover:text-red-600 transition-colors">
+                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  </td>
+                                )}
                               </tr>
                               {/* Fila expandida para editar cantidad/precio */}
                               {isSel && (
                                 <tr className="bg-amber-50 border-t border-amber-200">
-                                  <td colSpan={6} className="px-4 py-3">
+                                  <td colSpan={puedeEliminar ? 7 : 6} className="px-4 py-3">
                                     <div className="flex gap-3 items-end flex-wrap">
                                       <div>
                                         <label className="text-xs text-gray-600 block mb-1">Precio al cliente</label>
@@ -611,7 +653,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                           )
                         })}
                         {!extLoading && extRows.length === 0 && (
-                          <tr><td colSpan={6} className="py-10 text-center text-gray-400 text-sm">
+                          <tr><td colSpan={puedeEliminar ? 7 : 6} className="py-10 text-center text-gray-400 text-sm">
                             Sin resultados — ajusta los filtros o agrega un repuesto nuevo
                           </td></tr>
                         )}
@@ -845,6 +887,29 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
               <button onClick={() => guardarNuevoExt(true)} disabled={fSaving}
                 className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50">
                 {fSaving ? 'Guardando...' : 'Sí, continuar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmación: eliminar repuesto externo del catálogo */}
+      {extPorEliminar && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+            <h3 className="font-bold text-gray-900 mb-2">¿Eliminar repuesto externo?</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Se eliminará permanentemente <strong>{extPorEliminar.nombre}</strong> del catálogo de Externos/Propios.
+              Las órdenes que ya lo usaron conservan sus datos — esto solo lo quita del catálogo para nuevas búsquedas.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setExtPorEliminar(null)}
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={eliminarExterno} disabled={extEliminando}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50">
+                {extEliminando ? 'Eliminando...' : 'Eliminar'}
               </button>
             </div>
           </div>
