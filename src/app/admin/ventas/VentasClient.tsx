@@ -1,10 +1,14 @@
 'use client'
 import { useState, useMemo } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/hooks/useAuth'
 import { ETAPAS_ACTIVAS, formatCOP } from '@/lib/ventas/pipeline'
 import type { LeadData } from './components/LeadCard'
 import PipelineKanban from './components/PipelineKanban'
 import VistaHoy from './components/VistaHoy'
 import VistaLista from './components/VistaLista'
+import { ImportadorExcel } from '@/components/ImportadorExcel'
+import { importarSeguimientoVentas } from '@/lib/bulkImport'
 
 type Tab = 'kanban' | 'hoy' | 'lista'
 
@@ -114,6 +118,8 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
 }
 
 export default function VentasClient({ leadsIniciales, tenantId }: Props) {
+  const { profile } = useAuth()
+  const supabase = createClient()
   const [tab, setTab] = useState<Tab>('kanban')
   const [nuevoOpen, setNuevoOpen] = useState(false)
 
@@ -171,6 +177,29 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
           </div>
         </div>
       </div>
+
+      {(profile?.rol === 'gerencia' || profile?.rol === 'admin') && (
+        <div className="mb-4">
+          <ImportadorExcel
+            titulo="Carga masiva (Excel) — recuperar clientes de un caído de plataforma"
+            descripcion="Cada fila es un cliente para Seguimiento Ventas. Si la cédula o el celular ya existen, se actualiza ese cliente en vez de duplicarlo."
+            nombreArchivoPlantilla="plantilla_seguimiento_ventas.xlsx"
+            encabezados={['Fecha (DD/MM/AAAA)', 'Primer nombre', 'Segundo nombre', 'Primer apellido', 'Segundo apellido', 'Tipo de documento (CC/TI/CE/PASAPORTE/NIT/RC/PEP)', 'Numero de documento', 'Celular', 'Email', 'Etapa (nuevo/calificado/demo/propuesta/negociacion/ganado/en_matricula/alistamiento/espera_entrega/entregada/perdido)', 'Valor estimado de venta', 'Proxima accion', 'Fecha proxima accion (DD/MM/AAAA)']}
+            filasEjemplo={[
+              ['15/03/2025', 'Juan', '', 'Pérez', '', 'CC', '1020304050', '3001234567', 'juan@correo.com', 'calificado', '8000000', 'Llamar para agendar demo', '20/03/2025'],
+            ]}
+            notas={[
+              'Una fila = un cliente.',
+              'Tipo de documento: CC, TI, CE, PASAPORTE, NIT, RC o PEP. Si lo dejas vacío se usa CC.',
+              'Etapa: si la dejas vacía se usa "nuevo".',
+              'Si el Número de documento o el Celular ya existen en el sistema, se actualiza ese cliente con los datos de la fila en vez de crear uno nuevo.',
+              'El cliente queda marcado automáticamente para aparecer en Seguimiento Ventas.',
+            ]}
+            procesarFilas={(filas) => importarSeguimientoVentas(supabase, tenantId, profile!.id, filas)}
+            onCompletado={() => window.location.reload()}
+          />
+        </div>
+      )}
 
       {/* Content */}
       {tab === 'kanban' && (

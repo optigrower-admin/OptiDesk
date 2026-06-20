@@ -7,6 +7,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { registrarAuditoria } from '@/lib/audit'
+import { ImportadorExcel } from '@/components/ImportadorExcel'
+import { importarVentaRepuestos } from '@/lib/bulkImport'
 
 type Tab = 'catalogo' | 'ventas'
 type FiltroOrigen = 'todos' | 'uma' | 'terceros'
@@ -380,6 +382,30 @@ export default function AdminRepuestosPage() {
           >{t.label}</button>
         ))}
       </div>
+
+      {tab === 'ventas' && (profile?.rol === 'gerencia' || profile?.rol === 'admin') && (
+        <ImportadorExcel
+          titulo="Carga masiva (Excel) — recuperar ventas de un caído de plataforma"
+          descripcion="Cada fila es un ítem vendido. Varias filas con la misma 'Referencia' forman una sola venta. No afecta el inventario — solo registra el ingreso de la venta y, si indicas un monto pagado, el ingreso en Caja."
+          nombreArchivoPlantilla="plantilla_venta_repuestos.xlsx"
+          encabezados={['Referencia', 'Fecha (DD/MM/AAAA)', 'Cliente', 'Cedula', 'Celular', 'Placa (opcional)', 'Descripcion del item', 'Origen (uma/externo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada venta)']}
+          filasEjemplo={[
+            ['1', '15/03/2025', 'Juan Pérez', '1020304050', '3001234567', 'ABC123', 'Llanta trasera', 'externo', '1', '80000', '120000', '120000'],
+            ['2', '16/03/2025', 'María Gómez', '', '3019876543', '', 'Espejo retrovisor', 'uma', '2', '0', '30000', ''],
+          ]}
+          notas={[
+            'Una fila = un ítem vendido. Para una venta con varios ítems, repite la misma Referencia en todas sus filas.',
+            'Referencia: cualquier texto que tú inventes para agrupar las filas de una misma venta. No se guarda en el sistema.',
+            'Fecha, Cliente, Cedula, Celular, Placa y Monto pagado solo se leen de la PRIMERA fila de cada Referencia.',
+            'Origen: uma o externo.',
+            'Monto pagado: si lo dejas vacío o en 0, la venta queda "pendiente" de pago. Si es igual o mayor al total, queda "pagado". Si es menor, queda "abono".',
+            'Si el Cliente o la Cédula no existen todavía en el sistema, se crean automáticamente.',
+            'Esta importación NO descuenta inventario — solo registra el ingreso de la venta.',
+          ]}
+          procesarFilas={(filas) => importarVentaRepuestos(supabase, profile!.tenant_id, profile!.id, filas)}
+          onCompletado={cargarVentas}
+        />
+      )}
 
       {/* Búsqueda + filtros */}
       {tab === 'ventas' ? (
