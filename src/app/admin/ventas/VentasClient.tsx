@@ -1,6 +1,5 @@
 'use client'
 import { useState, useMemo } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { ETAPAS_ACTIVAS, formatCOP } from '@/lib/ventas/pipeline'
 import type { LeadData } from './components/LeadCard'
 import PipelineKanban from './components/PipelineKanban'
@@ -14,21 +13,46 @@ interface Props {
   tenantId: string
 }
 
+const TIPOS_DOCUMENTO = [
+  { value: 'CC', label: 'Cédula de ciudadanía' },
+  { value: 'TI', label: 'Tarjeta de identidad' },
+  { value: 'CE', label: 'Cédula de extranjería' },
+  { value: 'PASAPORTE', label: 'Pasaporte' },
+  { value: 'NIT', label: 'NIT' },
+  { value: 'RC', label: 'Registro civil' },
+  { value: 'PEP', label: 'Permiso especial de permanencia' },
+]
+
 function NuevoClienteModal({ onClose }: { onClose: () => void }) {
-  const supabase = createClient()
-  const [nombre, setNombre]   = useState('')
-  const [cedula, setCedula]   = useState('')
+  const [primerNombre, setPrimerNombre]     = useState('')
+  const [segundoNombre, setSegundoNombre]   = useState('')
+  const [primerApellido, setPrimerApellido] = useState('')
+  const [segundoApellido, setSegundoApellido] = useState('')
+  const [tipoDocumento, setTipoDocumento]   = useState('CC')
+  const [numeroDocumento, setNumeroDocumento] = useState('') // solo dígitos
   const [celular, setCelular] = useState('')
+  const [email, setEmail]     = useState('')
   const [guardando, setGuardando] = useState(false)
   const [error, setError]     = useState('')
 
+  const valido = primerNombre.trim() !== '' && primerApellido.trim() !== ''
+
   async function crear() {
-    if (!nombre.trim()) return
+    if (!valido) return
     setGuardando(true); setError('')
     try {
       const res = await fetch('/api/admin/clientes/iniciar-seguimiento', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre: nombre.trim(), cedula: cedula.trim() || null, celular: celular.trim() || null }),
+        body: JSON.stringify({
+          primer_nombre: primerNombre.trim(),
+          segundo_nombre: segundoNombre.trim() || null,
+          primer_apellido: primerApellido.trim(),
+          segundo_apellido: segundoApellido.trim() || null,
+          tipo_documento: tipoDocumento,
+          numero_documento: numeroDocumento || null,
+          celular: celular.trim() || null,
+          email: email.trim() || null,
+        }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error al crear el cliente')
@@ -41,15 +65,36 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 max-h-[90vh] overflow-y-auto">
         <h2 className="font-bold text-gray-900 mb-1">Nuevo cliente en seguimiento</h2>
         <p className="text-xs text-gray-500 mb-4">Para clientes que se gestionan en persona, sin chat previo.</p>
         <div className="space-y-2">
-          <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre completo"
-            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          <input value={cedula} onChange={e => setCedula(e.target.value)} placeholder="Cédula (opcional)"
-            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <div className="grid grid-cols-2 gap-2">
+            <input value={primerNombre} onChange={e => setPrimerNombre(e.target.value)} placeholder="Primer nombre"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={segundoNombre} onChange={e => setSegundoNombre(e.target.value)} placeholder="Segundo nombre"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input value={primerApellido} onChange={e => setPrimerApellido(e.target.value)} placeholder="Primer apellido"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={segundoApellido} onChange={e => setSegundoApellido(e.target.value)} placeholder="Segundo apellido"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="grid grid-cols-[auto,1fr] gap-2">
+            <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              {TIPOS_DOCUMENTO.map(t => <option key={t.value} value={t.value}>{t.value}</option>)}
+            </select>
+            <input
+              value={numeroDocumento ? Number(numeroDocumento).toLocaleString('es-CO') : ''}
+              onChange={e => setNumeroDocumento(e.target.value.replace(/\D/g, ''))}
+              inputMode="numeric" placeholder="Número de documento"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
           <input value={celular} onChange={e => setCelular(e.target.value)} placeholder="Celular (opcional)"
+            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Correo electrónico (opcional)" type="email"
             className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
@@ -57,7 +102,7 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
             Cancelar
           </button>
-          <button onClick={crear} disabled={!nombre.trim() || guardando}
+          <button onClick={crear} disabled={!valido || guardando}
             className="flex-1 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
             {guardando ? 'Creando...' : 'Crear'}
           </button>

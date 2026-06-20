@@ -3,13 +3,24 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { buscarOCrearCliente } from '@/lib/clientes/buscarOCrearCliente'
 import { NextRequest, NextResponse } from 'next/server'
 
+interface Body {
+  primer_nombre: string
+  segundo_nombre?: string | null
+  primer_apellido: string
+  segundo_apellido?: string | null
+  tipo_documento?: string | null
+  numero_documento?: string | null
+  celular?: string | null
+  email?: string | null
+}
+
 /**
  * POST /api/admin/clientes/iniciar-seguimiento
- * Body: { nombre, cedula?, celular? }
+ * Body: Body (ver arriba)
  *
- * Busca un cliente existente por cédula/celular (mismo criterio que
- * buscarOCrearCliente) o crea uno nuevo, y lo marca para Seguimiento Ventas.
- * Para clientes gestionados en persona, sin chat previo.
+ * Busca un cliente existente por número de documento/celular (mismo criterio
+ * que buscarOCrearCliente) o crea uno nuevo, y lo marca para Seguimiento
+ * Ventas. Para clientes gestionados en persona, sin chat previo.
  */
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -19,21 +30,59 @@ export async function POST(req: NextRequest) {
   const { data: perfil } = await supabase.from('usuarios').select('tenant_id').eq('id', user.id).single()
   if (!perfil) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
-  const { nombre, cedula, celular } = await req.json() as { nombre: string; cedula?: string | null; celular?: string | null }
-  if (!nombre?.trim()) return NextResponse.json({ error: 'Falta el nombre' }, { status: 400 })
+  const {
+    primer_nombre, segundo_nombre, primer_apellido, segundo_apellido,
+    tipo_documento, numero_documento, celular, email,
+  } = await req.json() as Body
 
-  const { cliente } = await buscarOCrearCliente({
-    tenantId: perfil.tenant_id, nombre, cedula: cedula ?? undefined, celular: celular ?? undefined,
-  })
-  if (!cliente) return NextResponse.json({ error: 'No se pudo crear el cliente' }, { status: 500 })
+  if (!primer_nombre?.trim() || !primer_apellido?.trim()) {
+    return NextResponse.json({ error: 'Falta el primer nombre o el primer apellido' }, { status: 400 })
+  }
 
-  const admin = createAdminClient()
-  const { error } = await admin.from('clientes')
-    .update({ en_seguimiento_ventas: true })
-    .eq('id', cliente.id)
-    .eq('tenant_id', perfil.tenant_id)
+  const nombreCompleto = [primer_nombre, segundo_nombre, primer_apellido, segundo_apellido]
+    .filter(Boolean).map(s => s!.trim()).filter(Boolean).join(' ')
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  try {
+    const { cliente } = await buscarOCrearCliente({
+      tenantId: perfil.tenant_id,
+      nombre: nombreCompleto,
+      primerNombre: primer_nombre.trim(),
+      segundoNombre: segundo_nombre?.trim() || undefined,
+      primerApellido: primer_apellido.trim(),
+      segundoApellido: segundo_apellido?.trim() || undefined,
+      tipoDocumento: tipo_documento ?? undefined,
+      cedula: numero_documento?.trim() || undefined,
+      celular: celular?.trim() || undefined,
+      email: email?.trim() || undefined,
+      assignedTo: user.id,
+    })
+    if (!cliente) return NextResponse.json({ error: 'No se pudo crear el cliente' }, { status: 500 })
 
-  return NextResponse.json({ ok: true, cliente_id: cliente.id })
+    const admin = createAdminClient()
+    const { error } = await admin.from('clientes')
+      .update({
+        en_seguimiento_ventas: true,
+        // Si el cliente ya existía (mismo documento/celular) y nadie lo tenía
+        // asignado, se asigna a quien lo está registrando ahora para que le
+        // aparezca de inmediato en su propia lista de Seguimiento Ventas.
+        assigned_to: cliente.assigned_to ?? user.id,
+        primer_nombre: primer_nombre.trim(),
+        segundo_nombre: segundo_nombre?.trim() || null,
+        primer_apellido: primer_apellido.trim(),
+        segundo_apellido: segundo_apellido?.trim() || null,
+        nombre: nombreCompleto,
+        tipo_documento: tipo_documento || 'CC',
+        cedula: numero_documento?.trim() || null,
+        celular: celular?.trim() || null,
+        email: email?.trim() || null,
+      })
+      .eq('id', cliente.id)
+      .eq('tenant_id', perfil.tenant_id)
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    return NextResponse.json({ ok: true, cliente_id: cliente.id })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error al crear el cliente' }, { status: 500 })
+  }
 }

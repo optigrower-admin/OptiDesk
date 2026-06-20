@@ -9,11 +9,22 @@ interface BuscarCrearParams {
   celular?: string
   cedula?: string
   nombre?: string
+  primerNombre?: string
+  segundoNombre?: string
+  primerApellido?: string
+  segundoApellido?: string
+  tipoDocumento?: string
+  email?: string
+  assignedTo?: string
 }
 
 export async function buscarOCrearCliente(params: BuscarCrearParams) {
   const supabase = createAdminClient()
-  const { tenantId, canal, contactId, celular, cedula, nombre } = params
+  const {
+    tenantId, canal, contactId, celular, cedula, nombre,
+    primerNombre, segundoNombre, primerApellido, segundoApellido,
+    tipoDocumento, email, assignedTo,
+  } = params
 
   // 1. Buscar por cédula (identificador más fuerte)
   if (cedula) {
@@ -59,17 +70,26 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
     tenant_id: tenantId,
     nombre: nombre || 'Contacto nuevo',
   }
-  if (celular)  nuevo.celular  = celular
-  if (cedula)   nuevo.cedula   = cedula
+  if (celular)        nuevo.celular         = celular
+  if (cedula)          nuevo.cedula          = cedula
+  if (primerNombre)    nuevo.primer_nombre   = primerNombre
+  if (segundoNombre)   nuevo.segundo_nombre  = segundoNombre
+  if (primerApellido)  nuevo.primer_apellido = primerApellido
+  if (segundoApellido) nuevo.segundo_apellido = segundoApellido
+  if (tipoDocumento)   nuevo.tipo_documento  = tipoDocumento
+  if (email)           nuevo.email           = email
+  if (assignedTo)       nuevo.assigned_to     = assignedTo
   if (canal === 'whatsapp'  && contactId) nuevo.whatsapp_number = contactId
   if (canal === 'messenger' && contactId) nuevo.messenger_id    = contactId
   if (canal === 'instagram' && contactId) nuevo.instagram_id    = contactId
 
-  const { data: creado } = await supabase
+  const { data: creado, error } = await supabase
     .from('clientes')
     .insert(nuevo)
     .select('*')
     .single()
+
+  if (error) throw new Error(error.message)
 
   return { cliente: creado, creado: true }
 }

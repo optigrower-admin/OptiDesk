@@ -9,11 +9,22 @@ interface Props {
   usuarioId: string
 }
 
+const TIPOS_DOCUMENTO = [
+  { value: 'CC', label: 'Cédula de ciudadanía' },
+  { value: 'TI', label: 'Tarjeta de identidad' },
+  { value: 'CE', label: 'Cédula de extranjería' },
+  { value: 'PASAPORTE', label: 'Pasaporte' },
+  { value: 'NIT', label: 'NIT' },
+  { value: 'RC', label: 'Registro civil' },
+  { value: 'PEP', label: 'Permiso especial de permanencia' },
+]
+
 type Campos = {
   primer_nombre: string
   segundo_nombre: string
   primer_apellido: string
   segundo_apellido: string
+  tipo_documento: string
   cedula: string
   email: string
   celular: string
@@ -26,7 +37,7 @@ type Campos = {
 
 const VACIO: Campos = {
   primer_nombre: '', segundo_nombre: '', primer_apellido: '', segundo_apellido: '',
-  cedula: '', email: '', celular: '', direccion: '', municipio: '', ciudad: '',
+  tipo_documento: 'CC', cedula: '', email: '', celular: '', direccion: '', municipio: '', ciudad: '',
   descuentos: '', lugar_matricula: '',
 }
 
@@ -52,7 +63,7 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
       .then(({ data }) => {
         const d = (data ?? {}) as Record<string, string | null>
         const c: Campos = { ...VACIO }
-        for (const k of Object.keys(VACIO) as (keyof Campos)[]) c[k] = d[k] ?? ''
+        for (const k of Object.keys(VACIO) as (keyof Campos)[]) c[k] = d[k] ?? (k === 'tipo_documento' ? 'CC' : '')
         setCampos(c)
         setOriginal(c)
         setLoading(false)
@@ -105,7 +116,23 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
         <Field label="Primer apellido" value={campos.primer_apellido} onChange={v => set('primer_apellido', v)} />
         <Field label="Segundo apellido" value={campos.segundo_apellido} onChange={v => set('segundo_apellido', v)} />
       </div>
-      <Field label="Cédula" value={campos.cedula} onChange={v => set('cedula', v)} />
+      <div className="grid grid-cols-[auto,1fr] gap-2">
+        <div>
+          <label className="text-xs text-gray-500">Tipo doc.</label>
+          <select value={campos.tipo_documento} onChange={e => set('tipo_documento', e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5">
+            {TIPOS_DOCUMENTO.map(t => <option key={t.value} value={t.value}>{t.value}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">Número de documento</label>
+          <input
+            value={campos.cedula.replace(/\D/g, '') ? Number(campos.cedula.replace(/\D/g, '')).toLocaleString('es-CO') : campos.cedula}
+            onChange={e => set('cedula', e.target.value.replace(/\D/g, ''))}
+            inputMode="numeric"
+            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Celular" value={campos.celular} onChange={v => set('celular', v)} />
         <Field label="Correo electrónico" value={campos.email} onChange={v => set('email', v)} />
