@@ -103,6 +103,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
   const [fUnidad, setFUnidad] = useState('1')
   const [fCosto, setFCosto] = useState('')
   const [fPrecio, setFPrecio] = useState('')
+  const [fCantidad, setFCantidad] = useState(1)
   const [fSaving, setFSaving] = useState(false)
   const [fError, setFError] = useState('')
   const [fSinDatos, setFSinDatos] = useState(false)
@@ -117,7 +118,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
     if (open) {
       setUmaSelId(null); setUmaErrPrecio(''); setUmaFuente('repuesto')
       setExtSelId(null)
-      setShowForm(false); setFError(''); setFSinDatos(false)
+      setShowForm(false); setFError(''); setFSinDatos(false); setFCantidad(1)
     }
   }, [open])
 
@@ -237,11 +238,29 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
     const precio = parseInt(fPrecio.replace(/\D/g, ''), 10)
     const costo = parseInt(fCosto.replace(/\D/g, ''), 10) || 0
     if (!precio) { setFError('Ingresa un precio de venta válido'); return }
+
+    // Sin proveedor: no se guarda nada en el catálogo de Externos/Propios
+    // (ni proveedores ni repuestos_externos) — se agrega directo a esta orden.
+    if (fSinDatos) {
+      onAdd({
+        descripcion: fDesc.trim(),
+        origen: 'externo',
+        cantidad: fCantidad,
+        costo,
+        precio_venta: precio,
+      })
+      setFProv(''); setFTel(''); setFUbic(''); setFSub('')
+      setFDesc(''); setFUnidad('1'); setFCosto(''); setFPrecio(''); setFCantidad(1)
+      setProvExistente(null); setFSinDatos(false); setShowForm(false)
+      onClose()
+      return
+    }
+
     setFSaving(true); setFError('')
     try {
       let proveedorId: string | null = null
 
-      if (!fSinDatos && fProv.trim()) {
+      if (fProv.trim()) {
         if (provExistente) {
           proveedorId = provExistente.id
           if (fTel || fUbic) {
@@ -265,8 +284,8 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
       const { data: nr, error: eR } = await supabase.from('repuestos_externos').insert({
         tenant_id: tenantId,
         nombre: fDesc.trim(),
-        subgrupo: fSinDatos ? null : (fSub.trim() || null),
-        unidad_empaque: fSinDatos ? 1 : (parseInt(fUnidad) || 1),
+        subgrupo: fSub.trim() || null,
+        unidad_empaque: parseInt(fUnidad) || 1,
         ultimo_costo: costo,
         ultimo_precio_venta: precio,
         proveedor_id: proveedorId,
@@ -585,29 +604,36 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">Nuevo repuesto externo</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFSinDatos((v) => !v)}
-                    className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
-                      fSinDatos
-                        ? 'bg-amber-100 border-amber-300 text-amber-700'
-                        : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
-                    }`}
-                  >
-                    {fSinDatos ? '✓ Sin datos adicionales' : 'Sin datos'}
-                  </button>
-                  <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+                <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
 
-              {fSinDatos && (
+              {/* Con proveedor / Sin proveedor */}
+              <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">
+                <button type="button" onClick={() => setFSinDatos(false)}
+                  className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                    !fSinDatos ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                  }`}>
+                  Con proveedor
+                </button>
+                <button type="button" onClick={() => setFSinDatos(true)}
+                  className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                    fSinDatos ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                  }`}>
+                  Sin proveedor
+                </button>
+              </div>
+
+              {fSinDatos ? (
                 <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  Modo simplificado — solo nombre, costo y precio son requeridos.
+                  Se agrega directo a esta orden con descripción, costo y precio — no queda guardado en el catálogo de Externos/Propios.
+                </p>
+              ) : (
+                <p className="text-xs text-gray-400">
+                  Se guarda en el catálogo de Externos/Propios para reutilizarlo después.
                 </p>
               )}
 
@@ -714,6 +740,16 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
                       className="flex-1 px-2 py-2 text-sm font-mono text-right focus:outline-none" />
                   </div>
                 </div>
+
+                {/* Cantidad — solo en modo Sin proveedor, ya que ahí se agrega directo a la orden */}
+                {fSinDatos && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Cantidad</label>
+                    <input type="number" min={1} value={fCantidad}
+                      onChange={(e) => setFCantidad(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                  </div>
+                )}
               </div>
 
               {fError && (
@@ -726,9 +762,11 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
                   Cancelar
                 </button>
                 <button onClick={guardarNuevoExt} disabled={fSaving}
-                  className="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
+                  className={`px-5 py-2 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 ${
+                    fSinDatos ? 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300' : 'bg-green-600 hover:bg-green-700 disabled:bg-green-300'
+                  }`}>
                   {fSaving && <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
-                  Guardar y agregar al listado
+                  {fSinDatos ? 'Agregar a la orden' : 'Guardar y agregar al listado'}
                 </button>
               </div>
             </div>
