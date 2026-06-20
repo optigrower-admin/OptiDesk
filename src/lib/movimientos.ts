@@ -10,6 +10,7 @@ interface MovimientoBase {
   orden_id?: string | null
   item_orden_id?: string | null
   registrado_por?: string | null
+  fecha?: string
 }
 
 export async function registrarSalida(
@@ -29,6 +30,7 @@ export async function registrarSalida(
     orden_id: params.orden_id ?? null,
     item_orden_id: params.item_orden_id ?? null,
     registrado_por: params.registrado_por ?? null,
+    ...(params.fecha ? { created_at: params.fecha } : {}),
   })
 
   // Decrementar stock UMA atómicamente

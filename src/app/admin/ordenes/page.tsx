@@ -333,23 +333,24 @@ export default function AdminOrdenesPage() {
       {(profile?.rol === 'gerencia' || profile?.rol === 'admin') && (
         <ImportadorExcel
           titulo="Carga masiva (Excel) — recuperar órdenes de un caído de plataforma"
-          descripcion="Cada fila es un ítem (repuesto, mano de obra o insumo). Varias filas con la misma 'Referencia' forman una sola orden. Esta importación no afecta el inventario — solo registra el ingreso de la orden y, si indicas un monto pagado, el ingreso en Caja."
+          descripcion="Cada fila es un ítem (repuesto, mano de obra o insumo). Varias filas con la misma 'Referencia' forman una sola orden. Funciona igual que registrarla manualmente: descuenta inventario de Repuestos UMA y registra el costo de Externos en Caja."
           nombreArchivoPlantilla="plantilla_servicio_tecnico.xlsx"
-          encabezados={['Referencia', 'Fecha (DD/MM/AAAA)', 'Placa', 'Cliente', 'Cedula', 'Celular', 'Estado (en_proceso/pendiente/listo)', 'Descripcion del item', 'Origen (uma/externo/mano_obra/insumo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada orden)']}
+          encabezados={['Referencia', 'Fecha (DD/MM/AAAA)', 'Placa', 'Cliente', 'Cedula', 'Celular', 'Estado (en_proceso/pendiente/listo)', 'Descripcion del item', 'Origen (uma/externo/mano_obra/insumo)', 'Codigo UMA (si Origen=uma)', 'Codigo externo (opcional, si Origen=externo)', 'Proveedor (opcional, si Origen=externo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada orden)']}
           filasEjemplo={[
-            ['1', '15/03/2025', 'ABC123', 'Juan Pérez', '1020304050', '3001234567', 'listo', 'Cambio de aceite', 'mano_obra', '1', '0', '25000', '50000'],
-            ['1', '15/03/2025', 'ABC123', 'Juan Pérez', '1020304050', '3001234567', 'listo', 'Filtro de aceite', 'externo', '1', '15000', '25000', ''],
-            ['2', '16/03/2025', 'XYZ789', 'María Gómez', '', '3019876543', 'listo', 'Pastillas de freno', 'uma', '2', '0', '40000', '80000'],
+            ['1', '15/03/2025', 'ABC123', 'Juan Pérez', '1020304050', '3001234567', 'listo', 'Cambio de aceite', 'mano_obra', '', '', '', '1', '0', '25000', '50000'],
+            ['1', '15/03/2025', 'ABC123', 'Juan Pérez', '1020304050', '3001234567', 'listo', 'Filtro de aceite', 'externo', '', 'FE-100', 'Repuestos del Norte', '1', '15000', '25000', ''],
+            ['2', '16/03/2025', 'XYZ789', 'María Gómez', '', '3019876543', 'listo', 'Pastillas de freno', 'uma', 'PF-200', '', '', '2', '0', '40000', '80000'],
           ]}
           notas={[
             'Una fila = un ítem de la orden (repuesto, mano de obra o insumo). Para una orden con varios ítems, repite la misma Referencia en todas sus filas.',
             'Referencia: cualquier texto que tú inventes para agrupar las filas de una misma orden (ej: 1, 2, ORD-001...). No se guarda en el sistema, solo se usa para agrupar al importar.',
             'Fecha, Placa, Cliente, Cedula, Celular, Estado y Monto pagado solo se leen de la PRIMERA fila de cada Referencia — en las demás filas de esa orden puedes dejarlos vacíos.',
             'Origen: uma, externo, mano_obra o insumo.',
+            'Si Origen=uma, el Código UMA es obligatorio y debe existir en tu catálogo — con eso se descuenta el inventario igual que en el flujo manual.',
+            'Si Origen=externo, el Código externo es opcional: si coincide con uno del catálogo de Externos/Propios se usa ese (con su costo); si no coincide o lo dejas vacío, se busca por el nombre exacto en "Descripcion del item" y, si tampoco existe, se crea uno nuevo en el catálogo con el Costo proveedor, Precio de venta y Proveedor que indiques.',
             'Estado: en_proceso, pendiente o listo. Si lo dejas vacío se usa "listo".',
             'Monto pagado: si lo dejas vacío o en 0, la orden queda como "pendiente" de pago. Si es igual o mayor al total, queda "pagado". Si es menor, queda "abono".',
             'Si la Placa o la Cédula no existen todavía en el sistema, se crean automáticamente igual que al registrar una orden manualmente.',
-            'Esta importación NO descuenta inventario (ni de Repuestos UMA ni Externos) — solo registra el ingreso de la orden. Si necesitas control exacto de inventario, regístrala manualmente.',
           ]}
           procesarFilas={(filas) => importarServicioTecnico(supabase, profile!.tenant_id, profile!.id, filas)}
         />

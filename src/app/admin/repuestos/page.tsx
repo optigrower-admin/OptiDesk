@@ -386,21 +386,22 @@ export default function AdminRepuestosPage() {
       {tab === 'ventas' && (profile?.rol === 'gerencia' || profile?.rol === 'admin') && (
         <ImportadorExcel
           titulo="Carga masiva (Excel) — recuperar ventas de un caído de plataforma"
-          descripcion="Cada fila es un ítem vendido. Varias filas con la misma 'Referencia' forman una sola venta. No afecta el inventario — solo registra el ingreso de la venta y, si indicas un monto pagado, el ingreso en Caja."
+          descripcion="Cada fila es un ítem vendido. Varias filas con la misma 'Referencia' forman una sola venta. Funciona igual que registrarla manualmente: descuenta inventario de Repuestos UMA y registra el costo de Externos en Caja."
           nombreArchivoPlantilla="plantilla_venta_repuestos.xlsx"
-          encabezados={['Referencia', 'Fecha (DD/MM/AAAA)', 'Cliente', 'Cedula', 'Celular', 'Placa (opcional)', 'Descripcion del item', 'Origen (uma/externo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada venta)']}
+          encabezados={['Referencia', 'Fecha (DD/MM/AAAA)', 'Cliente', 'Cedula', 'Celular', 'Placa (opcional)', 'Descripcion del item', 'Origen (uma/externo)', 'Codigo UMA (si Origen=uma)', 'Codigo externo (opcional, si Origen=externo)', 'Proveedor (opcional, si Origen=externo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada venta)']}
           filasEjemplo={[
-            ['1', '15/03/2025', 'Juan Pérez', '1020304050', '3001234567', 'ABC123', 'Llanta trasera', 'externo', '1', '80000', '120000', '120000'],
-            ['2', '16/03/2025', 'María Gómez', '', '3019876543', '', 'Espejo retrovisor', 'uma', '2', '0', '30000', ''],
+            ['1', '15/03/2025', 'Juan Pérez', '1020304050', '3001234567', 'ABC123', 'Llanta trasera', 'externo', '', 'LL-300', 'Llantas Express', '1', '80000', '120000', '120000'],
+            ['2', '16/03/2025', 'María Gómez', '', '3019876543', '', 'Espejo retrovisor', 'uma', 'ESP-50', '', '', '2', '0', '30000', ''],
           ]}
           notas={[
             'Una fila = un ítem vendido. Para una venta con varios ítems, repite la misma Referencia en todas sus filas.',
             'Referencia: cualquier texto que tú inventes para agrupar las filas de una misma venta. No se guarda en el sistema.',
             'Fecha, Cliente, Cedula, Celular, Placa y Monto pagado solo se leen de la PRIMERA fila de cada Referencia.',
             'Origen: uma o externo.',
+            'Si Origen=uma, el Código UMA es obligatorio y debe existir en tu catálogo — con eso se descuenta el inventario igual que en el flujo manual.',
+            'Si Origen=externo, el Código externo es opcional: si coincide con uno del catálogo se usa ese (con su costo); si no, se busca por el nombre exacto y, si tampoco existe, se crea uno nuevo con el Costo proveedor, Precio de venta y Proveedor que indiques.',
             'Monto pagado: si lo dejas vacío o en 0, la venta queda "pendiente" de pago. Si es igual o mayor al total, queda "pagado". Si es menor, queda "abono".',
             'Si el Cliente o la Cédula no existen todavía en el sistema, se crean automáticamente.',
-            'Esta importación NO descuenta inventario — solo registra el ingreso de la venta.',
           ]}
           procesarFilas={(filas) => importarVentaRepuestos(supabase, profile!.tenant_id, profile!.id, filas)}
           onCompletado={cargarVentas}

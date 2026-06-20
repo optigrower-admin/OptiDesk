@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { upsertMotoCliente } from '@/lib/clienteMoto'
 import { normalizarPlaca } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
+import { registrarSalida } from '@/lib/movimientos'
 import type { ResultadoImportacion } from '@/components/ImportadorExcel'
 
 function parseFecha(s: string): string | null {
@@ -67,19 +68,23 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
     const celular = String(cab['Celular'] ?? '').trim() || null
 
     // Validar items de este grupo
-    const itemsValidados: { descripcion: string; origen: string; cantidad: number; costo: number; precio_venta: number }[] = []
+    const itemsValidados: { descripcion: string; origen: string; cantidad: number; costo: number; precio_venta: number; codigoUma: string; codigoExterno: string; proveedor: string }[] = []
     let filaError = false
     grupoFilas.forEach((fila, i) => {
       const descripcion = String(fila['Descripcion del item'] ?? '').trim()
       const origen = String(fila['Origen (uma/externo/mano_obra/insumo)'] ?? fila['Origen (uma/externo)'] ?? '').trim().toLowerCase()
       if (!descripcion) { errores.push({ fila: filaIdxBase + i, mensaje: 'Falta la Descripción del ítem' }); filaError = true; return }
       if (!origenesValidos.includes(origen)) { errores.push({ fila: filaIdxBase + i, mensaje: `Origen "${origen}" inválido — usa: ${origenesValidos.join(', ')}` }); filaError = true; return }
-      const precio_venta = parseNum(fila['Precio de venta'])
+      const codigoUma = String(fila['Codigo UMA (si Origen=uma)'] ?? '').trim()
+      if (origen === 'uma' && !codigoUma) { errores.push({ fila: filaIdxBase + i, mensaje: 'Origen "uma" requiere el Código UMA del catálogo' }); filaError = true; return }
       itemsValidados.push({
         descripcion, origen,
         cantidad: parseNum(fila['Cantidad']) || 1,
         costo: parseNum(fila['Costo proveedor']),
-        precio_venta,
+        precio_venta: parseNum(fila['Precio de venta']),
+        codigoUma,
+        codigoExterno: String(fila['Codigo externo (opcional, si Origen=externo)'] ?? '').trim(),
+        proveedor: String(fila['Proveedor (opcional, si Origen=externo)'] ?? '').trim(),
       })
     })
     if (filaError || itemsValidados.length === 0) continue
@@ -89,7 +94,64 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
         supabase, tenantId, placa, clienteNombre: cliente, cedula, celular,
       })
 
-      const valorTotal = itemsValidados.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+      // Resolver catálogo: UMA por código, Externo por código o nombre (se crea si no existe)
+      const itemsResueltos: { descripcion: string; origen: string; cantidad: number; costo: number; precio_venta: number; repuesto_uma_id: string | null; repuesto_externo_id: string | null }[] = []
+      for (const it of itemsValidados) {
+        let repuestoUmaId: string | null = null
+        let repuestoExternoId: string | null = null
+        let costoFinal = it.costo
+
+        if (it.origen === 'uma') {
+          const { data: umaRow } = await supabase
+            .from('repuestos_uma').select('id')
+            .eq('tenant_id', tenantId).eq('codigo', it.codigoUma).maybeSingle()
+          if (!umaRow) throw new Error(`No se encontró el repuesto UMA con código "${it.codigoUma}"`)
+          repuestoUmaId = (umaRow as { id: string }).id
+          costoFinal = 0 // costo de UMA no se registra por ítem, igual que en el flujo manual
+        } else if (it.origen === 'externo') {
+          if (it.codigoExterno) {
+            const { data: extRow } = await supabase
+              .from('repuestos_externos').select('id, ultimo_costo')
+              .eq('tenant_id', tenantId).eq('codigo', it.codigoExterno).maybeSingle()
+            if (extRow) { repuestoExternoId = (extRow as { id: string }).id; costoFinal = (extRow as { ultimo_costo: number | null }).ultimo_costo ?? it.costo }
+          }
+          if (!repuestoExternoId) {
+            const { data: extRow } = await supabase
+              .from('repuestos_externos').select('id, ultimo_costo')
+              .eq('tenant_id', tenantId).ilike('nombre', it.descripcion).maybeSingle()
+            if (extRow) { repuestoExternoId = (extRow as { id: string }).id; costoFinal = (extRow as { ultimo_costo: number | null }).ultimo_costo ?? it.costo }
+          }
+          if (!repuestoExternoId) {
+            let proveedorId: string | null = null
+            if (it.proveedor) {
+              const { data: provExistente } = await supabase
+                .from('proveedores').select('id')
+                .eq('tenant_id', tenantId).ilike('nombre', it.proveedor).maybeSingle()
+              if (provExistente) proveedorId = (provExistente as { id: string }).id
+              else {
+                const { data: provNuevo } = await supabase.from('proveedores')
+                  .insert({ tenant_id: tenantId, nombre: it.proveedor }).select('id').single()
+                proveedorId = (provNuevo as { id: string } | null)?.id ?? null
+              }
+            }
+            const { data: extNuevo, error: extErr } = await supabase.from('repuestos_externos').insert({
+              tenant_id: tenantId, nombre: it.descripcion,
+              ultimo_costo: it.costo, ultimo_precio_venta: it.precio_venta,
+              proveedor_id: proveedorId, registrado_por: usuarioId,
+            }).select('id').single()
+            if (extErr || !extNuevo) throw new Error(`No se pudo crear el repuesto externo "${it.descripcion}": ${extErr?.message ?? ''}`)
+            repuestoExternoId = (extNuevo as { id: string }).id
+          }
+        }
+
+        itemsResueltos.push({
+          descripcion: it.descripcion, origen: it.origen, cantidad: it.cantidad,
+          costo: costoFinal, precio_venta: it.precio_venta,
+          repuesto_uma_id: repuestoUmaId, repuesto_externo_id: repuestoExternoId,
+        })
+      }
+
+      const valorTotal = itemsResueltos.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
       const montoPagadoCol = cab['Monto pagado (solo en la primera fila de cada orden)'] ?? cab['Monto pagado (solo en la primera fila de cada venta)']
       const montoPagado = Math.min(parseNum(montoPagadoCol), valorTotal)
       const estadoPago = montoPagado <= 0 ? 'pendiente' : montoPagado >= valorTotal ? 'pagado' : 'abono'
@@ -117,18 +179,37 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
       if (ordenErr || !ordenData) throw new Error(ordenErr?.message ?? 'No se pudo crear la orden')
       const orden = ordenData as { id: string; numero: number }
 
-      const { error: itemsErr } = await supabase.from('items_orden').insert(
-        itemsValidados.map((it) => ({
+      const { data: itemsInsertados, error: itemsErr } = await supabase.from('items_orden').insert(
+        itemsResueltos.map((it) => ({
           orden_id: orden.id,
           descripcion: it.descripcion,
           origen: it.origen,
+          repuesto_uma_id: it.repuesto_uma_id,
+          repuesto_externo_id: it.repuesto_externo_id,
           cantidad: it.cantidad,
           costo: it.costo,
           precio_venta: it.precio_venta,
           created_at: fechaISO,
         }))
-      )
+      ).select('id, repuesto_uma_id, repuesto_externo_id, cantidad, costo, precio_venta')
       if (itemsErr) throw new Error(itemsErr.message)
+
+      await Promise.all(
+        ((itemsInsertados ?? []) as { id: string; repuesto_uma_id: string | null; repuesto_externo_id: string | null; cantidad: number; costo: number; precio_venta: number }[]).map((it) =>
+          registrarSalida(supabase, tipoOrden === 'venta_repuestos' ? 'venta_directa' : 'uso_st', {
+            tenantId,
+            repuesto_uma_id: it.repuesto_uma_id,
+            repuesto_externo_id: it.repuesto_externo_id,
+            cantidad: it.cantidad,
+            costo_unitario: it.costo,
+            precio_unitario: it.precio_venta,
+            orden_id: orden.id,
+            item_orden_id: it.id,
+            registrado_por: usuarioId,
+            fecha: fechaISO,
+          })
+        )
+      )
 
       if (montoPagado > 0) {
         await supabase.from('pagos_orden').insert({
