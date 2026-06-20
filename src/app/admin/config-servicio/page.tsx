@@ -89,6 +89,13 @@ export default function ConfigServicioPage() {
   const [savingLavaMoto, setSavingLavaMoto] = useState(false)
   const [lavaMotoMsg, setLavaMotoMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
+  /* ── Estado migración de videos antiguos a mp4 ── */
+  const [migrando, setMigrando] = useState(false)
+  const [migProcesados, setMigProcesados] = useState(0)
+  const [migRestantes, setMigRestantes] = useState<number | null>(null)
+  const [migEnDrive, setMigEnDrive] = useState(0)
+  const [migErrores, setMigErrores] = useState<{ id: string; error: string }[]>([])
+
   /* ── Carga ── */
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
@@ -263,6 +270,32 @@ export default function ConfigServicioPage() {
     setEditingLavaMoto(false)
     setLavaMotoMsg({ ok: true, text: 'Precios actualizados correctamente' })
     setTimeout(() => setLavaMotoMsg(null), 3000)
+  }
+
+  /* ── Migrar videos antiguos (ya subidos antes del cambio) a mp4 ── */
+  const migrarVideosAntiguos = async () => {
+    setMigrando(true)
+    setMigProcesados(0)
+    setMigErrores([])
+    try {
+      let restantes = 1
+      while (restantes > 0) {
+        const res = await fetch('/api/admin/migrar-videos-mp4', { method: 'POST' })
+        const json = await res.json()
+        if (!res.ok) {
+          setMigErrores((prev) => [...prev, { id: '-', error: json.error ?? 'Error al migrar' }])
+          break
+        }
+        setMigProcesados((prev) => prev + json.procesados)
+        setMigEnDrive(json.enDrive ?? 0)
+        setMigErrores((prev) => [...prev, ...(json.errores ?? [])])
+        restantes = json.restantes ?? 0
+        setMigRestantes(restantes)
+        if (json.procesados === 0 && json.errores?.length > 0) break
+      }
+    } finally {
+      setMigrando(false)
+    }
   }
 
   const handleUploadRepuestos = async () => {
@@ -517,6 +550,12 @@ export default function ConfigServicioPage() {
               <p className="text-xs text-gray-400">Aparecen al registrar el pago de una orden</p>
             </div>
           </div>
+
+          {metodos.length > 0 && (
+            <p className="text-xs text-gray-400 -mb-1">
+              El campo "% recargo" se suma al total cuando el cliente paga con ese método (ej. 5% en Datáfono o Tarjeta de crédito) — se usa en Seguimiento Ventas.
+            </p>
+          )}
 
           <div className="space-y-2">
             {metodos.length === 0 && (
@@ -893,6 +932,72 @@ export default function ConfigServicioPage() {
           </p>
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════
+          SECCIÓN — CONVERTIR VIDEOS ANTIGUOS A MP4
+      ══════════════════════════════════════════ */}
+      {['admin', 'gerencia', 'control_total'].includes(profile?.rol ?? '') && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Convertir videos antiguos a MP4</h2>
+              <p className="text-xs text-gray-500">
+                Los videos nuevos de Servicio Técnico ya se guardan siempre en .mp4. Usa esto una sola vez para convertir también los que se subieron antes de ese cambio.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+            <button
+              onClick={migrarVideosAntiguos}
+              disabled={migrando}
+              className="px-5 py-3 bg-indigo-700 hover:bg-indigo-800 disabled:bg-indigo-200 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap flex items-center gap-2"
+            >
+              {migrando ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Convirtiendo... ({migProcesados} listos)
+                </>
+              ) : (
+                'Convertir videos antiguos'
+              )}
+            </button>
+
+            {migRestantes === 0 && !migrando && (
+              <div className="flex items-start gap-2 px-4 py-3 rounded-lg text-sm bg-green-50 text-green-800 border border-green-200">
+                <span className="flex-shrink-0 mt-0.5">✓</span>
+                <span>Listo, {migProcesados} video(s) convertidos a mp4.</span>
+              </div>
+            )}
+
+            {migEnDrive > 0 && (
+              <p className="text-xs text-gray-400">
+                Hay {migEnDrive} video(s) archivados en Google Drive que no se tocan aquí (requieren otro proceso aparte).
+              </p>
+            )}
+
+            {migErrores.length > 0 && (
+              <div className="flex items-start gap-2 px-4 py-3 rounded-lg text-sm bg-red-50 text-red-800 border border-red-200">
+                <span className="flex-shrink-0 mt-0.5">✗</span>
+                <span>{migErrores.length} video(s) no se pudieron convertir. Puedes volver a intentar.</span>
+              </div>
+            )}
+
+            <p className="text-xs text-gray-400">
+              Procesa los videos en lotes pequeños, así que puede tardar varios minutos si hay muchos. No cierres la página mientras dice &quot;Convirtiendo...&quot;.
+            </p>
+          </div>
+        </div>
+      )}
 
     </div>
   )

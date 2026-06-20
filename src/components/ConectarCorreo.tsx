@@ -11,7 +11,6 @@ export default function ConectarCorreo({ usuarioId }: Props) {
   const [conectado, setConectado]   = useState<string | null>(null)
   const [email, setEmail]           = useState('')
   const [appPassword, setAppPassword] = useState('')
-  const [mostrarAyuda, setMostrarAyuda] = useState(false)
   const [guardando, setGuardando]   = useState(false)
   const [error, setError]           = useState('')
   const [loading, setLoading]       = useState(true)
@@ -60,28 +59,44 @@ export default function ConectarCorreo({ usuarioId }: Props) {
           <button onClick={desconectar} className="text-xs text-red-600 hover:underline flex-shrink-0">Desconectar</button>
         </div>
       ) : (
-        <div className="space-y-2">
-          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="tucorreo@gmail.com"
-            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          <input value={appPassword} onChange={e => setAppPassword(e.target.value)} placeholder="Contraseña de aplicación (16 letras)"
-            type="password"
-            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <div className="space-y-3">
+          {/* Instrucciones siempre visibles, justo antes de los campos */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <p className="text-xs font-semibold text-blue-800 mb-1.5">Antes de conectar, genera tu contraseña de aplicación:</p>
+            <ol className="text-xs text-blue-700 list-decimal pl-4 space-y-1">
+              <li>
+                Abre{' '}
+                <a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                  myaccount.google.com/security
+                </a>{' '}
+                con el Gmail que quieres conectar (inicia sesión si te lo pide).
+              </li>
+              <li>Activa <span className="font-medium">"Verificación en dos pasos"</span> si todavía no la tienes.</li>
+              <li>
+                En el buscador de esa misma página escribe{' '}
+                <span className="font-medium">"Contraseñas de aplicaciones"</span> y entra ahí.
+              </li>
+              <li>Escribe un nombre (ej. "OptiDesk") y dale <span className="font-medium">Crear</span>.</li>
+              <li>Google te muestra 16 letras en un recuadro amarillo — cópialas tal cual (sin espacios) y pégalas abajo en "Contraseña de aplicación".</li>
+            </ol>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500">Tu Gmail</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="tucorreo@gmail.com"
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Contraseña de aplicación (las 16 letras del paso anterior)</label>
+            <input value={appPassword} onChange={e => setAppPassword(e.target.value)} placeholder="xxxx xxxx xxxx xxxx"
+              type="password"
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+          </div>
           {error && <p className="text-xs text-red-600">{error}</p>}
           <button onClick={conectar} disabled={!email.trim() || !appPassword.trim() || guardando}
             className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
             {guardando ? 'Conectando...' : 'Conectar'}
           </button>
-          <button onClick={() => setMostrarAyuda(p => !p)} className="text-xs text-blue-600 hover:underline">
-            {mostrarAyuda ? 'Ocultar ayuda' : '¿Cómo obtengo la contraseña de aplicación?'}
-          </button>
-          {mostrarAyuda && (
-            <ol className="text-xs text-gray-500 list-decimal pl-4 space-y-1 bg-gray-50 rounded-lg p-3">
-              <li>Entra a <span className="font-medium">myaccount.google.com/security</span> con el Gmail que quieres conectar.</li>
-              <li>Activa "Verificación en dos pasos" si no la tienes.</li>
-              <li>Busca "Contraseñas de aplicaciones", crea una nueva (puedes llamarla "OptiDesk").</li>
-              <li>Google te muestra 16 letras — cópialas y pégalas arriba (sin espacios).</li>
-            </ol>
-          )}
         </div>
       )}
     </div>
