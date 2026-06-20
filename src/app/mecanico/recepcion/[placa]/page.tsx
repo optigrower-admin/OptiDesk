@@ -53,6 +53,7 @@ export default function RecepcionPage() {
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
   const [panelResult, setPanelResult] = useState<ClienteMotoPanelResult>(PANEL_INIT)
+  const [autoCliente, setAutoCliente] = useState<{ nombre: string; celular: string } | null>(null)
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -150,11 +151,21 @@ export default function RecepcionPage() {
         return
       }
 
+      // Si el mecánico cambió el nombre o el celular que se autocompletaron
+      // (la moto cambió de dueño), no reutilizamos el cliente vinculado:
+      // se busca/crea uno nuevo y motos.cliente_id se actualiza, lo que deja
+      // registro automático en el historial de propietarios de la moto.
+      const cambioDeCliente = !!autoCliente && (
+        cliente.trim() !== autoCliente.nombre.trim() ||
+        (telefono || '') !== (autoCliente.celular || '')
+      )
+
       // Crear/vincular moto y cliente silenciosamente
       const { motoId, clienteId } = await upsertMotoCliente({
         supabase, tenantId: profile.tenant_id,
         placa: placaNorm, clienteNombre: cliente, celular: telefono || null,
-        motoId: panelResult.motoId, clienteId: panelResult.clienteId,
+        motoId: panelResult.motoId,
+        clienteId: cambioDeCliente ? null : panelResult.clienteId,
         motoExtras: panelResult.motoExtras,
       })
 
@@ -254,6 +265,7 @@ export default function RecepcionPage() {
             onAutoFill={({ nombre, celular }) => {
               if (nombre) setCliente(nombre)
               if (celular && !telefono) setTelefono(celular)
+              setAutoCliente({ nombre: nombre ?? '', celular: celular ?? '' })
             }}
             onResult={setPanelResult}
           />
@@ -268,6 +280,11 @@ export default function RecepcionPage() {
             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Nombre del cliente"
           />
+          {autoCliente && (cliente.trim() !== autoCliente.nombre.trim() || (telefono || '') !== (autoCliente.celular || '')) && (
+            <p className="text-xs text-amber-600 mt-1">
+              Cambiaste el cliente que tenía esta moto registrada — quedará en el historial de la moto.
+            </p>
+          )}
         </div>
 
         <div>

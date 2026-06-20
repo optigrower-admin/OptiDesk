@@ -94,7 +94,17 @@ export function ClienteMotoPanel({ tenantId, placa, cedula, onAutoFill, onResult
         .maybeSingle()
 
       if (data) {
-        const m = data as unknown as MotoRow
+        let m = data as unknown as MotoRow
+        // Si la moto tiene cliente_id pero el embed no trajo los datos
+        // (puede pasar por caché de esquema/RLS), se busca aparte como respaldo.
+        if (m.cliente_id && !m.clientes) {
+          const { data: clienteRespaldo } = await supabase
+            .from('clientes')
+            .select('id, nombre, cedula, celular')
+            .eq('id', m.cliente_id)
+            .maybeSingle()
+          if (clienteRespaldo) m = { ...m, clientes: clienteRespaldo as ClienteRow }
+        }
         setMoto(m)
         setMotoNotFound(false)
         setExtras(EMPTY_EXTRAS)

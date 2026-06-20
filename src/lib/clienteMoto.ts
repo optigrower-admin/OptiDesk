@@ -89,14 +89,17 @@ export async function upsertMotoCliente({
     }
   }
 
-  // 3. Vincular moto ↔ cliente si no estaban vinculados
+  // 3. Vincular moto ↔ cliente — si el cliente cambió (la moto pasó de dueño),
+  //    se actualiza igual; el trigger registrar_cambio_propietario() ya
+  //    registra el cambio en historial_propietarios_moto automáticamente.
   if (finalMotoId && finalClienteId) {
     const { data: motoData } = await supabase
       .from('motos')
       .select('cliente_id')
       .eq('id', finalMotoId)
       .maybeSingle()
-    if (!(motoData as { cliente_id: string | null } | null)?.cliente_id) {
+    const clienteActual = (motoData as { cliente_id: string | null } | null)?.cliente_id ?? null
+    if (clienteActual !== finalClienteId) {
       await supabase.from('motos').update({ cliente_id: finalClienteId }).eq('id', finalMotoId)
     }
   }
