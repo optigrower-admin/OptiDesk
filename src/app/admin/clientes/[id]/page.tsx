@@ -15,7 +15,7 @@ type Cliente = {
   id: string; nombre: string; cedula: string | null; celular: string | null
   email: string | null; lead_source: string | null; created_at: string
   whatsapp_number: string | null; messenger_id: string | null; instagram_id: string | null
-  notas: string | null
+  notas: string | null; en_seguimiento_ventas: boolean | null
 }
 type Moto = {
   id: string; placa: string; marca: string | null; modelo: string | null
@@ -96,7 +96,7 @@ export default function ClienteDetallePage() {
     setLoading(true)
 
     const [{ data: cli }, { data: mts }, { data: ords }, { data: convs }, { data: vnts }, { data: vinc }] = await Promise.all([
-      supabase.from('clientes').select('id,nombre,cedula,celular,email,lead_source,created_at,whatsapp_number,messenger_id,instagram_id,notas')
+      supabase.from('clientes').select('id,nombre,cedula,celular,email,lead_source,created_at,whatsapp_number,messenger_id,instagram_id,notas,en_seguimiento_ventas')
         .eq('id', clienteId).eq('tenant_id', profile.tenant_id).single(),
       supabase.from('motos').select('id,placa,marca,modelo,año,color,kilometraje')
         .eq('cliente_id', clienteId).order('created_at', { ascending: false }),
@@ -232,10 +232,26 @@ export default function ClienteDetallePage() {
               <p className="text-xs text-gray-400 mt-1">Cliente desde {formatFecha(cliente.created_at)}</p>
             </div>
           </div>
-          <button onClick={abrirEditar}
-            className="flex-shrink-0 text-sm text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-3 py-1.5 rounded-lg transition-colors">
-            Editar
-          </button>
+          <div className="flex-shrink-0 flex items-center gap-2">
+            {cliente.en_seguimiento_ventas ? (
+              <Link href="/admin/ventas"
+                className="text-sm text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg transition-colors">
+                En Seguimiento Ventas →
+              </Link>
+            ) : (
+              <button onClick={async () => {
+                await supabase.from('clientes').update({ en_seguimiento_ventas: true }).eq('id', clienteId)
+                setCliente(p => p ? { ...p, en_seguimiento_ventas: true } : p)
+              }}
+                className="text-sm text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 px-3 py-1.5 rounded-lg transition-colors">
+                Iniciar seguimiento de ventas
+              </button>
+            )}
+            <button onClick={abrirEditar}
+              className="text-sm text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 px-3 py-1.5 rounded-lg transition-colors">
+              Editar
+            </button>
+          </div>
         </div>
 
         {/* Perfiles vinculados */}

@@ -64,6 +64,20 @@ export async function POST(req: NextRequest) {
     .eq('cliente_id', cliente_origen_id)
     .eq('tenant_id', perfil.tenant_id)
 
+  // 3b. Mover datos de Seguimiento Ventas (archivos, comentarios, pasos, recordatorios,
+  //     motos de interés, estudio de crédito, visibilidad). Las que tengan UNIQUE(cliente_id, x)
+  //     pueden chocar si el destino ya tiene esa misma fila — se ignora el error en ese caso.
+  await admin.from('archivos_cliente').update({ cliente_id: cliente_destino_id }).eq('cliente_id', cliente_origen_id)
+  await admin.from('comentarios_cliente').update({ cliente_id: cliente_destino_id }).eq('cliente_id', cliente_origen_id)
+  await admin.from('clientes_pasos').update({ cliente_id: cliente_destino_id }).eq('cliente_id', cliente_origen_id)
+  await admin.from('recordatorios').update({ cliente_id: cliente_destino_id }).eq('cliente_id', cliente_origen_id)
+  for (const tabla of ['clientes_motos_interes', 'clientes_credito_estudio', 'clientes_visibilidad'] as const) {
+    const { data: filas } = await admin.from(tabla).select('id').eq('cliente_id', cliente_origen_id)
+    for (const fila of filas ?? []) {
+      await admin.from(tabla).update({ cliente_id: cliente_destino_id }).eq('id', fila.id)
+    }
+  }
+
   // 4. Marcar origen como fusionado (se borrará en 48h por el cron)
   const { error } = await admin.from('clientes')
     .update({

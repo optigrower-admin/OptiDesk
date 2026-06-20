@@ -12,25 +12,24 @@ export async function POST(req: NextRequest) {
   if (!perfil) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const body = await req.json()
-  const { conversacion_id, ...campos } = body as Record<string, unknown>
-  if (!conversacion_id)
-    return NextResponse.json({ error: 'Falta conversacion_id' }, { status: 400 })
+  const { cliente_id, ...campos } = body as Record<string, unknown>
+  if (!cliente_id)
+    return NextResponse.json({ error: 'Falta cliente_id' }, { status: 400 })
 
   const admin = createAdminClient()
 
-  // Verify conversation belongs to this tenant
-  const { data: conv } = await admin
-    .from('conversaciones')
+  const { data: cliente } = await admin
+    .from('clientes')
     .select('id')
-    .eq('id', conversacion_id)
+    .eq('id', cliente_id)
     .eq('tenant_id', perfil.tenant_id)
     .single()
-  if (!conv) return NextResponse.json({ error: 'Conversación no encontrada' }, { status: 404 })
+  if (!cliente) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
   const { error } = await admin
-    .from('conversaciones')
-    .update({ ...campos, updated_at: new Date().toISOString() })
-    .eq('id', conversacion_id)
+    .from('clientes')
+    .update(campos)
+    .eq('id', cliente_id)
     .eq('tenant_id', perfil.tenant_id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -13,6 +13,7 @@ type NavItem = {
   seccion: string | null
   soloGerencia: boolean
   defaultOrden: number
+  external?: boolean
 }
 
 type NavGroup = {
@@ -28,6 +29,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/admin/ordenes',         label: 'Servicio Técnico',   seccion: 'servicio_tecnico', soloGerencia: false, defaultOrden: 10  },
       { href: '/admin/repuestos',       label: 'Repuestos',          seccion: 'repuestos',        soloGerencia: false, defaultOrden: 20  },
+      { href: 'https://notebooklm.google.com/notebook/99d12f71-5452-4237-85d3-8e4381cb3c43/preview', label: 'Ver Manuales de Partes', seccion: null, soloGerencia: false, defaultOrden: 25, external: true },
       { href: '/admin/inventario',      label: 'Inventario',         seccion: 'inventario',       soloGerencia: false, defaultOrden: 30  },
       { href: '/admin/clientes',        label: 'Clientes',           seccion: 'clientes',         soloGerencia: false, defaultOrden: 40  },
       { href: '/admin/motos',           label: 'Motos',              seccion: 'motos',            soloGerencia: false, defaultOrden: 50  },
@@ -38,7 +40,8 @@ const NAV_GROUPS: NavGroup[] = [
     key: 'ventas',
     label: 'Ventas',
     items: [
-      { href: '/admin/ventas', label: 'Pipeline', seccion: 'ventas', soloGerencia: false, defaultOrden: 55 },
+      { href: '/admin/ventas',        label: 'Seguimiento Ventas', seccion: 'ventas',        soloGerencia: false, defaultOrden: 55 },
+      { href: '/admin/config-ventas', label: 'Config Ventas',      seccion: 'config_ventas',  soloGerencia: true,  defaultOrden: 56 },
     ],
   },
   {
@@ -187,6 +190,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [commentToast, setCommentToast]             = useState<string | null>(null)
   const prevNuevosComRef      = useRef<number>(0)
   const commentToastTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Recordatorios de Seguimiento Ventas vencidos ─────────────────────────
+  const [recordatoriosVencidos, setRecordatoriosVencidos] = useState(0)
+
+  const cargarRecordatorios = useCallback(async () => {
+    if (!profile?.tenant_id || !profile?.id) return
+    const { count } = await supabase
+      .from('recordatorios')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', profile.tenant_id)
+      .eq('asignado_a', profile.id)
+      .eq('completado', false)
+      .not('cliente_id', 'is', null)
+      .lte('fecha_recordatorio', new Date().toISOString())
+    setRecordatoriosVencidos(count ?? 0)
+  }, [profile?.tenant_id, profile?.id])
 
   const mostrarToast = useCallback((t: NotifToast) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -393,6 +412,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     cargarNoLeidos()
     cargarNuevosComentarios()
+    cargarRecordatorios()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -425,9 +445,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         filter: `tenant_id=eq.${profile.tenant_id}`,
       }, () => cargarNuevosComentarios(false))
       .subscribe()
-    const t = setInterval(() => { cargarNoLeidos(true); cargarNuevosComentarios(false) }, 20000)
+    const t = setInterval(() => { cargarNoLeidos(true); cargarNuevosComentarios(false); cargarRecordatorios() }, 20000)
     return () => { supabase.removeChannel(ch); clearInterval(t) }
-  }, [profile?.tenant_id, cargarNoLeidos, cargarNuevosComentarios])
+  }, [profile?.tenant_id, cargarNoLeidos, cargarNuevosComentarios, cargarRecordatorios])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -467,7 +487,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const isBandejaComentariosActive = pathname.startsWith('/admin/comentarios')
   const handleLogout = async () => { await supabase.auth.signOut(); router.push('/login') }
 
-  const totalAlertasMobile = unreadTotal + nuevosComentarios
+  const totalAlertasMobile = unreadTotal + nuevosComentarios + recordatoriosVencidos
 
   const sidebarContent = (
     <>
@@ -523,6 +543,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {groupItems.map(item => {
                       const esBandeja    = item.href === '/admin/mensajes/bandeja'
                       const esPubs       = item.href === '/admin/comentarios/bandeja'
+                      const esVentas     = item.href === '/admin/ventas'
+
+                      if (item.external) {
+                        return (
+                          <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer"
+                            onClick={() => setMobileNavOpen(false)}
+                            className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs italic text-gray-500 hover:bg-gray-50 hover:text-blue-600 transition-colors border border-dashed border-gray-200"
+                          >
+                            <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6v6M20 4L10 14" />
+                            </svg>
+                            <span className="truncate">{item.label}</span>
+                          </a>
+                        )
+                      }
+
                       return (
                         <Link key={item.href} href={item.href}
                           onClick={() => setMobileNavOpen(false)}
@@ -542,6 +578,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                           {esPubs && nuevosComentarios > 0 && !isBandejaComentariosActive && (
                             <span className="bg-orange-500 text-white rounded-full text-xs font-bold px-1.5 py-0.5 min-w-[18px] text-center leading-none">
                               {nuevosComentarios > 99 ? '99+' : nuevosComentarios}
+                            </span>
+                          )}
+                          {esVentas && recordatoriosVencidos > 0 && (
+                            <span className="bg-red-500 text-white rounded-full text-xs font-bold px-1.5 py-0.5 min-w-[18px] text-center leading-none">
+                              {recordatoriosVencidos > 99 ? '99+' : recordatoriosVencidos}
                             </span>
                           )}
                         </Link>

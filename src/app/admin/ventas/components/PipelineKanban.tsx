@@ -90,7 +90,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId }: Props) {
   }
 
   async function persistirEtapa(id: string, etapa: EtapaVenta, motivoPerdida?: string, detallePerdida?: string) {
-    const body: Record<string, unknown> = { conversacion_id: id, etapa_venta: etapa }
+    const body: Record<string, unknown> = { cliente_id: id, etapa_venta: etapa }
     if (etapa === 'perdido' && motivoPerdida) {
       body.motivo_perdida = motivoPerdida + (detallePerdida ? ` — ${detallePerdida}` : '')
     }

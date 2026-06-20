@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 /* ─── Tipos ─────────────────────────────────────────────── */
 interface Subcategoria { id: string; nombre: string; activo: boolean }
 interface Categoria { id: string; nombre: string; activo: boolean; subcategorias_servicio: Subcategoria[] }
-interface MetodoPago { id: string; nombre: string; activo: boolean }
+interface MetodoPago { id: string; nombre: string; activo: boolean; recargo_porcentaje: number }
 interface LavaMotoConfig { id?: string; costo: number; precio_venta: number; activo: boolean }
 
 /* ─── Helpers ────────────────────────────────────────────── */
@@ -97,7 +97,7 @@ export default function ConfigServicioPage() {
         .select('id, nombre, activo, subcategorias_servicio(id, nombre, activo)')
         .eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('metodos_pago')
-        .select('id, nombre, activo')
+        .select('id, nombre, activo, recargo_porcentaje')
         .eq('tenant_id', profile.tenant_id).order('nombre'),
       supabase.from('lava_moto_config')
         .select('id, costo, precio_venta, activo')
@@ -216,6 +216,12 @@ export default function ConfigServicioPage() {
     await supabase.from('metodos_pago').update({ nombre: editNombreMetodo.trim() }).eq('id', id)
     setEditandoMetodo(null)
     await cargar()
+  }
+
+  const guardarRecargoMetodo = async (id: string, recargo: string) => {
+    const valor = recargo ? parseFloat(recargo) : 0
+    await supabase.from('metodos_pago').update({ recargo_porcentaje: valor }).eq('id', id)
+    setMetodos((prev) => prev.map((m) => m.id === id ? { ...m, recargo_porcentaje: valor } : m))
   }
 
   /* ── Lava moto: acciones ── */
@@ -531,6 +537,10 @@ export default function ConfigServicioPage() {
                 ) : (
                   <>
                     <span className="flex-1 font-semibold text-gray-900 text-sm">{m.nombre}</span>
+                    <input type="number" defaultValue={m.recargo_porcentaje || ''} placeholder="0%"
+                      onBlur={(e) => guardarRecargoMetodo(m.id, e.target.value)}
+                      title="Recargo % (ej. datáfono, tarjeta de crédito)"
+                      className="w-14 px-1.5 py-1 border border-gray-200 rounded-lg text-xs text-center focus:outline-none focus:ring-2 focus:ring-green-400" />
                     <PencilBtn onClick={() => { setEditandoMetodo(m.id); setEditNombreMetodo(m.nombre) }} />
                     <ToggleSwitch activo={m.activo} onChange={() => toggleMetodo(m.id, m.activo)} />
                     <TrashBtn onClick={() => deleteMetodo(m.id, m.nombre)} />
