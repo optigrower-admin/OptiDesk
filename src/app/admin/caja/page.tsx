@@ -8,7 +8,7 @@ import { formatCOP } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
-type Categoria = 'ingreso_st' | 'ingreso_venta' | 'costo_externo' | 'gasto'
+type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'costo_externo' | 'gasto'
 
 interface Movimiento {
   id: string
@@ -21,17 +21,19 @@ interface Movimiento {
 }
 
 const CATEGORIA_LABEL: Record<Categoria, string> = {
-  ingreso_st:    'Ingresos Servicio Técnico',
-  ingreso_venta: 'Ingresos Venta repuesto directa',
-  costo_externo: 'Costo repuestos Externos/Terceros',
-  gasto:         'Gastos de Caja',
+  ingreso_st:     'Ingresos Servicio Técnico',
+  ingreso_venta:  'Ingresos Venta repuesto directa',
+  ingreso_insumo: 'Ingresos Insumos',
+  costo_externo:  'Costo repuestos Externos/Terceros',
+  gasto:          'Gastos de Caja',
 }
 
 const CATEGORIA_BADGE: Record<Categoria, string> = {
-  ingreso_st:    'bg-blue-100 text-blue-700',
-  ingreso_venta: 'bg-emerald-100 text-emerald-700',
-  costo_externo: 'bg-amber-100 text-amber-700',
-  gasto:         'bg-red-100 text-red-700',
+  ingreso_st:     'bg-blue-100 text-blue-700',
+  ingreso_venta:  'bg-emerald-100 text-emerald-700',
+  ingreso_insumo: 'bg-purple-100 text-purple-700',
+  costo_externo:  'bg-amber-100 text-amber-700',
+  gasto:          'bg-red-100 text-red-700',
 }
 
 function ymdLocal(d: Date): string {
@@ -155,7 +157,7 @@ export default function CajaPage() {
     const desdeISO = `${desde}T00:00:00`
     const hastaISO = `${hasta}T23:59:59`
 
-    const [{ data: pagos }, { data: movs }, { data: gastos }] = await Promise.all([
+    const [{ data: pagos }, { data: movs }, { data: gastos }, { data: insumos }] = await Promise.all([
       supabase.from('pagos_orden')
         .select('id, monto, fecha, ordenes(numero, placa, cliente, tipo_orden)')
         .eq('tenant_id', profile.tenant_id)
@@ -170,6 +172,11 @@ export default function CajaPage() {
         .select('id, descripcion, monto, fecha')
         .eq('tenant_id', profile.tenant_id)
         .gte('fecha', desdeISO).lte('fecha', hastaISO),
+      supabase.from('items_orden')
+        .select('id, precio_venta, created_at, ordenes!inner(tenant_id, numero, placa, cliente)')
+        .eq('origen', 'insumo')
+        .eq('ordenes.tenant_id', profile.tenant_id)
+        .gte('created_at', desdeISO).lte('created_at', hastaISO),
     ])
 
     const lista: Movimiento[] = []
@@ -213,6 +220,19 @@ export default function CajaPage() {
       })
     }
 
+    for (const it of (insumos ?? []) as unknown as { id: string; precio_venta: number; created_at: string; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+      const ord = it.ordenes
+      lista.push({
+        id: `insumo_${it.id}`,
+        fecha: it.created_at,
+        categoria: 'ingreso_insumo',
+        concepto: `Insumos · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
+        nombre: ord?.cliente ?? null,
+        codigo: ord?.placa ?? null,
+        monto: it.precio_venta,
+      })
+    }
+
     lista.sort((a, b) => b.fecha.localeCompare(a.fecha))
     setMovimientos(lista)
     setLoading(false)
@@ -235,7 +255,7 @@ export default function CajaPage() {
   }, [movimientos, catFiltro, busqueda])
 
   const totalIngresos = movimientos
-    .filter(m => m.categoria === 'ingreso_st' || m.categoria === 'ingreso_venta')
+    .filter(m => m.categoria === 'ingreso_st' || m.categoria === 'ingreso_venta' || m.categoria === 'ingreso_insumo')
     .reduce((s, m) => s + m.monto, 0)
   const totalGastos = movimientos
     .filter(m => m.categoria === 'costo_externo' || m.categoria === 'gasto')

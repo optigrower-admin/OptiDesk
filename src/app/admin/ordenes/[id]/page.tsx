@@ -138,7 +138,7 @@ interface OrdenDetalle {
 interface ItemOrden {
   id: string
   descripcion: string
-  origen: 'uma' | 'externo' | 'mano_obra'
+  origen: 'uma' | 'externo' | 'mano_obra' | 'insumo'
   cantidad: number
   costo: number
   precio_venta: number
@@ -763,7 +763,7 @@ export default function AdminOrdenDetallePage() {
   }
 
   const handleAddItem = async (item: {
-    descripcion: string; origen: 'uma' | 'externo'; repuesto_uma_id?: string;
+    descripcion: string; origen: 'uma' | 'externo' | 'insumo'; repuesto_uma_id?: string;
     repuesto_externo_id?: string; cantidad: number; costo: number; precio_venta: number;
   }) => {
     const { data } = await supabase.from('items_orden').insert({
@@ -2058,8 +2058,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       <tr key={item.id} className="border-b hover:bg-gray-50 group">
                         <td className="py-3 px-4 text-gray-800">{item.descripcion}</td>
                         <td className="py-3 px-4">
-                          <Badge variant={item.origen === 'uma' ? 'blue' : 'amber'}>
-                            {item.origen === 'uma' ? 'UMA' : 'Externo'}
+                          <Badge variant={item.origen === 'uma' ? 'blue' : item.origen === 'insumo' ? 'purple' : 'amber'}>
+                            {item.origen === 'uma' ? 'UMA' : item.origen === 'insumo' ? 'Insumo' : 'Externo'}
                           </Badge>
                         </td>
                         <td className="py-3 px-4 text-center text-gray-600">{item.cantidad}</td>
@@ -2676,6 +2676,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
           onClose={() => { setShowConsulta(false); cargar() }}
           tenantId={profile.tenant_id}
           onAdd={handleAddItem}
+          permitirInsumos
         />
       )}
 

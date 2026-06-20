@@ -18,7 +18,7 @@ import type { ClienteMotoPanelResult } from '@/components/ClienteMotoPanel'
 interface ItemVenta {
   id?: string
   descripcion: string
-  origen: 'uma' | 'externo'
+  origen: 'uma' | 'externo' | 'insumo'
   repuesto_uma_id?: string
   repuesto_externo_id?: string
   cantidad: number

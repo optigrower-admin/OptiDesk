@@ -34,7 +34,7 @@ interface RepuestoExterno {
 
 interface ItemOrden {
   descripcion: string
-  origen: 'uma' | 'externo'
+  origen: 'uma' | 'externo' | 'insumo'
   repuesto_uma_id?: string
   repuesto_externo_id?: string
   cantidad: number
@@ -47,6 +47,7 @@ interface Props {
   onClose: () => void
   tenantId: string
   onAdd: (item: ItemOrden) => void
+  permitirInsumos?: boolean
 }
 
 /* ─── Helpers ────────────────────────────────────── */
@@ -63,9 +64,12 @@ function fmtCOP(raw: string) {
 }
 
 /* ─── Componente ─────────────────────────────────── */
-export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
+export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsumos = false }: Props) {
   const supabase = createClient()
-  const [tab, setTab] = useState<'uma' | 'externo'>('uma')
+  const [tab, setTab] = useState<'uma' | 'externo' | 'insumo'>('uma')
+
+  /* ══ INSUMOS ═══════════════════════════════════════ */
+  const [insumoValor, setInsumoValor] = useState('10000')
 
   /* ══ UMA ══════════════════════════════════════════ */
   const [umaFuente, setUmaFuente] = useState<'repuesto' | 'lubricante'>('repuesto')
@@ -119,6 +123,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
       setUmaSelId(null); setUmaErrPrecio(''); setUmaFuente('repuesto')
       setExtSelId(null)
       setShowForm(false); setFError(''); setFSinDatos(false); setFCantidad(1)
+      setInsumoValor('10000')
     }
   }, [open])
 
@@ -232,6 +237,20 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
     onClose()
   }
 
+  /* ── Agregar insumo (valor rápido, sin proveedor ni costo) ── */
+  const confirmarInsumo = () => {
+    const valor = parseInt(insumoValor.replace(/\D/g, ''), 10) || 0
+    if (!valor) return
+    onAdd({
+      descripcion: 'Insumos',
+      origen: 'insumo',
+      cantidad: 1,
+      costo: 0,
+      precio_venta: valor,
+    })
+    onClose()
+  }
+
   /* ── Guardar nuevo externo ── */
   const guardarNuevoExt = async () => {
     if (!fDesc.trim()) { setFError('La descripción es obligatoria'); return }
@@ -314,12 +333,12 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
     <Modal open={open} onClose={onClose} title="Agregar repuesto" size="full">
       {/* Tabs */}
       <div className="flex gap-1 mb-4 p-1 bg-gray-100 rounded-lg w-fit">
-        {(['uma', 'externo'] as const).map((t) => (
+        {(permitirInsumos ? (['uma', 'externo', 'insumo'] as const) : (['uma', 'externo'] as const)).map((t) => (
           <button key={t} onClick={() => { setTab(t); setUmaSelId(null); setExtSelId(null) }}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
               tab === t ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
             }`}>
-            {t === 'uma' ? 'Repuestos UMA' : 'Externos / Propios'}
+            {t === 'uma' ? 'Repuestos UMA' : t === 'externo' ? 'Externos / Propios' : 'Insumos'}
           </button>
         ))}
       </div>
@@ -771,6 +790,32 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd }: Props) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ════════════════════ TAB INSUMOS ════════════════════ */}
+      {tab === 'insumo' && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 space-y-4 max-w-sm">
+          <div>
+            <h3 className="font-semibold text-purple-900">Agregar insumos</h3>
+            <p className="text-xs text-purple-600 mt-1">
+              Valor rápido sin proveedor — cuenta como ingreso en Caja, no genera gasto.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-purple-700 block mb-1">Valor</label>
+            <div className="flex items-center border border-purple-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-purple-400 bg-white">
+              <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-2">$</span>
+              <input type="text" inputMode="numeric" autoFocus
+                value={fmtCOP(insumoValor)} onChange={(e) => setInsumoValor(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="flex-1 px-2 py-2 text-sm font-mono text-right focus:outline-none" />
+            </div>
+          </div>
+          <button onClick={confirmarInsumo} disabled={!parseInt(insumoValor.replace(/\D/g, ''), 10)}
+            className="w-full px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white rounded-lg text-sm font-semibold transition-colors">
+            + Agregar a la orden
+          </button>
         </div>
       )}
     </Modal>

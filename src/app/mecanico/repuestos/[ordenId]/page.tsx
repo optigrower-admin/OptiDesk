@@ -13,7 +13,7 @@ import { registrarAuditoria } from '@/lib/audit'
 interface ItemOrdenLocal {
   id?: string
   descripcion: string
-  origen: 'uma' | 'externo' | 'mano_obra'
+  origen: 'uma' | 'externo' | 'mano_obra' | 'insumo'
   repuesto_uma_id?: string
   repuesto_externo_id?: string
   cantidad: number
@@ -160,8 +160,8 @@ export default function RepuestosPage() {
           <div key={i} className="bg-white rounded-xl p-4 border border-gray-100 flex items-start gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <Badge variant={item.origen === 'uma' ? 'blue' : item.origen === 'mano_obra' ? 'gray' : 'amber'}>
-                  {item.origen === 'uma' ? 'UMA' : item.origen === 'mano_obra' ? 'Mano obra' : 'Externo'}
+                <Badge variant={item.origen === 'uma' ? 'blue' : item.origen === 'mano_obra' ? 'gray' : item.origen === 'insumo' ? 'purple' : 'amber'}>
+                  {item.origen === 'uma' ? 'UMA' : item.origen === 'mano_obra' ? 'Mano obra' : item.origen === 'insumo' ? 'Insumo' : 'Externo'}
                 </Badge>
               </div>
               <p className="text-sm text-gray-800 leading-tight">{item.descripcion}</p>
@@ -268,6 +268,7 @@ export default function RepuestosPage() {
           onClose={() => setShowConsulta(false)}
           tenantId={profile.tenant_id}
           onAdd={addItem}
+          permitirInsumos
         />
       )}
     </div>
