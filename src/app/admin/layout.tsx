@@ -31,6 +31,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/repuestos',       label: 'Repuestos',          seccion: 'repuestos',        soloGerencia: false, defaultOrden: 20  },
       { href: 'https://notebooklm.google.com/notebook/99d12f71-5452-4237-85d3-8e4381cb3c43/preview', label: 'Ver Manuales de Partes', seccion: null, soloGerencia: false, defaultOrden: 25, external: true },
       { href: '/admin/inventario',      label: 'Inventario',         seccion: 'inventario',       soloGerencia: false, defaultOrden: 30  },
+      { href: '/admin/caja',            label: 'Caja',                seccion: 'caja',             soloGerencia: false, defaultOrden: 35  },
       { href: '/admin/clientes',        label: 'Clientes',           seccion: 'clientes',         soloGerencia: false, defaultOrden: 40  },
       { href: '/admin/motos',           label: 'Motos',              seccion: 'motos',            soloGerencia: false, defaultOrden: 50  },
       { href: '/admin/config-servicio', label: 'Config Serv. Téc.',  seccion: 'config_servicio',  soloGerencia: true,  defaultOrden: 85  },
