@@ -178,6 +178,13 @@ interface LavaMotoOrden {
 
 const ORDEN_DRAFT_KEY = (id: string) => `optiDesk_orden_draft_${id}`
 
+// Para evitar que un borrador local viejo "regrese" un estado más avanzado
+// ya guardado en la base de datos (ej: la orden ya quedó Pagada/Finalizada
+// en otra sesión, pero el borrador local todavía dice "en_proceso").
+const ESTADO_RANGO: Record<string, number> = {
+  falta_revision: 0, en_proceso: 1, pendiente: 1, pagado: 2, listo: 3,
+}
+
 export default function AdminOrdenDetallePage() {
   const params = useParams()
   const ordenId = String(params.id)
@@ -360,7 +367,12 @@ export default function AdminOrdenDetallePage() {
         const draft = localStorage.getItem(ORDEN_DRAFT_KEY(ordenId))
         if (draft) {
           const d = JSON.parse(draft)
-          setEstado(d.estado ?? ord.estado)
+          const draftEstado = d.estado ?? ord.estado
+          const estadoFinal = (ESTADO_RANGO[draftEstado] ?? 0) < (ESTADO_RANGO[ord.estado] ?? 0) ? ord.estado : draftEstado
+          setEstado(estadoFinal)
+          if (estadoFinal !== draftEstado) {
+            try { localStorage.setItem(ORDEN_DRAFT_KEY(ordenId), JSON.stringify({ ...d, estado: estadoFinal })) } catch { /* ignore */ }
+          }
           setMotivoPendiente(d.motivoPendiente ?? (ord.motivo_pendiente ?? ''))
           setTelefono(d.telefono ?? soloDigitos(ord.telefono ?? ''))
           setNotas(d.notas ?? (ord.notas ?? ''))
@@ -1383,6 +1395,9 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     estado: 'listo',
                     fecha_finalizacion: new Date().toISOString(),
                   }).eq('id', ordenId)
+                  setEstado('listo' as EstadoOrden)
+                  try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
+                  setDirty(false)
                   setSavingFinalize(false)
                   setShowFinalizeDialog(false)
                   if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }

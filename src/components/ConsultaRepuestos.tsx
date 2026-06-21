@@ -70,12 +70,15 @@ function fmtCOP(raw: string) {
 export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsumos = false, puedeEliminar = false }: Props) {
   const supabase = createClient()
   const { profile } = useAuth()
-  const [tab, setTab] = useState<'uma' | 'externo' | 'insumo'>('uma')
+  const [tab, setTab] = useState<'uma' | 'externo' | 'insumo' | 'porta_placas'>('uma')
   const [extPorEliminar, setExtPorEliminar] = useState<RepuestoExterno | null>(null)
   const [extEliminando, setExtEliminando] = useState(false)
 
   /* ══ INSUMOS ═══════════════════════════════════════ */
   const [insumoValor, setInsumoValor] = useState('10000')
+
+  /* ══ PORTA PLACAS ═══════════════════════════════════ */
+  const [portaPlacasValor, setPortaPlacasValor] = useState('25000')
 
   /* ══ UMA ══════════════════════════════════════════ */
   const [umaFuente, setUmaFuente] = useState<'repuesto' | 'lubricante'>('repuesto')
@@ -133,6 +136,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       setConfirmPrecioBajo(false)
       setExtPorEliminar(null)
       setInsumoValor('10000')
+      setPortaPlacasValor('25000')
     }
   }, [open])
 
@@ -284,6 +288,20 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
     onClose()
   }
 
+  /* ── Agregar porta placas (valor rápido, sin proveedor ni costo) ── */
+  const confirmarPortaPlacas = () => {
+    const valor = parseInt(portaPlacasValor.replace(/\D/g, ''), 10) || 0
+    if (!valor) return
+    onAdd({
+      descripcion: 'Porta Placas',
+      origen: 'insumo',
+      cantidad: 1,
+      costo: 0,
+      precio_venta: valor,
+    })
+    onClose()
+  }
+
   /* ── Guardar nuevo externo ── */
   const guardarNuevoExt = async (forzado = false) => {
     if (!fDesc.trim()) { setFError('La descripción es obligatoria'); return }
@@ -372,12 +390,12 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
     <Modal open={open} onClose={onClose} title="Agregar repuesto" size="full">
       {/* Tabs */}
       <div className="flex gap-1 mb-4 p-1 bg-gray-100 rounded-lg w-fit">
-        {(permitirInsumos ? (['uma', 'externo', 'insumo'] as const) : (['uma', 'externo'] as const)).map((t) => (
+        {(permitirInsumos ? (['uma', 'externo', 'insumo', 'porta_placas'] as const) : (['uma', 'externo'] as const)).map((t) => (
           <button key={t} onClick={() => { setTab(t); setUmaSelId(null); setExtSelId(null) }}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
               tab === t ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
             }`}>
-            {t === 'uma' ? 'Repuestos UMA' : t === 'externo' ? 'Externos / Propios' : 'Insumos'}
+            {t === 'uma' ? 'Repuestos UMA' : t === 'externo' ? 'Externos / Propios' : t === 'insumo' ? 'Insumos' : 'Porta Placas'}
           </button>
         ))}
       </div>
@@ -864,6 +882,32 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
           </div>
           <button onClick={confirmarInsumo} disabled={!parseInt(insumoValor.replace(/\D/g, ''), 10)}
             className="w-full px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white rounded-lg text-sm font-semibold transition-colors">
+            + Agregar a la orden
+          </button>
+        </div>
+      )}
+
+      {/* ════════════════════ TAB PORTA PLACAS ════════════════════ */}
+      {tab === 'porta_placas' && (
+        <div className="bg-teal-50 border border-teal-200 rounded-xl p-5 space-y-4 max-w-sm">
+          <div>
+            <h3 className="font-semibold text-teal-900">Agregar Porta Placas</h3>
+            <p className="text-xs text-teal-600 mt-1">
+              Valor rápido sin proveedor — cuenta como ingreso en Caja, no genera gasto.
+            </p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-teal-700 block mb-1">Valor</label>
+            <div className="flex items-center border border-teal-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-teal-400 bg-white">
+              <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-2">$</span>
+              <input type="text" inputMode="numeric" autoFocus
+                value={fmtCOP(portaPlacasValor)} onChange={(e) => setPortaPlacasValor(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="flex-1 px-2 py-2 text-sm font-mono text-right focus:outline-none" />
+            </div>
+          </div>
+          <button onClick={confirmarPortaPlacas} disabled={!parseInt(portaPlacasValor.replace(/\D/g, ''), 10)}
+            className="w-full px-5 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-300 text-white rounded-lg text-sm font-semibold transition-colors">
             + Agregar a la orden
           </button>
         </div>

@@ -8,7 +8,7 @@ import { formatCOP } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
-type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'costo_externo' | 'costo_lavado' | 'gasto'
+type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'costo_externo' | 'costo_lavado' | 'gasto'
 
 interface Movimiento {
   id: string
@@ -26,6 +26,7 @@ const CATEGORIA_LABEL: Record<Categoria, string> = {
   ingreso_st:     'Ingresos Servicio Técnico',
   ingreso_venta:  'Ingresos Venta repuesto directa',
   ingreso_insumo: 'Ingresos Insumos',
+  ingreso_lavado: 'Ingresos Servicio de Lavado',
   costo_externo:  'Costo repuestos Externos/Terceros',
   costo_lavado:   'Costo Servicio de Lavado',
   gasto:          'Gastos de Caja',
@@ -35,6 +36,7 @@ const CATEGORIA_BADGE: Record<Categoria, string> = {
   ingreso_st:     'bg-blue-100 text-blue-700',
   ingreso_venta:  'bg-emerald-100 text-emerald-700',
   ingreso_insumo: 'bg-purple-100 text-purple-700',
+  ingreso_lavado: 'bg-cyan-100 text-cyan-700',
   costo_externo:  'bg-amber-100 text-amber-700',
   costo_lavado:   'bg-orange-100 text-orange-700',
   gasto:          'bg-red-100 text-red-700',
@@ -246,9 +248,9 @@ export default function CajaPage() {
         .eq('ordenes.tenant_id', profile.tenant_id)
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
       supabase.from('lava_moto_ordenes')
-        .select('id, costo_unitario, cantidad, created_at, ordenes!inner(tenant_id, numero, placa, cliente)')
+        .select('id, costo_unitario, precio_venta_unitario, cantidad, created_at, ordenes!inner(tenant_id, numero, placa, cliente)')
         .eq('ordenes.tenant_id', profile.tenant_id)
-        .gt('costo_unitario', 0)
+        .or('costo_unitario.gt.0,precio_venta_unitario.gt.0')
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
     ])
 
@@ -285,19 +287,35 @@ export default function CajaPage() {
       })
     }
 
-    for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; cantidad: number; created_at: string; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+    for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
       const ord = lm.ordenes
-      lista.push({
-        id: `lavado_${lm.id}`,
-        fecha: lm.created_at,
-        categoria: 'costo_lavado',
-        concepto: `Servicio de lavado · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
-        nombre: 'Servicio de lavado',
-        codigo: ord?.placa ?? null,
-        monto: -(lm.costo_unitario * lm.cantidad),
-        metodoPagoId: null,
-        metodoPago: null,
-      })
+      const concepto = `Servicio de lavado · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
+      if (lm.costo_unitario > 0) {
+        lista.push({
+          id: `lavadocosto_${lm.id}`,
+          fecha: lm.created_at,
+          categoria: 'costo_lavado',
+          concepto,
+          nombre: 'Servicio de lavado',
+          codigo: ord?.placa ?? null,
+          monto: -(lm.costo_unitario * lm.cantidad),
+          metodoPagoId: null,
+          metodoPago: null,
+        })
+      }
+      if (lm.precio_venta_unitario > 0) {
+        lista.push({
+          id: `lavadoingreso_${lm.id}`,
+          fecha: lm.created_at,
+          categoria: 'ingreso_lavado',
+          concepto,
+          nombre: 'Servicio de lavado',
+          codigo: ord?.placa ?? null,
+          monto: lm.precio_venta_unitario * lm.cantidad,
+          metodoPagoId: null,
+          metodoPago: null,
+        })
+      }
     }
 
     for (const g of (gastos ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null }[]) {
@@ -351,7 +369,7 @@ export default function CajaPage() {
   }, [movimientos, catFiltro, busqueda])
 
   const totalIngresos = movimientos
-    .filter(m => m.categoria === 'ingreso_st' || m.categoria === 'ingreso_venta' || m.categoria === 'ingreso_insumo')
+    .filter(m => m.categoria === 'ingreso_st' || m.categoria === 'ingreso_venta' || m.categoria === 'ingreso_insumo' || m.categoria === 'ingreso_lavado')
     .reduce((s, m) => s + m.monto, 0)
   const totalGastos = movimientos
     .filter(m => m.categoria === 'costo_externo' || m.categoria === 'costo_lavado' || m.categoria === 'gasto')
