@@ -240,6 +240,7 @@ export default function AdminOrdenDetallePage() {
   // Refs para interceptar navegación sin crear listeners nuevos en cada render
   const dirtyRef = useRef(false)
   const ordenEstadoRef = useRef<string | undefined>(undefined)
+  const umaSinNumeroRef = useRef(false)
   const skipNextPopstate = useRef(false)
 
   // Pagos consecutivos
@@ -412,7 +413,7 @@ export default function AdminOrdenDetallePage() {
         window.history.pushState(null, '', window.location.href)
         setPendingNavBack(true); setPendingNavUrl(null)
         setShowExitDialog(true)
-      } else if (ordenEstadoRef.current === 'pagado') {
+      } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         window.history.pushState(null, '', window.location.href)
         setPendingNavBack(true); setPendingNavUrl(null)
         setShowFinalizeDialog(true)
@@ -434,7 +435,7 @@ export default function AdminOrdenDetallePage() {
         e.preventDefault(); e.stopPropagation()
         setPendingNavUrl(href); setPendingNavBack(false)
         setShowExitDialog(true)
-      } else if (ordenEstadoRef.current === 'pagado') {
+      } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         e.preventDefault(); e.stopPropagation()
         setPendingNavUrl(href); setPendingNavBack(false)
         setShowFinalizeDialog(true)
@@ -1234,6 +1235,7 @@ export default function AdminOrdenDetallePage() {
     : (orden.categorias_servicio?.nombre ?? '')
   const esUMA = categoriaNombreActual.toLowerCase().includes('uma')
   const esVenta = orden.tipo_orden === 'venta_repuestos'
+  umaSinNumeroRef.current = esUMA && numerosOrdenUMA.length === 0
 
   const imprimirConIframe = (html: string) => {
     const iframe = document.createElement('iframe')
@@ -1531,7 +1533,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               if (dirty) {
                 setPendingNavBack(true); setPendingNavUrl(null)
                 setShowExitDialog(true)
-              } else if (orden.estado === 'pagado') {
+              } else if (orden.estado === 'pagado' && !(esUMA && numerosOrdenUMA.length === 0)) {
                 setPendingNavBack(true); setPendingNavUrl(null)
                 setShowFinalizeDialog(true)
               } else {
