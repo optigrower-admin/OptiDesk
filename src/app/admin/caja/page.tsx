@@ -8,7 +8,7 @@ import { formatCOP } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
-type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'costo_externo' | 'gasto'
+type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'costo_externo' | 'costo_lavado' | 'gasto'
 
 interface Movimiento {
   id: string
@@ -18,6 +18,8 @@ interface Movimiento {
   nombre: string | null
   codigo: string | null
   monto: number // con signo: positivo = ingreso, negativo = salida
+  metodoPagoId: string | null
+  metodoPago: string | null
 }
 
 const CATEGORIA_LABEL: Record<Categoria, string> = {
@@ -25,6 +27,7 @@ const CATEGORIA_LABEL: Record<Categoria, string> = {
   ingreso_venta:  'Ingresos Venta repuesto directa',
   ingreso_insumo: 'Ingresos Insumos',
   costo_externo:  'Costo repuestos Externos/Terceros',
+  costo_lavado:   'Costo Servicio de Lavado',
   gasto:          'Gastos de Caja',
 }
 
@@ -33,6 +36,7 @@ const CATEGORIA_BADGE: Record<Categoria, string> = {
   ingreso_venta:  'bg-emerald-100 text-emerald-700',
   ingreso_insumo: 'bg-purple-100 text-purple-700',
   costo_externo:  'bg-amber-100 text-amber-700',
+  costo_lavado:   'bg-orange-100 text-orange-700',
   gasto:          'bg-red-100 text-red-700',
 }
 
@@ -63,10 +67,17 @@ function NuevoGastoModal({ tenantId, usuarioId, onClose, onCreado }: {
   const supabase = createClient()
   const [descripcion, setDescripcion] = useState('')
   const [monto, setMonto] = useState('')
+  const [metodoPagoId, setMetodoPagoId] = useState('')
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
-  const valido = descripcion.trim() !== '' && parseInt(monto.replace(/\D/g, ''), 10) > 0
+  useEffect(() => {
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).order('nombre')
+      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
+  }, [supabase, tenantId])
+
+  const valido = descripcion.trim() !== '' && parseInt(monto.replace(/\D/g, ''), 10) > 0 && metodoPagoId !== ''
 
   async function guardar() {
     if (!valido) return
@@ -77,6 +88,7 @@ function NuevoGastoModal({ tenantId, usuarioId, onClose, onCreado }: {
         tenant_id: tenantId,
         descripcion: descripcion.trim(),
         monto: montoNum,
+        metodo_pago_id: metodoPagoId,
         registrado_por: usuarioId,
       }).select('id').single()
       if (err) throw new Error(err.message)
@@ -120,6 +132,14 @@ function NuevoGastoModal({ tenantId, usuarioId, onClose, onCreado }: {
                 className="flex-1 px-2 py-1.5 text-sm font-mono text-right focus:outline-none" />
             </div>
           </div>
+          <div>
+            <label className="text-xs text-gray-500">Método de pago</label>
+            <select value={metodoPagoId} onChange={e => setMetodoPagoId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 mt-0.5 bg-white">
+              <option value="">Selecciona...</option>
+              {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+          </div>
         </div>
         {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
         <div className="flex gap-2 mt-4">
@@ -130,6 +150,53 @@ function NuevoGastoModal({ tenantId, usuarioId, onClose, onCreado }: {
             className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
             {guardando ? 'Guardando...' : 'Guardar gasto'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PorCuentaModal({ movimientos, onClose }: { movimientos: Movimiento[]; onClose: () => void }) {
+  const cuentas = useMemo(() => {
+    const mapa = new Map<string, { nombre: string; ingreso: number; egreso: number }>()
+    for (const m of movimientos) {
+      if (m.categoria !== 'ingreso_st' && m.categoria !== 'ingreso_venta' && m.categoria !== 'gasto') continue
+      const key = m.metodoPagoId ?? 'sin_metodo'
+      const nombre = m.metodoPago ?? 'Sin método especificado'
+      if (!mapa.has(key)) mapa.set(key, { nombre, ingreso: 0, egreso: 0 })
+      const c = mapa.get(key)!
+      if (m.monto >= 0) c.ingreso += m.monto
+      else c.egreso += Math.abs(m.monto)
+    }
+    return [...mapa.values()].sort((a, b) => (b.ingreso - b.egreso) - (a.ingreso - a.egreso))
+  }, [movimientos])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-bold text-gray-900">Distribuido por cuenta</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Una cuenta por cada método de pago — solo incluye pagos de clientes y gastos de caja, que son los que tienen método de pago asociado.
+        </p>
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {cuentas.length === 0 && <p className="text-sm text-gray-400 text-center py-6">Sin movimientos en este período</p>}
+          {cuentas.map((c) => (
+            <div key={c.nombre} className="border border-gray-100 rounded-xl p-3">
+              <p className="text-sm font-semibold text-gray-800 mb-1">{c.nombre}</p>
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(c.ingreso)}</span></span>
+                <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(c.egreso)}</span></span>
+              </div>
+              <p className="text-right font-mono font-bold text-gray-900 mt-1">{formatCOP(c.ingreso - c.egreso)}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -148,6 +215,7 @@ export default function CajaPage() {
   const [catFiltro, setCatFiltro] = useState<Categoria | 'todos'>('todos')
   const [busqueda, setBusqueda] = useState('')
   const [nuevoGastoOpen, setNuevoGastoOpen] = useState(false)
+  const [porCuentaOpen, setPorCuentaOpen] = useState(false)
 
   const { desde, hasta } = calcularRango(periodo, desdeManual, hastaManual)
 
@@ -157,19 +225,19 @@ export default function CajaPage() {
     const desdeISO = `${desde}T00:00:00`
     const hastaISO = `${hasta}T23:59:59`
 
-    const [{ data: pagos }, { data: movs }, { data: gastos }, { data: insumos }] = await Promise.all([
+    const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }] = await Promise.all([
       supabase.from('pagos_orden')
-        .select('id, monto, fecha, ordenes(numero, placa, cliente, tipo_orden)')
+        .select('id, monto, fecha, metodo_pago_id, metodos_pago(nombre), ordenes(numero, placa, cliente, tipo_orden)')
         .eq('tenant_id', profile.tenant_id)
         .gte('fecha', desdeISO).lte('fecha', hastaISO),
-      supabase.from('movimientos_inventario')
-        .select('id, costo_unitario, cantidad, created_at, proveedor, repuestos_externos(nombre, codigo)')
-        .eq('tenant_id', profile.tenant_id)
-        .eq('tipo', 'salida')
-        .not('repuesto_externo_id', 'is', null)
+      supabase.from('items_orden')
+        .select('id, descripcion, costo, cantidad, created_at, ordenes!inner(tenant_id, numero, placa, cliente)')
+        .eq('origen', 'externo')
+        .eq('ordenes.tenant_id', profile.tenant_id)
+        .gt('costo', 0)
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
       supabase.from('gastos_caja')
-        .select('id, descripcion, monto, fecha')
+        .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre)')
         .eq('tenant_id', profile.tenant_id)
         .gte('fecha', desdeISO).lte('fecha', hastaISO),
       supabase.from('items_orden')
@@ -177,11 +245,16 @@ export default function CajaPage() {
         .eq('origen', 'insumo')
         .eq('ordenes.tenant_id', profile.tenant_id)
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
+      supabase.from('lava_moto_ordenes')
+        .select('id, costo_unitario, cantidad, created_at, ordenes!inner(tenant_id, numero, placa, cliente)')
+        .eq('ordenes.tenant_id', profile.tenant_id)
+        .gt('costo_unitario', 0)
+        .gte('created_at', desdeISO).lte('created_at', hastaISO),
     ])
 
     const lista: Movimiento[] = []
 
-    for (const p of (pagos ?? []) as unknown as { id: string; monto: number; fecha: string; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
+    for (const p of (pagos ?? []) as unknown as { id: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
       const ord = p.ordenes
       const esVenta = ord?.tipo_orden === 'venta_repuestos'
       lista.push({
@@ -192,23 +265,42 @@ export default function CajaPage() {
         nombre: ord?.cliente ?? null,
         codigo: ord?.placa ?? null,
         monto: p.monto,
+        metodoPagoId: p.metodo_pago_id,
+        metodoPago: p.metodos_pago?.nombre ?? null,
       })
     }
 
-    for (const m of (movs ?? []) as unknown as { id: string; costo_unitario: number | null; cantidad: number; created_at: string; proveedor: string | null; repuestos_externos: { nombre: string; codigo: string | null } | null }[]) {
-      const costo = (m.costo_unitario ?? 0) * (m.cantidad ?? 1)
+    for (const it of (costosExt ?? []) as unknown as { id: string; descripcion: string; costo: number; cantidad: number; created_at: string; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+      const ord = it.ordenes
       lista.push({
-        id: `mov_${m.id}`,
-        fecha: m.created_at,
+        id: `extcosto_${it.id}`,
+        fecha: it.created_at,
         categoria: 'costo_externo',
-        concepto: m.repuestos_externos?.nombre ?? m.proveedor ?? 'Repuesto externo',
-        nombre: m.repuestos_externos?.nombre ?? null,
-        codigo: m.repuestos_externos?.codigo ?? null,
-        monto: -costo,
+        concepto: `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
+        nombre: it.descripcion,
+        codigo: ord?.placa ?? null,
+        monto: -(it.costo * it.cantidad),
+        metodoPagoId: null,
+        metodoPago: null,
       })
     }
 
-    for (const g of (gastos ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string }[]) {
+    for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; cantidad: number; created_at: string; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+      const ord = lm.ordenes
+      lista.push({
+        id: `lavado_${lm.id}`,
+        fecha: lm.created_at,
+        categoria: 'costo_lavado',
+        concepto: `Servicio de lavado · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
+        nombre: 'Servicio de lavado',
+        codigo: ord?.placa ?? null,
+        monto: -(lm.costo_unitario * lm.cantidad),
+        metodoPagoId: null,
+        metodoPago: null,
+      })
+    }
+
+    for (const g of (gastos ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null }[]) {
       lista.push({
         id: `gasto_${g.id}`,
         fecha: g.fecha,
@@ -217,6 +309,8 @@ export default function CajaPage() {
         nombre: g.descripcion,
         codigo: null,
         monto: -g.monto,
+        metodoPagoId: g.metodo_pago_id,
+        metodoPago: g.metodos_pago?.nombre ?? null,
       })
     }
 
@@ -230,6 +324,8 @@ export default function CajaPage() {
         nombre: ord?.cliente ?? null,
         codigo: ord?.placa ?? null,
         monto: it.precio_venta,
+        metodoPagoId: null,
+        metodoPago: null,
       })
     }
 
@@ -258,7 +354,7 @@ export default function CajaPage() {
     .filter(m => m.categoria === 'ingreso_st' || m.categoria === 'ingreso_venta' || m.categoria === 'ingreso_insumo')
     .reduce((s, m) => s + m.monto, 0)
   const totalGastos = movimientos
-    .filter(m => m.categoria === 'costo_externo' || m.categoria === 'gasto')
+    .filter(m => m.categoria === 'costo_externo' || m.categoria === 'costo_lavado' || m.categoria === 'gasto')
     .reduce((s, m) => s + Math.abs(m.monto), 0)
   const montoEnCaja = totalIngresos - totalGastos
 
@@ -271,6 +367,10 @@ export default function CajaPage() {
           onClose={() => setNuevoGastoOpen(false)}
           onCreado={cargar}
         />
+      )}
+
+      {porCuentaOpen && (
+        <PorCuentaModal movimientos={movimientos} onClose={() => setPorCuentaOpen(false)} />
       )}
 
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -322,7 +422,12 @@ export default function CajaPage() {
       {/* Tarjetas resumen */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs text-gray-400 mb-1">Monto en caja (del período)</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-400 mb-1">Monto en caja (del período)</p>
+            <button onClick={() => setPorCuentaOpen(true)} className="text-xs text-blue-600 hover:text-blue-800 font-medium underline">
+              Ver por cuenta
+            </button>
+          </div>
           <p className={`text-2xl font-bold font-mono ${montoEnCaja >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
             {formatCOP(montoEnCaja)}
           </p>
@@ -363,15 +468,16 @@ export default function CajaPage() {
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Fecha</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Categoría</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Concepto</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Método</th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Monto</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={4} className="text-center py-12 text-gray-400 text-sm">Cargando...</td></tr>
+              <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">Cargando...</td></tr>
             )}
             {!loading && filtrados.length === 0 && (
-              <tr><td colSpan={4} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
+              <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
             )}
             {!loading && filtrados.map((m, i) => (
               <tr key={m.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
@@ -384,6 +490,7 @@ export default function CajaPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-gray-900 truncate max-w-[280px]">{m.concepto}</td>
+                <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{m.metodoPago ?? '—'}</td>
                 <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                   {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
                 </td>
