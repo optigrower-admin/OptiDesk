@@ -158,52 +158,7 @@ function NuevoGastoModal({ tenantId, usuarioId, onClose, onCreado }: {
   )
 }
 
-function PorCuentaModal({ movimientos, onClose }: { movimientos: Movimiento[]; onClose: () => void }) {
-  const cuentas = useMemo(() => {
-    const mapa = new Map<string, { nombre: string; ingreso: number; egreso: number }>()
-    for (const m of movimientos) {
-      if (m.categoria !== 'ingreso_st' && m.categoria !== 'ingreso_venta' && m.categoria !== 'gasto') continue
-      const key = m.metodoPagoId ?? 'sin_metodo'
-      const nombre = m.metodoPago ?? 'Sin método especificado'
-      if (!mapa.has(key)) mapa.set(key, { nombre, ingreso: 0, egreso: 0 })
-      const c = mapa.get(key)!
-      if (m.monto >= 0) c.ingreso += m.monto
-      else c.egreso += Math.abs(m.monto)
-    }
-    return [...mapa.values()].sort((a, b) => (b.ingreso - b.egreso) - (a.ingreso - a.egreso))
-  }, [movimientos])
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="font-bold text-gray-900">Distribuido por cuenta</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <p className="text-xs text-gray-500 mb-4">
-          Una cuenta por cada método de pago — solo incluye pagos de clientes y gastos de caja, que son los que tienen método de pago asociado.
-        </p>
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {cuentas.length === 0 && <p className="text-sm text-gray-400 text-center py-6">Sin movimientos en este período</p>}
-          {cuentas.map((c) => (
-            <div key={c.nombre} className="border border-gray-100 rounded-xl p-3">
-              <p className="text-sm font-semibold text-gray-800 mb-1">{c.nombre}</p>
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(c.ingreso)}</span></span>
-                <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(c.egreso)}</span></span>
-              </div>
-              <p className="text-right font-mono font-bold text-gray-900 mt-1">{formatCOP(c.ingreso - c.egreso)}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
+const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'gasto', 'costo_lavado']
 
 export default function CajaPage() {
   const { profile } = useAuth()
@@ -217,7 +172,8 @@ export default function CajaPage() {
   const [catFiltro, setCatFiltro] = useState<Categoria | 'todos'>('todos')
   const [busqueda, setBusqueda] = useState('')
   const [nuevoGastoOpen, setNuevoGastoOpen] = useState(false)
-  const [porCuentaOpen, setPorCuentaOpen] = useState(false)
+  const [vistaResumen, setVistaResumen] = useState<'total' | 'cuenta'>('total')
+  const [vistaTabla, setVistaTabla] = useState<'item' | 'metodo'>('item')
 
   const { desde, hasta } = calcularRango(periodo, desdeManual, hastaManual)
 
@@ -248,7 +204,7 @@ export default function CajaPage() {
         .eq('ordenes.tenant_id', profile.tenant_id)
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
       supabase.from('lava_moto_ordenes')
-        .select('id, costo_unitario, precio_venta_unitario, cantidad, created_at, ordenes!inner(tenant_id, numero, placa, cliente)')
+        .select('id, costo_unitario, precio_venta_unitario, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente)')
         .eq('ordenes.tenant_id', profile.tenant_id)
         .or('costo_unitario.gt.0,precio_venta_unitario.gt.0')
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
@@ -287,7 +243,7 @@ export default function CajaPage() {
       })
     }
 
-    for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+    for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
       const ord = lm.ordenes
       const concepto = `Servicio de lavado · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
       if (lm.costo_unitario > 0) {
@@ -299,8 +255,8 @@ export default function CajaPage() {
           nombre: 'Servicio de lavado',
           codigo: ord?.placa ?? null,
           monto: -(lm.costo_unitario * lm.cantidad),
-          metodoPagoId: null,
-          metodoPago: null,
+          metodoPagoId: lm.metodo_pago_id,
+          metodoPago: lm.metodos_pago?.nombre ?? null,
         })
       }
       if (lm.precio_venta_unitario > 0) {
@@ -368,6 +324,34 @@ export default function CajaPage() {
     return r
   }, [movimientos, catFiltro, busqueda])
 
+  const cuentas = useMemo(() => {
+    const mapa = new Map<string, { nombre: string; ingreso: number; egreso: number }>()
+    for (const m of movimientos) {
+      if (!CATEGORIAS_CON_CUENTA.includes(m.categoria)) continue
+      const key = m.metodoPagoId ?? 'sin_metodo'
+      const nombre = m.metodoPago ?? 'Sin método especificado'
+      if (!mapa.has(key)) mapa.set(key, { nombre, ingreso: 0, egreso: 0 })
+      const c = mapa.get(key)!
+      if (m.monto >= 0) c.ingreso += m.monto
+      else c.egreso += Math.abs(m.monto)
+    }
+    return [...mapa.values()].sort((a, b) => (b.ingreso - b.egreso) - (a.ingreso - a.egreso))
+  }, [movimientos])
+
+  const gruposPorMetodo = useMemo(() => {
+    const mapa = new Map<string, Movimiento[]>()
+    for (const m of filtrados) {
+      const key = m.metodoPago ?? 'Sin método especificado'
+      if (!mapa.has(key)) mapa.set(key, [])
+      mapa.get(key)!.push(m)
+    }
+    return [...mapa.entries()].sort((a, b) => {
+      if (a[0] === 'Sin método especificado') return 1
+      if (b[0] === 'Sin método especificado') return -1
+      return a[0].localeCompare(b[0])
+    })
+  }, [filtrados])
+
   const totalIngresos = movimientos
     .filter(m => m.categoria === 'ingreso_st' || m.categoria === 'ingreso_venta' || m.categoria === 'ingreso_insumo' || m.categoria === 'ingreso_lavado')
     .reduce((s, m) => s + m.monto, 0)
@@ -385,10 +369,6 @@ export default function CajaPage() {
           onClose={() => setNuevoGastoOpen(false)}
           onCreado={cargar}
         />
-      )}
-
-      {porCuentaOpen && (
-        <PorCuentaModal movimientos={movimientos} onClose={() => setPorCuentaOpen(false)} />
       )}
 
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -438,27 +418,65 @@ export default function CajaPage() {
       </div>
 
       {/* Tarjetas resumen */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-400 mb-1">Monto en caja (del período)</p>
-            <button onClick={() => setPorCuentaOpen(true)} className="text-xs text-blue-600 hover:text-blue-800 font-medium underline">
-              Ver por cuenta
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+          {([
+            { id: 'total', label: 'Total' },
+            { id: 'cuenta', label: 'Por cuenta' },
+          ] as { id: 'total' | 'cuenta'; label: string }[]).map(v => (
+            <button key={v.id} onClick={() => setVistaResumen(v.id)}
+              className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                vistaResumen === v.id ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+              }`}>
+              {v.label}
             </button>
-          </div>
-          <p className={`text-2xl font-bold font-mono ${montoEnCaja >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-            {formatCOP(montoEnCaja)}
+          ))}
+        </div>
+        {vistaResumen === 'cuenta' && (
+          <p className="text-xs text-gray-400">
+            Solo incluye movimientos con método de pago asociado (pagos de clientes, gastos de caja y costo de lavado).
           </p>
-        </div>
-        <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-5">
-          <p className="text-xs text-emerald-600 mb-1">Ingreso del período</p>
-          <p className="text-2xl font-bold font-mono text-emerald-700">{formatCOP(totalIngresos)}</p>
-        </div>
-        <div className="bg-red-50 rounded-xl border border-red-200 p-5">
-          <p className="text-xs text-red-500 mb-1">Gasto del período</p>
-          <p className="text-2xl font-bold font-mono text-red-700">{formatCOP(totalGastos)}</p>
-        </div>
+        )}
       </div>
+
+      {vistaResumen === 'total' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <p className="text-xs text-gray-400 mb-1">Monto en caja (del período)</p>
+            <p className={`text-2xl font-bold font-mono ${montoEnCaja >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+              {formatCOP(montoEnCaja)}
+            </p>
+          </div>
+          <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-5">
+            <p className="text-xs text-emerald-600 mb-1">Ingreso del período</p>
+            <p className="text-2xl font-bold font-mono text-emerald-700">{formatCOP(totalIngresos)}</p>
+          </div>
+          <div className="bg-red-50 rounded-xl border border-red-200 p-5">
+            <p className="text-xs text-red-500 mb-1">Gasto del período</p>
+            <p className="text-2xl font-bold font-mono text-red-700">{formatCOP(totalGastos)}</p>
+          </div>
+        </div>
+      )}
+
+      {vistaResumen === 'cuenta' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {cuentas.length === 0 && (
+            <p className="text-sm text-gray-400 col-span-full text-center py-6">Sin movimientos en este período</p>
+          )}
+          {cuentas.map((c) => (
+            <div key={c.nombre} className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-xs text-gray-400 mb-1">{c.nombre}</p>
+              <p className={`text-2xl font-bold font-mono ${c.ingreso - c.egreso >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                {formatCOP(c.ingreso - c.egreso)}
+              </p>
+              <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
+                <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(c.ingreso)}</span></span>
+                <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(c.egreso)}</span></span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Filtros de lista */}
       <div className="flex flex-wrap gap-2 items-center">
@@ -476,47 +494,108 @@ export default function CajaPage() {
             <option key={k} value={k}>{label}</option>
           ))}
         </select>
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+          {([
+            { id: 'item', label: 'Por ítem' },
+            { id: 'metodo', label: 'Por método de pago' },
+          ] as { id: 'item' | 'metodo'; label: string }[]).map(v => (
+            <button key={v.id} onClick={() => setVistaTabla(v.id)}
+              className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                vistaTabla === v.id ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+              }`}>
+              {v.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Lista de movimientos */}
-      <div className="rounded-2xl border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Fecha</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Categoría</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Concepto</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Método</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Monto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">Cargando...</td></tr>
-            )}
-            {!loading && filtrados.length === 0 && (
-              <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
-            )}
-            {!loading && filtrados.map((m, i) => (
-              <tr key={m.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                  {new Date(m.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORIA_BADGE[m.categoria]}`}>
-                    {CATEGORIA_LABEL[m.categoria]}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-gray-900 truncate max-w-[280px]">{m.concepto}</td>
-                <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{m.metodoPago ?? '—'}</td>
-                <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                  {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
-                </td>
+      {/* Lista de movimientos: por ítem */}
+      {vistaTabla === 'item' && (
+        <div className="rounded-2xl border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Fecha</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Categoría</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Concepto</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Monto</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {loading && (
+                <tr><td colSpan={4} className="text-center py-12 text-gray-400 text-sm">Cargando...</td></tr>
+              )}
+              {!loading && filtrados.length === 0 && (
+                <tr><td colSpan={4} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
+              )}
+              {!loading && filtrados.map((m, i) => (
+                <tr key={m.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                    {new Date(m.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORIA_BADGE[m.categoria]}`}>
+                      {CATEGORIA_LABEL[m.categoria]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-900 truncate max-w-[280px]">{m.concepto}</td>
+                  <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Lista de movimientos: por método de pago */}
+      {vistaTabla === 'metodo' && (
+        <div className="space-y-4">
+          {loading && (
+            <p className="text-center py-12 text-gray-400 text-sm">Cargando...</p>
+          )}
+          {!loading && filtrados.length === 0 && (
+            <p className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</p>
+          )}
+          {!loading && gruposPorMetodo.map(([nombreMetodo, movs]) => {
+            const ingreso = movs.filter(m => m.monto >= 0).reduce((s, m) => s + m.monto, 0)
+            const egreso = movs.filter(m => m.monto < 0).reduce((s, m) => s + Math.abs(m.monto), 0)
+            return (
+              <div key={nombreMetodo} className="rounded-2xl border border-gray-200 overflow-hidden">
+                <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+                  <p className="font-semibold text-gray-800 text-sm">{nombreMetodo}</p>
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(ingreso)}</span></span>
+                    <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(egreso)}</span></span>
+                    <span>Neto: <span className={`font-semibold ${ingreso - egreso >= 0 ? 'text-gray-900' : 'text-red-600'}`}>{formatCOP(ingreso - egreso)}</span></span>
+                  </div>
+                </div>
+                <table className="w-full text-sm">
+                  <tbody>
+                    {movs.map((m, i) => (
+                      <tr key={m.id} className={`border-b border-gray-100 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                        <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap w-32">
+                          {new Date(m.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="px-4 py-3 w-56">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORIA_BADGE[m.categoria]}`}>
+                            {CATEGORIA_LABEL[m.categoria]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-900 truncate max-w-[280px]">{m.concepto}</td>
+                        <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                          {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
