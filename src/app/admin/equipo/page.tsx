@@ -202,16 +202,15 @@ export default function EquipoPage() {
     clearPermisosCache(profile.tenant_id, rol)
   }
 
-  // Reordenar arriba/abajo
-  const moverSeccion = async (rol: Rol, seccion: string, dir: 'up' | 'down') => {
+  // Reordenar arriba/abajo dentro de una lista dada (todo el rol, o solo un grupo/standalone)
+  const moverEnLista = async (rol: Rol, lista: SeccionDef[], seccion: string, dir: 'up' | 'down') => {
     if (!profile?.tenant_id) return
-    const sorted = seccionesOrdenadas(rol)
-    const idx = sorted.findIndex((s) => s.key === seccion)
+    const idx = lista.findIndex((s) => s.key === seccion)
     if (dir === 'up' && idx === 0) return
-    if (dir === 'down' && idx === sorted.length - 1) return
+    if (dir === 'down' && idx === lista.length - 1) return
 
     const swapIdx = dir === 'up' ? idx - 1 : idx + 1
-    const swapped = [...sorted]
+    const swapped = [...lista]
     ;[swapped[idx], swapped[swapIdx]] = [swapped[swapIdx], swapped[idx]]
 
     const updates = swapped.map((s, i) => ({
@@ -230,6 +229,17 @@ export default function EquipoPage() {
     setPermisosPorRol(new Map(permisosRef.current))
     clearPermisosCache(profile.tenant_id, rol)
   }
+
+  const moverSeccion = (rol: Rol, seccion: string, dir: 'up' | 'down') =>
+    moverEnLista(rol, seccionesOrdenadas(rol), seccion, dir)
+
+  // Lista de un subgrupo (o standalone) ordenada por su propio "orden" guardado
+  const ordenarSubgrupo = (rol: Rol, secciones: SeccionDef[]): SeccionDef[] =>
+    [...secciones].sort((a, b) => {
+      const oa = getPermiso(rol, a.key).orden || a.defaultOrden
+      const ob = getPermiso(rol, b.key).orden || b.defaultOrden
+      return oa - ob
+    })
 
   // Toggle todos los paneles de un grupo a la vez
   const toggleGrupo = async (rol: Rol, secciones: SeccionDef[]) => {
@@ -578,8 +588,9 @@ export default function EquipoPage() {
                       <>
                         {/* Grupos con sus paneles */}
                         {GRUPOS_ADMIN.map((grupo) => {
-                          const secsGrupo = grupo.secciones.filter(s => rol === 'gerencia' || !s.soloGerencia)
-                          if (secsGrupo.length === 0) return null
+                          const secsGrupoBase = grupo.secciones.filter(s => rol === 'gerencia' || !s.soloGerencia)
+                          if (secsGrupoBase.length === 0) return null
+                          const secsGrupo = ordenarSubgrupo(rol, secsGrupoBase)
                           const grupoOn = secsGrupo.every(s => getPermiso(rol, s.key).habilitado)
                           return (
                             <div key={grupo.key}>
@@ -592,11 +603,23 @@ export default function EquipoPage() {
                                   <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${grupoOn ? 'translate-x-4' : ''}`} />
                                 </button>
                               </div>
-                              {secsGrupo.map((s) => {
+                              {secsGrupo.map((s, idx) => {
                                 const p = getPermiso(rol, s.key)
                                 return (
-                                  <div key={s.key} className={`flex items-center justify-between px-4 py-3 border-t border-gray-50 ${!p.habilitado ? 'opacity-50' : ''}`}>
-                                    <p className={`text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
+                                  <div key={s.key} className={`flex items-center gap-3 px-4 py-3 border-t border-gray-50 ${!p.habilitado ? 'opacity-50' : ''}`}>
+                                    <div className="flex flex-col gap-0.5 flex-shrink-0">
+                                      <button
+                                        onClick={() => moverEnLista(rol, secsGrupo, s.key, 'up')}
+                                        disabled={idx === 0}
+                                        className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed rounded hover:bg-gray-100 transition-colors"
+                                      >▲</button>
+                                      <button
+                                        onClick={() => moverEnLista(rol, secsGrupo, s.key, 'down')}
+                                        disabled={idx === secsGrupo.length - 1}
+                                        className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed rounded hover:bg-gray-100 transition-colors"
+                                      >▼</button>
+                                    </div>
+                                    <p className={`flex-1 text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
                                       {s.label}
                                       {s.soloGerencia && <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia</span>}
                                     </p>
@@ -614,8 +637,9 @@ export default function EquipoPage() {
                         })}
                         {/* Standalone */}
                         {(() => {
-                          const standaloneVisible = STANDALONE_ADMIN.filter(s => rol === 'gerencia' || !s.soloGerencia)
-                          if (standaloneVisible.length === 0) return null
+                          const standaloneBase = STANDALONE_ADMIN.filter(s => rol === 'gerencia' || !s.soloGerencia)
+                          if (standaloneBase.length === 0) return null
+                          const standaloneVisible = ordenarSubgrupo(rol, standaloneBase)
                           return (
                             <div>
                               <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-100">
@@ -627,11 +651,23 @@ export default function EquipoPage() {
                                   <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${standaloneVisible.every(s => getPermiso(rol, s.key).habilitado) ? 'translate-x-4' : ''}`} />
                                 </button>
                               </div>
-                              {standaloneVisible.map((s) => {
+                              {standaloneVisible.map((s, idx) => {
                                 const p = getPermiso(rol, s.key)
                                 return (
-                                  <div key={s.key} className={`flex items-center justify-between px-4 py-3 border-t border-gray-50 ${!p.habilitado ? 'opacity-50' : ''}`}>
-                                    <p className={`text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
+                                  <div key={s.key} className={`flex items-center gap-3 px-4 py-3 border-t border-gray-50 ${!p.habilitado ? 'opacity-50' : ''}`}>
+                                    <div className="flex flex-col gap-0.5 flex-shrink-0">
+                                      <button
+                                        onClick={() => moverEnLista(rol, standaloneVisible, s.key, 'up')}
+                                        disabled={idx === 0}
+                                        className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed rounded hover:bg-gray-100 transition-colors"
+                                      >▲</button>
+                                      <button
+                                        onClick={() => moverEnLista(rol, standaloneVisible, s.key, 'down')}
+                                        disabled={idx === standaloneVisible.length - 1}
+                                        className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed rounded hover:bg-gray-100 transition-colors"
+                                      >▼</button>
+                                    </div>
+                                    <p className={`flex-1 text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
                                       {s.label}
                                       {s.soloGerencia && <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia</span>}
                                     </p>
