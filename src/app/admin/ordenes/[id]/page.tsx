@@ -952,12 +952,15 @@ export default function AdminOrdenDetallePage() {
       const ahora = new Date().toISOString()
       const autoEstadoOrden = nuevoEstadoPago === 'pagado' && !['listo', 'pagado'].includes(orden.estado)
         ? 'pagado' : null
-      await supabase.from('ordenes').update({
+      const { error: ordUpdError } = await supabase.from('ordenes').update({
         estado_pago: nuevoEstadoPago,
         valor_abono: totalPagado,
         metodo_pago_id: nuevoPagoMetodo || null,
         ...(autoEstadoOrden ? { estado: autoEstadoOrden } : {}),
       }).eq('id', ordenId)
+      if (ordUpdError) {
+        setPagoError(`Pago registrado, pero falló al actualizar la orden: ${ordUpdError.message}`)
+      }
       if (pagoData) {
         await registrarAuditoria(supabase, {
           tenant_id: orden.tenant_id,
@@ -971,7 +974,7 @@ export default function AdminOrdenDetallePage() {
       setNuevoPagoMonto('')
       setNuevoPagoMetodo('')
       setNuevoPagoNotas('')
-      if (autoEstadoOrden) {
+      if (autoEstadoOrden && !ordUpdError) {
         // Reflejar el estado pagado de inmediato y actualizar draft para que cargar() no lo pise
         setEstado('pagado' as EstadoOrden)
         try {
@@ -1197,7 +1200,7 @@ export default function AdminOrdenDetallePage() {
       const ahora = new Date().toISOString()
       const esFinalizacion = estado === 'listo' && orden?.estado !== 'listo'
 
-      await supabase.from('ordenes').update({
+      const { error: updError } = await supabase.from('ordenes').update({
         estado,
         estado_pago: estadoPagoCalculado,
         valor_abono: totalPagado,
@@ -1208,6 +1211,11 @@ export default function AdminOrdenDetallePage() {
         numeros_orden_uma: numerosOrdenUMA,
         ...(esFinalizacion ? { fecha_finalizacion: ahora } : {}),
       }).eq('id', ordenId)
+
+      if (updError) {
+        alert(`No se pudo guardar: ${updError.message}`)
+        return
+      }
 
       await registrarAuditoria(supabase, {
         tenant_id: orden!.tenant_id,
@@ -1391,14 +1399,15 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 disabled={savingFinalize}
                 onClick={async () => {
                   setSavingFinalize(true)
-                  await supabase.from('ordenes').update({
+                  const { error: finError } = await supabase.from('ordenes').update({
                     estado: 'listo',
                     fecha_finalizacion: new Date().toISOString(),
                   }).eq('id', ordenId)
+                  setSavingFinalize(false)
+                  if (finError) { alert(`No se pudo finalizar: ${finError.message}`); return }
                   setEstado('listo' as EstadoOrden)
                   try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
                   setDirty(false)
-                  setSavingFinalize(false)
                   setShowFinalizeDialog(false)
                   if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
                   else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
@@ -1411,11 +1420,12 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 disabled={savingFinalize}
                 onClick={async () => {
                   setSavingFinalize(true)
-                  await supabase.from('ordenes').update({ estado: 'pagado' }).eq('id', ordenId)
+                  const { error: pagError } = await supabase.from('ordenes').update({ estado: 'pagado' }).eq('id', ordenId)
+                  setSavingFinalize(false)
+                  if (pagError) { alert(`No se pudo guardar: ${pagError.message}`); return }
                   setEstado('pagado' as EstadoOrden)
                   try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
                   setDirty(false)
-                  setSavingFinalize(false)
                   setShowFinalizeDialog(false)
                   if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
                   else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
@@ -2429,8 +2439,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 return (
                   <button
                     key={s.value}
-                    onClick={() => setEstado(s.value)}
-                    disabled={bloqueado}
+                    onClick={() => {
+                      if (bloqueado) { alert(titleMsg ?? 'No se puede cambiar a este estado todavía.'); return }
+                      setEstado(s.value)
+                    }}
                     title={titleMsg}
                     className={`w-full py-2 px-3 rounded-lg text-sm font-medium text-left transition-colors ${
                       bloqueado

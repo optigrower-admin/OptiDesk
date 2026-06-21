@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { OrderStatus } from '@/components/OrderStatus'
-import { normalizarPlaca } from '@/lib/utils'
+import { normalizarPlaca, formatCOP } from '@/lib/utils'
 import { ImportadorExcel } from '@/components/ImportadorExcel'
 import { importarServicioTecnico } from '@/lib/bulkImport'
 
@@ -510,7 +510,7 @@ export default function AdminOrdenesPage() {
                     <span className="text-sm text-gray-400 truncate">– {ordenActual?.cliente}</span>
                     {ordenActual && (
                       <span className="text-xs text-gray-400 flex-shrink-0 hidden sm:inline">
-                        {formatFechaPlaca(ordenActual.created_at)}
+                        {formatFechaPlaca(ordenActual.created_at)} · {formatCOP(ordenActual.valor_total)}
                       </span>
                     )}
                     {servicioOrdenes.length > 1 && (
@@ -603,6 +603,7 @@ export default function AdminOrdenesPage() {
                             {orden.fecha_finalizacion && (
                               <span className="text-green-600">Salida: {new Date(orden.fecha_finalizacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                             )}
+                            <span className="font-semibold text-gray-600">Total: {formatCOP(orden.valor_total)}</span>
                             {!orden.telefono && orden.estado !== 'listo' && (
                               <span className="text-amber-500 font-medium">Sin teléfono</span>
                             )}
