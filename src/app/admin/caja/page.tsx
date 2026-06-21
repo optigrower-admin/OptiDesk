@@ -8,10 +8,11 @@ import { formatCOP } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
-type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'costo_externo' | 'costo_lavado' | 'gasto'
+type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'costo_externo' | 'costo_lavado' | 'gasto'
 
 interface Movimiento {
   id: string
+  rawId: string
   fecha: string
   categoria: Categoria
   concepto: string
@@ -20,26 +21,33 @@ interface Movimiento {
   monto: number // con signo: positivo = ingreso, negativo = salida
   metodoPagoId: string | null
   metodoPago: string | null
+  grupo: string
 }
 
 const CATEGORIA_LABEL: Record<Categoria, string> = {
-  ingreso_st:     'Ingresos Servicio Técnico',
-  ingreso_venta:  'Ingresos Venta repuesto directa',
-  ingreso_insumo: 'Ingresos Insumos',
-  ingreso_lavado: 'Ingresos Servicio de Lavado',
-  costo_externo:  'Costo repuestos Externos/Terceros',
-  costo_lavado:   'Costo Servicio de Lavado',
-  gasto:          'Gastos de Caja',
+  ingreso_st:      'Ingresos Servicio Técnico',
+  ingreso_venta:   'Ingresos Venta repuesto directa',
+  ingreso_insumo:  'Ingresos Insumos',
+  ingreso_lavado:  'Ingresos Servicio de Lavado',
+  ingreso_externo: 'Ingresos repuestos Externos/Terceros',
+  costo_externo:   'Costo repuestos Externos/Terceros',
+  costo_lavado:    'Costo Servicio de Lavado',
+  gasto:           'Gastos de Caja',
 }
 
 const CATEGORIA_BADGE: Record<Categoria, string> = {
-  ingreso_st:     'bg-blue-100 text-blue-700',
-  ingreso_venta:  'bg-emerald-100 text-emerald-700',
-  ingreso_insumo: 'bg-purple-100 text-purple-700',
-  ingreso_lavado: 'bg-cyan-100 text-cyan-700',
-  costo_externo:  'bg-amber-100 text-amber-700',
-  costo_lavado:   'bg-orange-100 text-orange-700',
-  gasto:          'bg-red-100 text-red-700',
+  ingreso_st:      'bg-blue-100 text-blue-700',
+  ingreso_venta:   'bg-emerald-100 text-emerald-700',
+  ingreso_insumo:  'bg-purple-100 text-purple-700',
+  ingreso_lavado:  'bg-cyan-100 text-cyan-700',
+  ingreso_externo: 'bg-teal-100 text-teal-700',
+  costo_externo:   'bg-amber-100 text-amber-700',
+  costo_lavado:    'bg-orange-100 text-orange-700',
+  gasto:           'bg-red-100 text-red-700',
+}
+
+function grupoOrden(ord: { numero: number; placa: string; cliente: string } | null): string {
+  return ord ? `Orden #${ord.numero} (${ord.placa ?? '—'}) · ${ord.cliente ?? 'Cliente'}` : 'Sin orden asociada'
 }
 
 function ymdLocal(d: Date): string {
@@ -158,6 +166,96 @@ function NuevoGastoModal({ tenantId, usuarioId, onClose, onCreado }: {
   )
 }
 
+function EditarGastoModal({ tenantId, usuarioId, gasto, onClose, onEditado }: {
+  tenantId: string; usuarioId: string
+  gasto: { id: string; descripcion: string; monto: number; metodoPagoId: string | null }
+  onClose: () => void; onEditado: () => void
+}) {
+  const supabase = createClient()
+  const [monto, setMonto] = useState(String(gasto.monto))
+  const [metodoPagoId, setMetodoPagoId] = useState(gasto.metodoPagoId ?? '')
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).order('nombre')
+      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
+  }, [supabase, tenantId])
+
+  const valido = parseInt(monto.replace(/\D/g, ''), 10) > 0 && metodoPagoId !== ''
+
+  async function guardar() {
+    if (!valido) return
+    if (!confirm('¿Seguro que deseas editar este gasto?')) return
+    setGuardando(true); setError('')
+    const montoNum = parseInt(monto.replace(/\D/g, ''), 10)
+    try {
+      const { error: err } = await supabase.from('gastos_caja').update({
+        monto: montoNum,
+        metodo_pago_id: metodoPagoId,
+      }).eq('id', gasto.id)
+      if (err) throw new Error(err.message)
+      await registrarAuditoria(supabase, {
+        tenant_id: tenantId,
+        tabla: 'gastos_caja',
+        registro_id: gasto.id,
+        tipo: 'edicion',
+        valor_anterior: { monto: gasto.monto, metodo_pago_id: gasto.metodoPagoId },
+        valor_nuevo: { monto: montoNum, metodo_pago_id: metodoPagoId },
+        descripcion: `Editó el gasto de caja "${gasto.descripcion}"`,
+        usuario_id: usuarioId,
+      })
+      onEditado()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al editar el gasto')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h2 className="font-bold text-gray-900 mb-1">Editar gasto de caja</h2>
+        <p className="text-xs text-gray-500 mb-4">{gasto.descripcion}</p>
+        <div className="space-y-2">
+          <div>
+            <label className="text-xs text-gray-500">Monto</label>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-red-400 bg-white mt-0.5">
+              <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-1.5">$</span>
+              <input type="text" inputMode="numeric"
+                value={monto ? Number(monto.replace(/\D/g, '')).toLocaleString('es-CO') : ''}
+                onChange={e => setMonto(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="flex-1 px-2 py-1.5 text-sm font-mono text-right focus:outline-none" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Método de pago</label>
+            <select value={metodoPagoId} onChange={e => setMetodoPagoId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 mt-0.5 bg-white">
+              <option value="">Selecciona...</option>
+              {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={!valido || guardando}
+            className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
+            {guardando ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'gasto', 'costo_lavado']
 
 export default function CajaPage() {
@@ -172,6 +270,7 @@ export default function CajaPage() {
   const [catFiltro, setCatFiltro] = useState<Categoria | 'todos'>('todos')
   const [busqueda, setBusqueda] = useState('')
   const [nuevoGastoOpen, setNuevoGastoOpen] = useState(false)
+  const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null } | null>(null)
   const [vistaResumen, setVistaResumen] = useState<'total' | 'cuenta'>('total')
   const [vistaTabla, setVistaTabla] = useState<'item' | 'metodo'>('item')
 
@@ -183,16 +282,16 @@ export default function CajaPage() {
     const desdeISO = `${desde}T00:00:00`
     const hastaISO = `${hasta}T23:59:59`
 
-    const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }] = await Promise.all([
+    const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }] = await Promise.all([
       supabase.from('pagos_orden')
         .select('id, monto, fecha, metodo_pago_id, metodos_pago(nombre), ordenes(numero, placa, cliente, tipo_orden)')
         .eq('tenant_id', profile.tenant_id)
         .gte('fecha', desdeISO).lte('fecha', hastaISO),
       supabase.from('items_orden')
-        .select('id, descripcion, costo, cantidad, created_at, ordenes!inner(tenant_id, numero, placa, cliente)')
+        .select('id, descripcion, costo, precio_venta, cantidad, created_at, ordenes!inner(tenant_id, numero, placa, cliente)')
         .eq('origen', 'externo')
         .eq('ordenes.tenant_id', profile.tenant_id)
-        .gt('costo', 0)
+        .or('costo.gt.0,precio_venta.gt.0')
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
       supabase.from('gastos_caja')
         .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre)')
@@ -208,6 +307,12 @@ export default function CajaPage() {
         .eq('ordenes.tenant_id', profile.tenant_id)
         .or('costo_unitario.gt.0,precio_venta_unitario.gt.0')
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
+      supabase.from('ordenes')
+        .select('id, numero, placa, cliente, valor_abono, metodo_pago_id, metodos_pago(nombre), created_at')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('tipo_orden', 'venta_repuestos')
+        .gt('valor_abono', 0)
+        .gte('created_at', desdeISO).lte('created_at', hastaISO),
     ])
 
     const lista: Movimiento[] = []
@@ -217,6 +322,7 @@ export default function CajaPage() {
       const esVenta = ord?.tipo_orden === 'venta_repuestos'
       lista.push({
         id: `pago_${p.id}`,
+        rawId: p.id,
         fecha: p.fecha,
         categoria: esVenta ? 'ingreso_venta' : 'ingreso_st',
         concepto: `${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
@@ -225,22 +331,59 @@ export default function CajaPage() {
         monto: p.monto,
         metodoPagoId: p.metodo_pago_id,
         metodoPago: p.metodos_pago?.nombre ?? null,
+        grupo: grupoOrden(ord),
       })
     }
 
-    for (const it of (costosExt ?? []) as unknown as { id: string; descripcion: string; costo: number; cantidad: number; created_at: string; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
-      const ord = it.ordenes
+    for (const v of (ventaDirecta ?? []) as unknown as { id: string; numero: number; placa: string; cliente: string; valor_abono: number; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; created_at: string }[]) {
       lista.push({
-        id: `extcosto_${it.id}`,
-        fecha: it.created_at,
-        categoria: 'costo_externo',
-        concepto: `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
-        nombre: it.descripcion,
-        codigo: ord?.placa ?? null,
-        monto: -(it.costo * it.cantidad),
-        metodoPagoId: null,
-        metodoPago: null,
+        id: `ventadirecta_${v.id}`,
+        rawId: v.id,
+        fecha: v.created_at,
+        categoria: 'ingreso_venta',
+        concepto: `${v.cliente ?? 'Cliente'} · Orden #${v.numero ?? '—'} (${v.placa ?? '—'})`,
+        nombre: v.cliente ?? null,
+        codigo: v.placa ?? null,
+        monto: v.valor_abono,
+        metodoPagoId: v.metodo_pago_id,
+        metodoPago: v.metodos_pago?.nombre ?? null,
+        grupo: grupoOrden({ numero: v.numero, placa: v.placa, cliente: v.cliente }),
       })
+    }
+
+    for (const it of (costosExt ?? []) as unknown as { id: string; descripcion: string; costo: number; precio_venta: number; cantidad: number; created_at: string; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+      const ord = it.ordenes
+      const concepto = `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
+      if (it.costo > 0) {
+        lista.push({
+          id: `extcosto_${it.id}`,
+          rawId: it.id,
+          fecha: it.created_at,
+          categoria: 'costo_externo',
+          concepto,
+          nombre: it.descripcion,
+          codigo: ord?.placa ?? null,
+          monto: -(it.costo * it.cantidad),
+          metodoPagoId: null,
+          metodoPago: null,
+          grupo: grupoOrden(ord),
+        })
+      }
+      if (it.precio_venta > 0) {
+        lista.push({
+          id: `extingreso_${it.id}`,
+          rawId: it.id,
+          fecha: it.created_at,
+          categoria: 'ingreso_externo',
+          concepto,
+          nombre: it.descripcion,
+          codigo: ord?.placa ?? null,
+          monto: it.precio_venta * it.cantidad,
+          metodoPagoId: null,
+          metodoPago: null,
+          grupo: grupoOrden(ord),
+        })
+      }
     }
 
     for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
@@ -249,6 +392,7 @@ export default function CajaPage() {
       if (lm.costo_unitario > 0) {
         lista.push({
           id: `lavadocosto_${lm.id}`,
+          rawId: lm.id,
           fecha: lm.created_at,
           categoria: 'costo_lavado',
           concepto,
@@ -257,11 +401,13 @@ export default function CajaPage() {
           monto: -(lm.costo_unitario * lm.cantidad),
           metodoPagoId: lm.metodo_pago_id,
           metodoPago: lm.metodos_pago?.nombre ?? null,
+          grupo: grupoOrden(ord),
         })
       }
       if (lm.precio_venta_unitario > 0) {
         lista.push({
           id: `lavadoingreso_${lm.id}`,
+          rawId: lm.id,
           fecha: lm.created_at,
           categoria: 'ingreso_lavado',
           concepto,
@@ -270,6 +416,7 @@ export default function CajaPage() {
           monto: lm.precio_venta_unitario * lm.cantidad,
           metodoPagoId: null,
           metodoPago: null,
+          grupo: grupoOrden(ord),
         })
       }
     }
@@ -277,6 +424,7 @@ export default function CajaPage() {
     for (const g of (gastos ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null }[]) {
       lista.push({
         id: `gasto_${g.id}`,
+        rawId: g.id,
         fecha: g.fecha,
         categoria: 'gasto',
         concepto: g.descripcion,
@@ -285,6 +433,7 @@ export default function CajaPage() {
         monto: -g.monto,
         metodoPagoId: g.metodo_pago_id,
         metodoPago: g.metodos_pago?.nombre ?? null,
+        grupo: CATEGORIA_LABEL.gasto,
       })
     }
 
@@ -292,6 +441,7 @@ export default function CajaPage() {
       const ord = it.ordenes
       lista.push({
         id: `insumo_${it.id}`,
+        rawId: it.id,
         fecha: it.created_at,
         categoria: 'ingreso_insumo',
         concepto: `Insumos · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
@@ -300,6 +450,7 @@ export default function CajaPage() {
         monto: it.precio_venta,
         metodoPagoId: null,
         metodoPago: null,
+        grupo: grupoOrden(ord),
       })
     }
 
@@ -338,22 +489,17 @@ export default function CajaPage() {
     return [...mapa.values()].sort((a, b) => (b.ingreso - b.egreso) - (a.ingreso - a.egreso))
   }, [movimientos])
 
-  const gruposPorMetodo = useMemo(() => {
+  const gruposVistaMetodo = useMemo(() => {
     const mapa = new Map<string, Movimiento[]>()
     for (const m of filtrados) {
-      const key = m.metodoPago ?? 'Sin método especificado'
-      if (!mapa.has(key)) mapa.set(key, [])
-      mapa.get(key)!.push(m)
+      if (!mapa.has(m.grupo)) mapa.set(m.grupo, [])
+      mapa.get(m.grupo)!.push(m)
     }
-    return [...mapa.entries()].sort((a, b) => {
-      if (a[0] === 'Sin método especificado') return 1
-      if (b[0] === 'Sin método especificado') return -1
-      return a[0].localeCompare(b[0])
-    })
+    return [...mapa.entries()]
   }, [filtrados])
 
   const totalIngresos = movimientos
-    .filter(m => m.categoria === 'ingreso_st' || m.categoria === 'ingreso_venta' || m.categoria === 'ingreso_insumo' || m.categoria === 'ingreso_lavado')
+    .filter(m => m.categoria === 'ingreso_st' || m.categoria === 'ingreso_venta' || m.categoria === 'ingreso_insumo' || m.categoria === 'ingreso_lavado' || m.categoria === 'ingreso_externo')
     .reduce((s, m) => s + m.monto, 0)
   const totalGastos = movimientos
     .filter(m => m.categoria === 'costo_externo' || m.categoria === 'costo_lavado' || m.categoria === 'gasto')
@@ -368,6 +514,16 @@ export default function CajaPage() {
           usuarioId={profile.id}
           onClose={() => setNuevoGastoOpen(false)}
           onCreado={cargar}
+        />
+      )}
+
+      {editGasto && profile?.tenant_id && profile?.id && (
+        <EditarGastoModal
+          tenantId={profile.tenant_id}
+          usuarioId={profile.id}
+          gasto={editGasto}
+          onClose={() => setEditGasto(null)}
+          onEditado={cargar}
         />
       )}
 
@@ -519,14 +675,15 @@ export default function CajaPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Categoría</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Concepto</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Monto</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500"></th>
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={4} className="text-center py-12 text-gray-400 text-sm">Cargando...</td></tr>
+                <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">Cargando...</td></tr>
               )}
               {!loading && filtrados.length === 0 && (
-                <tr><td colSpan={4} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
+                <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
               )}
               {!loading && filtrados.map((m, i) => (
                 <tr key={m.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
@@ -542,6 +699,16 @@ export default function CajaPage() {
                   <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                     {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
                   </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {m.categoria === 'gasto' && (
+                      <button
+                        onClick={() => setEditGasto({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId })}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                      >
+                        Editar
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -549,51 +716,74 @@ export default function CajaPage() {
         </div>
       )}
 
-      {/* Lista de movimientos: por método de pago */}
+      {/* Lista de movimientos: por método de pago — una sola tabla agrupada por orden (o por categoría si no pertenece a una orden) */}
       {vistaTabla === 'metodo' && (
-        <div className="space-y-4">
-          {loading && (
-            <p className="text-center py-12 text-gray-400 text-sm">Cargando...</p>
-          )}
-          {!loading && filtrados.length === 0 && (
-            <p className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</p>
-          )}
-          {!loading && gruposPorMetodo.map(([nombreMetodo, movs]) => {
-            const ingreso = movs.filter(m => m.monto >= 0).reduce((s, m) => s + m.monto, 0)
-            const egreso = movs.filter(m => m.monto < 0).reduce((s, m) => s + Math.abs(m.monto), 0)
-            return (
-              <div key={nombreMetodo} className="rounded-2xl border border-gray-200 overflow-hidden">
-                <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
-                  <p className="font-semibold text-gray-800 text-sm">{nombreMetodo}</p>
-                  <div className="flex items-center gap-3 text-xs text-gray-500">
-                    <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(ingreso)}</span></span>
-                    <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(egreso)}</span></span>
-                    <span>Neto: <span className={`font-semibold ${ingreso - egreso >= 0 ? 'text-gray-900' : 'text-red-600'}`}>{formatCOP(ingreso - egreso)}</span></span>
-                  </div>
-                </div>
-                <table className="w-full text-sm">
-                  <tbody>
-                    {movs.map((m, i) => (
-                      <tr key={m.id} className={`border-b border-gray-100 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                        <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap w-32">
-                          {new Date(m.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                        <td className="px-4 py-3 w-56">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORIA_BADGE[m.categoria]}`}>
-                            {CATEGORIA_LABEL[m.categoria]}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-900 truncate max-w-[280px]">{m.concepto}</td>
-                        <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                          {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )
-          })}
+        <div className="rounded-2xl border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Fecha</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Categoría</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Concepto</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Método</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Monto</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500"></th>
+              </tr>
+            </thead>
+            {loading && (
+              <tbody><tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">Cargando...</td></tr></tbody>
+            )}
+            {!loading && filtrados.length === 0 && (
+              <tbody><tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr></tbody>
+            )}
+            {!loading && gruposVistaMetodo.map(([grupo, movs]) => {
+              const ingreso = movs.filter(m => m.monto >= 0).reduce((s, m) => s + m.monto, 0)
+              const egreso = movs.filter(m => m.monto < 0).reduce((s, m) => s + Math.abs(m.monto), 0)
+              return (
+                <tbody key={grupo} className="border-t-4 border-gray-100">
+                  <tr className="bg-gray-50/80">
+                    <td colSpan={6} className="px-4 py-2">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <p className="font-semibold text-gray-700 text-xs">{grupo}</p>
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(ingreso)}</span></span>
+                          <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(egreso)}</span></span>
+                          <span>Neto: <span className={`font-semibold ${ingreso - egreso >= 0 ? 'text-gray-900' : 'text-red-600'}`}>{formatCOP(ingreso - egreso)}</span></span>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                  {movs.map((m, i) => (
+                    <tr key={m.id} className={`border-b border-gray-100 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                        {new Date(m.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORIA_BADGE[m.categoria]}`}>
+                          {CATEGORIA_LABEL[m.categoria]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-900 truncate max-w-[260px]">{m.concepto}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{m.metodoPago ?? '—'}</td>
+                      <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                        {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {m.categoria === 'gasto' && (
+                          <button
+                            onClick={() => setEditGasto({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId })}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                          >
+                            Editar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              )
+            })}
+          </table>
         </div>
       )}
     </div>
