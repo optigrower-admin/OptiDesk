@@ -19,6 +19,7 @@ interface ItemOrdenLocal {
   cantidad: number
   costo: number
   precio_venta: number
+  metodo_pago_id?: string | null
 }
 
 interface ExternoForm {
@@ -26,9 +27,10 @@ interface ExternoForm {
   costo: string
   precio_venta: string
   cantidad: string
+  metodoPagoId: string
 }
 
-const externoInit: ExternoForm = { nombre: '', costo: '', precio_venta: '', cantidad: '1' }
+const externoInit: ExternoForm = { nombre: '', costo: '', precio_venta: '', cantidad: '1', metodoPagoId: '' }
 
 export default function RepuestosPage() {
   const params = useParams()
@@ -42,6 +44,7 @@ export default function RepuestosPage() {
   const [externoForm, setExternoForm] = useState<ExternoForm>(externoInit)
   const [showExternoForm, setShowExternoForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
 
   useEffect(() => {
     supabase
@@ -50,6 +53,12 @@ export default function RepuestosPage() {
       .eq('orden_id', ordenId)
       .then(({ data }) => setItems(data ?? []))
   }, [ordenId])
+
+  useEffect(() => {
+    if (!profile?.tenant_id) return
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', profile.tenant_id).eq('activo', true).order('nombre')
+      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
+  }, [profile?.tenant_id])
 
   const addItem = (item: Omit<ItemOrdenLocal, 'id'>) => {
     setItems((prev) => [...prev, item])
@@ -60,7 +69,7 @@ export default function RepuestosPage() {
   }
 
   const handleAgregarExterno = async () => {
-    if (!externoForm.nombre || !externoForm.precio_venta || !profile?.tenant_id) return
+    if (!externoForm.nombre || !externoForm.precio_venta || !externoForm.metodoPagoId || !profile?.tenant_id) return
     setSaving(true)
     try {
       const codigo = await generarCodigoExterno(supabase, profile.tenant_id)
@@ -94,6 +103,7 @@ export default function RepuestosPage() {
           cantidad: parseInt(externoForm.cantidad) || 1,
           costo: parseFloat(externoForm.costo) || 0,
           precio_venta: parseFloat(externoForm.precio_venta),
+          metodo_pago_id: externoForm.metodoPagoId,
         })
         setExternoForm(externoInit)
         setShowExternoForm(false)
@@ -118,6 +128,7 @@ export default function RepuestosPage() {
         cantidad: item.cantidad,
         costo: item.costo,
         precio_venta: item.precio_venta,
+        metodo_pago_id: item.metodo_pago_id ?? null,
       }))
       await supabase.from('items_orden').insert(toInsert)
 
@@ -239,8 +250,19 @@ export default function RepuestosPage() {
               />
             </div>
           </div>
+          <div>
+            <label className="text-xs text-gray-600">Método de pago al proveedor *</label>
+            <select
+              value={externoForm.metodoPagoId}
+              onChange={(e) => setExternoForm((p) => ({ ...p, metodoPagoId: e.target.value }))}
+              className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white"
+            >
+              <option value="">Selecciona...</option>
+              {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+          </div>
           <div className="flex gap-2">
-            <Button size="sm" onClick={handleAgregarExterno} loading={saving} disabled={!externoForm.nombre || !externoForm.precio_venta}>
+            <Button size="sm" onClick={handleAgregarExterno} loading={saving} disabled={!externoForm.nombre || !externoForm.precio_venta || !externoForm.metodoPagoId}>
               Agregar
             </Button>
             <Button size="sm" variant="ghost" onClick={() => { setShowExternoForm(false); setExternoForm(externoInit) }}>

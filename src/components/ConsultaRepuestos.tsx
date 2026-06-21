@@ -42,6 +42,7 @@ interface ItemOrden {
   cantidad: number
   costo: number
   precio_venta: number
+  metodo_pago_id?: string | null
 }
 
 interface Props {
@@ -74,11 +75,16 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const [extPorEliminar, setExtPorEliminar] = useState<RepuestoExterno | null>(null)
   const [extEliminando, setExtEliminando] = useState(false)
 
+  /* ══ MÉTODOS DE PAGO (para registrar con qué se paga al proveedor / se cobra) ══ */
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+
   /* ══ INSUMOS ═══════════════════════════════════════ */
   const [insumoValor, setInsumoValor] = useState('10000')
+  const [insumoMetodoPago, setInsumoMetodoPago] = useState('')
 
   /* ══ PORTA PLACAS ═══════════════════════════════════ */
   const [portaPlacasValor, setPortaPlacasValor] = useState('25000')
+  const [portaPlacasMetodoPago, setPortaPlacasMetodoPago] = useState('')
 
   /* ══ UMA ══════════════════════════════════════════ */
   const [umaFuente, setUmaFuente] = useState<'repuesto' | 'lubricante'>('repuesto')
@@ -106,6 +112,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const [extSelId, setExtSelId] = useState<string | null>(null)
   const [extCant, setExtCant] = useState(1)
   const [extPrecioSel, setExtPrecioSel] = useState('')
+  const [extMetodoPago, setExtMetodoPago] = useState('')
   // Formulario nuevo externo
   const [showForm, setShowForm] = useState(false)
   const [fProv, setFProv] = useState('')
@@ -120,6 +127,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const [fSaving, setFSaving] = useState(false)
   const [fError, setFError] = useState('')
   const [fSinDatos, setFSinDatos] = useState(false)
+  const [fMetodoPago, setFMetodoPago] = useState('')
   const [confirmPrecioBajo, setConfirmPrecioBajo] = useState(false)
   // Autocomplete proveedor
   const [provSugg, setProvSugg] = useState<Proveedor[]>([])
@@ -131,14 +139,21 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   useEffect(() => {
     if (open) {
       setUmaSelId(null); setUmaErrPrecio(''); setUmaFuente('repuesto')
-      setExtSelId(null)
-      setShowForm(false); setFError(''); setFSinDatos(false); setFCantidad(1)
+      setExtSelId(null); setExtMetodoPago('')
+      setShowForm(false); setFError(''); setFSinDatos(false); setFCantidad(1); setFMetodoPago('')
       setConfirmPrecioBajo(false)
       setExtPorEliminar(null)
-      setInsumoValor('10000')
-      setPortaPlacasValor('25000')
+      setInsumoValor('10000'); setInsumoMetodoPago('')
+      setPortaPlacasValor('25000'); setPortaPlacasMetodoPago('')
     }
   }, [open])
+
+  /* ── Cargar métodos de pago (para registrar costo proveedor / cobro) ── */
+  useEffect(() => {
+    if (!open) return
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).order('nombre')
+      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
+  }, [open, supabase, tenantId])
 
   /* ══ Búsqueda UMA (manual) ══════════════════════════ */
   const buscarUMA = useCallback(async () => {
@@ -236,7 +251,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
 
   const confirmarExt = () => {
     const sel = extRows.find((r) => r.id === extSelId)
-    if (!sel) return
+    if (!sel || !extMetodoPago) return
     const pVal = parseInt(extPrecioSel.replace(/\D/g, ''), 10) || 0
     onAdd({
       descripcion: sel.nombre,
@@ -245,6 +260,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       cantidad: extCant,
       costo: sel.ultimo_costo ?? 0,
       precio_venta: pVal,
+      metodo_pago_id: extMetodoPago,
     })
     setExtSelId(null)
     onClose()
@@ -277,13 +293,14 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   /* ── Agregar insumo (valor rápido, sin proveedor ni costo) ── */
   const confirmarInsumo = () => {
     const valor = parseInt(insumoValor.replace(/\D/g, ''), 10) || 0
-    if (!valor) return
+    if (!valor || !insumoMetodoPago) return
     onAdd({
       descripcion: 'Insumos',
       origen: 'insumo',
       cantidad: 1,
       costo: 0,
       precio_venta: valor,
+      metodo_pago_id: insumoMetodoPago,
     })
     onClose()
   }
@@ -291,13 +308,14 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   /* ── Agregar porta placas (valor rápido, sin proveedor ni costo) ── */
   const confirmarPortaPlacas = () => {
     const valor = parseInt(portaPlacasValor.replace(/\D/g, ''), 10) || 0
-    if (!valor) return
+    if (!valor || !portaPlacasMetodoPago) return
     onAdd({
       descripcion: 'Porta Placas',
       origen: 'insumo',
       cantidad: 1,
       costo: 0,
       precio_venta: valor,
+      metodo_pago_id: portaPlacasMetodoPago,
     })
     onClose()
   }
@@ -306,6 +324,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const guardarNuevoExt = async (forzado = false) => {
     if (!fDesc.trim()) { setFError('La descripción es obligatoria'); return }
     if (fPrecio.trim() === '') { setFError('Ingresa un precio de venta válido'); return }
+    if (fSinDatos && !fMetodoPago) { setFError('Selecciona con qué método se paga al proveedor'); return }
     const precio = parseInt(fPrecio.replace(/\D/g, ''), 10) || 0
     const costo = parseInt(fCosto.replace(/\D/g, ''), 10) || 0
 
@@ -324,10 +343,11 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
         cantidad: fCantidad,
         costo,
         precio_venta: precio,
+        metodo_pago_id: fMetodoPago,
       })
       setFProv(''); setFTel(''); setFUbic(''); setFSub('')
       setFDesc(''); setFUnidad('1'); setFCosto(''); setFPrecio(''); setFCantidad(1)
-      setProvExistente(null); setFSinDatos(false); setShowForm(false)
+      setProvExistente(null); setFSinDatos(false); setShowForm(false); setFMetodoPago('')
       onClose()
       return
     }
@@ -654,13 +674,21 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                                           onChange={(e) => setExtCant(Math.max(1, parseInt(e.target.value) || 1))}
                                           className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-amber-400" />
                                       </div>
+                                      <div>
+                                        <label className="text-xs text-gray-600 block mb-1">Método de pago al proveedor</label>
+                                        <select value={extMetodoPago} onChange={(e) => setExtMetodoPago(e.target.value)}
+                                          className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
+                                          <option value="">Selecciona...</option>
+                                          {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                                        </select>
+                                      </div>
                                       {extPrecioSel && (
                                         <p className="text-sm text-gray-600">
                                           Total: <span className="font-semibold">{formatCOP(parseInt(extPrecioSel.replace(/\D/g, '') || '0', 10) * extCant)}</span>
                                         </p>
                                       )}
-                                      <button onClick={confirmarExt}
-                                        className="ml-auto px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-1">
+                                      <button onClick={confirmarExt} disabled={!extMetodoPago}
+                                        className="ml-auto px-4 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-1">
                                         ✓ Confirmar
                                       </button>
                                     </div>
@@ -837,6 +865,20 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
                   </div>
                 )}
+
+                {/* Método de pago al proveedor — solo en modo Sin proveedor, ya que ahí se agrega directo a la orden */}
+                {fSinDatos && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">
+                      Método de pago al proveedor <span className="text-red-400">*</span>
+                    </label>
+                    <select value={fMetodoPago} onChange={(e) => setFMetodoPago(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
+                      <option value="">Selecciona...</option>
+                      {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {fError && (
@@ -848,7 +890,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                   className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={() => guardarNuevoExt()} disabled={fSaving}
+                <button onClick={() => guardarNuevoExt()} disabled={fSaving || (fSinDatos && !fMetodoPago)}
                   className={`px-5 py-2 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 ${
                     fSinDatos ? 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300' : 'bg-green-600 hover:bg-green-700 disabled:bg-green-300'
                   }`}>
@@ -880,7 +922,17 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                 className="flex-1 px-2 py-2 text-sm font-mono text-right focus:outline-none" />
             </div>
           </div>
-          <button onClick={confirmarInsumo} disabled={!parseInt(insumoValor.replace(/\D/g, ''), 10)}
+          <div>
+            <label className="text-xs font-medium text-purple-700 block mb-1">
+              Método de pago <span className="text-red-400">*</span>
+            </label>
+            <select value={insumoMetodoPago} onChange={(e) => setInsumoMetodoPago(e.target.value)}
+              className="w-full px-3 py-2 border border-purple-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
+              <option value="">Selecciona...</option>
+              {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+          </div>
+          <button onClick={confirmarInsumo} disabled={!parseInt(insumoValor.replace(/\D/g, ''), 10) || !insumoMetodoPago}
             className="w-full px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white rounded-lg text-sm font-semibold transition-colors">
             + Agregar a la orden
           </button>
@@ -906,7 +958,17 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                 className="flex-1 px-2 py-2 text-sm font-mono text-right focus:outline-none" />
             </div>
           </div>
-          <button onClick={confirmarPortaPlacas} disabled={!parseInt(portaPlacasValor.replace(/\D/g, ''), 10)}
+          <div>
+            <label className="text-xs font-medium text-teal-700 block mb-1">
+              Método de pago <span className="text-red-400">*</span>
+            </label>
+            <select value={portaPlacasMetodoPago} onChange={(e) => setPortaPlacasMetodoPago(e.target.value)}
+              className="w-full px-3 py-2 border border-teal-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white">
+              <option value="">Selecciona...</option>
+              {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+          </div>
+          <button onClick={confirmarPortaPlacas} disabled={!parseInt(portaPlacasValor.replace(/\D/g, ''), 10) || !portaPlacasMetodoPago}
             className="w-full px-5 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-300 text-white rounded-lg text-sm font-semibold transition-colors">
             + Agregar a la orden
           </button>

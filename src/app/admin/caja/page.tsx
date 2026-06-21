@@ -256,7 +256,7 @@ function EditarGastoModal({ tenantId, usuarioId, gasto, onClose, onEditado }: {
   )
 }
 
-const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'gasto', 'costo_lavado']
+const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'gasto', 'costo_lavado', 'costo_externo']
 
 export default function CajaPage() {
   const { profile } = useAuth()
@@ -288,7 +288,7 @@ export default function CajaPage() {
         .eq('tenant_id', profile.tenant_id)
         .gte('fecha', desdeISO).lte('fecha', hastaISO),
       supabase.from('items_orden')
-        .select('id, descripcion, costo, precio_venta, cantidad, created_at, ordenes!inner(tenant_id, numero, placa, cliente)')
+        .select('id, descripcion, costo, precio_venta, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente)')
         .eq('origen', 'externo')
         .eq('ordenes.tenant_id', profile.tenant_id)
         .or('costo.gt.0,precio_venta.gt.0')
@@ -298,7 +298,7 @@ export default function CajaPage() {
         .eq('tenant_id', profile.tenant_id)
         .gte('fecha', desdeISO).lte('fecha', hastaISO),
       supabase.from('items_orden')
-        .select('id, precio_venta, created_at, ordenes!inner(tenant_id, numero, placa, cliente)')
+        .select('id, descripcion, precio_venta, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente)')
         .eq('origen', 'insumo')
         .eq('ordenes.tenant_id', profile.tenant_id)
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
@@ -351,7 +351,7 @@ export default function CajaPage() {
       })
     }
 
-    for (const it of (costosExt ?? []) as unknown as { id: string; descripcion: string; costo: number; precio_venta: number; cantidad: number; created_at: string; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+    for (const it of (costosExt ?? []) as unknown as { id: string; descripcion: string; costo: number; precio_venta: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
       const ord = it.ordenes
       const concepto = `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
       if (it.costo > 0) {
@@ -364,8 +364,8 @@ export default function CajaPage() {
           nombre: it.descripcion,
           codigo: ord?.placa ?? null,
           monto: -(it.costo * it.cantidad),
-          metodoPagoId: null,
-          metodoPago: null,
+          metodoPagoId: it.metodo_pago_id,
+          metodoPago: it.metodos_pago?.nombre ?? null,
           grupo: grupoOrden(ord),
         })
       }
@@ -379,8 +379,8 @@ export default function CajaPage() {
           nombre: it.descripcion,
           codigo: ord?.placa ?? null,
           monto: it.precio_venta * it.cantidad,
-          metodoPagoId: null,
-          metodoPago: null,
+          metodoPagoId: it.metodo_pago_id,
+          metodoPago: it.metodos_pago?.nombre ?? null,
           grupo: grupoOrden(ord),
         })
       }
@@ -437,19 +437,19 @@ export default function CajaPage() {
       })
     }
 
-    for (const it of (insumos ?? []) as unknown as { id: string; precio_venta: number; created_at: string; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+    for (const it of (insumos ?? []) as unknown as { id: string; descripcion: string; precio_venta: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
       const ord = it.ordenes
       lista.push({
         id: `insumo_${it.id}`,
         rawId: it.id,
         fecha: it.created_at,
         categoria: 'ingreso_insumo',
-        concepto: `Insumos · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
+        concepto: `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
         nombre: ord?.cliente ?? null,
         codigo: ord?.placa ?? null,
         monto: it.precio_venta,
-        metodoPagoId: null,
-        metodoPago: null,
+        metodoPagoId: it.metodo_pago_id,
+        metodoPago: it.metodos_pago?.nombre ?? null,
         grupo: grupoOrden(ord),
       })
     }
@@ -489,13 +489,37 @@ export default function CajaPage() {
     return [...mapa.values()].sort((a, b) => (b.ingreso - b.egreso) - (a.ingreso - a.egreso))
   }, [movimientos])
 
-  const gruposVistaMetodo = useMemo(() => {
-    const mapa = new Map<string, Movimiento[]>()
+  /* Vista "Por método de pago": una fila por (orden, categoría, método) — si un mismo
+     servicio técnico se pagó con 2 métodos distintos, se repite una fila por cada uno
+     con el monto que le corresponde. Lo que no pertenece a una orden (ej. Gastos de
+     Caja) no se agrupa, queda una fila por movimiento. */
+  interface FilaMetodo {
+    key: string; rawId: string; fecha: string; categoria: Categoria
+    concepto: string; metodoPago: string | null; metodoPagoId: string | null; monto: number
+  }
+  const filasPorMetodo = useMemo(() => {
+    const mapa = new Map<string, FilaMetodo>()
     for (const m of filtrados) {
-      if (!mapa.has(m.grupo)) mapa.set(m.grupo, [])
-      mapa.get(m.grupo)!.push(m)
+      const esOrden = m.grupo.startsWith('Orden #')
+      const key = esOrden ? `${m.grupo}|${m.categoria}|${m.metodoPagoId ?? ''}` : `item_${m.id}`
+      const existente = mapa.get(key)
+      if (existente) {
+        existente.monto += m.monto
+        if (m.fecha > existente.fecha) existente.fecha = m.fecha
+      } else {
+        mapa.set(key, {
+          key,
+          rawId: m.rawId,
+          fecha: m.fecha,
+          categoria: m.categoria,
+          concepto: esOrden ? m.grupo : m.concepto,
+          metodoPago: m.metodoPago,
+          metodoPagoId: m.metodoPagoId,
+          monto: m.monto,
+        })
+      }
     }
-    return [...mapa.entries()]
+    return [...mapa.values()].sort((a, b) => b.fecha.localeCompare(a.fecha))
   }, [filtrados])
 
   const totalIngresos = movimientos
@@ -590,7 +614,7 @@ export default function CajaPage() {
         </div>
         {vistaResumen === 'cuenta' && (
           <p className="text-xs text-gray-400">
-            Solo incluye movimientos con método de pago asociado (pagos de clientes, gastos de caja y costo de lavado).
+            Solo incluye movimientos con método de pago asociado (pagos de clientes, gastos de caja, costo de lavado y costo de repuestos externos).
           </p>
         )}
       </div>
@@ -716,7 +740,7 @@ export default function CajaPage() {
         </div>
       )}
 
-      {/* Lista de movimientos: por método de pago — una sola tabla agrupada por orden (o por categoría si no pertenece a una orden) */}
+      {/* Lista de movimientos: por método de pago — una fila por (orden, categoría, método) */}
       {vistaTabla === 'metodo' && (
         <div className="rounded-2xl border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
@@ -730,59 +754,41 @@ export default function CajaPage() {
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500"></th>
               </tr>
             </thead>
-            {loading && (
-              <tbody><tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">Cargando...</td></tr></tbody>
-            )}
-            {!loading && filtrados.length === 0 && (
-              <tbody><tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr></tbody>
-            )}
-            {!loading && gruposVistaMetodo.map(([grupo, movs]) => {
-              const ingreso = movs.filter(m => m.monto >= 0).reduce((s, m) => s + m.monto, 0)
-              const egreso = movs.filter(m => m.monto < 0).reduce((s, m) => s + Math.abs(m.monto), 0)
-              return (
-                <tbody key={grupo} className="border-t-4 border-gray-100">
-                  <tr className="bg-gray-50/80">
-                    <td colSpan={6} className="px-4 py-2">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <p className="font-semibold text-gray-700 text-xs">{grupo}</p>
-                        <div className="flex items-center gap-3 text-xs text-gray-500">
-                          <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(ingreso)}</span></span>
-                          <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(egreso)}</span></span>
-                          <span>Neto: <span className={`font-semibold ${ingreso - egreso >= 0 ? 'text-gray-900' : 'text-red-600'}`}>{formatCOP(ingreso - egreso)}</span></span>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                  {movs.map((m, i) => (
-                    <tr key={m.id} className={`border-b border-gray-100 last:border-0 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                        {new Date(m.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORIA_BADGE[m.categoria]}`}>
-                          {CATEGORIA_LABEL[m.categoria]}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-900 truncate max-w-[260px]">{m.concepto}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{m.metodoPago ?? '—'}</td>
-                      <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                        {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
-                      </td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
-                        {m.categoria === 'gasto' && (
-                          <button
-                            onClick={() => setEditGasto({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId })}
-                            className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
-                          >
-                            Editar
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              )
-            })}
+            <tbody>
+              {loading && (
+                <tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">Cargando...</td></tr>
+              )}
+              {!loading && filasPorMetodo.length === 0 && (
+                <tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
+              )}
+              {!loading && filasPorMetodo.map((f, i) => (
+                <tr key={f.key} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                    {new Date(f.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORIA_BADGE[f.categoria]}`}>
+                      {CATEGORIA_LABEL[f.categoria]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-900 truncate max-w-[280px]">{f.concepto}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{f.metodoPago ?? 'Sin método especificado'}</td>
+                  <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${f.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    {f.monto >= 0 ? '+' : ''}{formatCOP(f.monto)}
+                  </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {f.categoria === 'gasto' && (
+                      <button
+                        onClick={() => setEditGasto({ id: f.rawId, descripcion: f.concepto, monto: Math.abs(f.monto), metodoPagoId: f.metodoPagoId })}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                      >
+                        Editar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       )}

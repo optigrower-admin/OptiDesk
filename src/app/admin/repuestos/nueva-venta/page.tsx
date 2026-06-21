@@ -24,6 +24,7 @@ interface ItemVenta {
   cantidad: number
   costo: number
   precio_venta: number
+  metodo_pago_id?: string | null
 }
 
 interface ExternoForm {
@@ -31,6 +32,7 @@ interface ExternoForm {
   costo: string       // dígitos crudos, sin formato
   precio_venta: string // dígitos crudos, sin formato
   cantidad: string
+  metodoPagoId: string
 }
 
 function soloDigitos(v: string) { return v.replace(/\D/g, '') }
@@ -56,7 +58,7 @@ interface OrdenPlaca {
   valor_total: number
 }
 
-const externoInit: ExternoForm = { nombre: '', costo: '', precio_venta: '', cantidad: '1' }
+const externoInit: ExternoForm = { nombre: '', costo: '', precio_venta: '', cantidad: '1', metodoPagoId: '' }
 const DRAFT_KEY = 'optiDesk_venta_directa_draft'
 const PANEL_INIT: ClienteMotoPanelResult = { motoId: null, clienteId: null, motoExtras: { marca: '', modelo: '', año: '', color: '' }, isKnownMoto: false }
 
@@ -185,7 +187,7 @@ function NuevaVentaContent() {
   const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx))
 
   const handleAgregarExterno = async () => {
-    if (!externoForm.nombre || !externoForm.precio_venta || !profile?.tenant_id) return
+    if (!externoForm.nombre || !externoForm.precio_venta || !externoForm.metodoPagoId || !profile?.tenant_id) return
     const costo = parseInt(soloDigitos(externoForm.costo) || '0', 10)
     const precio = parseInt(soloDigitos(externoForm.precio_venta) || '0', 10)
     if (!precio) return
@@ -221,6 +223,7 @@ function NuevaVentaContent() {
           cantidad: parseInt(externoForm.cantidad) || 1,
           costo,
           precio_venta: precio,
+          metodo_pago_id: externoForm.metodoPagoId,
         })
         setExternoForm(externoInit)
         setShowExternoForm(false)
@@ -305,6 +308,7 @@ function NuevaVentaContent() {
               cantidad: item.cantidad,
               costo: item.costo,
               precio_venta: item.precio_venta,
+              metodo_pago_id: item.metodo_pago_id ?? null,
             }))
           )
           await Promise.all(
@@ -371,6 +375,7 @@ function NuevaVentaContent() {
           cantidad: item.cantidad,
           costo: item.costo,
           precio_venta: item.precio_venta,
+          metodo_pago_id: item.metodo_pago_id ?? null,
         }))
       )
 
@@ -686,8 +691,19 @@ function NuevaVentaContent() {
                 />
               </div>
             </div>
+            <div>
+              <label className="text-xs text-gray-600">Método de pago al proveedor *</label>
+              <select
+                value={externoForm.metodoPagoId}
+                onChange={(e) => setExternoForm((p) => ({ ...p, metodoPagoId: e.target.value }))}
+                className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm mt-0.5 bg-white"
+              >
+                <option value="">Selecciona...</option>
+                {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+              </select>
+            </div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={handleAgregarExterno} loading={saving} disabled={!externoForm.nombre || !externoForm.precio_venta}>
+              <Button size="sm" onClick={handleAgregarExterno} loading={saving} disabled={!externoForm.nombre || !externoForm.precio_venta || !externoForm.metodoPagoId}>
                 Agregar
               </Button>
               <Button size="sm" variant="ghost" onClick={() => { setShowExternoForm(false); setExternoForm(externoInit) }}>

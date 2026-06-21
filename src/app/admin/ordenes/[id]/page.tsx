@@ -778,6 +778,7 @@ export default function AdminOrdenDetallePage() {
   const handleAddItem = async (item: {
     descripcion: string; origen: 'uma' | 'externo' | 'insumo'; repuesto_uma_id?: string;
     repuesto_externo_id?: string; cantidad: number; costo: number; precio_venta: number;
+    metodo_pago_id?: string | null;
   }) => {
     const { data } = await supabase.from('items_orden').insert({
       orden_id: ordenId,
