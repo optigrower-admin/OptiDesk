@@ -324,7 +324,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const guardarNuevoExt = async (forzado = false) => {
     if (!fDesc.trim()) { setFError('La descripción es obligatoria'); return }
     if (fPrecio.trim() === '') { setFError('Ingresa un precio de venta válido'); return }
-    if (fSinDatos && !fMetodoPago) { setFError('Selecciona con qué método se paga al proveedor'); return }
+    if (!fMetodoPago) { setFError('Selecciona con qué método se paga al proveedor'); return }
     const precio = parseInt(fPrecio.replace(/\D/g, ''), 10) || 0
     const costo = parseInt(fCosto.replace(/\D/g, ''), 10) || 0
 
@@ -393,8 +393,10 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
         const newRow = nr as unknown as RepuestoExterno
         setExtRows((prev) => [newRow, ...prev])
         setExtBuscado(true)
+        // Pre-llenar el método de pago en el paso de "+Agregar" con el que se eligió aquí
+        setExtMetodoPago(fMetodoPago)
         setFProv(''); setFTel(''); setFUbic(''); setFSub('')
-        setFDesc(''); setFUnidad('1'); setFCosto(''); setFPrecio('')
+        setFDesc(''); setFUnidad('1'); setFCosto(''); setFPrecio(''); setFMetodoPago('')
         setProvExistente(null); setFSinDatos(false); setShowForm(false)
       }
     } catch (err: unknown) {
@@ -866,19 +868,17 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                   </div>
                 )}
 
-                {/* Método de pago al proveedor — solo en modo Sin proveedor, ya que ahí se agrega directo a la orden */}
-                {fSinDatos && (
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">
-                      Método de pago al proveedor <span className="text-red-400">*</span>
-                    </label>
-                    <select value={fMetodoPago} onChange={(e) => setFMetodoPago(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
-                      <option value="">Selecciona...</option>
-                      {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                    </select>
-                  </div>
-                )}
+                {/* Método de pago al proveedor (siempre visible) */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">
+                    Método de pago al proveedor <span className="text-red-400">*</span>
+                  </label>
+                  <select value={fMetodoPago} onChange={(e) => setFMetodoPago(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
+                    <option value="">Selecciona...</option>
+                    {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                  </select>
+                </div>
               </div>
 
               {fError && (
@@ -890,7 +890,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                   className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
                   Cancelar
                 </button>
-                <button onClick={() => guardarNuevoExt()} disabled={fSaving || (fSinDatos && !fMetodoPago)}
+                <button onClick={() => guardarNuevoExt()} disabled={fSaving || !fMetodoPago}
                   className={`px-5 py-2 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 ${
                     fSinDatos ? 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300' : 'bg-green-600 hover:bg-green-700 disabled:bg-green-300'
                   }`}>
