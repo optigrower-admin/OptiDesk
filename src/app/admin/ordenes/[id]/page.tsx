@@ -1393,14 +1393,21 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 {savingFinalize ? 'Guardando...' : 'Sí, marcar como Finalizada'}
               </button>
               <button
-                onClick={() => {
+                disabled={savingFinalize}
+                onClick={async () => {
+                  setSavingFinalize(true)
+                  await supabase.from('ordenes').update({ estado: 'pagado' }).eq('id', ordenId)
+                  setEstado('pagado' as EstadoOrden)
+                  try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
+                  setDirty(false)
+                  setSavingFinalize(false)
                   setShowFinalizeDialog(false)
                   if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
                   else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
                 }}
-                className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
+                className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
               >
-                No, mantener como Pagada
+                {savingFinalize ? 'Guardando...' : 'No, mantener como Pagada'}
               </button>
               <button
                 onClick={() => { setShowFinalizeDialog(false); setPendingNavBack(false); setPendingNavUrl(null) }}
