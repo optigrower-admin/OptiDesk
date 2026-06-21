@@ -8,7 +8,7 @@ import { formatCOP } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
-type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'costo_externo' | 'costo_lavado' | 'gasto'
+type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'costo_externo' | 'costo_lavado' | 'gasto' | 'ajuste'
 
 interface Movimiento {
   id: string
@@ -33,6 +33,7 @@ const CATEGORIA_LABEL: Record<Categoria, string> = {
   costo_externo:   'Costo repuestos Externos/Terceros',
   costo_lavado:    'Costo Servicio de Lavado',
   gasto:           'Gastos de Caja',
+  ajuste:          'Ajuste de Caja',
 }
 
 const CATEGORIA_BADGE: Record<Categoria, string> = {
@@ -44,6 +45,7 @@ const CATEGORIA_BADGE: Record<Categoria, string> = {
   costo_externo:   'bg-amber-100 text-amber-700',
   costo_lavado:    'bg-orange-100 text-orange-700',
   gasto:           'bg-red-100 text-red-700',
+  ajuste:          'bg-gray-700 text-white',
 }
 
 function grupoOrden(ord: { numero: number; placa: string; cliente: string } | null): string {
@@ -71,11 +73,11 @@ function calcularRango(periodo: Periodo, desdeManual: string, hastaManual: strin
   return { desde: desdeManual || hastaHoy, hasta: hastaManual || hastaHoy }
 }
 
-function NuevoGastoModal({ tenantId, usuarioId, onClose, onCreado }: {
-  tenantId: string; usuarioId: string; onClose: () => void; onCreado: () => void
+function NuevoGastoModal({ tenantId, usuarioId, titulo = 'Nuevo gasto de caja', descripcionInicial = '', onClose, onCreado }: {
+  tenantId: string; usuarioId: string; titulo?: string; descripcionInicial?: string; onClose: () => void; onCreado: () => void
 }) {
   const supabase = createClient()
-  const [descripcion, setDescripcion] = useState('')
+  const [descripcion, setDescripcion] = useState(descripcionInicial)
   const [monto, setMonto] = useState('')
   const [metodoPagoId, setMetodoPagoId] = useState('')
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
@@ -123,7 +125,7 @@ function NuevoGastoModal({ tenantId, usuarioId, onClose, onCreado }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
-        <h2 className="font-bold text-gray-900 mb-1">Nuevo gasto de caja</h2>
+        <h2 className="font-bold text-gray-900 mb-1">{titulo}</h2>
         <p className="text-xs text-gray-500 mb-4">Se registra con la fecha de hoy.</p>
         <div className="space-y-2">
           <div>
@@ -256,7 +258,115 @@ function EditarGastoModal({ tenantId, usuarioId, gasto, onClose, onEditado }: {
   )
 }
 
-const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'gasto', 'costo_lavado', 'costo_externo']
+function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
+  tenantId: string; usuarioId: string; onClose: () => void; onCreado: () => void
+}) {
+  const supabase = createClient()
+  const [descripcion, setDescripcion] = useState('')
+  const [signo, setSigno] = useState<'+' | '-'>('+')
+  const [monto, setMonto] = useState('')
+  const [metodoPagoId, setMetodoPagoId] = useState('')
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).order('nombre')
+      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
+  }, [supabase, tenantId])
+
+  const valido = descripcion.trim() !== '' && parseInt(monto.replace(/\D/g, ''), 10) > 0 && metodoPagoId !== ''
+
+  async function guardar() {
+    if (!valido) return
+    if (!confirm('¿Seguro que deseas registrar este ajuste de caja?')) return
+    setGuardando(true); setError('')
+    const montoNum = parseInt(monto.replace(/\D/g, ''), 10) * (signo === '-' ? -1 : 1)
+    try {
+      const { data, error: err } = await supabase.from('ajustes_caja').insert({
+        tenant_id: tenantId,
+        descripcion: descripcion.trim(),
+        monto: montoNum,
+        metodo_pago_id: metodoPagoId,
+        registrado_por: usuarioId,
+      }).select('id').single()
+      if (err) throw new Error(err.message)
+      await registrarAuditoria(supabase, {
+        tenant_id: tenantId,
+        tabla: 'ajustes_caja',
+        registro_id: (data as { id: string }).id,
+        tipo: 'movimiento',
+        valor_nuevo: { descripcion: descripcion.trim(), monto: montoNum },
+        descripcion: `Registró un ajuste de caja: "${descripcion.trim()}" por ${formatCOP(montoNum)}`,
+        usuario_id: usuarioId,
+      })
+      onCreado()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al guardar el ajuste')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h2 className="font-bold text-gray-900 mb-1">Ajuste de caja</h2>
+        <p className="text-xs text-gray-500 mb-4">Solo Gerencia puede registrar ajustes — queda guardado quién y cuándo lo hizo.</p>
+        <div className="space-y-2">
+          <div>
+            <label className="text-xs text-gray-500">Motivo del ajuste</label>
+            <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Corrección de saldo en efectivo..."
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 mt-0.5" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Cuenta (método de pago)</label>
+            <select value={metodoPagoId} onChange={e => setMetodoPagoId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 mt-0.5 bg-white">
+              <option value="">Selecciona...</option>
+              {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Monto del ajuste</label>
+            <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex p-0.5 bg-gray-100 rounded-lg">
+                <button type="button" onClick={() => setSigno('+')}
+                  className={`px-2.5 py-1 rounded-md text-sm font-semibold ${signo === '+' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-400'}`}>+</button>
+                <button type="button" onClick={() => setSigno('-')}
+                  className={`px-2.5 py-1 rounded-md text-sm font-semibold ${signo === '-' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-400'}`}>−</button>
+              </div>
+              <div className="flex-1 flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-gray-400 bg-white">
+                <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-1.5">$</span>
+                <input type="text" inputMode="numeric"
+                  value={monto ? Number(monto.replace(/\D/g, '')).toLocaleString('es-CO') : ''}
+                  onChange={e => setMonto(e.target.value.replace(/\D/g, ''))}
+                  placeholder="0"
+                  className="flex-1 px-2 py-1.5 text-sm font-mono text-right focus:outline-none" />
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              {signo === '+' ? 'Suma este monto a la cuenta seleccionada.' : 'Resta este monto de la cuenta seleccionada.'}
+            </p>
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={!valido || guardando}
+            className="flex-1 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
+            {guardando ? 'Guardando...' : 'Guardar ajuste'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'gasto', 'costo_lavado', 'costo_externo', 'ajuste']
 
 export default function CajaPage() {
   const { profile } = useAuth()
@@ -269,11 +379,13 @@ export default function CajaPage() {
   const [loading, setLoading] = useState(true)
   const [catFiltro, setCatFiltro] = useState<Categoria | 'todos'>('todos')
   const [busqueda, setBusqueda] = useState('')
-  const [nuevoGastoOpen, setNuevoGastoOpen] = useState(false)
+  const [gastoModal, setGastoModal] = useState<{ titulo: string; descripcionInicial: string } | null>(null)
+  const [ajusteOpen, setAjusteOpen] = useState(false)
   const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null } | null>(null)
   const [vistaResumen, setVistaResumen] = useState<'total' | 'cuenta'>('total')
   const [vistaTabla, setVistaTabla] = useState<'item' | 'metodo'>('item')
 
+  const esGerencia = profile?.rol === 'gerencia'
   const { desde, hasta } = calcularRango(periodo, desdeManual, hastaManual)
 
   const cargar = useCallback(async () => {
@@ -282,7 +394,7 @@ export default function CajaPage() {
     const desdeISO = `${desde}T00:00:00`
     const hastaISO = `${hasta}T23:59:59`
 
-    const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }] = await Promise.all([
+    const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }, { data: ajustes }] = await Promise.all([
       supabase.from('pagos_orden')
         .select('id, monto, fecha, metodo_pago_id, metodos_pago(nombre), ordenes(numero, placa, cliente, tipo_orden)')
         .eq('tenant_id', profile.tenant_id)
@@ -313,6 +425,10 @@ export default function CajaPage() {
         .eq('tipo_orden', 'venta_repuestos')
         .gt('valor_abono', 0)
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
+      supabase.from('ajustes_caja')
+        .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre)')
+        .eq('tenant_id', profile.tenant_id)
+        .gte('fecha', desdeISO).lte('fecha', hastaISO),
     ])
 
     const lista: Movimiento[] = []
@@ -454,6 +570,22 @@ export default function CajaPage() {
       })
     }
 
+    for (const a of (ajustes ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null }[]) {
+      lista.push({
+        id: `ajuste_${a.id}`,
+        rawId: a.id,
+        fecha: a.fecha,
+        categoria: 'ajuste',
+        concepto: a.descripcion,
+        nombre: a.descripcion,
+        codigo: null,
+        monto: a.monto,
+        metodoPagoId: a.metodo_pago_id,
+        metodoPago: a.metodos_pago?.nombre ?? null,
+        grupo: CATEGORIA_LABEL.ajuste,
+      })
+    }
+
     lista.sort((a, b) => b.fecha.localeCompare(a.fecha))
     setMovimientos(lista)
     setLoading(false)
@@ -528,15 +660,61 @@ export default function CajaPage() {
   const totalGastos = movimientos
     .filter(m => m.categoria === 'costo_externo' || m.categoria === 'costo_lavado' || m.categoria === 'gasto')
     .reduce((s, m) => s + Math.abs(m.monto), 0)
-  const montoEnCaja = totalIngresos - totalGastos
+  const totalAjustes = movimientos
+    .filter(m => m.categoria === 'ajuste')
+    .reduce((s, m) => s + m.monto, 0)
+  const montoEnCaja = totalIngresos - totalGastos + totalAjustes
+
+  async function eliminarGasto(m: { rawId: string; concepto: string; monto: number }) {
+    if (!confirm(`¿Eliminar "${m.concepto}" por ${formatCOP(Math.abs(m.monto))}?`)) return
+    const { error } = await supabase.from('gastos_caja').delete().eq('id', m.rawId)
+    if (error) { alert(`No se pudo eliminar: ${error.message}`); return }
+    await registrarAuditoria(supabase, {
+      tenant_id: profile!.tenant_id,
+      tabla: 'gastos_caja',
+      registro_id: m.rawId,
+      tipo: 'eliminacion',
+      valor_anterior: { descripcion: m.concepto, monto: Math.abs(m.monto) },
+      descripcion: `Eliminó el gasto de caja "${m.concepto}"`,
+      usuario_id: profile?.id,
+    })
+    await cargar()
+  }
+
+  async function eliminarAjuste(m: { rawId: string; concepto: string; monto: number }) {
+    if (!confirm(`¿Eliminar el ajuste "${m.concepto}" por ${formatCOP(m.monto)}?`)) return
+    const { error } = await supabase.from('ajustes_caja').delete().eq('id', m.rawId)
+    if (error) { alert(`No se pudo eliminar: ${error.message}`); return }
+    await registrarAuditoria(supabase, {
+      tenant_id: profile!.tenant_id,
+      tabla: 'ajustes_caja',
+      registro_id: m.rawId,
+      tipo: 'eliminacion',
+      valor_anterior: { descripcion: m.concepto, monto: m.monto },
+      descripcion: `Eliminó el ajuste de caja "${m.concepto}"`,
+      usuario_id: profile?.id,
+    })
+    await cargar()
+  }
 
   return (
     <div className="p-6 space-y-5 max-w-6xl">
-      {nuevoGastoOpen && profile?.tenant_id && profile?.id && (
+      {gastoModal && profile?.tenant_id && profile?.id && (
         <NuevoGastoModal
           tenantId={profile.tenant_id}
           usuarioId={profile.id}
-          onClose={() => setNuevoGastoOpen(false)}
+          titulo={gastoModal.titulo}
+          descripcionInicial={gastoModal.descripcionInicial}
+          onClose={() => setGastoModal(null)}
+          onCreado={cargar}
+        />
+      )}
+
+      {ajusteOpen && profile?.tenant_id && profile?.id && (
+        <AjusteModal
+          tenantId={profile.tenant_id}
+          usuarioId={profile.id}
+          onClose={() => setAjusteOpen(false)}
           onCreado={cargar}
         />
       )}
@@ -558,10 +736,26 @@ export default function CajaPage() {
             Entradas y salidas de dinero de Servicio Técnico y Repuestos.
           </p>
         </div>
-        <button onClick={() => setNuevoGastoOpen(true)}
-          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-colors">
-          + Nuevo gasto
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => setGastoModal({ titulo: 'Nuevo gasto de caja', descripcionInicial: '' })}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-colors">
+            + Nuevo gasto
+          </button>
+          <button onClick={() => setGastoModal({ titulo: 'Transferir a profesional', descripcionInicial: 'Transferencia a profesional' })}
+            className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition-colors">
+            Transferir a profesional
+          </button>
+          <button onClick={() => setGastoModal({ titulo: 'Transferir a caja fuerte', descripcionInicial: 'Transferencia a caja fuerte' })}
+            className="px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-sm font-semibold transition-colors">
+            Transferir a caja fuerte
+          </button>
+          {esGerencia && (
+            <button onClick={() => setAjusteOpen(true)}
+              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-semibold transition-colors">
+              + Ajuste
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Selector de período */}
@@ -710,7 +904,7 @@ export default function CajaPage() {
                 <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
               )}
               {!loading && filtrados.map((m, i) => (
-                <tr key={m.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                <tr key={m.id} className={`border-b border-gray-100 ${m.categoria === 'ajuste' ? 'bg-gray-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                     {new Date(m.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </td>
@@ -720,16 +914,28 @@ export default function CajaPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-900 truncate max-w-[280px]">{m.concepto}</td>
-                  <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                  <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${
+                    m.categoria === 'ajuste' ? 'text-gray-700' : m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'
+                  }`}>
                     {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
                   </td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {m.categoria === 'gasto' && (
-                      <button
-                        onClick={() => setEditGasto({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId })}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
-                      >
-                        Editar
+                  <td className="px-4 py-3 text-right whitespace-nowrap space-x-2">
+                    {m.categoria === 'gasto' && esGerencia && (
+                      <>
+                        <button
+                          onClick={() => setEditGasto({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId })}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                        >
+                          Editar
+                        </button>
+                        <button onClick={() => eliminarGasto(m)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
+                          Eliminar
+                        </button>
+                      </>
+                    )}
+                    {m.categoria === 'ajuste' && esGerencia && (
+                      <button onClick={() => eliminarAjuste(m)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
+                        Eliminar
                       </button>
                     )}
                   </td>
@@ -762,7 +968,7 @@ export default function CajaPage() {
                 <tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
               )}
               {!loading && filasPorMetodo.map((f, i) => (
-                <tr key={f.key} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                <tr key={f.key} className={`border-b border-gray-100 ${f.categoria === 'ajuste' ? 'bg-gray-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                     {new Date(f.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </td>
@@ -773,16 +979,28 @@ export default function CajaPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-900 truncate max-w-[280px]">{f.concepto}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{f.metodoPago ?? 'Sin método especificado'}</td>
-                  <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${f.monto >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                  <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${
+                    f.categoria === 'ajuste' ? 'text-gray-700' : f.monto >= 0 ? 'text-emerald-700' : 'text-red-600'
+                  }`}>
                     {f.monto >= 0 ? '+' : ''}{formatCOP(f.monto)}
                   </td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {f.categoria === 'gasto' && (
-                      <button
-                        onClick={() => setEditGasto({ id: f.rawId, descripcion: f.concepto, monto: Math.abs(f.monto), metodoPagoId: f.metodoPagoId })}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
-                      >
-                        Editar
+                  <td className="px-4 py-3 text-right whitespace-nowrap space-x-2">
+                    {f.categoria === 'gasto' && esGerencia && (
+                      <>
+                        <button
+                          onClick={() => setEditGasto({ id: f.rawId, descripcion: f.concepto, monto: Math.abs(f.monto), metodoPagoId: f.metodoPagoId })}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                        >
+                          Editar
+                        </button>
+                        <button onClick={() => eliminarGasto(f)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
+                          Eliminar
+                        </button>
+                      </>
+                    )}
+                    {f.categoria === 'ajuste' && esGerencia && (
+                      <button onClick={() => eliminarAjuste(f)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
+                        Eliminar
                       </button>
                     )}
                   </td>
