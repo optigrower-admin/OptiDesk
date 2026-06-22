@@ -26,6 +26,7 @@ interface Orden {
   estado: string
   estado_pago: string
   valor_total: number
+  valor_abono: number | null
   tipo_orden: string | null
   tipo_servicio: string | null
   created_at: string
@@ -50,7 +51,7 @@ interface Categoria {
 
 type FiltroEstado = 'todos' | 'activos' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
 
-const SELECT_FIELDS = 'id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, tipo_orden, tipo_servicio, created_at, fecha_finalizacion, numeros_orden_uma, categorias_servicio(nombre), usuarios:mecanico_id(nombre)'
+const SELECT_FIELDS = 'id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, tipo_orden, tipo_servicio, created_at, fecha_finalizacion, numeros_orden_uma, categorias_servicio(nombre), usuarios:mecanico_id(nombre)'
 
 export default function AdminOrdenesPage() {
   const { profile } = useAuth()
@@ -528,6 +529,11 @@ export default function AdminOrdenesPage() {
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-xl font-bold text-gray-900 font-mono flex-shrink-0">{grupo.placa}</span>
+                    {ordenActual && ordenActual.estado_pago !== 'pagado' && (ordenActual.valor_total - (ordenActual.valor_abono ?? 0)) > 0 && (
+                      <span className="text-xl font-bold text-red-600 flex-shrink-0">
+                        {formatCOP(ordenActual.valor_total - (ordenActual.valor_abono ?? 0))}
+                      </span>
+                    )}
                     <span className="text-sm text-gray-400 truncate">– {ordenActual?.cliente}</span>
                     {ordenActual && (
                       <span className="text-xs text-gray-400 flex-shrink-0 hidden sm:inline">

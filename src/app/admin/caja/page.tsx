@@ -637,7 +637,7 @@ export default function CajaPage() {
   const [gastoModal, setGastoModal] = useState<{ titulo: string; descripcionInicial: string } | null>(null)
   const [ajusteOpen, setAjusteOpen] = useState(false)
   const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null } | null>(null)
-  const [vistaResumen, setVistaResumen] = useState<'total' | 'cuenta'>('total')
+  const [vistaResumen, setVistaResumen] = useState<'total' | 'cuenta'>('cuenta')
   const [vistaTabla, setVistaTabla] = useState<'item' | 'metodo'>('item')
 
   const esGerencia = profile?.rol === 'gerencia'
