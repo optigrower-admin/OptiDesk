@@ -43,8 +43,9 @@ function agrupar(filas: Record<string, string>[], ...posiblesCampos: string[]): 
   return grupos
 }
 
-const ORIGENES_ST = ['uma', 'externo', 'mano_obra', 'insumo']
+const ORIGENES_ST = ['uma', 'externo', 'mano_obra', 'insumo', 'lavado']
 const ORIGENES_VENTA = ['uma', 'externo']
+const ORIGENES_QUE_REQUIEREN_METODO_PAGO = ['externo', 'insumo', 'lavado']
 const ESTADO_ALIASES: Record<string, string> = {
   en_proceso: 'en_proceso',
   pendiente: 'pendiente',
@@ -56,7 +57,9 @@ const ESTADO_ALIASES: Record<string, string> = {
 const ESTADO_LABEL: Record<string, string> = { en_proceso: 'En proceso', pendiente: 'Pendiente', pagado: 'Pagado', listo: 'Finalizado' }
 const ESTADO_PAGO_LABEL: Record<string, string> = { pendiente: 'Pendiente', abono: 'Abono', pagado: 'Pagado' }
 
-interface ItemPreparado { descripcion: string; origen: string; cantidad: number; costo: number; precio_venta: number; codigoUma: string; codigoExterno: string; proveedor: string }
+interface ItemPreparado { descripcion: string; origen: string; cantidad: number; costo: number; precio_venta: number; codigoUma: string; codigoExterno: string; proveedor: string; metodoPago: string }
+
+interface LavaMotoConfig { costo: number; precioVenta: number }
 
 interface GrupoOrdenPreparado {
   referencia: string
@@ -75,7 +78,7 @@ interface GrupoOrdenPreparado {
 
 type ResultadoGrupo = { ok: true; grupo: GrupoOrdenPreparado } | { ok: false; mensaje: string }
 
-function prepararGrupoOrden(referencia: string, grupoFilas: Record<string, string>[], filaIdxBase: number, tipoOrden: 'servicio' | 'venta_repuestos'): ResultadoGrupo {
+function prepararGrupoOrden(referencia: string, grupoFilas: Record<string, string>[], filaIdxBase: number, tipoOrden: 'servicio' | 'venta_repuestos', lavaMotoConfig: LavaMotoConfig | null): ResultadoGrupo {
   const origenesValidos = tipoOrden === 'servicio' ? ORIGENES_ST : ORIGENES_VENTA
   const cab = grupoFilas[0]
   const fechaISO = parseFecha(valorColumna(cab, 'Fecha de la orden (DD/MM/AAAA)', 'Fecha de la venta (DD/MM/AAAA)', 'Fecha (DD/MM/AAAA)'))
@@ -104,21 +107,36 @@ function prepararGrupoOrden(referencia: string, grupoFilas: Record<string, strin
   let mensajeError: string | null = null
   grupoFilas.forEach((fila, i) => {
     if (mensajeError) return
-    const descripcion = String(fila['Descripcion del item'] ?? '').trim()
-    const origen = String(fila['Origen (uma/externo/mano_obra/insumo)'] ?? fila['Origen (uma/externo)'] ?? '').trim().toLowerCase()
-    if (!descripcion && !origen) return // fila sin ítem (solo trae los datos de la orden), se ignora sin error
-    if (!descripcion) { mensajeError = `fila ${filaIdxBase + i}: falta la Descripción del ítem`; return }
+    const descripcionRaw = String(fila['Descripcion del item'] ?? '').trim()
+    const origen = String(fila['Origen (uma/externo/mano_obra/insumo/lavado)'] ?? fila['Origen (uma/externo/mano_obra/insumo)'] ?? fila['Origen (uma/externo)'] ?? '').trim().toLowerCase()
+    if (!descripcionRaw && !origen) return // fila sin ítem (solo trae los datos de la orden), se ignora sin error
     if (!origenesValidos.includes(origen)) { mensajeError = `fila ${filaIdxBase + i}: Origen "${origen}" inválido — usa: ${origenesValidos.join(', ')}`; return }
+    const descripcion = origen === 'lavado' ? (descripcionRaw || 'Lava Moto') : descripcionRaw
+    if (!descripcion) { mensajeError = `fila ${filaIdxBase + i}: falta la Descripción del ítem`; return }
     const codigoUma = String(fila['Codigo UMA (si Origen=uma)'] ?? '').trim()
     if (origen === 'uma' && !codigoUma) { mensajeError = `fila ${filaIdxBase + i}: Origen "uma" requiere el Código UMA del catálogo`; return }
+    const metodoPago = String(fila['Metodo de pago (obligatorio si Origen=externo, insumo o lavado)'] ?? fila['Metodo de pago'] ?? '').trim()
+    if (ORIGENES_QUE_REQUIEREN_METODO_PAGO.includes(origen) && !metodoPago) { mensajeError = `fila ${filaIdxBase + i}: Origen "${origen}" requiere el Método de pago`; return }
+
+    let costo: number
+    let precio_venta: number
+    if (origen === 'lavado') {
+      if (!lavaMotoConfig) { mensajeError = `fila ${filaIdxBase + i}: el servicio de Lava Moto no está activo en Configuración — actívalo antes de importar este tipo de ítem`; return }
+      costo = lavaMotoConfig.costo
+      precio_venta = lavaMotoConfig.precioVenta
+    } else {
+      costo = parseNum(fila['Costo proveedor'])
+      precio_venta = parseNum(fila['Precio de venta'])
+    }
+
     items.push({
       descripcion, origen,
       cantidad: parseNum(fila['Cantidad']) || 1,
-      costo: parseNum(fila['Costo proveedor']),
-      precio_venta: parseNum(fila['Precio de venta']),
+      costo, precio_venta,
       codigoUma,
       codigoExterno: String(fila['Codigo externo (opcional, si Origen=externo)'] ?? '').trim(),
       proveedor: String(fila['Proveedor (opcional, si Origen=externo)'] ?? '').trim(),
+      metodoPago,
     })
   })
   if (mensajeError) return { ok: false, mensaje: mensajeError }
@@ -131,15 +149,38 @@ function prepararGrupoOrden(referencia: string, grupoFilas: Record<string, strin
   return { ok: true, grupo: { referencia, filaIdxBase, fechaISO, cliente, placa, cedula, celular, estado, items, valorTotal, montoPagado, estadoPago } }
 }
 
-function previsualizarOrdenes(filas: Record<string, string>[], tipoOrden: 'servicio' | 'venta_repuestos'): TarjetaPreview[] {
+async function cargarMetodosPagoSet(supabase: SupabaseClient, tenantId: string): Promise<Set<string>> {
+  const { data } = await supabase.from('metodos_pago').select('nombre').eq('tenant_id', tenantId)
+  return new Set(((data ?? []) as { nombre: string }[]).map((r) => r.nombre.trim().toLowerCase()))
+}
+
+async function cargarLavaMotoConfig(supabase: SupabaseClient, tenantId: string): Promise<LavaMotoConfig | null> {
+  const { data } = await supabase.from('lava_moto_config').select('costo, precio_venta, activo').eq('tenant_id', tenantId).maybeSingle()
+  const config = data as { costo: number; precio_venta: number; activo: boolean } | null
+  if (!config?.activo) return null
+  return { costo: Number(config.costo), precioVenta: Number(config.precio_venta) }
+}
+
+async function previsualizarOrdenes(filas: Record<string, string>[], tipoOrden: 'servicio' | 'venta_repuestos', supabase: SupabaseClient, tenantId: string): Promise<TarjetaPreview[]> {
+  const [metodosPagoSet, lavaMotoConfig] = await Promise.all([
+    cargarMetodosPagoSet(supabase, tenantId),
+    tipoOrden === 'servicio' ? cargarLavaMotoConfig(supabase, tenantId) : Promise.resolve(null),
+  ])
   const grupos = agrupar(filas, 'Referencia (la inventas tú, ej: 1)', 'Referencia')
   const tarjetas: TarjetaPreview[] = []
   for (const [referencia, grupoFilas] of grupos) {
     const filaIdxBase = filas.indexOf(grupoFilas[0]) + 2
     if (!referencia) { tarjetas.push({ titulo: `Fila ${filaIdxBase}`, lineas: [], error: 'Falta la Referencia que agrupa las filas de la orden' }); continue }
-    const resultado = prepararGrupoOrden(referencia, grupoFilas, filaIdxBase, tipoOrden)
+    const resultado = prepararGrupoOrden(referencia, grupoFilas, filaIdxBase, tipoOrden, lavaMotoConfig)
     if (!resultado.ok) { tarjetas.push({ titulo: `Referencia ${referencia}`, lineas: [], error: resultado.mensaje }); continue }
     const g = resultado.grupo
+
+    const metodoInvalido = g.items.find((it) => it.metodoPago && !metodosPagoSet.has(it.metodoPago.toLowerCase()))
+    if (metodoInvalido) {
+      tarjetas.push({ titulo: `Referencia ${referencia}`, lineas: [], error: `No se encontró el método de pago "${metodoInvalido.metodoPago}" — usa el nombre exacto (ej: Efectivo, Transferencia, Datafono)` })
+      continue
+    }
+
     const fechaLegible = new Date(g.fechaISO).toLocaleDateString('es-CO')
     const lineas: string[] = [`Fecha: ${fechaLegible}`]
     if (tipoOrden === 'servicio') lineas.push(`Estado: ${ESTADO_LABEL[g.estado] ?? g.estado}`)
@@ -151,7 +192,8 @@ function previsualizarOrdenes(filas: Record<string, string>[], tipoOrden: 'servi
       lineas.push(`Ítems (${g.items.length}):`)
       g.items.forEach((it) => {
         const detalleCosto = it.origen === 'uma' ? '' : ` · costo proveedor ${formatMoney(it.costo)}`
-        lineas.push(`  • ${it.descripcion} (${it.origen}) x${it.cantidad} — venta ${formatMoney(it.precio_venta)}${detalleCosto}`)
+        const detalleMetodo = it.metodoPago ? ` · método ${it.metodoPago}` : ''
+        lineas.push(`  • ${it.descripcion} (${it.origen}) x${it.cantidad} — venta ${formatMoney(it.precio_venta)}${detalleCosto}${detalleMetodo}`)
       })
     }
     lineas.push(`Total: ${formatMoney(g.valorTotal)}`)
@@ -166,12 +208,12 @@ function previsualizarOrdenes(filas: Record<string, string>[], tipoOrden: 'servi
   return tarjetas
 }
 
-export function previsualizarServicioTecnico(filas: Record<string, string>[]): TarjetaPreview[] {
-  return previsualizarOrdenes(filas, 'servicio')
+export function previsualizarServicioTecnico(filas: Record<string, string>[], supabase: SupabaseClient, tenantId: string): Promise<TarjetaPreview[]> {
+  return previsualizarOrdenes(filas, 'servicio', supabase, tenantId)
 }
 
-export function previsualizarVentaRepuestos(filas: Record<string, string>[]): TarjetaPreview[] {
-  return previsualizarOrdenes(filas, 'venta_repuestos')
+export function previsualizarVentaRepuestos(filas: Record<string, string>[], supabase: SupabaseClient, tenantId: string): Promise<TarjetaPreview[]> {
+  return previsualizarOrdenes(filas, 'venta_repuestos', supabase, tenantId)
 }
 
 interface ImportarOrdenesParams {
@@ -187,11 +229,19 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
   let exitosos = 0
   const grupos = agrupar(filas, 'Referencia (la inventas tú, ej: 1)', 'Referencia')
 
+  const [metodosPagoRows, lavaMotoConfig] = await Promise.all([
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId),
+    tipoOrden === 'servicio' ? cargarLavaMotoConfig(supabase, tenantId) : Promise.resolve(null),
+  ])
+  const metodosPagoMap = new Map<string, string>(
+    ((metodosPagoRows.data ?? []) as { id: string; nombre: string }[]).map((m) => [m.nombre.trim().toLowerCase(), m.id])
+  )
+
   for (const [referencia, grupoFilas] of grupos) {
     const filaIdxBase = filas.indexOf(grupoFilas[0]) + 2 // +2: encabezado + 1-index
     if (!referencia) { errores.push({ fila: filaIdxBase, mensaje: 'Falta la Referencia que agrupa las filas de la orden' }); continue }
 
-    const resultado = prepararGrupoOrden(referencia, grupoFilas, filaIdxBase, tipoOrden)
+    const resultado = prepararGrupoOrden(referencia, grupoFilas, filaIdxBase, tipoOrden, lavaMotoConfig)
     if (!resultado.ok) { errores.push({ fila: filaIdxBase, mensaje: `Referencia ${referencia}: ${resultado.mensaje}` }); continue }
     const { fechaISO, cliente, placa, cedula, celular, estado, items: itemsValidados, valorTotal, montoPagado, estadoPago } = resultado.grupo
 
@@ -201,8 +251,20 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
       })
 
       // Resolver catálogo: UMA por código, Externo por código o nombre (se crea si no existe)
-      const itemsResueltos: { descripcion: string; origen: string; cantidad: number; costo: number; precio_venta: number; repuesto_uma_id: string | null; repuesto_externo_id: string | null }[] = []
+      const itemsResueltos: { descripcion: string; origen: string; cantidad: number; costo: number; precio_venta: number; repuesto_uma_id: string | null; repuesto_externo_id: string | null; metodo_pago_id: string | null }[] = []
+      const lavadosResueltos: { cantidad: number; costoUnitario: number; precioVentaUnitario: number; metodoPagoId: string }[] = []
       for (const it of itemsValidados) {
+        let metodoPagoId: string | null = null
+        if (it.metodoPago) {
+          metodoPagoId = metodosPagoMap.get(it.metodoPago.toLowerCase()) ?? null
+          if (!metodoPagoId) throw new Error(`No se encontró el método de pago "${it.metodoPago}" — usa el nombre exacto (ej: Efectivo, Transferencia, Datafono)`)
+        }
+
+        if (it.origen === 'lavado') {
+          lavadosResueltos.push({ cantidad: it.cantidad, costoUnitario: it.costo, precioVentaUnitario: it.precio_venta, metodoPagoId: metodoPagoId! })
+          continue
+        }
+
         let repuestoUmaId: string | null = null
         let repuestoExternoId: string | null = null
         let costoFinal = it.costo
@@ -254,6 +316,7 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
           descripcion: it.descripcion, origen: it.origen, cantidad: it.cantidad,
           costo: costoFinal, precio_venta: it.precio_venta,
           repuesto_uma_id: repuestoUmaId, repuesto_externo_id: repuestoExternoId,
+          metodo_pago_id: metodoPagoId,
         })
       }
 
@@ -290,6 +353,7 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
             cantidad: it.cantidad,
             costo: it.costo,
             precio_venta: it.precio_venta,
+            metodo_pago_id: it.metodo_pago_id,
             created_at: fechaISO,
           }))
         ).select('id, repuesto_uma_id, repuesto_externo_id, cantidad, costo, precio_venta')
@@ -313,6 +377,35 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
           })
         )
       )
+
+      if (lavadosResueltos.length > 0) {
+        const { data: lavadosData, error: lavadosErr } = await supabase.from('lava_moto_ordenes').insert(
+          lavadosResueltos.map((lm) => ({
+            orden_id: orden.id,
+            tenant_id: tenantId,
+            cantidad: lm.cantidad,
+            costo_unitario: lm.costoUnitario,
+            precio_venta_unitario: lm.precioVentaUnitario,
+            metodo_pago_id: lm.metodoPagoId,
+            pago_costo_id: null,
+            registrado_por: usuarioId,
+            created_at: fechaISO,
+          }))
+        ).select('id')
+        if (lavadosErr) throw new Error(lavadosErr.message)
+        await Promise.all(
+          ((lavadosData ?? []) as { id: string }[]).map((row) =>
+            registrarAuditoria(supabase, {
+              tenant_id: tenantId,
+              tabla: 'lava_moto_ordenes',
+              registro_id: row.id,
+              tipo: 'movimiento',
+              descripcion: `Servicio de lavado importado por carga masiva (Excel) — orden #${orden.numero}`,
+              usuario_id: usuarioId,
+            })
+          )
+        )
+      }
 
       if (montoPagado > 0) {
         await supabase.from('pagos_orden').insert({

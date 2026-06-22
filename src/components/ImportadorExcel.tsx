@@ -36,7 +36,7 @@ interface ImportadorExcelProps {
   filasEjemplo: string[][]
   notas?: string[]
   /** Si se pasa, la vista previa muestra estas tarjetas (cómo quedaría cada registro en OptiDesk) en vez de la tabla cruda del Excel. */
-  vistaPrevia?: (filas: Record<string, string>[]) => TarjetaPreview[]
+  vistaPrevia?: (filas: Record<string, string>[]) => TarjetaPreview[] | Promise<TarjetaPreview[]>
   procesarFilas: (filas: Record<string, string>[]) => Promise<ResultadoImportacion>
   onCompletado?: () => void
 }
@@ -51,6 +51,8 @@ export function ImportadorExcel({
   const [resultado, setResultado] = useState<ResultadoImportacion | null>(null)
   const [error, setError] = useState('')
   const [previewAbierto, setPreviewAbierto] = useState(false)
+  const [tarjetasPreview, setTarjetasPreview] = useState<TarjetaPreview[] | null>(null)
+  const [cargandoPreview, setCargandoPreview] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const descargarPlantilla = () => {
@@ -94,7 +96,7 @@ export function ImportadorExcel({
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setError(''); setResultado(null)
+    setError(''); setResultado(null); setTarjetasPreview(null)
     setNombreArchivo(file.name)
     const reader = new FileReader()
     reader.onload = (ev) => {
@@ -120,7 +122,7 @@ export function ImportadorExcel({
       const res = await procesarFilas(filas)
       setResultado(res)
       if (res.errores.length === 0) {
-        setFilas([]); setNombreArchivo('')
+        setFilas([]); setNombreArchivo(''); setTarjetasPreview(null)
         if (inputRef.current) inputRef.current.value = ''
       }
       onCompletado?.()
@@ -132,7 +134,21 @@ export function ImportadorExcel({
   }
 
   const columnasPreview = filas.length ? Object.keys(filas[0]) : []
-  const tarjetasPreview = previewAbierto && vistaPrevia ? vistaPrevia(filas) : null
+
+  const abrirVistaPrevia = async () => {
+    if (!vistaPrevia) { setPreviewAbierto(true); return }
+    setCargandoPreview(true)
+    try {
+      const res = await vistaPrevia(filas)
+      setTarjetasPreview(res)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'No se pudo generar la vista previa')
+      setCargandoPreview(false)
+      return
+    }
+    setCargandoPreview(false)
+    setPreviewAbierto(true)
+  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -172,9 +188,9 @@ export function ImportadorExcel({
           {filas.length > 0 && !resultado && (
             <div className="flex items-center gap-2">
               <p className="text-xs text-gray-600">{filas.length} fila{filas.length !== 1 ? 's' : ''} detectada{filas.length !== 1 ? 's' : ''}.</p>
-              <button onClick={() => setPreviewAbierto(true)} disabled={importando}
+              <button onClick={abrirVistaPrevia} disabled={importando || cargandoPreview}
                 className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-lg text-xs font-semibold transition-colors">
-                {importando ? 'Importando...' : 'Ver vista previa e importar'}
+                {cargandoPreview ? 'Cargando vista previa...' : importando ? 'Importando...' : 'Ver vista previa e importar'}
               </button>
             </div>
           )}

@@ -2611,14 +2611,12 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         </button>
                       </div>
                     ))}
-                    {estadoPagoCalc !== 'pagado' && (
-                      <button
-                        onClick={() => { setLavaMotoCantidad(1); setLavaMotoMetodo(''); setLavaMotoError(''); setShowLavaMotoModal(true) }}
-                        className="w-full py-2 px-3 border-2 border-dashed border-cyan-200 hover:border-cyan-400 hover:bg-cyan-50 text-cyan-600 hover:text-cyan-800 rounded-lg text-xs font-medium transition-colors"
-                      >
-                        + Añadir servicio lavado
-                      </button>
-                    )}
+                    <button
+                      onClick={() => { setLavaMotoCantidad(1); setLavaMotoMetodo(''); setLavaMotoError(''); setShowLavaMotoModal(true) }}
+                      className="w-full py-2 px-3 border-2 border-dashed border-cyan-200 hover:border-cyan-400 hover:bg-cyan-50 text-cyan-600 hover:text-cyan-800 rounded-lg text-xs font-medium transition-colors"
+                    >
+                      + Añadir servicio lavado
+                    </button>
                   </div>
                 )}
 

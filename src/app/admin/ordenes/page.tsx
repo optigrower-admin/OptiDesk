@@ -335,28 +335,33 @@ export default function AdminOrdenesPage() {
           titulo="Carga masiva (Excel) — recuperar órdenes de un caído de plataforma"
           descripcion="Cada fila es un ítem (repuesto, mano de obra o insumo). Varias filas con la misma 'Referencia' forman una sola orden. Funciona igual que registrarla manualmente: descuenta inventario de Repuestos UMA y registra el costo de Externos en Caja."
           nombreArchivoPlantilla="plantilla_servicio_tecnico.xlsx"
-          encabezados={['Referencia (la inventas tú, ej: 1)', 'Fecha de la orden (DD/MM/AAAA)', 'Placa', 'Cliente', 'Cedula', 'Celular', 'Estado (en_proceso/pendiente/pagado/finalizado)', 'Descripcion del item', 'Origen (uma/externo/mano_obra/insumo)', 'Codigo UMA (si Origen=uma)', 'Codigo externo (opcional, si Origen=externo)', 'Proveedor (opcional, si Origen=externo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada orden)']}
-          obligatoriedad={['si', 'si', 'si', 'si', 'no', 'no', 'si', 'condicional', 'condicional', 'condicional', 'no', 'no', 'no', 'no', 'no', 'no']}
+          encabezados={['Referencia (la inventas tú, ej: 1)', 'Fecha de la orden (DD/MM/AAAA)', 'Placa', 'Cliente', 'Cedula', 'Celular', 'Estado (en_proceso/pendiente/pagado/finalizado)', 'Descripcion del item', 'Origen (uma/externo/mano_obra/insumo/lavado)', 'Codigo UMA (si Origen=uma)', 'Codigo externo (opcional, si Origen=externo)', 'Proveedor (opcional, si Origen=externo)', 'Metodo de pago (obligatorio si Origen=externo, insumo o lavado)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada orden)']}
+          obligatoriedad={['si', 'si', 'si', 'si', 'no', 'no', 'si', 'condicional', 'condicional', 'condicional', 'no', 'no', 'condicional', 'no', 'no', 'no', 'no']}
           filasEjemplo={[
-            ['1', '15/03/2025', 'ABC123', 'Juan Pérez', '1020304050', '3001234567', 'finalizado', 'Cambio de aceite', 'mano_obra', '', '', '', '1', '0', '25000', '50000'],
-            ['1', '15/03/2025', 'ABC123', 'Juan Pérez', '1020304050', '3001234567', 'finalizado', 'Filtro de aceite', 'externo', '', 'FE-100', 'Repuestos del Norte', '1', '15000', '25000', ''],
-            ['2', '16/03/2025', 'XYZ789', 'María Gómez', '', '3019876543', 'pendiente', 'Pastillas de freno', 'uma', 'PF-200', '', '', '2', '0', '40000', '80000'],
-            ['3', '17/03/2025', 'JKL456', 'Carlos Ruiz', '', '', 'pagado', '', '', '', '', '', '', '', '', ''],
+            ['1', '15/03/2025', 'ABC123', 'Juan Pérez', '1020304050', '3001234567', 'finalizado', 'Cambio de aceite', 'mano_obra', '', '', '', '', '1', '0', '25000', '50000'],
+            ['1', '15/03/2025', 'ABC123', 'Juan Pérez', '1020304050', '3001234567', 'finalizado', 'Filtro de aceite', 'externo', '', 'FE-100', 'Repuestos del Norte', 'Efectivo', '1', '15000', '25000', ''],
+            ['2', '16/03/2025', 'XYZ789', 'María Gómez', '', '3019876543', 'pendiente', 'Pastillas de freno', 'uma', 'PF-200', '', '', '', '2', '0', '40000', '80000'],
+            ['3', '17/03/2025', 'JKL456', 'Carlos Ruiz', '', '', 'pagado', '', '', '', '', '', '', '', '', '', ''],
+            ['4', '18/03/2025', 'MNO789', 'Pedro Sánchez', '', '', 'finalizado', 'Porta Placas', 'insumo', '', '', '', 'Efectivo', '1', '5000', '15000', '15000'],
+            ['5', '18/03/2025', 'MNO789', 'Pedro Sánchez', '', '', 'finalizado', '', 'lavado', '', '', '', 'Transferencia', '1', '', '', ''],
           ]}
           notas={[
             'Lo único realmente obligatorio para crear la orden (entrada de esa moto) es: Referencia, Fecha de la orden, Placa, Cliente y Estado. Los ítems (repuestos/mano de obra/insumos) son opcionales — una Referencia sin ningún ítem igual crea la orden para esa moto, solo que sin nada cargado todavía (como la fila de ejemplo 3).',
             '¿Qué es "Referencia"? NO es algo que ya exista en el sistema ni un número de orden real — es un identificador que TÚ inventas, solo para indicarle al sistema qué filas pertenecen a la misma orden. Ejemplo: pon "1" en todas las filas del primer servicio, "2" en todas las del segundo, etc. No queda guardado en ningún lado, solo se usa al momento de importar.',
             '¿Qué fecha va en "Fecha de la orden"? La fecha real en que se hizo el servicio (puede ser una fecha pasada — para eso es esta carga masiva, para recuperar historial). No tiene que ser la fecha de hoy.',
-            'Si una Referencia SÍ trae ítems: una fila = un ítem de la orden (repuesto, mano de obra o insumo). Para una orden con varios ítems, repite la misma Referencia en todas sus filas, y en esas filas adicionales deja vacíos Fecha/Placa/Cliente/Cedula/Celular/Estado/Monto pagado (solo se leen de la PRIMERA fila de cada Referencia).',
-            'Si vas a agregar un ítem en una fila, ahí sí son obligatorios "Descripcion del item" y "Origen".',
-            'Origen: uma, externo, mano_obra o insumo.',
+            'Si una Referencia SÍ trae ítems: una fila = un ítem de la orden (repuesto, mano de obra, insumo o lavado). Para una orden con varios ítems, repite la misma Referencia en todas sus filas, y en esas filas adicionales deja vacíos Fecha/Placa/Cliente/Cedula/Celular/Estado/Monto pagado (solo se leen de la PRIMERA fila de cada Referencia).',
+            'Si vas a agregar un ítem en una fila, ahí sí son obligatorios "Descripcion del item" y "Origen" (excepto en Origen=lavado, ver más abajo).',
+            'Origen: uma, externo, mano_obra, insumo o lavado.',
             'Si Origen=uma, el Código UMA es obligatorio y debe existir en tu catálogo — con eso se descuenta el inventario igual que en el flujo manual.',
             'Si Origen=externo, el Código externo es opcional: si coincide con uno del catálogo de Externos/Propios se usa ese (con su costo); si no coincide o lo dejas vacío, se busca por el nombre exacto en "Descripcion del item" y, si tampoco existe, se crea uno nuevo en el catálogo con el Costo proveedor, Precio de venta y Proveedor que indiques.',
+            'Para Porta Placas, usa Origen=insumo y escribe "Porta Placas" en Descripcion del item — es el mismo tipo que Insumos, solo cambia el nombre.',
+            'Para el servicio de Lava Moto, usa Origen=lavado. No llenes Descripcion, Costo proveedor ni Precio de venta — se usa el precio y costo que ya tengas configurado para Lava Moto en el sistema. Solo necesitas Cantidad y Método de pago. Requiere tener el servicio de Lava Moto activo en Configuración, si no, esa fila dará error.',
+            'Metodo de pago: obligatorio cuando Origen es externo, insumo o lavado — es necesario para que Caja sepa de qué cuenta salió o entró ese dinero. Escribe el nombre EXACTO de un método que ya exista en tu lista de Métodos de pago (ej: Efectivo, Transferencia, Datafono). No se pide para uma ni mano_obra.',
             'Estado: en_proceso, pendiente, pagado o finalizado (es obligatorio, no se puede dejar vacío).',
             'Monto pagado: si lo dejas vacío o en 0, la orden queda como "pendiente" de pago. Si es igual o mayor al total, queda "pagado". Si es menor, queda "abono".',
             'Si la Placa o la Cédula no existen todavía en el sistema, se crean automáticamente igual que al registrar una orden manualmente.',
           ]}
-          vistaPrevia={previsualizarServicioTecnico}
+          vistaPrevia={(filas) => previsualizarServicioTecnico(filas, supabase, profile!.tenant_id)}
           procesarFilas={(filas) => importarServicioTecnico(supabase, profile!.tenant_id, profile!.id, filas)}
         />
       )}
