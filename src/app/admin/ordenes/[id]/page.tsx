@@ -2849,16 +2849,22 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               {/* Costo */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Costo c/proveedor</label>
-                <div className="flex items-center border border-gray-300 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 bg-white">
-                  <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-2.5">$</span>
-                  <input
-                    type="text" inputMode="numeric"
-                    value={parseInt(erCosto.replace(/\D/g, '') || '0', 10) ? parseInt(erCosto.replace(/\D/g, ''), 10).toLocaleString('es-CO') : ''}
-                    onChange={(e) => setErCosto(e.target.value.replace(/\D/g, ''))}
-                    placeholder="0"
-                    className="flex-1 px-2 py-2.5 text-sm font-mono text-right focus:outline-none"
-                  />
-                </div>
+                {editingRepuesto.origen === 'externo' ? (
+                  <div className="flex items-center border border-gray-300 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 bg-white">
+                    <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-2.5">$</span>
+                    <input
+                      type="text" inputMode="numeric"
+                      value={parseInt(erCosto.replace(/\D/g, '') || '0', 10) ? parseInt(erCosto.replace(/\D/g, ''), 10).toLocaleString('es-CO') : ''}
+                      onChange={(e) => setErCosto(e.target.value.replace(/\D/g, ''))}
+                      placeholder="0"
+                      className="flex-1 px-2 py-2.5 text-sm font-mono text-right focus:outline-none"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center border border-gray-200 rounded-xl bg-gray-50 px-3 py-2.5">
+                    <span className="flex-1 text-sm font-mono text-right text-gray-400">—</span>
+                  </div>
+                )}
               </div>
             </div>
 
