@@ -52,6 +52,16 @@ function grupoOrden(ord: { numero: number; placa: string; cliente: string } | nu
   return ord ? `Orden #${ord.numero} (${ord.placa ?? '—'}) · ${ord.cliente ?? 'Cliente'}` : 'Sin orden asociada'
 }
 
+const TRANSFERENCIA_CAJA_FUERTE = 'transferencia a caja fuerte'
+
+function colorCuenta(nombre: string): { bg: string; border: string } {
+  const n = nombre.trim().toLowerCase()
+  if (n === 'nequi') return { bg: 'bg-yellow-50', border: 'border-yellow-200' }
+  if (n === 'efectivo') return { bg: 'bg-green-50', border: 'border-green-200' }
+  if (n === 'caja fuerte') return { bg: 'bg-gray-100', border: 'border-gray-300' }
+  return { bg: 'bg-white', border: 'border-gray-200' }
+}
+
 function ymdLocal(d: Date): string {
   const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
@@ -633,6 +643,14 @@ export default function CajaPage() {
     return [...mapa.values()].sort((a, b) => (b.ingreso - b.egreso) - (a.ingreso - a.egreso))
   }, [movimientos])
 
+  // "Caja fuerte" no es un método de pago del catálogo, es el destino del botón
+  // "Transferir a caja fuerte" — se identifica por la descripción del gasto.
+  const cajaFuerteIngreso = useMemo(() => {
+    return movimientos
+      .filter((m) => m.categoria === 'gasto' && m.concepto.trim().toLowerCase().startsWith(TRANSFERENCIA_CAJA_FUERTE))
+      .reduce((s, m) => s + Math.abs(m.monto), 0)
+  }, [movimientos])
+
   /* Vista "Por método de pago": una fila por (orden, categoría, método) — si un mismo
      servicio técnico se pagó con 2 métodos distintos, se repite una fila por cada uno
      con el monto que le corresponde. Lo que no pertenece a una orden (ej. Gastos de
@@ -846,21 +864,37 @@ export default function CajaPage() {
 
       {vistaResumen === 'cuenta' && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {cuentas.length === 0 && (
+          {cuentas.length === 0 && !esGerencia && (
             <p className="text-sm text-gray-400 col-span-full text-center py-6">Sin movimientos en este período</p>
           )}
-          {cuentas.map((c) => (
-            <div key={c.nombre} className="bg-white rounded-xl border border-gray-200 p-5">
-              <p className="text-xs text-gray-400 mb-1">{c.nombre}</p>
-              <p className={`text-2xl font-bold font-mono ${c.ingreso - c.egreso >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-                {formatCOP(c.ingreso - c.egreso)}
-              </p>
-              <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
-                <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(c.ingreso)}</span></span>
-                <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(c.egreso)}</span></span>
+          {cuentas.map((c) => {
+            const color = colorCuenta(c.nombre)
+            return (
+              <div key={c.nombre} className={`${color.bg} rounded-xl border ${color.border} p-5`}>
+                <p className="text-xs text-gray-500 mb-1">{c.nombre}</p>
+                <p className={`text-2xl font-bold font-mono ${c.ingreso - c.egreso >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                  {formatCOP(c.ingreso - c.egreso)}
+                </p>
+                <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
+                  <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(c.ingreso)}</span></span>
+                  <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(c.egreso)}</span></span>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
+          {esGerencia && (() => {
+            const color = colorCuenta('caja fuerte')
+            return (
+              <div className={`${color.bg} rounded-xl border ${color.border} p-5`}>
+                <p className="text-xs text-gray-500 mb-1">Caja fuerte</p>
+                <p className="text-2xl font-bold font-mono text-gray-900">{formatCOP(cajaFuerteIngreso)}</p>
+                <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
+                  <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(cajaFuerteIngreso)}</span></span>
+                  <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(0)}</span></span>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
 
