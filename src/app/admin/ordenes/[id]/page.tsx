@@ -2082,6 +2082,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     <tr className="text-xs text-gray-500 uppercase border-b bg-blue-50">
                       <th className="text-left py-2 px-4 font-medium">Detalle</th>
                       <th className="text-left py-2 px-4 font-medium">Origen</th>
+                      <th className="text-right py-2 px-4 font-medium">Costo proveedor</th>
                       <th className="text-center py-2 px-4 font-medium">Cant</th>
                       <th className="text-right py-2 px-4 font-medium">P. Venta</th>
                       <th className="text-center py-2 px-3 font-medium">Etiqueta</th>
@@ -2096,6 +2097,9 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                           <Badge variant={item.origen === 'uma' ? 'blue' : item.origen === 'insumo' ? 'purple' : 'amber'}>
                             {item.origen === 'uma' ? 'UMA' : item.origen === 'insumo' ? 'Insumo' : 'Externo'}
                           </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-right text-gray-500">
+                          {item.origen === 'externo' ? formatCOP(item.costo) : '—'}
                         </td>
                         <td className="py-3 px-4 text-center text-gray-600">{item.cantidad}</td>
                         <td className="py-3 px-4 text-right font-semibold">{formatCOP(item.precio_venta * item.cantidad)}</td>
