@@ -768,7 +768,6 @@ function NuevaVentaContent() {
           onClose={() => setShowConsulta(false)}
           tenantId={profile.tenant_id}
           onAdd={addItem}
-          puedeEliminar={profile.rol === 'gerencia'}
         />
       )}
     </div>

@@ -3,8 +3,6 @@ import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Modal } from '@/components/ui/Modal'
 import { formatCOP } from '@/lib/utils'
-import { registrarAuditoria } from '@/lib/audit'
-import { useAuth } from '@/hooks/useAuth'
 
 /* ─── Tipos ─────────────────────────────────────── */
 interface RepuestoUMA {
@@ -51,7 +49,6 @@ interface Props {
   tenantId: string
   onAdd: (item: ItemOrden) => void
   permitirInsumos?: boolean
-  puedeEliminar?: boolean
 }
 
 /* ─── Helpers ────────────────────────────────────── */
@@ -68,23 +65,18 @@ function fmtCOP(raw: string) {
 }
 
 /* ─── Componente ─────────────────────────────────── */
-export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsumos = false, puedeEliminar = false }: Props) {
+export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsumos = false }: Props) {
   const supabase = createClient()
-  const { profile } = useAuth()
   const [tab, setTab] = useState<'uma' | 'externo' | 'insumo' | 'porta_placas'>('uma')
-  const [extPorEliminar, setExtPorEliminar] = useState<RepuestoExterno | null>(null)
-  const [extEliminando, setExtEliminando] = useState(false)
 
-  /* ══ MÉTODOS DE PAGO (para registrar con qué se paga al proveedor / se cobra) ══ */
+  /* ══ MÉTODOS DE PAGO (para registrar con qué se paga al proveedor) ══ */
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
 
   /* ══ INSUMOS ═══════════════════════════════════════ */
   const [insumoValor, setInsumoValor] = useState('10000')
-  const [insumoMetodoPago, setInsumoMetodoPago] = useState('')
 
   /* ══ PORTA PLACAS ═══════════════════════════════════ */
   const [portaPlacasValor, setPortaPlacasValor] = useState('25000')
-  const [portaPlacasMetodoPago, setPortaPlacasMetodoPago] = useState('')
 
   /* ══ UMA ══════════════════════════════════════════ */
   const [umaFuente, setUmaFuente] = useState<'repuesto' | 'lubricante'>('repuesto')
@@ -102,19 +94,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const [umaErrPrecio, setUmaErrPrecio] = useState('')
 
   /* ══ EXTERNO ═══════════════════════════════════════ */
-  const [extProv, setExtProv] = useState('')
-  const [extSub, setExtSub] = useState('')
-  const [extDesc, setExtDesc] = useState('')
-  const [extRows, setExtRows] = useState<RepuestoExterno[]>([])
-  const [extLoading, setExtLoading] = useState(false)
-  const [extBuscado, setExtBuscado] = useState(false)
-  // Seleccionado para editar cantidad/precio
-  const [extSelId, setExtSelId] = useState<string | null>(null)
-  const [extCant, setExtCant] = useState(1)
-  const [extPrecioSel, setExtPrecioSel] = useState('')
-  const [extMetodoPago, setExtMetodoPago] = useState('')
-  // Formulario nuevo externo
-  const [showForm, setShowForm] = useState(false)
+  // Formulario nuevo externo (única vista de esta pestaña — sin buscador)
   const [fProv, setFProv] = useState('')
   const [fTel, setFTel] = useState('')
   const [fUbic, setFUbic] = useState('')
@@ -126,7 +106,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const [fCantidad, setFCantidad] = useState(1)
   const [fSaving, setFSaving] = useState(false)
   const [fError, setFError] = useState('')
-  const [fSinDatos, setFSinDatos] = useState(false)
+  const [fSinDatos, setFSinDatos] = useState(true)
   const [fMetodoPago, setFMetodoPago] = useState('')
   const [confirmPrecioBajo, setConfirmPrecioBajo] = useState(false)
   // Autocomplete proveedor
@@ -139,12 +119,10 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   useEffect(() => {
     if (open) {
       setUmaSelId(null); setUmaErrPrecio(''); setUmaFuente('repuesto')
-      setExtSelId(null); setExtMetodoPago('')
-      setShowForm(false); setFError(''); setFSinDatos(false); setFCantidad(1); setFMetodoPago('')
+      setFError(''); setFSinDatos(true); setFCantidad(1); setFMetodoPago('')
       setConfirmPrecioBajo(false)
-      setExtPorEliminar(null)
-      setInsumoValor('10000'); setInsumoMetodoPago('')
-      setPortaPlacasValor('25000'); setPortaPlacasMetodoPago('')
+      setInsumoValor('10000')
+      setPortaPlacasValor('25000')
     }
   }, [open])
 
@@ -172,22 +150,6 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       setUmaRows(rows.slice(0, 500))
     } finally { setUmaLoading(false) }
   }, [supabase, tenantId, umaFuente, umaRef, umaSub, umaDesc])
-
-  /* ══ Búsqueda EXTERNOS (manual) ═════════════════════ */
-  const buscarExt = useCallback(async () => {
-    setExtLoading(true); setExtBuscado(true)
-    try {
-      let q = supabase
-        .from('repuestos_externos')
-        .select('id, codigo, nombre, subgrupo, unidad_empaque, ultimo_costo, ultimo_precio_venta, proveedores(id, nombre, telefono, ubicacion)')
-        .eq('tenant_id', tenantId)
-      if (extProv) q = q.ilike('proveedores.nombre', `%${extProv}%`)
-      if (extSub) q = q.ilike('subgrupo', `%${extSub}%`)
-      if (extDesc) q = q.ilike('nombre', `%${extDesc}%`)
-      const { data } = await q.order('nombre').limit(200)
-      setExtRows((data as unknown as RepuestoExterno[]) ?? [])
-    } finally { setExtLoading(false) }
-  }, [supabase, tenantId, extProv, extSub, extDesc])
 
   /* ── Autocomplete proveedor ── */
   const buscarProveedores = useCallback(async (q: string) => {
@@ -242,65 +204,17 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
     setUmaSelId(null); onClose()
   }
 
-  /* ── Seleccionar externo para editar cantidad/precio ── */
-  const selExt = (r: RepuestoExterno) => {
-    setExtSelId(r.id)
-    setExtCant(1)
-    setExtPrecioSel(String(Math.round(r.ultimo_precio_venta ?? 0)))
-  }
-
-  const confirmarExt = () => {
-    const sel = extRows.find((r) => r.id === extSelId)
-    if (!sel || !extMetodoPago) return
-    const pVal = parseInt(extPrecioSel.replace(/\D/g, ''), 10) || 0
-    onAdd({
-      descripcion: sel.nombre,
-      origen: 'externo',
-      repuesto_externo_id: sel.id,
-      cantidad: extCant,
-      costo: sel.ultimo_costo ?? 0,
-      precio_venta: pVal,
-      metodo_pago_id: extMetodoPago,
-    })
-    setExtSelId(null)
-    onClose()
-  }
-
-  /* ── Eliminar un externo del catálogo (solo Gerencia) ── */
-  const eliminarExterno = async () => {
-    if (!extPorEliminar) return
-    setExtEliminando(true)
-    try {
-      const { error } = await supabase.from('repuestos_externos').delete().eq('id', extPorEliminar.id)
-      if (error) throw error
-      await registrarAuditoria(supabase, {
-        tenant_id: tenantId,
-        tabla: 'repuestos_externos',
-        registro_id: extPorEliminar.id,
-        tipo: 'eliminacion',
-        valor_anterior: { codigo: extPorEliminar.codigo, nombre: extPorEliminar.nombre },
-        descripcion: `Eliminó el repuesto externo "${extPorEliminar.nombre}" del catálogo`,
-        usuario_id: profile?.id,
-      })
-      setExtRows((prev) => prev.filter((r) => r.id !== extPorEliminar.id))
-      if (extSelId === extPorEliminar.id) setExtSelId(null)
-      setExtPorEliminar(null)
-    } finally {
-      setExtEliminando(false)
-    }
-  }
-
   /* ── Agregar insumo (valor rápido, sin proveedor ni costo) ── */
   const confirmarInsumo = () => {
     const valor = parseInt(insumoValor.replace(/\D/g, ''), 10) || 0
-    if (!valor || !insumoMetodoPago) return
+    if (!valor) return
     onAdd({
       descripcion: 'Insumos',
       origen: 'insumo',
       cantidad: 1,
       costo: 0,
       precio_venta: valor,
-      metodo_pago_id: insumoMetodoPago,
+      metodo_pago_id: null,
     })
     onClose()
   }
@@ -308,14 +222,14 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   /* ── Agregar porta placas (valor rápido, sin proveedor ni costo) ── */
   const confirmarPortaPlacas = () => {
     const valor = parseInt(portaPlacasValor.replace(/\D/g, ''), 10) || 0
-    if (!valor || !portaPlacasMetodoPago) return
+    if (!valor) return
     onAdd({
       descripcion: 'Porta Placas',
       origen: 'insumo',
       cantidad: 1,
       costo: 0,
       precio_venta: valor,
-      metodo_pago_id: portaPlacasMetodoPago,
+      metodo_pago_id: null,
     })
     onClose()
   }
@@ -347,7 +261,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       })
       setFProv(''); setFTel(''); setFUbic(''); setFSub('')
       setFDesc(''); setFUnidad('1'); setFCosto(''); setFPrecio(''); setFCantidad(1)
-      setProvExistente(null); setFSinDatos(false); setShowForm(false); setFMetodoPago('')
+      setProvExistente(null); setFSinDatos(true); setFMetodoPago('')
       onClose()
       return
     }
@@ -391,13 +305,21 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
 
       if (nr) {
         const newRow = nr as unknown as RepuestoExterno
-        setExtRows((prev) => [newRow, ...prev])
-        setExtBuscado(true)
-        // Pre-llenar el método de pago en el paso de "+Agregar" con el que se eligió aquí
-        setExtMetodoPago(fMetodoPago)
+        // Queda guardado en el catálogo de Externos/Propios para reutilizarlo después,
+        // y además se agrega de una vez a esta orden.
+        onAdd({
+          descripcion: newRow.nombre,
+          origen: 'externo',
+          repuesto_externo_id: newRow.id,
+          cantidad: fCantidad,
+          costo,
+          precio_venta: precio,
+          metodo_pago_id: fMetodoPago,
+        })
         setFProv(''); setFTel(''); setFUbic(''); setFSub('')
-        setFDesc(''); setFUnidad('1'); setFCosto(''); setFPrecio(''); setFMetodoPago('')
-        setProvExistente(null); setFSinDatos(false); setShowForm(false)
+        setFDesc(''); setFUnidad('1'); setFCosto(''); setFPrecio(''); setFCantidad(1); setFMetodoPago('')
+        setProvExistente(null); setFSinDatos(true)
+        onClose()
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
@@ -413,7 +335,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       {/* Tabs */}
       <div className="flex gap-1 mb-4 p-1 bg-gray-100 rounded-lg w-fit">
         {(permitirInsumos ? (['uma', 'externo', 'insumo', 'porta_placas'] as const) : (['uma', 'externo'] as const)).map((t) => (
-          <button key={t} onClick={() => { setTab(t); setUmaSelId(null); setExtSelId(null) }}
+          <button key={t} onClick={() => { setTab(t); setUmaSelId(null) }}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
               tab === t ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
             }`}>
@@ -569,164 +491,9 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       {tab === 'externo' && (
         <div className="space-y-3">
 
-          {/* Filtros + buscar */}
-          {!showForm && (
-            <>
-              <div className="flex gap-2 flex-wrap items-center">
-                <input value={extProv} onChange={(e) => setExtProv(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && buscarExt()}
-                  placeholder="Proveedor"
-                  className="w-36 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
-                <input value={extSub} onChange={(e) => setExtSub(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && buscarExt()}
-                  placeholder="Sub-Grupo"
-                  className="w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
-                <input value={extDesc} onChange={(e) => setExtDesc(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && buscarExt()}
-                  placeholder="Descripción..."
-                  className="flex-1 min-w-[150px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  autoFocus />
-                <button onClick={buscarExt} disabled={extLoading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white rounded-lg text-sm font-semibold transition-colors">
-                  {extLoading
-                    ? <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                    : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                  }
-                  Buscar
-                </button>
-                <button onClick={() => { setShowForm(true); setFError('') }}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors whitespace-nowrap">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Agregar nuevo
-                </button>
-              </div>
-
-              {/* Resultados externos */}
-              {extBuscado && (
-                <div className="rounded-xl border border-gray-200 overflow-hidden">
-                  <div className="overflow-y-auto" style={{ maxHeight: '380px' }}>
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0">
-                        <tr className="bg-amber-500 text-white">
-                          <th className="text-left py-2.5 px-3 font-semibold text-xs">Proveedor</th>
-                          <th className="text-left py-2.5 px-3 font-semibold text-xs">Sub-Grupo</th>
-                          <th className="text-left py-2.5 px-3 font-semibold text-xs">Descripción</th>
-                          <th className="text-center py-2.5 px-3 font-semibold text-xs">U.Emp</th>
-                          <th className="text-right py-2.5 px-3 font-semibold text-xs">P. Venta</th>
-                          <th className="py-2.5 px-3 w-24" />
-                          {puedeEliminar && <th className="py-2.5 px-3 w-10" />}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {extRows.map((r) => {
-                          const isSel = r.id === extSelId
-                          return (
-                            <Fragment key={r.id}>
-                              <tr className={`border-t border-gray-100 transition-colors ${isSel ? 'bg-amber-50' : 'hover:bg-amber-50'}`}>
-                                <td className="py-2.5 px-3 text-gray-500 text-xs whitespace-nowrap">
-                                  {r.proveedores?.nombre ?? '—'}
-                                </td>
-                                <td className="py-2.5 px-3 text-gray-500 text-xs">{r.subgrupo ?? '—'}</td>
-                                <td className="py-2.5 px-3 text-gray-900 max-w-[200px]">{r.nombre}</td>
-                                <td className="py-2.5 px-3 text-center text-gray-500">{r.unidad_empaque ?? 1}</td>
-                                <td className="py-2.5 px-3 text-right font-semibold text-gray-900 whitespace-nowrap">
-                                  {formatCOP(r.ultimo_precio_venta)}
-                                </td>
-                                <td className="py-2.5 px-3 text-right">
-                                  {isSel
-                                    ? <button onClick={() => setExtSelId(null)}
-                                        className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1">✕</button>
-                                    : <button onClick={() => selExt(r)}
-                                        className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
-                                        + Agregar
-                                      </button>
-                                  }
-                                </td>
-                                {puedeEliminar && (
-                                  <td className="py-2.5 px-3 text-right">
-                                    <button onClick={() => setExtPorEliminar(r)} title="Eliminar del catálogo"
-                                      className="text-gray-400 hover:text-red-600 transition-colors">
-                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                      </svg>
-                                    </button>
-                                  </td>
-                                )}
-                              </tr>
-                              {/* Fila expandida para editar cantidad/precio */}
-                              {isSel && (
-                                <tr className="bg-amber-50 border-t border-amber-200">
-                                  <td colSpan={puedeEliminar ? 7 : 6} className="px-4 py-3">
-                                    <div className="flex gap-3 items-end flex-wrap">
-                                      <div>
-                                        <label className="text-xs text-gray-600 block mb-1">Precio al cliente</label>
-                                        <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-amber-400">
-                                          <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-1.5">$</span>
-                                          <input type="text" inputMode="numeric"
-                                            value={fmtCOP(extPrecioSel)}
-                                            onChange={(e) => setExtPrecioSel(e.target.value.replace(/\D/g, ''))}
-                                            className="w-28 px-2 py-1.5 text-sm font-mono text-right focus:outline-none" />
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <label className="text-xs text-gray-600 block mb-1">Cantidad</label>
-                                        <input type="number" min={1} value={extCant}
-                                          onChange={(e) => setExtCant(Math.max(1, parseInt(e.target.value) || 1))}
-                                          className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-amber-400" />
-                                      </div>
-                                      <div>
-                                        <label className="text-xs text-gray-600 block mb-1">Método de pago al proveedor</label>
-                                        <select value={extMetodoPago} onChange={(e) => setExtMetodoPago(e.target.value)}
-                                          className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white">
-                                          <option value="">Selecciona...</option>
-                                          {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                                        </select>
-                                      </div>
-                                      {extPrecioSel && (
-                                        <p className="text-sm text-gray-600">
-                                          Total: <span className="font-semibold">{formatCOP(parseInt(extPrecioSel.replace(/\D/g, '') || '0', 10) * extCant)}</span>
-                                        </p>
-                                      )}
-                                      <button onClick={confirmarExt} disabled={!extMetodoPago}
-                                        className="ml-auto px-4 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-1">
-                                        ✓ Confirmar
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </Fragment>
-                          )
-                        })}
-                        {!extLoading && extRows.length === 0 && (
-                          <tr><td colSpan={puedeEliminar ? 7 : 6} className="py-10 text-center text-gray-400 text-sm">
-                            Sin resultados — ajusta los filtros o agrega un repuesto nuevo
-                          </td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-              {!extBuscado && (
-                <p className="text-xs text-gray-400 py-2">Busca por proveedor, sub-grupo o descripción — o agrega uno nuevo</p>
-              )}
-            </>
-          )}
-
-          {/* ── Formulario nuevo externo ── */}
-          {showForm && (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">Nuevo repuesto externo</h3>
-                <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+          {/* ── Formulario nuevo externo (única vista, sin buscador) ── */}
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-4">
+              <h3 className="font-semibold text-gray-900">Nuevo repuesto externo</h3>
 
               {/* Con proveedor / Sin proveedor */}
               <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">
@@ -858,15 +625,13 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                   </div>
                 </div>
 
-                {/* Cantidad — solo en modo Sin proveedor, ya que ahí se agrega directo a la orden */}
-                {fSinDatos && (
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">Cantidad</label>
-                    <input type="number" min={1} value={fCantidad}
-                      onChange={(e) => setFCantidad(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
-                  </div>
-                )}
+                {/* Cantidad (siempre visible) */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 block mb-1">Cantidad</label>
+                  <input type="number" min={1} value={fCantidad}
+                    onChange={(e) => setFCantidad(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                </div>
 
                 {/* Método de pago al proveedor (siempre visible) */}
                 <div>
@@ -886,7 +651,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
               )}
 
               <div className="flex gap-2 justify-end">
-                <button onClick={() => setShowForm(false)}
+                <button onClick={onClose}
                   className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
                   Cancelar
                 </button>
@@ -895,11 +660,10 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                     fSinDatos ? 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300' : 'bg-green-600 hover:bg-green-700 disabled:bg-green-300'
                   }`}>
                   {fSaving && <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
-                  {fSinDatos ? 'Agregar a la orden' : 'Guardar y agregar al listado'}
+                  {fSinDatos ? 'Agregar a la orden' : 'Guardar y agregar a la orden'}
                 </button>
               </div>
-            </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -922,17 +686,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                 className="flex-1 px-2 py-2 text-sm font-mono text-right focus:outline-none" />
             </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-purple-700 block mb-1">
-              Método de pago <span className="text-red-400">*</span>
-            </label>
-            <select value={insumoMetodoPago} onChange={(e) => setInsumoMetodoPago(e.target.value)}
-              className="w-full px-3 py-2 border border-purple-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white">
-              <option value="">Selecciona...</option>
-              {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-            </select>
-          </div>
-          <button onClick={confirmarInsumo} disabled={!parseInt(insumoValor.replace(/\D/g, ''), 10) || !insumoMetodoPago}
+          <button onClick={confirmarInsumo} disabled={!parseInt(insumoValor.replace(/\D/g, ''), 10)}
             className="w-full px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white rounded-lg text-sm font-semibold transition-colors">
             + Agregar a la orden
           </button>
@@ -958,17 +712,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                 className="flex-1 px-2 py-2 text-sm font-mono text-right focus:outline-none" />
             </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-teal-700 block mb-1">
-              Método de pago <span className="text-red-400">*</span>
-            </label>
-            <select value={portaPlacasMetodoPago} onChange={(e) => setPortaPlacasMetodoPago(e.target.value)}
-              className="w-full px-3 py-2 border border-teal-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white">
-              <option value="">Selecciona...</option>
-              {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-            </select>
-          </div>
-          <button onClick={confirmarPortaPlacas} disabled={!parseInt(portaPlacasValor.replace(/\D/g, ''), 10) || !portaPlacasMetodoPago}
+          <button onClick={confirmarPortaPlacas} disabled={!parseInt(portaPlacasValor.replace(/\D/g, ''), 10)}
             className="w-full px-5 py-2 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-300 text-white rounded-lg text-sm font-semibold transition-colors">
             + Agregar a la orden
           </button>
@@ -999,28 +743,6 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
         </div>
       )}
 
-      {/* Confirmación: eliminar repuesto externo del catálogo */}
-      {extPorEliminar && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
-            <h3 className="font-bold text-gray-900 mb-2">¿Eliminar repuesto externo?</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Se eliminará permanentemente <strong>{extPorEliminar.nombre}</strong> del catálogo de Externos/Propios.
-              Las órdenes que ya lo usaron conservan sus datos — esto solo lo quita del catálogo para nuevas búsquedas.
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => setExtPorEliminar(null)}
-                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">
-                Cancelar
-              </button>
-              <button onClick={eliminarExterno} disabled={extEliminando}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50">
-                {extEliminando ? 'Eliminando...' : 'Eliminar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </Modal>
   )
 }
