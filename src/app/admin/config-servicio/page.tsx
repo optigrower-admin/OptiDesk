@@ -1,6 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback } from 'react'
+import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -81,6 +82,12 @@ export default function ConfigServicioPage() {
   const [uploadResultLub, setUploadResultLub] = useState<{ ok: boolean; msg: string } | null>(null)
   const [modoUploadLub, setModoUploadLub] = useState<'agregar' | 'reemplazar'>('agregar')
 
+  /* ── Estado carga CSV Manuales de Partes ── */
+  const [uploadFileManuales, setUploadFileManuales] = useState<File | null>(null)
+  const [uploadingManuales, setUploadingManuales] = useState(false)
+  const [uploadResultManuales, setUploadResultManuales] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [manualesCount, setManualesCount] = useState(0)
+
   /* ── Estado lava moto ── */
   const [lavaMotoConfig, setLavaMotoConfig] = useState<LavaMotoConfig>({ costo: 0, precio_venta: 0, activo: false })
   const [editingLavaMoto, setEditingLavaMoto] = useState(false)
@@ -99,7 +106,7 @@ export default function ConfigServicioPage() {
   /* ── Carga ── */
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
-    const [{ data: cats }, { data: mets }, { data: lmCfg }] = await Promise.all([
+    const [{ data: cats }, { data: mets }, { data: lmCfg }, { count: manualesCnt }] = await Promise.all([
       supabase.from('categorias_servicio')
         .select('id, nombre, activo, subcategorias_servicio(id, nombre, activo)')
         .eq('tenant_id', profile.tenant_id).order('orden'),
@@ -109,10 +116,14 @@ export default function ConfigServicioPage() {
       supabase.from('lava_moto_config')
         .select('id, costo, precio_venta, activo')
         .eq('tenant_id', profile.tenant_id).maybeSingle(),
+      supabase.from('manuales_partes')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', profile.tenant_id),
     ])
     setCategorias((cats as Categoria[]) ?? [])
     setMetodos((mets as MetodoPago[]) ?? [])
     setLavaMotoConfig((lmCfg as LavaMotoConfig | null) ?? { costo: 0, precio_venta: 0, activo: false })
+    setManualesCount(manualesCnt ?? 0)
     setLoading(false)
   }, [profile?.tenant_id])
 
@@ -383,6 +394,73 @@ export default function ConfigServicioPage() {
       setUploadResultLub({ ok: false, msg: 'Error de conexión' })
     } finally {
       setUploadingLub(false)
+    }
+  }
+
+  /* ── Manuales de Partes: subir Excel (columnas MANUAL, CARPETA, LINK DRIVE) ──
+     El archivo solo se lee en el navegador (FileReader + XLSX) para extraer los
+     valores; nunca se sube a ningún storage. Cada carga reemplaza por completo
+     la lista anterior del tenant. */
+  const leerExcel = (file: File): Promise<Record<string, string>[]> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const data = e.target?.result
+          const wb = XLSX.read(data, { type: 'array' })
+          const sheet = wb.Sheets[wb.SheetNames[0]]
+          const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '', raw: false })
+          resolve(rows)
+        } catch (err) {
+          reject(err)
+        }
+      }
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo'))
+      reader.readAsArrayBuffer(file)
+    })
+
+  const handleUploadManuales = async () => {
+    if (!uploadFileManuales || !profile?.tenant_id) return
+    setUploadingManuales(true)
+    setUploadResultManuales(null)
+    try {
+      const rows = await leerExcel(uploadFileManuales)
+      if (rows.length === 0) throw new Error('El archivo no tiene filas de datos.')
+
+      const claves = Object.keys(rows[0])
+      const claveNombre = claves.find(k => k.trim().toUpperCase() === 'MANUAL')
+      const claveCarpeta = claves.find(k => k.trim().toUpperCase() === 'CARPETA')
+      const claveLink = claves.find(k => k.trim().toUpperCase() === 'LINK DRIVE')
+      if (!claveNombre || !claveCarpeta || !claveLink) {
+        throw new Error('El Excel debe tener las columnas: MANUAL, CARPETA, LINK DRIVE')
+      }
+
+      const registros: { tenant_id: string; nombre: string; carpeta: string; link: string }[] = []
+      for (const r of rows) {
+        const nombre = String(r[claveNombre] ?? '').trim()
+        const carpeta = String(r[claveCarpeta] ?? '').trim()
+        const link = String(r[claveLink] ?? '').trim()
+        if (!nombre && !carpeta && !link) continue
+        if (!nombre || !link) throw new Error(`Falta MANUAL o LINK DRIVE en una fila (carpeta "${carpeta}").`)
+        if (carpeta !== 'Motocarros' && carpeta !== 'Motocicletas') {
+          throw new Error(`La carpeta "${carpeta}" de "${nombre}" no es válida (debe ser Motocarros o Motocicletas).`)
+        }
+        registros.push({ tenant_id: profile.tenant_id, nombre, carpeta, link })
+      }
+      if (registros.length === 0) throw new Error('No se encontraron filas válidas en el archivo.')
+
+      const { error: delError } = await supabase.from('manuales_partes').delete().eq('tenant_id', profile.tenant_id)
+      if (delError) throw new Error(delError.message)
+      const { error: insError } = await supabase.from('manuales_partes').insert(registros)
+      if (insError) throw new Error(insError.message)
+
+      setUploadResultManuales({ ok: true, msg: `✓ Se cargaron ${registros.length} manuales correctamente.` })
+      setUploadFileManuales(null)
+      setManualesCount(registros.length)
+    } catch (e: unknown) {
+      setUploadResultManuales({ ok: false, msg: e instanceof Error ? e.message : 'Error al cargar el archivo.' })
+    } finally {
+      setUploadingManuales(false)
     }
   }
 
@@ -930,6 +1008,101 @@ export default function ConfigServicioPage() {
           <p className="text-xs text-gray-400">
             El proceso puede tardar 1-2 minutos para archivos grandes. No cierres la página durante la carga.
           </p>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════
+          SECCIÓN — MANUALES DE PARTES (CSV)
+      ══════════════════════════════════════════ */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-rose-600 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-gray-900">Manuales de Partes</h2>
+            <p className="text-xs text-gray-500">
+              Catálogo de manuales (PDF de Drive) que se ve desde &quot;Ver Manuales de Partes&quot; en Servicio Técnico. Actualmente hay {manualesCount} manual(es) cargados.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          <p className="text-xs text-gray-500">
+            Sube un Excel con las columnas <strong>MANUAL</strong> (nombre del archivo), <strong>CARPETA</strong> (&quot;Motocarros&quot; o &quot;Motocicletas&quot;) y <strong>LINK DRIVE</strong> (link del PDF compartido en Drive). El archivo solo se lee en el navegador para tomar los datos, no se guarda. Cada carga reemplaza por completo la lista anterior — vuelve a subir el archivo cada vez que agregues, renombres o elimines un manual en Drive.
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-3 items-start">
+            <label className="flex-1 cursor-pointer">
+              <div className={`flex items-center gap-3 px-4 py-3 border-2 border-dashed rounded-xl transition-colors ${
+                uploadFileManuales ? 'border-rose-400 bg-rose-50' : 'border-gray-300 hover:border-rose-300 hover:bg-rose-50/50'
+              }`}>
+                <svg className="w-5 h-5 text-rose-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <div className="min-w-0">
+                  {uploadFileManuales ? (
+                    <>
+                      <p className="text-sm font-semibold text-rose-800 truncate">{uploadFileManuales.name}</p>
+                      <p className="text-xs text-rose-600">{(uploadFileManuales.size / 1024).toFixed(0)} KB</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-gray-700">Seleccionar archivo Excel</p>
+                      <p className="text-xs text-gray-400">MANUAL, CARPETA, LINK DRIVE (.xlsx/.xls)</p>
+                    </>
+                  )}
+                </div>
+              </div>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                className="sr-only"
+                onChange={(e) => {
+                  setUploadFileManuales(e.target.files?.[0] ?? null)
+                  setUploadResultManuales(null)
+                }}
+              />
+            </label>
+
+            <button
+              onClick={handleUploadManuales}
+              disabled={!uploadFileManuales || uploadingManuales}
+              className="px-5 py-3 bg-rose-700 hover:bg-rose-800 disabled:bg-rose-200 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap flex items-center gap-2"
+            >
+              {uploadingManuales ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Procesando...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Cargar catálogo
+                </>
+              )}
+            </button>
+          </div>
+
+          {uploadResultManuales && (
+            <div className={`flex items-start gap-2 px-4 py-3 rounded-lg text-sm ${
+              uploadResultManuales.ok
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
+            }`}>
+              <span className="flex-shrink-0 mt-0.5">{uploadResultManuales.ok ? '✓' : '✗'}</span>
+              <span>{uploadResultManuales.msg}</span>
+            </div>
+          )}
         </div>
       </div>
 

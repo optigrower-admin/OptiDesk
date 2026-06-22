@@ -697,7 +697,9 @@ export default function AdminOrdenesPage() {
           })}
         </div>
       )}
-      {manualesOpen && <ManualesPartesModal onClose={() => setManualesOpen(false)} />}
+      {manualesOpen && profile?.tenant_id && (
+        <ManualesPartesModal tenantId={profile.tenant_id} onClose={() => setManualesOpen(false)} />
+      )}
     </div>
   )
 }

@@ -1,24 +1,44 @@
 'use client'
-import { useMemo, useState } from 'react'
-import { MANUALES_PARTES } from '@/lib/manualesPartes'
+import { useEffect, useMemo, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 type Tipo = 'Motocicletas' | 'Motocarros'
 
+interface ManualPartes {
+  nombre: string
+  carpeta: Tipo
+  link: string
+}
+
 interface Props {
+  tenantId: string
   onClose: () => void
 }
 
-export function ManualesPartesModal({ onClose }: Props) {
+export function ManualesPartesModal({ tenantId, onClose }: Props) {
   const [tipo, setTipo] = useState<Tipo>('Motocicletas')
   const [busqueda, setBusqueda] = useState('')
+  const [todos, setTodos] = useState<ManualPartes[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.from('manuales_partes')
+      .select('nombre, carpeta, link')
+      .eq('tenant_id', tenantId)
+      .then(({ data }) => {
+        setTodos((data as ManualPartes[]) ?? [])
+        setLoading(false)
+      })
+  }, [tenantId])
 
   const manuales = useMemo(() => {
     const q = busqueda.trim().toLowerCase()
-    return MANUALES_PARTES
+    return todos
       .filter(m => m.carpeta === tipo)
       .filter(m => !q || m.nombre.toLowerCase().includes(q))
       .sort((a, b) => a.nombre.localeCompare(b.nombre))
-  }, [tipo, busqueda])
+  }, [todos, tipo, busqueda])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -54,8 +74,15 @@ export function ManualesPartesModal({ onClose }: Props) {
         </div>
 
         <div className="overflow-y-auto flex-1 p-3 space-y-1.5 mt-1">
-          {manuales.length === 0 && (
-            <p className="text-center text-sm text-gray-400 py-6">Sin manuales que coincidan con la búsqueda</p>
+          {loading && (
+            <p className="text-center text-sm text-gray-400 py-6">Cargando...</p>
+          )}
+          {!loading && manuales.length === 0 && (
+            <p className="text-center text-sm text-gray-400 py-6">
+              {todos.length === 0
+                ? 'Aún no hay manuales cargados. Súbelos desde Config Servicio Técnico → Manuales de Partes.'
+                : 'Sin manuales que coincidan con la búsqueda'}
+            </p>
           )}
           {manuales.map(m => (
             <a
