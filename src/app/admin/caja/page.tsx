@@ -403,7 +403,7 @@ export default function CajaPage() {
         .eq('tenant_id', profile.tenant_id)
         .gte('fecha', desdeISO).lte('fecha', hastaISO),
       supabase.from('items_orden')
-        .select('id, descripcion, costo, precio_venta, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente)')
+        .select('id, descripcion, costo, precio_venta, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
         .eq('origen', 'externo')
         .eq('ordenes.tenant_id', profile.tenant_id)
         .or('costo.gt.0,precio_venta.gt.0')
@@ -413,12 +413,12 @@ export default function CajaPage() {
         .eq('tenant_id', profile.tenant_id)
         .gte('fecha', desdeISO).lte('fecha', hastaISO),
       supabase.from('items_orden')
-        .select('id, descripcion, precio_venta, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente)')
+        .select('id, descripcion, precio_venta, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
         .eq('origen', 'insumo')
         .eq('ordenes.tenant_id', profile.tenant_id)
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
       supabase.from('lava_moto_ordenes')
-        .select('id, costo_unitario, precio_venta_unitario, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente)')
+        .select('id, costo_unitario, precio_venta_unitario, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
         .eq('ordenes.tenant_id', profile.tenant_id)
         .or('costo_unitario.gt.0,precio_venta_unitario.gt.0')
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
@@ -470,7 +470,7 @@ export default function CajaPage() {
       })
     }
 
-    for (const it of (costosExt ?? []) as unknown as { id: string; descripcion: string; costo: number; precio_venta: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+    for (const it of (costosExt ?? []) as unknown as { id: string; descripcion: string; costo: number; precio_venta: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
       const ord = it.ordenes
       const concepto = `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
       if (it.costo > 0) {
@@ -488,7 +488,11 @@ export default function CajaPage() {
           grupo: grupoOrden(ord),
         })
       }
-      if (it.precio_venta > 0) {
+      // El ingreso por venta del repuesto externo solo se cuenta aparte cuando es una
+      // Venta de repuestos directa. En Servicio Técnico ese valor ya está incluido en el
+      // pago total de la orden (Ingresos Servicio Técnico), así que contarlo aquí también
+      // duplicaría el ingreso.
+      if (it.precio_venta > 0 && ord?.tipo_orden !== 'servicio') {
         lista.push({
           id: `extingreso_${it.id}`,
           rawId: it.id,
@@ -505,7 +509,7 @@ export default function CajaPage() {
       }
     }
 
-    for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+    for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
       const ord = lm.ordenes
       const concepto = `Servicio de lavado · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
       if (lm.costo_unitario > 0) {
@@ -523,7 +527,9 @@ export default function CajaPage() {
           grupo: grupoOrden(ord),
         })
       }
-      if (lm.precio_venta_unitario > 0) {
+      // Igual que con repuestos externos: si la orden es Servicio Técnico, este ingreso
+      // ya está incluido en el pago total de la orden — no se cuenta aparte.
+      if (lm.precio_venta_unitario > 0 && ord?.tipo_orden !== 'servicio') {
         lista.push({
           id: `lavadoingreso_${lm.id}`,
           rawId: lm.id,
@@ -556,8 +562,11 @@ export default function CajaPage() {
       })
     }
 
-    for (const it of (insumos ?? []) as unknown as { id: string; descripcion: string; precio_venta: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+    for (const it of (insumos ?? []) as unknown as { id: string; descripcion: string; precio_venta: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
       const ord = it.ordenes
+      // Igual que con repuestos externos: si la orden es Servicio Técnico, este ingreso
+      // ya está incluido en el pago total de la orden — no se cuenta aparte.
+      if (ord?.tipo_orden === 'servicio') continue
       lista.push({
         id: `insumo_${it.id}`,
         rawId: it.id,
