@@ -335,15 +335,17 @@ export default function AdminOrdenesPage() {
           titulo="Carga masiva (Excel) — recuperar órdenes de un caído de plataforma"
           descripcion="Cada fila es un ítem (repuesto, mano de obra o insumo). Varias filas con la misma 'Referencia' forman una sola orden. Funciona igual que registrarla manualmente: descuenta inventario de Repuestos UMA y registra el costo de Externos en Caja."
           nombreArchivoPlantilla="plantilla_servicio_tecnico.xlsx"
-          encabezados={['Referencia', 'Fecha (DD/MM/AAAA)', 'Placa', 'Cliente', 'Cedula', 'Celular', 'Estado (en_proceso/pendiente/listo)', 'Descripcion del item', 'Origen (uma/externo/mano_obra/insumo)', 'Codigo UMA (si Origen=uma)', 'Codigo externo (opcional, si Origen=externo)', 'Proveedor (opcional, si Origen=externo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada orden)']}
+          encabezados={['Referencia (la inventas tú, ej: 1)', 'Fecha de la orden (DD/MM/AAAA)', 'Placa', 'Cliente', 'Cedula', 'Celular', 'Estado (en_proceso/pendiente/listo)', 'Descripcion del item', 'Origen (uma/externo/mano_obra/insumo)', 'Codigo UMA (si Origen=uma)', 'Codigo externo (opcional, si Origen=externo)', 'Proveedor (opcional, si Origen=externo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada orden)']}
+          obligatoriedad={['si', 'si', 'si', 'si', 'no', 'no', 'no', 'si', 'si', 'condicional', 'no', 'no', 'no', 'no', 'no', 'no']}
           filasEjemplo={[
             ['1', '15/03/2025', 'ABC123', 'Juan Pérez', '1020304050', '3001234567', 'listo', 'Cambio de aceite', 'mano_obra', '', '', '', '1', '0', '25000', '50000'],
             ['1', '15/03/2025', 'ABC123', 'Juan Pérez', '1020304050', '3001234567', 'listo', 'Filtro de aceite', 'externo', '', 'FE-100', 'Repuestos del Norte', '1', '15000', '25000', ''],
             ['2', '16/03/2025', 'XYZ789', 'María Gómez', '', '3019876543', 'listo', 'Pastillas de freno', 'uma', 'PF-200', '', '', '2', '0', '40000', '80000'],
           ]}
           notas={[
+            '¿Qué es "Referencia"? NO es algo que ya exista en el sistema ni un número de orden real — es un identificador que TÚ inventas, solo para indicarle al sistema qué filas pertenecen a la misma orden. Ejemplo: pon "1" en todas las filas del primer servicio, "2" en todas las del segundo, etc. No queda guardado en ningún lado, solo se usa al momento de importar.',
+            '¿Qué fecha va en "Fecha de la orden"? La fecha real en que se hizo el servicio (puede ser una fecha pasada — para eso es esta carga masiva, para recuperar historial). No tiene que ser la fecha de hoy.',
             'Una fila = un ítem de la orden (repuesto, mano de obra o insumo). Para una orden con varios ítems, repite la misma Referencia en todas sus filas.',
-            'Referencia: cualquier texto que tú inventes para agrupar las filas de una misma orden (ej: 1, 2, ORD-001...). No se guarda en el sistema, solo se usa para agrupar al importar.',
             'Fecha, Placa, Cliente, Cedula, Celular, Estado y Monto pagado solo se leen de la PRIMERA fila de cada Referencia — en las demás filas de esa orden puedes dejarlos vacíos.',
             'Origen: uma, externo, mano_obra o insumo.',
             'Si Origen=uma, el Código UMA es obligatorio y debe existir en tu catálogo — con eso se descuenta el inventario igual que en el flujo manual.',

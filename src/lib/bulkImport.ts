@@ -21,10 +21,18 @@ function parseNum(s: string | undefined): number {
   return isNaN(n) ? 0 : n
 }
 
-function agrupar(filas: Record<string, string>[], campo: string): Map<string, Record<string, string>[]> {
+function valorColumna(fila: Record<string, string>, ...posiblesCampos: string[]): string {
+  for (const campo of posiblesCampos) {
+    const v = fila[campo]
+    if (v !== undefined && String(v).trim() !== '') return String(v).trim()
+  }
+  return ''
+}
+
+function agrupar(filas: Record<string, string>[], ...posiblesCampos: string[]): Map<string, Record<string, string>[]> {
   const grupos = new Map<string, Record<string, string>[]>()
   filas.forEach((fila) => {
-    const key = String(fila[campo] ?? '').trim()
+    const key = valorColumna(fila, ...posiblesCampos)
     if (!grupos.has(key)) grupos.set(key, [])
     grupos.get(key)!.push(fila)
   })
@@ -46,7 +54,7 @@ interface ImportarOrdenesParams {
 async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, tipoOrden }: ImportarOrdenesParams): Promise<ResultadoImportacion> {
   const errores: { fila: number; mensaje: string }[] = []
   let exitosos = 0
-  const grupos = agrupar(filas, 'Referencia')
+  const grupos = agrupar(filas, 'Referencia (la inventas tú, ej: 1)', 'Referencia')
   const origenesValidos = tipoOrden === 'servicio' ? ORIGENES_ST : ORIGENES_VENTA
 
   for (const [referencia, grupoFilas] of grupos) {
@@ -54,7 +62,7 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
     if (!referencia) { errores.push({ fila: filaIdxBase, mensaje: 'Falta la Referencia que agrupa las filas de la orden' }); continue }
 
     const cab = grupoFilas[0]
-    const fechaISO = parseFecha(cab['Fecha (DD/MM/AAAA)'])
+    const fechaISO = parseFecha(valorColumna(cab, 'Fecha de la orden (DD/MM/AAAA)', 'Fecha de la venta (DD/MM/AAAA)', 'Fecha (DD/MM/AAAA)'))
     if (!fechaISO) { errores.push({ fila: filaIdxBase, mensaje: `Referencia ${referencia}: fecha inválida, usa DD/MM/AAAA` }); continue }
 
     const cliente = String(cab['Cliente'] ?? '').trim()

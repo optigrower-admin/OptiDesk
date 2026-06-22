@@ -388,14 +388,16 @@ export default function AdminRepuestosPage() {
           titulo="Carga masiva (Excel) — recuperar ventas de un caído de plataforma"
           descripcion="Cada fila es un ítem vendido. Varias filas con la misma 'Referencia' forman una sola venta. Funciona igual que registrarla manualmente: descuenta inventario de Repuestos UMA y registra el costo de Externos en Caja."
           nombreArchivoPlantilla="plantilla_venta_repuestos.xlsx"
-          encabezados={['Referencia', 'Fecha (DD/MM/AAAA)', 'Cliente', 'Cedula', 'Celular', 'Placa (opcional)', 'Descripcion del item', 'Origen (uma/externo)', 'Codigo UMA (si Origen=uma)', 'Codigo externo (opcional, si Origen=externo)', 'Proveedor (opcional, si Origen=externo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada venta)']}
+          encabezados={['Referencia (la inventas tú, ej: 1)', 'Fecha de la venta (DD/MM/AAAA)', 'Cliente', 'Cedula', 'Celular', 'Placa (opcional)', 'Descripcion del item', 'Origen (uma/externo)', 'Codigo UMA (si Origen=uma)', 'Codigo externo (opcional, si Origen=externo)', 'Proveedor (opcional, si Origen=externo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada venta)']}
+          obligatoriedad={['si', 'si', 'si', 'no', 'no', 'no', 'si', 'si', 'condicional', 'no', 'no', 'no', 'no', 'no', 'no']}
           filasEjemplo={[
             ['1', '15/03/2025', 'Juan Pérez', '1020304050', '3001234567', 'ABC123', 'Llanta trasera', 'externo', '', 'LL-300', 'Llantas Express', '1', '80000', '120000', '120000'],
             ['2', '16/03/2025', 'María Gómez', '', '3019876543', '', 'Espejo retrovisor', 'uma', 'ESP-50', '', '', '2', '0', '30000', ''],
           ]}
           notas={[
+            '¿Qué es "Referencia"? NO es algo que ya exista en el sistema — es un identificador que TÚ inventas, solo para indicarle al sistema qué filas pertenecen a la misma venta. Ejemplo: pon "1" en todas las filas de la primera venta, "2" en todas las de la segunda, etc. No queda guardado en ningún lado.',
+            '¿Qué fecha va en "Fecha de la venta"? La fecha real en que se hizo la venta (puede ser una fecha pasada, para recuperar historial). No tiene que ser la fecha de hoy.',
             'Una fila = un ítem vendido. Para una venta con varios ítems, repite la misma Referencia en todas sus filas.',
-            'Referencia: cualquier texto que tú inventes para agrupar las filas de una misma venta. No se guarda en el sistema.',
             'Fecha, Cliente, Cedula, Celular, Placa y Monto pagado solo se leen de la PRIMERA fila de cada Referencia.',
             'Origen: uma o externo.',
             'Si Origen=uma, el Código UMA es obligatorio y debe existir en tu catálogo — con eso se descuenta el inventario igual que en el flujo manual.',
