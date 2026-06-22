@@ -384,6 +384,242 @@ function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
 
 const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'gasto', 'costo_lavado', 'costo_externo', 'ajuste']
 
+// Construye la lista de movimientos para un tenant. Si desdeISO/hastaISO son null no se
+// filtra por fecha (uso para el saldo histórico, que no depende del período seleccionado).
+async function construirMovimientos(
+  supabase: ReturnType<typeof createClient>,
+  tenantId: string,
+  desdeISO: string | null,
+  hastaISO: string | null
+): Promise<Movimiento[]> {
+  let qPagos = supabase.from('pagos_orden')
+    .select('id, monto, fecha, metodo_pago_id, metodos_pago(nombre), ordenes(numero, placa, cliente, tipo_orden)')
+    .eq('tenant_id', tenantId)
+  if (desdeISO) qPagos = qPagos.gte('fecha', desdeISO)
+  if (hastaISO) qPagos = qPagos.lte('fecha', hastaISO)
+
+  let qCostosExt = supabase.from('items_orden')
+    .select('id, descripcion, costo, precio_venta, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
+    .eq('origen', 'externo')
+    .eq('ordenes.tenant_id', tenantId)
+    .or('costo.gt.0,precio_venta.gt.0')
+  if (desdeISO) qCostosExt = qCostosExt.gte('created_at', desdeISO)
+  if (hastaISO) qCostosExt = qCostosExt.lte('created_at', hastaISO)
+
+  let qGastos = supabase.from('gastos_caja')
+    .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre)')
+    .eq('tenant_id', tenantId)
+  if (desdeISO) qGastos = qGastos.gte('fecha', desdeISO)
+  if (hastaISO) qGastos = qGastos.lte('fecha', hastaISO)
+
+  let qInsumos = supabase.from('items_orden')
+    .select('id, descripcion, precio_venta, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
+    .eq('origen', 'insumo')
+    .eq('ordenes.tenant_id', tenantId)
+  if (desdeISO) qInsumos = qInsumos.gte('created_at', desdeISO)
+  if (hastaISO) qInsumos = qInsumos.lte('created_at', hastaISO)
+
+  let qLavados = supabase.from('lava_moto_ordenes')
+    .select('id, costo_unitario, precio_venta_unitario, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
+    .eq('ordenes.tenant_id', tenantId)
+    .or('costo_unitario.gt.0,precio_venta_unitario.gt.0')
+  if (desdeISO) qLavados = qLavados.gte('created_at', desdeISO)
+  if (hastaISO) qLavados = qLavados.lte('created_at', hastaISO)
+
+  let qVentaDirecta = supabase.from('ordenes')
+    .select('id, numero, placa, cliente, valor_abono, metodo_pago_id, metodos_pago(nombre), created_at')
+    .eq('tenant_id', tenantId)
+    .eq('tipo_orden', 'venta_repuestos')
+    .gt('valor_abono', 0)
+  if (desdeISO) qVentaDirecta = qVentaDirecta.gte('created_at', desdeISO)
+  if (hastaISO) qVentaDirecta = qVentaDirecta.lte('created_at', hastaISO)
+
+  let qAjustes = supabase.from('ajustes_caja')
+    .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre), cuenta_especial')
+    .eq('tenant_id', tenantId)
+  if (desdeISO) qAjustes = qAjustes.gte('fecha', desdeISO)
+  if (hastaISO) qAjustes = qAjustes.lte('fecha', hastaISO)
+
+  const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }, { data: ajustes }] =
+    await Promise.all([qPagos, qCostosExt, qGastos, qInsumos, qLavados, qVentaDirecta, qAjustes])
+
+  const lista: Movimiento[] = []
+
+  for (const p of (pagos ?? []) as unknown as { id: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
+    const ord = p.ordenes
+    const esVenta = ord?.tipo_orden === 'venta_repuestos'
+    lista.push({
+      id: `pago_${p.id}`,
+      rawId: p.id,
+      fecha: p.fecha,
+      categoria: esVenta ? 'ingreso_venta' : 'ingreso_st',
+      concepto: `${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
+      nombre: ord?.cliente ?? null,
+      codigo: ord?.placa ?? null,
+      monto: p.monto,
+      metodoPagoId: p.metodo_pago_id,
+      metodoPago: p.metodos_pago?.nombre ?? null,
+      cuentaEspecial: null,
+      grupo: grupoOrden(ord),
+    })
+  }
+
+  for (const v of (ventaDirecta ?? []) as unknown as { id: string; numero: number; placa: string; cliente: string; valor_abono: number; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; created_at: string }[]) {
+    lista.push({
+      id: `ventadirecta_${v.id}`,
+      rawId: v.id,
+      fecha: v.created_at,
+      categoria: 'ingreso_venta',
+      concepto: `${v.cliente ?? 'Cliente'} · Orden #${v.numero ?? '—'} (${v.placa ?? '—'})`,
+      nombre: v.cliente ?? null,
+      codigo: v.placa ?? null,
+      monto: v.valor_abono,
+      metodoPagoId: v.metodo_pago_id,
+      metodoPago: v.metodos_pago?.nombre ?? null,
+      cuentaEspecial: null,
+      grupo: grupoOrden({ numero: v.numero, placa: v.placa, cliente: v.cliente }),
+    })
+  }
+
+  for (const it of (costosExt ?? []) as unknown as { id: string; descripcion: string; costo: number; precio_venta: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
+    const ord = it.ordenes
+    const concepto = `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
+    if (it.costo > 0) {
+      lista.push({
+        id: `extcosto_${it.id}`,
+        rawId: it.id,
+        fecha: it.created_at,
+        categoria: 'costo_externo',
+        concepto,
+        nombre: it.descripcion,
+        codigo: ord?.placa ?? null,
+        monto: -(it.costo * it.cantidad),
+        metodoPagoId: it.metodo_pago_id,
+        metodoPago: it.metodos_pago?.nombre ?? null,
+        cuentaEspecial: null,
+        grupo: grupoOrden(ord),
+      })
+    }
+    // El ingreso por venta del repuesto externo solo se cuenta aparte cuando es una
+    // Venta de repuestos directa. En Servicio Técnico ese valor ya está incluido en el
+    // pago total de la orden (Ingresos Servicio Técnico), así que contarlo aquí también
+    // duplicaría el ingreso.
+    if (it.precio_venta > 0 && ord?.tipo_orden !== 'servicio') {
+      lista.push({
+        id: `extingreso_${it.id}`,
+        rawId: it.id,
+        fecha: it.created_at,
+        categoria: 'ingreso_externo',
+        concepto,
+        nombre: it.descripcion,
+        codigo: ord?.placa ?? null,
+        monto: it.precio_venta * it.cantidad,
+        metodoPagoId: it.metodo_pago_id,
+        metodoPago: it.metodos_pago?.nombre ?? null,
+        cuentaEspecial: null,
+        grupo: grupoOrden(ord),
+      })
+    }
+  }
+
+  for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
+    const ord = lm.ordenes
+    const concepto = `Servicio de lavado · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
+    if (lm.costo_unitario > 0) {
+      lista.push({
+        id: `lavadocosto_${lm.id}`,
+        rawId: lm.id,
+        fecha: lm.created_at,
+        categoria: 'costo_lavado',
+        concepto,
+        nombre: 'Servicio de lavado',
+        codigo: ord?.placa ?? null,
+        monto: -(lm.costo_unitario * lm.cantidad),
+        metodoPagoId: lm.metodo_pago_id,
+        metodoPago: lm.metodos_pago?.nombre ?? null,
+        cuentaEspecial: null,
+        grupo: grupoOrden(ord),
+      })
+    }
+    // Igual que con repuestos externos: si la orden es Servicio Técnico, este ingreso
+    // ya está incluido en el pago total de la orden — no se cuenta aparte.
+    if (lm.precio_venta_unitario > 0 && ord?.tipo_orden !== 'servicio') {
+      lista.push({
+        id: `lavadoingreso_${lm.id}`,
+        rawId: lm.id,
+        fecha: lm.created_at,
+        categoria: 'ingreso_lavado',
+        concepto,
+        nombre: 'Servicio de lavado',
+        codigo: ord?.placa ?? null,
+        monto: lm.precio_venta_unitario * lm.cantidad,
+        metodoPagoId: null,
+        metodoPago: null,
+        cuentaEspecial: null,
+        grupo: grupoOrden(ord),
+      })
+    }
+  }
+
+  for (const g of (gastos ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null }[]) {
+    lista.push({
+      id: `gasto_${g.id}`,
+      rawId: g.id,
+      fecha: g.fecha,
+      categoria: 'gasto',
+      concepto: g.descripcion,
+      nombre: g.descripcion,
+      codigo: null,
+      monto: -g.monto,
+      metodoPagoId: g.metodo_pago_id,
+      metodoPago: g.metodos_pago?.nombre ?? null,
+      cuentaEspecial: null,
+      grupo: CATEGORIA_LABEL.gasto,
+    })
+  }
+
+  for (const it of (insumos ?? []) as unknown as { id: string; descripcion: string; precio_venta: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
+    const ord = it.ordenes
+    // Igual que con repuestos externos: si la orden es Servicio Técnico, este ingreso
+    // ya está incluido en el pago total de la orden — no se cuenta aparte.
+    if (ord?.tipo_orden === 'servicio') continue
+    lista.push({
+      id: `insumo_${it.id}`,
+      rawId: it.id,
+      fecha: it.created_at,
+      categoria: 'ingreso_insumo',
+      concepto: `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
+      nombre: ord?.cliente ?? null,
+      codigo: ord?.placa ?? null,
+      monto: it.precio_venta,
+      metodoPagoId: it.metodo_pago_id,
+      metodoPago: it.metodos_pago?.nombre ?? null,
+      cuentaEspecial: null,
+      grupo: grupoOrden(ord),
+    })
+  }
+
+  for (const a of (ajustes ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; cuenta_especial: 'caja_fuerte' | null }[]) {
+    lista.push({
+      id: `ajuste_${a.id}`,
+      rawId: a.id,
+      fecha: a.fecha,
+      categoria: 'ajuste',
+      concepto: a.descripcion,
+      nombre: a.descripcion,
+      codigo: null,
+      monto: a.monto,
+      metodoPagoId: a.metodo_pago_id,
+      metodoPago: a.cuenta_especial === 'caja_fuerte' ? 'Caja fuerte' : a.metodos_pago?.nombre ?? null,
+      cuentaEspecial: a.cuenta_especial ?? null,
+      grupo: CATEGORIA_LABEL.ajuste,
+    })
+  }
+
+  lista.sort((a, b) => b.fecha.localeCompare(a.fecha))
+  return lista
+}
+
 export default function CajaPage() {
   const { profile } = useAuth()
   const supabase = createClient()
@@ -392,6 +628,7 @@ export default function CajaPage() {
   const [desdeManual, setDesdeManual] = useState(ymdLocal(new Date()))
   const [hastaManual, setHastaManual] = useState(ymdLocal(new Date()))
   const [movimientos, setMovimientos] = useState<Movimiento[]>([])
+  const [movimientosTotales, setMovimientosTotales] = useState<Movimiento[]>([])
   const [loading, setLoading] = useState(true)
   const [catFiltro, setCatFiltro] = useState<Categoria | 'todos'>('todos')
   const [busqueda, setBusqueda] = useState('')
@@ -415,220 +652,15 @@ export default function CajaPage() {
     const desdeISO = `${desde}T00:00:00`
     const hastaISO = `${hasta}T23:59:59`
 
-    const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }, { data: ajustes }] = await Promise.all([
-      supabase.from('pagos_orden')
-        .select('id, monto, fecha, metodo_pago_id, metodos_pago(nombre), ordenes(numero, placa, cliente, tipo_orden)')
-        .eq('tenant_id', profile.tenant_id)
-        .gte('fecha', desdeISO).lte('fecha', hastaISO),
-      supabase.from('items_orden')
-        .select('id, descripcion, costo, precio_venta, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
-        .eq('origen', 'externo')
-        .eq('ordenes.tenant_id', profile.tenant_id)
-        .or('costo.gt.0,precio_venta.gt.0')
-        .gte('created_at', desdeISO).lte('created_at', hastaISO),
-      supabase.from('gastos_caja')
-        .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre)')
-        .eq('tenant_id', profile.tenant_id)
-        .gte('fecha', desdeISO).lte('fecha', hastaISO),
-      supabase.from('items_orden')
-        .select('id, descripcion, precio_venta, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
-        .eq('origen', 'insumo')
-        .eq('ordenes.tenant_id', profile.tenant_id)
-        .gte('created_at', desdeISO).lte('created_at', hastaISO),
-      supabase.from('lava_moto_ordenes')
-        .select('id, costo_unitario, precio_venta_unitario, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
-        .eq('ordenes.tenant_id', profile.tenant_id)
-        .or('costo_unitario.gt.0,precio_venta_unitario.gt.0')
-        .gte('created_at', desdeISO).lte('created_at', hastaISO),
-      supabase.from('ordenes')
-        .select('id, numero, placa, cliente, valor_abono, metodo_pago_id, metodos_pago(nombre), created_at')
-        .eq('tenant_id', profile.tenant_id)
-        .eq('tipo_orden', 'venta_repuestos')
-        .gt('valor_abono', 0)
-        .gte('created_at', desdeISO).lte('created_at', hastaISO),
-      supabase.from('ajustes_caja')
-        .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre), cuenta_especial')
-        .eq('tenant_id', profile.tenant_id)
-        .gte('fecha', desdeISO).lte('fecha', hastaISO),
+    const [lista, listaTotal] = await Promise.all([
+      construirMovimientos(supabase, profile.tenant_id, desdeISO, hastaISO),
+      construirMovimientos(supabase, profile.tenant_id, null, null),
     ])
 
-    const lista: Movimiento[] = []
-
-    for (const p of (pagos ?? []) as unknown as { id: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
-      const ord = p.ordenes
-      const esVenta = ord?.tipo_orden === 'venta_repuestos'
-      lista.push({
-        id: `pago_${p.id}`,
-        rawId: p.id,
-        fecha: p.fecha,
-        categoria: esVenta ? 'ingreso_venta' : 'ingreso_st',
-        concepto: `${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
-        nombre: ord?.cliente ?? null,
-        codigo: ord?.placa ?? null,
-        monto: p.monto,
-        metodoPagoId: p.metodo_pago_id,
-        metodoPago: p.metodos_pago?.nombre ?? null,
-        cuentaEspecial: null,
-        grupo: grupoOrden(ord),
-      })
-    }
-
-    for (const v of (ventaDirecta ?? []) as unknown as { id: string; numero: number; placa: string; cliente: string; valor_abono: number; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; created_at: string }[]) {
-      lista.push({
-        id: `ventadirecta_${v.id}`,
-        rawId: v.id,
-        fecha: v.created_at,
-        categoria: 'ingreso_venta',
-        concepto: `${v.cliente ?? 'Cliente'} · Orden #${v.numero ?? '—'} (${v.placa ?? '—'})`,
-        nombre: v.cliente ?? null,
-        codigo: v.placa ?? null,
-        monto: v.valor_abono,
-        metodoPagoId: v.metodo_pago_id,
-        metodoPago: v.metodos_pago?.nombre ?? null,
-        cuentaEspecial: null,
-        grupo: grupoOrden({ numero: v.numero, placa: v.placa, cliente: v.cliente }),
-      })
-    }
-
-    for (const it of (costosExt ?? []) as unknown as { id: string; descripcion: string; costo: number; precio_venta: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
-      const ord = it.ordenes
-      const concepto = `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
-      if (it.costo > 0) {
-        lista.push({
-          id: `extcosto_${it.id}`,
-          rawId: it.id,
-          fecha: it.created_at,
-          categoria: 'costo_externo',
-          concepto,
-          nombre: it.descripcion,
-          codigo: ord?.placa ?? null,
-          monto: -(it.costo * it.cantidad),
-          metodoPagoId: it.metodo_pago_id,
-          metodoPago: it.metodos_pago?.nombre ?? null,
-          cuentaEspecial: null,
-          grupo: grupoOrden(ord),
-        })
-      }
-      // El ingreso por venta del repuesto externo solo se cuenta aparte cuando es una
-      // Venta de repuestos directa. En Servicio Técnico ese valor ya está incluido en el
-      // pago total de la orden (Ingresos Servicio Técnico), así que contarlo aquí también
-      // duplicaría el ingreso.
-      if (it.precio_venta > 0 && ord?.tipo_orden !== 'servicio') {
-        lista.push({
-          id: `extingreso_${it.id}`,
-          rawId: it.id,
-          fecha: it.created_at,
-          categoria: 'ingreso_externo',
-          concepto,
-          nombre: it.descripcion,
-          codigo: ord?.placa ?? null,
-          monto: it.precio_venta * it.cantidad,
-          metodoPagoId: it.metodo_pago_id,
-          metodoPago: it.metodos_pago?.nombre ?? null,
-          cuentaEspecial: null,
-          grupo: grupoOrden(ord),
-        })
-      }
-    }
-
-    for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
-      const ord = lm.ordenes
-      const concepto = `Servicio de lavado · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
-      if (lm.costo_unitario > 0) {
-        lista.push({
-          id: `lavadocosto_${lm.id}`,
-          rawId: lm.id,
-          fecha: lm.created_at,
-          categoria: 'costo_lavado',
-          concepto,
-          nombre: 'Servicio de lavado',
-          codigo: ord?.placa ?? null,
-          monto: -(lm.costo_unitario * lm.cantidad),
-          metodoPagoId: lm.metodo_pago_id,
-          metodoPago: lm.metodos_pago?.nombre ?? null,
-          cuentaEspecial: null,
-          grupo: grupoOrden(ord),
-        })
-      }
-      // Igual que con repuestos externos: si la orden es Servicio Técnico, este ingreso
-      // ya está incluido en el pago total de la orden — no se cuenta aparte.
-      if (lm.precio_venta_unitario > 0 && ord?.tipo_orden !== 'servicio') {
-        lista.push({
-          id: `lavadoingreso_${lm.id}`,
-          rawId: lm.id,
-          fecha: lm.created_at,
-          categoria: 'ingreso_lavado',
-          concepto,
-          nombre: 'Servicio de lavado',
-          codigo: ord?.placa ?? null,
-          monto: lm.precio_venta_unitario * lm.cantidad,
-          metodoPagoId: null,
-          metodoPago: null,
-          cuentaEspecial: null,
-          grupo: grupoOrden(ord),
-        })
-      }
-    }
-
-    for (const g of (gastos ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null }[]) {
-      lista.push({
-        id: `gasto_${g.id}`,
-        rawId: g.id,
-        fecha: g.fecha,
-        categoria: 'gasto',
-        concepto: g.descripcion,
-        nombre: g.descripcion,
-        codigo: null,
-        monto: -g.monto,
-        metodoPagoId: g.metodo_pago_id,
-        metodoPago: g.metodos_pago?.nombre ?? null,
-        cuentaEspecial: null,
-        grupo: CATEGORIA_LABEL.gasto,
-      })
-    }
-
-    for (const it of (insumos ?? []) as unknown as { id: string; descripcion: string; precio_venta: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
-      const ord = it.ordenes
-      // Igual que con repuestos externos: si la orden es Servicio Técnico, este ingreso
-      // ya está incluido en el pago total de la orden — no se cuenta aparte.
-      if (ord?.tipo_orden === 'servicio') continue
-      lista.push({
-        id: `insumo_${it.id}`,
-        rawId: it.id,
-        fecha: it.created_at,
-        categoria: 'ingreso_insumo',
-        concepto: `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
-        nombre: ord?.cliente ?? null,
-        codigo: ord?.placa ?? null,
-        monto: it.precio_venta,
-        metodoPagoId: it.metodo_pago_id,
-        metodoPago: it.metodos_pago?.nombre ?? null,
-        cuentaEspecial: null,
-        grupo: grupoOrden(ord),
-      })
-    }
-
-    for (const a of (ajustes ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; cuenta_especial: 'caja_fuerte' | null }[]) {
-      lista.push({
-        id: `ajuste_${a.id}`,
-        rawId: a.id,
-        fecha: a.fecha,
-        categoria: 'ajuste',
-        concepto: a.descripcion,
-        nombre: a.descripcion,
-        codigo: null,
-        monto: a.monto,
-        metodoPagoId: a.metodo_pago_id,
-        metodoPago: a.cuenta_especial === 'caja_fuerte' ? 'Caja fuerte' : a.metodos_pago?.nombre ?? null,
-        cuentaEspecial: a.cuenta_especial ?? null,
-        grupo: CATEGORIA_LABEL.ajuste,
-      })
-    }
-
-    lista.sort((a, b) => b.fecha.localeCompare(a.fecha))
     setMovimientos(lista)
+    setMovimientosTotales(listaTotal)
     setLoading(false)
-  }, [profile?.tenant_id, desde, hasta])
+  }, [profile?.tenant_id, supabase, desde, hasta])
 
   useEffect(() => { cargar() }, [cargar])
 
@@ -647,13 +679,13 @@ export default function CajaPage() {
   }, [movimientos, catFiltro, busqueda])
 
   const cuentas = useMemo(() => {
-    const mapa = new Map<string, { nombre: string; ingreso: number; egreso: number }>()
+    const mapa = new Map<string, { key: string; nombre: string; ingreso: number; egreso: number }>()
     for (const m of movimientos) {
       if (!CATEGORIAS_CON_CUENTA.includes(m.categoria)) continue
       if (m.cuentaEspecial === 'caja_fuerte') continue // se muestra aparte, en su propia tarjeta
       const key = m.metodoPagoId ?? 'sin_metodo'
       const nombre = m.metodoPago ?? 'Sin método especificado'
-      if (!mapa.has(key)) mapa.set(key, { nombre, ingreso: 0, egreso: 0 })
+      if (!mapa.has(key)) mapa.set(key, { key, nombre, ingreso: 0, egreso: 0 })
       const c = mapa.get(key)!
       if (m.monto >= 0) c.ingreso += m.monto
       else c.egreso += Math.abs(m.monto)
@@ -677,6 +709,31 @@ export default function CajaPage() {
     }
     return { ingreso, egreso }
   }, [movimientos])
+
+  // Saldo actual (histórico, no depende del período seleccionado) por cuenta y de
+  // Caja fuerte — se calcula sobre movimientosTotales (todos los movimientos sin filtrar).
+  const saldosCuentas = useMemo(() => {
+    const mapa = new Map<string, number>()
+    for (const m of movimientosTotales) {
+      if (!CATEGORIAS_CON_CUENTA.includes(m.categoria)) continue
+      if (m.cuentaEspecial === 'caja_fuerte') continue
+      const key = m.metodoPagoId ?? 'sin_metodo'
+      mapa.set(key, (mapa.get(key) ?? 0) + m.monto)
+    }
+    return mapa
+  }, [movimientosTotales])
+
+  const saldoCajaFuerte = useMemo(() => {
+    let saldo = 0
+    for (const m of movimientosTotales) {
+      if (m.categoria === 'gasto' && m.concepto.trim().toLowerCase().startsWith(TRANSFERENCIA_CAJA_FUERTE)) {
+        saldo += Math.abs(m.monto)
+      } else if (m.cuentaEspecial === 'caja_fuerte') {
+        saldo += m.monto
+      }
+    }
+    return saldo
+  }, [movimientosTotales])
 
   /* Vista "Por método de pago": una fila por (orden, categoría, método) — si un mismo
      servicio técnico se pagó con 2 métodos distintos, se repite una fila por cada uno
@@ -866,6 +923,7 @@ export default function CajaPage() {
         {vistaResumen === 'cuenta' && (
           <p className="text-xs text-gray-400">
             Solo incluye movimientos con método de pago asociado (pagos de clientes, gastos de caja, costo de lavado y costo de repuestos externos).
+            El saldo actual de cada cuenta es el total acumulado y no cambia según el período; el ingreso y el gasto sí son del período seleccionado.
           </p>
         )}
       </div>
@@ -896,15 +954,25 @@ export default function CajaPage() {
           )}
           {cuentas.map((c) => {
             const color = colorCuenta(c.nombre)
+            const saldo = saldosCuentas.get(c.key) ?? 0
             return (
-              <div key={c.nombre} className={`${color.bg} rounded-xl border ${color.border} p-5`}>
-                <p className="text-xs text-gray-500 mb-1">{c.nombre}</p>
-                <p className={`text-2xl font-bold font-mono ${c.ingreso - c.egreso >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-                  {formatCOP(c.ingreso - c.egreso)}
-                </p>
-                <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
-                  <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(c.ingreso)}</span></span>
-                  <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(c.egreso)}</span></span>
+              <div key={c.key} className={`${color.bg} rounded-xl border ${color.border} p-5 flex flex-col gap-3`}>
+                <p className="text-xs font-medium text-gray-500">{c.nombre}</p>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Saldo actual</p>
+                  <p className={`text-3xl font-bold font-mono leading-tight ${saldo >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                    {formatCOP(saldo)}
+                  </p>
+                </div>
+                <div className="pt-3 border-t border-black/10 space-y-2">
+                  <div>
+                    <p className="text-[10px] text-emerald-600 uppercase tracking-wide mb-0.5">Ingreso del período</p>
+                    <p className="text-lg font-semibold font-mono text-emerald-700">{formatCOP(c.ingreso)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-red-500 uppercase tracking-wide mb-0.5">Gasto del período</p>
+                    <p className="text-lg font-semibold font-mono text-red-600">{formatCOP(c.egreso)}</p>
+                  </div>
                 </div>
               </div>
             )
@@ -912,14 +980,23 @@ export default function CajaPage() {
           {esGerencia && (() => {
             const color = colorCuenta('caja fuerte')
             return (
-              <div className={`${color.bg} rounded-xl border ${color.border} p-5`}>
-                <p className="text-xs text-gray-500 mb-1">Caja fuerte</p>
-                <p className={`text-2xl font-bold font-mono ${cajaFuerte.ingreso - cajaFuerte.egreso >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-                  {formatCOP(cajaFuerte.ingreso - cajaFuerte.egreso)}
-                </p>
-                <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
-                  <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(cajaFuerte.ingreso)}</span></span>
-                  <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(cajaFuerte.egreso)}</span></span>
+              <div className={`${color.bg} rounded-xl border ${color.border} p-5 flex flex-col gap-3`}>
+                <p className="text-xs font-medium text-gray-500">Caja fuerte</p>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Saldo actual</p>
+                  <p className={`text-3xl font-bold font-mono leading-tight ${saldoCajaFuerte >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                    {formatCOP(saldoCajaFuerte)}
+                  </p>
+                </div>
+                <div className="pt-3 border-t border-black/10 space-y-2">
+                  <div>
+                    <p className="text-[10px] text-emerald-600 uppercase tracking-wide mb-0.5">Ingreso del período</p>
+                    <p className="text-lg font-semibold font-mono text-emerald-700">{formatCOP(cajaFuerte.ingreso)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-red-500 uppercase tracking-wide mb-0.5">Gasto del período</p>
+                    <p className="text-lg font-semibold font-mono text-red-600">{formatCOP(cajaFuerte.egreso)}</p>
+                  </div>
                 </div>
               </div>
             )
