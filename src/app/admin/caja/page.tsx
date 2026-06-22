@@ -21,6 +21,7 @@ interface Movimiento {
   monto: number // con signo: positivo = ingreso, negativo = salida
   metodoPagoId: string | null
   metodoPago: string | null
+  cuentaEspecial: 'caja_fuerte' | null
   grupo: string
 }
 
@@ -268,6 +269,8 @@ function EditarGastoModal({ tenantId, usuarioId, gasto, onClose, onEditado }: {
   )
 }
 
+const OPCION_CAJA_FUERTE = '__caja_fuerte__'
+
 function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
   tenantId: string; usuarioId: string; onClose: () => void; onCreado: () => void
 }) {
@@ -292,12 +295,14 @@ function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
     if (!confirm('¿Seguro que deseas registrar este ajuste de caja?')) return
     setGuardando(true); setError('')
     const montoNum = parseInt(monto.replace(/\D/g, ''), 10) * (signo === '-' ? -1 : 1)
+    const esCajaFuerte = metodoPagoId === OPCION_CAJA_FUERTE
     try {
       const { data, error: err } = await supabase.from('ajustes_caja').insert({
         tenant_id: tenantId,
         descripcion: descripcion.trim(),
         monto: montoNum,
-        metodo_pago_id: metodoPagoId,
+        metodo_pago_id: esCajaFuerte ? null : metodoPagoId,
+        cuenta_especial: esCajaFuerte ? 'caja_fuerte' : null,
         registrado_por: usuarioId,
       }).select('id').single()
       if (err) throw new Error(err.message)
@@ -331,11 +336,12 @@ function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 mt-0.5" />
           </div>
           <div>
-            <label className="text-xs text-gray-500">Cuenta (método de pago)</label>
+            <label className="text-xs text-gray-500">Cuenta</label>
             <select value={metodoPagoId} onChange={e => setMetodoPagoId(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 mt-0.5 bg-white">
               <option value="">Selecciona...</option>
               {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+              <option value={OPCION_CAJA_FUERTE}>Caja fuerte</option>
             </select>
           </div>
           <div>
@@ -399,6 +405,8 @@ export default function CajaPage() {
   // Editar/eliminar gastos de caja (incluye transferencias) — Gerencia y Admin.
   // Los ajustes de caja siguen exclusivos de Gerencia (requisito explícito distinto).
   const puedeEditarGastos = esGerencia || profile?.rol === 'admin'
+  // El monto de los ajustes de caja solo lo ve gerencia; admin ve la fila pero el monto oculto.
+  const ocultarMontoAjuste = (categoria: Categoria) => categoria === 'ajuste' && profile?.rol === 'admin'
   const { desde, hasta } = calcularRango(periodo, desdeManual, hastaManual)
 
   const cargar = useCallback(async () => {
@@ -439,7 +447,7 @@ export default function CajaPage() {
         .gt('valor_abono', 0)
         .gte('created_at', desdeISO).lte('created_at', hastaISO),
       supabase.from('ajustes_caja')
-        .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre)')
+        .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre), cuenta_especial')
         .eq('tenant_id', profile.tenant_id)
         .gte('fecha', desdeISO).lte('fecha', hastaISO),
     ])
@@ -460,6 +468,7 @@ export default function CajaPage() {
         monto: p.monto,
         metodoPagoId: p.metodo_pago_id,
         metodoPago: p.metodos_pago?.nombre ?? null,
+        cuentaEspecial: null,
         grupo: grupoOrden(ord),
       })
     }
@@ -476,6 +485,7 @@ export default function CajaPage() {
         monto: v.valor_abono,
         metodoPagoId: v.metodo_pago_id,
         metodoPago: v.metodos_pago?.nombre ?? null,
+        cuentaEspecial: null,
         grupo: grupoOrden({ numero: v.numero, placa: v.placa, cliente: v.cliente }),
       })
     }
@@ -495,6 +505,7 @@ export default function CajaPage() {
           monto: -(it.costo * it.cantidad),
           metodoPagoId: it.metodo_pago_id,
           metodoPago: it.metodos_pago?.nombre ?? null,
+          cuentaEspecial: null,
           grupo: grupoOrden(ord),
         })
       }
@@ -514,6 +525,7 @@ export default function CajaPage() {
           monto: it.precio_venta * it.cantidad,
           metodoPagoId: it.metodo_pago_id,
           metodoPago: it.metodos_pago?.nombre ?? null,
+          cuentaEspecial: null,
           grupo: grupoOrden(ord),
         })
       }
@@ -534,6 +546,7 @@ export default function CajaPage() {
           monto: -(lm.costo_unitario * lm.cantidad),
           metodoPagoId: lm.metodo_pago_id,
           metodoPago: lm.metodos_pago?.nombre ?? null,
+          cuentaEspecial: null,
           grupo: grupoOrden(ord),
         })
       }
@@ -551,6 +564,7 @@ export default function CajaPage() {
           monto: lm.precio_venta_unitario * lm.cantidad,
           metodoPagoId: null,
           metodoPago: null,
+          cuentaEspecial: null,
           grupo: grupoOrden(ord),
         })
       }
@@ -568,6 +582,7 @@ export default function CajaPage() {
         monto: -g.monto,
         metodoPagoId: g.metodo_pago_id,
         metodoPago: g.metodos_pago?.nombre ?? null,
+        cuentaEspecial: null,
         grupo: CATEGORIA_LABEL.gasto,
       })
     }
@@ -588,11 +603,12 @@ export default function CajaPage() {
         monto: it.precio_venta,
         metodoPagoId: it.metodo_pago_id,
         metodoPago: it.metodos_pago?.nombre ?? null,
+        cuentaEspecial: null,
         grupo: grupoOrden(ord),
       })
     }
 
-    for (const a of (ajustes ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null }[]) {
+    for (const a of (ajustes ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; cuenta_especial: 'caja_fuerte' | null }[]) {
       lista.push({
         id: `ajuste_${a.id}`,
         rawId: a.id,
@@ -603,7 +619,8 @@ export default function CajaPage() {
         codigo: null,
         monto: a.monto,
         metodoPagoId: a.metodo_pago_id,
-        metodoPago: a.metodos_pago?.nombre ?? null,
+        metodoPago: a.cuenta_especial === 'caja_fuerte' ? 'Caja fuerte' : a.metodos_pago?.nombre ?? null,
+        cuentaEspecial: a.cuenta_especial ?? null,
         grupo: CATEGORIA_LABEL.ajuste,
       })
     }
@@ -633,6 +650,7 @@ export default function CajaPage() {
     const mapa = new Map<string, { nombre: string; ingreso: number; egreso: number }>()
     for (const m of movimientos) {
       if (!CATEGORIAS_CON_CUENTA.includes(m.categoria)) continue
+      if (m.cuentaEspecial === 'caja_fuerte') continue // se muestra aparte, en su propia tarjeta
       const key = m.metodoPagoId ?? 'sin_metodo'
       const nombre = m.metodoPago ?? 'Sin método especificado'
       if (!mapa.has(key)) mapa.set(key, { nombre, ingreso: 0, egreso: 0 })
@@ -643,12 +661,21 @@ export default function CajaPage() {
     return [...mapa.values()].sort((a, b) => (b.ingreso - b.egreso) - (a.ingreso - a.egreso))
   }, [movimientos])
 
-  // "Caja fuerte" no es un método de pago del catálogo, es el destino del botón
-  // "Transferir a caja fuerte" — se identifica por la descripción del gasto.
-  const cajaFuerteIngreso = useMemo(() => {
-    return movimientos
-      .filter((m) => m.categoria === 'gasto' && m.concepto.trim().toLowerCase().startsWith(TRANSFERENCIA_CAJA_FUERTE))
-      .reduce((s, m) => s + Math.abs(m.monto), 0)
+  // "Caja fuerte" no es un método de pago del catálogo, es una cuenta independiente
+  // donde Gerencia guarda parte del dinero. Se alimenta de las transferencias hechas
+  // con el botón "Transferir a caja fuerte" (un gasto en la cuenta de origen) y de los
+  // ajustes de caja registrados directamente contra "Caja fuerte".
+  const cajaFuerte = useMemo(() => {
+    let ingreso = 0, egreso = 0
+    for (const m of movimientos) {
+      if (m.categoria === 'gasto' && m.concepto.trim().toLowerCase().startsWith(TRANSFERENCIA_CAJA_FUERTE)) {
+        ingreso += Math.abs(m.monto)
+      } else if (m.cuentaEspecial === 'caja_fuerte') {
+        if (m.monto >= 0) ingreso += m.monto
+        else egreso += Math.abs(m.monto)
+      }
+    }
+    return { ingreso, egreso }
   }, [movimientos])
 
   /* Vista "Por método de pago": una fila por (orden, categoría, método) — si un mismo
@@ -887,10 +914,12 @@ export default function CajaPage() {
             return (
               <div className={`${color.bg} rounded-xl border ${color.border} p-5`}>
                 <p className="text-xs text-gray-500 mb-1">Caja fuerte</p>
-                <p className="text-2xl font-bold font-mono text-gray-900">{formatCOP(cajaFuerteIngreso)}</p>
+                <p className={`text-2xl font-bold font-mono ${cajaFuerte.ingreso - cajaFuerte.egreso >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                  {formatCOP(cajaFuerte.ingreso - cajaFuerte.egreso)}
+                </p>
                 <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
-                  <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(cajaFuerteIngreso)}</span></span>
-                  <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(0)}</span></span>
+                  <span>Ingreso: <span className="text-emerald-700 font-semibold">{formatCOP(cajaFuerte.ingreso)}</span></span>
+                  <span>Gasto: <span className="text-red-600 font-semibold">{formatCOP(cajaFuerte.egreso)}</span></span>
                 </div>
               </div>
             )
@@ -963,7 +992,7 @@ export default function CajaPage() {
                   <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${
                     m.categoria === 'ajuste' ? 'text-gray-700' : m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'
                   }`}>
-                    {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
+                    {ocultarMontoAjuste(m.categoria) ? '•••••••' : `${m.monto >= 0 ? '+' : ''}${formatCOP(m.monto)}`}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap space-x-2">
                     {m.categoria === 'gasto' && puedeEditarGastos && (
@@ -1028,7 +1057,7 @@ export default function CajaPage() {
                   <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${
                     f.categoria === 'ajuste' ? 'text-gray-700' : f.monto >= 0 ? 'text-emerald-700' : 'text-red-600'
                   }`}>
-                    {f.monto >= 0 ? '+' : ''}{formatCOP(f.monto)}
+                    {ocultarMontoAjuste(f.categoria) ? '•••••••' : `${f.monto >= 0 ? '+' : ''}${formatCOP(f.monto)}`}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap space-x-2">
                     {f.categoria === 'gasto' && puedeEditarGastos && (
