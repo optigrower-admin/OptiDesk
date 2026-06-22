@@ -64,12 +64,15 @@ export async function upsertMotoCliente({
 
       if (existing) {
         finalClienteId = (existing as { id: string }).id
-        // Actualizar solo campos que vienen con valor (no pisar con vacíos)
-        const updateData: Record<string, string | null> = {}
-        if (clienteNombre) updateData.nombre = clienteNombre
-        if (celular)       updateData.celular = celular
-        if (Object.keys(updateData).length > 0) {
-          await supabase.from('clientes').update(updateData).eq('id', finalClienteId)
+        // Actualizar solo campos que vienen con valor (no pisar con vacíos).
+        // Vía RPC (no UPDATE directo) por la misma razón que el paso 3: la
+        // política RLS de clientes solo permite UPDATE a admin/gerencia.
+        if (clienteNombre || celular) {
+          await supabase.rpc('actualizar_cliente_orden', {
+            p_cliente_id: finalClienteId,
+            p_nombre: clienteNombre || null,
+            p_celular: celular || null,
+          })
         }
       }
     }
@@ -92,6 +95,10 @@ export async function upsertMotoCliente({
   // 3. Vincular moto ↔ cliente — si el cliente cambió (la moto pasó de dueño),
   //    se actualiza igual; el trigger registrar_cambio_propietario() ya
   //    registra el cambio en historial_propietarios_moto automáticamente.
+  //    Se usa el RPC vincular_moto_cliente (SECURITY DEFINER) y no un UPDATE
+  //    directo porque la política RLS de motos solo permite UPDATE a
+  //    admin/gerencia — un mecánico creando la orden no podría dejar
+  //    asignado el propietario si se hiciera con el cliente normal.
   if (finalMotoId && finalClienteId) {
     const { data: motoData } = await supabase
       .from('motos')
@@ -100,7 +107,7 @@ export async function upsertMotoCliente({
       .maybeSingle()
     const clienteActual = (motoData as { cliente_id: string | null } | null)?.cliente_id ?? null
     if (clienteActual !== finalClienteId) {
-      await supabase.from('motos').update({ cliente_id: finalClienteId }).eq('id', finalMotoId)
+      await supabase.rpc('vincular_moto_cliente', { p_moto_id: finalMotoId, p_cliente_id: finalClienteId })
     }
   }
 
