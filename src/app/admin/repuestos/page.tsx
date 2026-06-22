@@ -8,7 +8,7 @@ import { formatCOP } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
 import { registrarAuditoria } from '@/lib/audit'
 import { ImportadorExcel } from '@/components/ImportadorExcel'
-import { importarVentaRepuestos } from '@/lib/bulkImport'
+import { importarVentaRepuestos, previsualizarVentaRepuestos } from '@/lib/bulkImport'
 
 type Tab = 'catalogo' | 'ventas'
 type FiltroOrigen = 'todos' | 'uma' | 'terceros'
@@ -405,6 +405,7 @@ export default function AdminRepuestosPage() {
             'Monto pagado: si lo dejas vacío o en 0, la venta queda "pendiente" de pago. Si es igual o mayor al total, queda "pagado". Si es menor, queda "abono".',
             'Si el Cliente o la Cédula no existen todavía en el sistema, se crean automáticamente.',
           ]}
+          vistaPrevia={previsualizarVentaRepuestos}
           procesarFilas={(filas) => importarVentaRepuestos(supabase, profile!.tenant_id, profile!.id, filas)}
           onCompletado={cargarVentas}
         />

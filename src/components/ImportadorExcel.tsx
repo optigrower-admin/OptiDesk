@@ -7,6 +7,12 @@ export interface ResultadoImportacion {
   errores: { fila: number; mensaje: string }[]
 }
 
+export interface TarjetaPreview {
+  titulo: string
+  lineas: string[]
+  error?: string
+}
+
 export type ObligatoriedadColumna = 'si' | 'no' | 'condicional'
 
 const COLOR_OBLIGATORIEDAD: Record<ObligatoriedadColumna, string> = {
@@ -29,12 +35,14 @@ interface ImportadorExcelProps {
   obligatoriedad?: ObligatoriedadColumna[]
   filasEjemplo: string[][]
   notas?: string[]
+  /** Si se pasa, la vista previa muestra estas tarjetas (cómo quedaría cada registro en OptiDesk) en vez de la tabla cruda del Excel. */
+  vistaPrevia?: (filas: Record<string, string>[]) => TarjetaPreview[]
   procesarFilas: (filas: Record<string, string>[]) => Promise<ResultadoImportacion>
   onCompletado?: () => void
 }
 
 export function ImportadorExcel({
-  titulo, descripcion, nombreArchivoPlantilla, encabezados, obligatoriedad, filasEjemplo, notas, procesarFilas, onCompletado,
+  titulo, descripcion, nombreArchivoPlantilla, encabezados, obligatoriedad, filasEjemplo, notas, vistaPrevia, procesarFilas, onCompletado,
 }: ImportadorExcelProps) {
   const [abierto, setAbierto] = useState(false)
   const [filas, setFilas] = useState<Record<string, string>[]>([])
@@ -124,6 +132,7 @@ export function ImportadorExcel({
   }
 
   const columnasPreview = filas.length ? Object.keys(filas[0]) : []
+  const tarjetasPreview = previewAbierto && vistaPrevia ? vistaPrevia(filas) : null
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -195,7 +204,9 @@ export function ImportadorExcel({
           <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[85vh] flex flex-col">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-800">
-                Vista previa — {filas.length} fila{filas.length !== 1 ? 's' : ''} que se van a importar
+                {tarjetasPreview
+                  ? `Vista previa — ${tarjetasPreview.length} registro${tarjetasPreview.length !== 1 ? 's' : ''} que se van a crear/actualizar`
+                  : `Vista previa — ${filas.length} fila${filas.length !== 1 ? 's' : ''} que se van a importar`}
               </h3>
               <button onClick={() => setPreviewAbierto(false)} className="text-gray-400 hover:text-gray-600">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -204,29 +215,48 @@ export function ImportadorExcel({
               </button>
             </div>
             <p className="px-4 pt-2 text-xs text-gray-500">
-              Revisa que los datos detectados sean correctos antes de guardarlos en el sistema. Si algo está mal, cancela, corrige el Excel y vuelve a elegirlo.
+              {tarjetasPreview
+                ? 'Así quedaría cada registro en OptiDesk. Revisa que todo esté correcto antes de guardar — si algo está mal, cancela, corrige el Excel y vuelve a elegirlo.'
+                : 'Revisa que los datos detectados sean correctos antes de guardarlos en el sistema. Si algo está mal, cancela, corrige el Excel y vuelve a elegirlo.'}
             </p>
             <div className="flex-1 overflow-auto p-4">
-              <table className="text-xs border-collapse w-full">
-                <thead>
-                  <tr>
-                    <th className="sticky top-0 bg-gray-100 border border-gray-200 px-2 py-1.5 text-left text-gray-500 font-semibold">#</th>
-                    {columnasPreview.map((col) => (
-                      <th key={col} className="sticky top-0 bg-gray-100 border border-gray-200 px-2 py-1.5 text-left text-gray-700 font-semibold whitespace-nowrap">{col}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filas.map((fila, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="border border-gray-200 px-2 py-1 text-gray-400">{i + 2}</td>
+              {tarjetasPreview ? (
+                <div className="space-y-2">
+                  {tarjetasPreview.map((t, i) => (
+                    <div key={i} className={`border rounded-lg p-3 text-xs ${t.error ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
+                      <p className={`font-semibold mb-1 ${t.error ? 'text-red-700' : 'text-gray-800'}`}>{t.titulo}</p>
+                      {t.error ? (
+                        <p className="text-red-600">⚠ No se importará: {t.error}</p>
+                      ) : (
+                        <div className="text-gray-600 space-y-0.5">
+                          {t.lineas.map((linea, j) => <p key={j} className="whitespace-pre-wrap">{linea}</p>)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <table className="text-xs border-collapse w-full">
+                  <thead>
+                    <tr>
+                      <th className="sticky top-0 bg-gray-100 border border-gray-200 px-2 py-1.5 text-left text-gray-500 font-semibold">#</th>
                       {columnasPreview.map((col) => (
-                        <td key={col} className="border border-gray-200 px-2 py-1 text-gray-700 whitespace-nowrap">{fila[col]}</td>
+                        <th key={col} className="sticky top-0 bg-gray-100 border border-gray-200 px-2 py-1.5 text-left text-gray-700 font-semibold whitespace-nowrap">{col}</th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filas.map((fila, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="border border-gray-200 px-2 py-1 text-gray-400">{i + 2}</td>
+                        {columnasPreview.map((col) => (
+                          <td key={col} className="border border-gray-200 px-2 py-1 text-gray-700 whitespace-nowrap">{fila[col]}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
             <div className="px-4 py-3 border-t border-gray-100 flex justify-end gap-2">
               <button onClick={() => setPreviewAbierto(false)}

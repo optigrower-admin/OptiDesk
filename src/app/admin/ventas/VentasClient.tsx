@@ -8,7 +8,7 @@ import PipelineKanban from './components/PipelineKanban'
 import VistaHoy from './components/VistaHoy'
 import VistaLista from './components/VistaLista'
 import { ImportadorExcel } from '@/components/ImportadorExcel'
-import { importarSeguimientoVentas } from '@/lib/bulkImport'
+import { importarSeguimientoVentas, previsualizarSeguimientoVentas } from '@/lib/bulkImport'
 
 type Tab = 'kanban' | 'hoy' | 'lista'
 
@@ -196,6 +196,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
               'Si el Número de documento o el Celular ya existen en el sistema, se actualiza ese cliente con los datos de la fila en vez de crear uno nuevo.',
               'El cliente queda marcado automáticamente para aparecer en Seguimiento Ventas.',
             ]}
+            vistaPrevia={previsualizarSeguimientoVentas}
             procesarFilas={(filas) => importarSeguimientoVentas(supabase, tenantId, profile!.id, filas)}
             onCompletado={() => window.location.reload()}
           />

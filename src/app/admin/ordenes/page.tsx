@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { OrderStatus } from '@/components/OrderStatus'
 import { normalizarPlaca, formatCOP } from '@/lib/utils'
 import { ImportadorExcel } from '@/components/ImportadorExcel'
-import { importarServicioTecnico } from '@/lib/bulkImport'
+import { importarServicioTecnico, previsualizarServicioTecnico } from '@/lib/bulkImport'
 
 function formatFechaPlaca(iso: string): string {
   const d = new Date(iso)
@@ -356,6 +356,7 @@ export default function AdminOrdenesPage() {
             'Monto pagado: si lo dejas vacío o en 0, la orden queda como "pendiente" de pago. Si es igual o mayor al total, queda "pagado". Si es menor, queda "abono".',
             'Si la Placa o la Cédula no existen todavía en el sistema, se crean automáticamente igual que al registrar una orden manualmente.',
           ]}
+          vistaPrevia={previsualizarServicioTecnico}
           procesarFilas={(filas) => importarServicioTecnico(supabase, profile!.tenant_id, profile!.id, filas)}
         />
       )}

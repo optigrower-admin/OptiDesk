@@ -3,7 +3,11 @@ import { upsertMotoCliente } from '@/lib/clienteMoto'
 import { normalizarPlaca } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
 import { registrarSalida } from '@/lib/movimientos'
-import type { ResultadoImportacion } from '@/components/ImportadorExcel'
+import type { ResultadoImportacion, TarjetaPreview } from '@/components/ImportadorExcel'
+
+function formatMoney(n: number): string {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
+}
 
 function parseFecha(s: string): string | null {
   const m = String(s ?? '').trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
@@ -49,6 +53,127 @@ const ESTADO_ALIASES: Record<string, string> = {
   listo: 'listo',
 }
 
+const ESTADO_LABEL: Record<string, string> = { en_proceso: 'En proceso', pendiente: 'Pendiente', pagado: 'Pagado', listo: 'Finalizado' }
+const ESTADO_PAGO_LABEL: Record<string, string> = { pendiente: 'Pendiente', abono: 'Abono', pagado: 'Pagado' }
+
+interface ItemPreparado { descripcion: string; origen: string; cantidad: number; costo: number; precio_venta: number; codigoUma: string; codigoExterno: string; proveedor: string }
+
+interface GrupoOrdenPreparado {
+  referencia: string
+  filaIdxBase: number
+  fechaISO: string
+  cliente: string
+  placa: string | null
+  cedula: string | null
+  celular: string | null
+  estado: string
+  items: ItemPreparado[]
+  valorTotal: number
+  montoPagado: number
+  estadoPago: string
+}
+
+type ResultadoGrupo = { ok: true; grupo: GrupoOrdenPreparado } | { ok: false; mensaje: string }
+
+function prepararGrupoOrden(referencia: string, grupoFilas: Record<string, string>[], filaIdxBase: number, tipoOrden: 'servicio' | 'venta_repuestos'): ResultadoGrupo {
+  const origenesValidos = tipoOrden === 'servicio' ? ORIGENES_ST : ORIGENES_VENTA
+  const cab = grupoFilas[0]
+  const fechaISO = parseFecha(valorColumna(cab, 'Fecha de la orden (DD/MM/AAAA)', 'Fecha de la venta (DD/MM/AAAA)', 'Fecha (DD/MM/AAAA)'))
+  if (!fechaISO) return { ok: false, mensaje: 'fecha inválida, usa DD/MM/AAAA' }
+
+  const cliente = String(cab['Cliente'] ?? '').trim()
+  if (!cliente) return { ok: false, mensaje: 'falta el nombre del Cliente' }
+
+  const placaRaw = String(cab['Placa'] ?? cab['Placa (opcional)'] ?? '').trim()
+  const placa = placaRaw ? normalizarPlaca(placaRaw) : null
+  if (tipoOrden === 'servicio' && !placa) return { ok: false, mensaje: 'falta la Placa' }
+
+  const cedula = String(cab['Cedula'] ?? '').trim() || null
+  const celular = String(cab['Celular'] ?? '').trim() || null
+
+  let estado = 'listo'
+  if (tipoOrden === 'servicio') {
+    const estadoRaw = String(cab['Estado (en_proceso/pendiente/pagado/finalizado)'] ?? cab['Estado (en_proceso/pendiente/listo)'] ?? '').trim().toLowerCase()
+    const estadoResuelto = ESTADO_ALIASES[estadoRaw]
+    if (!estadoResuelto) return { ok: false, mensaje: 'falta el Estado o no es válido — usa en_proceso, pendiente, pagado o finalizado' }
+    estado = estadoResuelto
+  }
+
+  // Validar items de este grupo (son opcionales: una Referencia sin ítems igual crea la orden/entrada para esa moto)
+  const items: ItemPreparado[] = []
+  let mensajeError: string | null = null
+  grupoFilas.forEach((fila, i) => {
+    if (mensajeError) return
+    const descripcion = String(fila['Descripcion del item'] ?? '').trim()
+    const origen = String(fila['Origen (uma/externo/mano_obra/insumo)'] ?? fila['Origen (uma/externo)'] ?? '').trim().toLowerCase()
+    if (!descripcion && !origen) return // fila sin ítem (solo trae los datos de la orden), se ignora sin error
+    if (!descripcion) { mensajeError = `fila ${filaIdxBase + i}: falta la Descripción del ítem`; return }
+    if (!origenesValidos.includes(origen)) { mensajeError = `fila ${filaIdxBase + i}: Origen "${origen}" inválido — usa: ${origenesValidos.join(', ')}`; return }
+    const codigoUma = String(fila['Codigo UMA (si Origen=uma)'] ?? '').trim()
+    if (origen === 'uma' && !codigoUma) { mensajeError = `fila ${filaIdxBase + i}: Origen "uma" requiere el Código UMA del catálogo`; return }
+    items.push({
+      descripcion, origen,
+      cantidad: parseNum(fila['Cantidad']) || 1,
+      costo: parseNum(fila['Costo proveedor']),
+      precio_venta: parseNum(fila['Precio de venta']),
+      codigoUma,
+      codigoExterno: String(fila['Codigo externo (opcional, si Origen=externo)'] ?? '').trim(),
+      proveedor: String(fila['Proveedor (opcional, si Origen=externo)'] ?? '').trim(),
+    })
+  })
+  if (mensajeError) return { ok: false, mensaje: mensajeError }
+
+  const valorTotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+  const montoPagadoCol = cab['Monto pagado (solo en la primera fila de cada orden)'] ?? cab['Monto pagado (solo en la primera fila de cada venta)']
+  const montoPagado = Math.min(parseNum(montoPagadoCol), valorTotal)
+  const estadoPago = montoPagado <= 0 ? 'pendiente' : montoPagado >= valorTotal ? 'pagado' : 'abono'
+
+  return { ok: true, grupo: { referencia, filaIdxBase, fechaISO, cliente, placa, cedula, celular, estado, items, valorTotal, montoPagado, estadoPago } }
+}
+
+function previsualizarOrdenes(filas: Record<string, string>[], tipoOrden: 'servicio' | 'venta_repuestos'): TarjetaPreview[] {
+  const grupos = agrupar(filas, 'Referencia (la inventas tú, ej: 1)', 'Referencia')
+  const tarjetas: TarjetaPreview[] = []
+  for (const [referencia, grupoFilas] of grupos) {
+    const filaIdxBase = filas.indexOf(grupoFilas[0]) + 2
+    if (!referencia) { tarjetas.push({ titulo: `Fila ${filaIdxBase}`, lineas: [], error: 'Falta la Referencia que agrupa las filas de la orden' }); continue }
+    const resultado = prepararGrupoOrden(referencia, grupoFilas, filaIdxBase, tipoOrden)
+    if (!resultado.ok) { tarjetas.push({ titulo: `Referencia ${referencia}`, lineas: [], error: resultado.mensaje }); continue }
+    const g = resultado.grupo
+    const fechaLegible = new Date(g.fechaISO).toLocaleDateString('es-CO')
+    const lineas: string[] = [`Fecha: ${fechaLegible}`]
+    if (tipoOrden === 'servicio') lineas.push(`Estado: ${ESTADO_LABEL[g.estado] ?? g.estado}`)
+    if (g.cedula) lineas.push(`Cédula: ${g.cedula}`)
+    if (g.celular) lineas.push(`Celular: ${g.celular}`)
+    if (g.items.length === 0) {
+      lineas.push('Sin ítems — se crea la orden vacía, podrás agregarle repuestos/mano de obra después')
+    } else {
+      lineas.push(`Ítems (${g.items.length}):`)
+      g.items.forEach((it) => {
+        const detalleCosto = it.origen === 'uma' ? '' : ` · costo proveedor ${formatMoney(it.costo)}`
+        lineas.push(`  • ${it.descripcion} (${it.origen}) x${it.cantidad} — venta ${formatMoney(it.precio_venta)}${detalleCosto}`)
+      })
+    }
+    lineas.push(`Total: ${formatMoney(g.valorTotal)}`)
+    lineas.push(g.montoPagado > 0
+      ? `Pago: ${formatMoney(g.montoPagado)} → queda como "${ESTADO_PAGO_LABEL[g.estadoPago] ?? g.estadoPago}"`
+      : 'Pago: sin pago registrado (queda "Pendiente")')
+    tarjetas.push({
+      titulo: tipoOrden === 'servicio' ? `Orden — Placa ${g.placa} — ${g.cliente}` : `Venta — ${g.cliente}`,
+      lineas,
+    })
+  }
+  return tarjetas
+}
+
+export function previsualizarServicioTecnico(filas: Record<string, string>[]): TarjetaPreview[] {
+  return previsualizarOrdenes(filas, 'servicio')
+}
+
+export function previsualizarVentaRepuestos(filas: Record<string, string>[]): TarjetaPreview[] {
+  return previsualizarOrdenes(filas, 'venta_repuestos')
+}
+
 interface ImportarOrdenesParams {
   supabase: SupabaseClient
   tenantId: string
@@ -61,56 +186,14 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
   const errores: { fila: number; mensaje: string }[] = []
   let exitosos = 0
   const grupos = agrupar(filas, 'Referencia (la inventas tú, ej: 1)', 'Referencia')
-  const origenesValidos = tipoOrden === 'servicio' ? ORIGENES_ST : ORIGENES_VENTA
 
   for (const [referencia, grupoFilas] of grupos) {
     const filaIdxBase = filas.indexOf(grupoFilas[0]) + 2 // +2: encabezado + 1-index
     if (!referencia) { errores.push({ fila: filaIdxBase, mensaje: 'Falta la Referencia que agrupa las filas de la orden' }); continue }
 
-    const cab = grupoFilas[0]
-    const fechaISO = parseFecha(valorColumna(cab, 'Fecha de la orden (DD/MM/AAAA)', 'Fecha de la venta (DD/MM/AAAA)', 'Fecha (DD/MM/AAAA)'))
-    if (!fechaISO) { errores.push({ fila: filaIdxBase, mensaje: `Referencia ${referencia}: fecha inválida, usa DD/MM/AAAA` }); continue }
-
-    const cliente = String(cab['Cliente'] ?? '').trim()
-    if (!cliente) { errores.push({ fila: filaIdxBase, mensaje: `Referencia ${referencia}: falta el nombre del Cliente` }); continue }
-
-    const placaRaw = String(cab['Placa'] ?? cab['Placa (opcional)'] ?? '').trim()
-    const placa = placaRaw ? normalizarPlaca(placaRaw) : null
-    if (tipoOrden === 'servicio' && !placa) { errores.push({ fila: filaIdxBase, mensaje: `Referencia ${referencia}: falta la Placa` }); continue }
-
-    const cedula = String(cab['Cedula'] ?? '').trim() || null
-    const celular = String(cab['Celular'] ?? '').trim() || null
-
-    let estado = 'listo'
-    if (tipoOrden === 'servicio') {
-      const estadoRaw = String(cab['Estado (en_proceso/pendiente/pagado/finalizado)'] ?? cab['Estado (en_proceso/pendiente/listo)'] ?? '').trim().toLowerCase()
-      const estadoResuelto = ESTADO_ALIASES[estadoRaw]
-      if (!estadoResuelto) { errores.push({ fila: filaIdxBase, mensaje: `Referencia ${referencia}: falta el Estado o no es válido — usa en_proceso, pendiente, pagado o finalizado` }); continue }
-      estado = estadoResuelto
-    }
-
-    // Validar items de este grupo (son opcionales: una Referencia sin ítems igual crea la orden/entrada para esa moto)
-    const itemsValidados: { descripcion: string; origen: string; cantidad: number; costo: number; precio_venta: number; codigoUma: string; codigoExterno: string; proveedor: string }[] = []
-    let filaError = false
-    grupoFilas.forEach((fila, i) => {
-      const descripcion = String(fila['Descripcion del item'] ?? '').trim()
-      const origen = String(fila['Origen (uma/externo/mano_obra/insumo)'] ?? fila['Origen (uma/externo)'] ?? '').trim().toLowerCase()
-      if (!descripcion && !origen) return // fila sin ítem (solo trae los datos de la orden), se ignora sin error
-      if (!descripcion) { errores.push({ fila: filaIdxBase + i, mensaje: 'Falta la Descripción del ítem' }); filaError = true; return }
-      if (!origenesValidos.includes(origen)) { errores.push({ fila: filaIdxBase + i, mensaje: `Origen "${origen}" inválido — usa: ${origenesValidos.join(', ')}` }); filaError = true; return }
-      const codigoUma = String(fila['Codigo UMA (si Origen=uma)'] ?? '').trim()
-      if (origen === 'uma' && !codigoUma) { errores.push({ fila: filaIdxBase + i, mensaje: 'Origen "uma" requiere el Código UMA del catálogo' }); filaError = true; return }
-      itemsValidados.push({
-        descripcion, origen,
-        cantidad: parseNum(fila['Cantidad']) || 1,
-        costo: parseNum(fila['Costo proveedor']),
-        precio_venta: parseNum(fila['Precio de venta']),
-        codigoUma,
-        codigoExterno: String(fila['Codigo externo (opcional, si Origen=externo)'] ?? '').trim(),
-        proveedor: String(fila['Proveedor (opcional, si Origen=externo)'] ?? '').trim(),
-      })
-    })
-    if (filaError) continue
+    const resultado = prepararGrupoOrden(referencia, grupoFilas, filaIdxBase, tipoOrden)
+    if (!resultado.ok) { errores.push({ fila: filaIdxBase, mensaje: `Referencia ${referencia}: ${resultado.mensaje}` }); continue }
+    const { fechaISO, cliente, placa, cedula, celular, estado, items: itemsValidados, valorTotal, montoPagado, estadoPago } = resultado.grupo
 
     try {
       const { motoId, clienteId } = await upsertMotoCliente({
@@ -173,11 +256,6 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
           repuesto_uma_id: repuestoUmaId, repuesto_externo_id: repuestoExternoId,
         })
       }
-
-      const valorTotal = itemsResueltos.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-      const montoPagadoCol = cab['Monto pagado (solo en la primera fila de cada orden)'] ?? cab['Monto pagado (solo en la primera fila de cada venta)']
-      const montoPagado = Math.min(parseNum(montoPagadoCol), valorTotal)
-      const estadoPago = montoPagado <= 0 ? 'pendiente' : montoPagado >= valorTotal ? 'pagado' : 'abono'
 
       const { data: ordenData, error: ordenErr } = await supabase
         .from('ordenes')
@@ -275,6 +353,47 @@ export async function importarVentaRepuestos(supabase: SupabaseClient, tenantId:
 
 const TIPOS_DOCUMENTO = ['CC', 'TI', 'CE', 'PASAPORTE', 'NIT', 'RC', 'PEP']
 const ETAPAS_VENTA = ['nuevo', 'calificado', 'demo', 'propuesta', 'negociacion', 'ganado', 'en_matricula', 'alistamiento', 'espera_entrega', 'entregada', 'perdido']
+const ETAPA_LABEL: Record<string, string> = {
+  nuevo: 'Nuevo', calificado: 'Calificado', demo: 'Demo', propuesta: 'Propuesta', negociacion: 'Negociación',
+  ganado: 'Ganado', en_matricula: 'En matrícula', alistamiento: 'Alistamiento', espera_entrega: 'Espera de entrega',
+  entregada: 'Entregada', perdido: 'Perdido',
+}
+
+export function previsualizarSeguimientoVentas(filas: Record<string, string>[]): TarjetaPreview[] {
+  return filas.map((fila, i) => {
+    const filaIdx = i + 2
+    const primerNombre = String(fila['Primer nombre'] ?? '').trim()
+    const primerApellido = String(fila['Primer apellido'] ?? '').trim()
+    if (!primerNombre || !primerApellido) {
+      return { titulo: `Fila ${filaIdx}`, lineas: [], error: 'Faltan Primer nombre y/o Primer apellido' }
+    }
+    const segundoNombre = String(fila['Segundo nombre'] ?? '').trim()
+    const segundoApellido = String(fila['Segundo apellido'] ?? '').trim()
+    const nombre = [primerNombre, segundoNombre, primerApellido, segundoApellido].filter(Boolean).join(' ')
+
+    const tipoDocRaw = String(fila['Tipo de documento (CC/TI/CE/PASAPORTE/NIT/RC/PEP)'] ?? '').trim().toUpperCase()
+    const tipoDocumento = TIPOS_DOCUMENTO.includes(tipoDocRaw) ? tipoDocRaw : 'CC'
+    const cedula = String(fila['Numero de documento'] ?? '').trim()
+    const celular = String(fila['Celular'] ?? '').trim()
+    const email = String(fila['Email'] ?? '').trim()
+    const etapaRaw = String(fila['Etapa (nuevo/calificado/demo/propuesta/negociacion/ganado/en_matricula/alistamiento/espera_entrega/entregada/perdido)'] ?? '').trim().toLowerCase()
+    const etapaVenta = ETAPAS_VENTA.includes(etapaRaw) ? etapaRaw : 'nuevo'
+    const valorEstimado = parseNum(fila['Valor estimado de venta'])
+    const proximaAccion = String(fila['Proxima accion'] ?? '').trim()
+    const proximaAccionFecha = String(fila['Fecha proxima accion (DD/MM/AAAA)'] ?? '').trim()
+
+    const lineas: string[] = []
+    lineas.push(cedula ? `Documento: ${tipoDocumento} ${cedula}` : `Documento: ${tipoDocumento} (sin número)`)
+    if (celular) lineas.push(`Celular: ${celular}`)
+    if (email) lineas.push(`Email: ${email}`)
+    lineas.push(`Etapa: ${ETAPA_LABEL[etapaVenta] ?? etapaVenta}`)
+    if (valorEstimado > 0) lineas.push(`Valor estimado de venta: ${formatMoney(valorEstimado)}`)
+    if (proximaAccion) lineas.push(`Próxima acción: ${proximaAccion}${proximaAccionFecha ? ` (${proximaAccionFecha})` : ''}`)
+    lineas.push((cedula || celular) ? 'Si el documento o celular ya existen, se actualiza ese cliente en vez de crear uno nuevo.' : 'Se creará como cliente nuevo en Seguimiento Ventas.')
+
+    return { titulo: nombre, lineas }
+  })
+}
 
 export async function importarSeguimientoVentas(supabase: SupabaseClient, tenantId: string, usuarioId: string, filas: Record<string, string>[]): Promise<ResultadoImportacion> {
   const errores: { fila: number; mensaje: string }[] = []
