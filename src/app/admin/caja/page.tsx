@@ -383,6 +383,8 @@ function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
 }
 
 const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'gasto', 'costo_lavado', 'costo_externo', 'ajuste']
+const INGRESO_CATEGORIAS: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_insumo', 'ingreso_lavado', 'ingreso_externo']
+const GASTO_CATEGORIAS: Categoria[] = ['costo_externo', 'costo_lavado', 'gasto']
 
 // Construye la lista de movimientos para un tenant. Si desdeISO/hastaISO son null no se
 // filtra por fecha (uso para el saldo histórico, que no depende del período seleccionado).
@@ -713,12 +715,14 @@ export default function CajaPage() {
   // Saldo actual (histórico, no depende del período seleccionado) por cuenta y de
   // Caja fuerte — se calcula sobre movimientosTotales (todos los movimientos sin filtrar).
   const saldosCuentas = useMemo(() => {
-    const mapa = new Map<string, number>()
+    const mapa = new Map<string, { nombre: string; saldo: number }>()
     for (const m of movimientosTotales) {
       if (!CATEGORIAS_CON_CUENTA.includes(m.categoria)) continue
       if (m.cuentaEspecial === 'caja_fuerte') continue
       const key = m.metodoPagoId ?? 'sin_metodo'
-      mapa.set(key, (mapa.get(key) ?? 0) + m.monto)
+      const nombre = m.metodoPago ?? 'Sin método especificado'
+      if (!mapa.has(key)) mapa.set(key, { nombre, saldo: 0 })
+      mapa.get(key)!.saldo += m.monto
     }
     return mapa
   }, [movimientosTotales])
@@ -774,10 +778,42 @@ export default function CajaPage() {
   const totalGastos = movimientos
     .filter(m => m.categoria === 'costo_externo' || m.categoria === 'costo_lavado' || m.categoria === 'gasto')
     .reduce((s, m) => s + Math.abs(m.monto), 0)
-  const totalAjustes = movimientos
-    .filter(m => m.categoria === 'ajuste')
-    .reduce((s, m) => s + m.monto, 0)
-  const montoEnCaja = totalIngresos - totalGastos + totalAjustes
+
+  // Desglose por cuenta del ingreso/gasto del período (para la vista "Total"), con las
+  // mismas categorías que totalIngresos/totalGastos para que la suma de las filas
+  // siempre coincida con el número grande.
+  const ingresosPorCuenta = useMemo(() => {
+    const mapa = new Map<string, { nombre: string; total: number }>()
+    for (const m of movimientos) {
+      if (!INGRESO_CATEGORIAS.includes(m.categoria)) continue
+      const key = m.metodoPagoId ?? 'sin_metodo'
+      const nombre = m.metodoPago ?? 'Sin método especificado'
+      if (!mapa.has(key)) mapa.set(key, { nombre, total: 0 })
+      mapa.get(key)!.total += m.monto
+    }
+    return [...mapa.values()].sort((a, b) => b.total - a.total)
+  }, [movimientos])
+
+  const gastosPorCuenta = useMemo(() => {
+    const mapa = new Map<string, { nombre: string; total: number }>()
+    for (const m of movimientos) {
+      if (!GASTO_CATEGORIAS.includes(m.categoria)) continue
+      const key = m.metodoPagoId ?? 'sin_metodo'
+      const nombre = m.metodoPago ?? 'Sin método especificado'
+      if (!mapa.has(key)) mapa.set(key, { nombre, total: 0 })
+      mapa.get(key)!.total += Math.abs(m.monto)
+    }
+    return [...mapa.values()].sort((a, b) => b.total - a.total)
+  }, [movimientos])
+
+  // Saldo actual total (suma de todas las cuentas, sin caja fuerte) para la vista "Total".
+  const saldoActualTotal = useMemo(() => {
+    let total = 0
+    for (const s of saldosCuentas.values()) total += s.saldo
+    return total
+  }, [saldosCuentas])
+
+  const saldosCuentasOrdenados = useMemo(() => [...saldosCuentas.values()].sort((a, b) => b.saldo - a.saldo), [saldosCuentas])
 
   async function eliminarGasto(m: { rawId: string; concepto: string; monto: number }) {
     if (!confirm(`¿Eliminar "${m.concepto}" por ${formatCOP(Math.abs(m.monto))}?`)) return
@@ -930,19 +966,49 @@ export default function CajaPage() {
 
       {vistaResumen === 'total' && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <p className="text-xs text-gray-400 mb-1">Monto en caja (del período)</p>
-            <p className={`text-2xl font-bold font-mono ${montoEnCaja >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-              {formatCOP(montoEnCaja)}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-3">
+            <p className="text-xs text-gray-400">Monto en caja</p>
+            <p className={`text-3xl font-bold font-mono leading-tight ${saldoActualTotal >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+              {formatCOP(saldoActualTotal)}
             </p>
+            {saldosCuentasOrdenados.length > 0 && (
+              <div className="pt-3 border-t border-gray-100 space-y-1.5">
+                {saldosCuentasOrdenados.map(s => (
+                  <div key={s.nombre} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500">{s.nombre}</span>
+                    <span className={`font-mono font-semibold ${s.saldo >= 0 ? 'text-gray-700' : 'text-red-600'}`}>{formatCOP(s.saldo)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-5">
-            <p className="text-xs text-emerald-600 mb-1">Ingreso del período</p>
-            <p className="text-2xl font-bold font-mono text-emerald-700">{formatCOP(totalIngresos)}</p>
+          <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-5 flex flex-col gap-3">
+            <p className="text-xs text-emerald-600">Ingreso del período</p>
+            <p className="text-3xl font-bold font-mono leading-tight text-emerald-700">{formatCOP(totalIngresos)}</p>
+            {ingresosPorCuenta.length > 0 && (
+              <div className="pt-3 border-t border-emerald-100 space-y-1.5">
+                {ingresosPorCuenta.map(c => (
+                  <div key={c.nombre} className="flex items-center justify-between text-xs">
+                    <span className="text-emerald-600">{c.nombre}</span>
+                    <span className="font-mono font-semibold text-emerald-700">{formatCOP(c.total)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="bg-red-50 rounded-xl border border-red-200 p-5">
-            <p className="text-xs text-red-500 mb-1">Gasto del período</p>
-            <p className="text-2xl font-bold font-mono text-red-700">{formatCOP(totalGastos)}</p>
+          <div className="bg-red-50 rounded-xl border border-red-200 p-5 flex flex-col gap-3">
+            <p className="text-xs text-red-500">Gasto del período</p>
+            <p className="text-3xl font-bold font-mono leading-tight text-red-700">{formatCOP(totalGastos)}</p>
+            {gastosPorCuenta.length > 0 && (
+              <div className="pt-3 border-t border-red-100 space-y-1.5">
+                {gastosPorCuenta.map(c => (
+                  <div key={c.nombre} className="flex items-center justify-between text-xs">
+                    <span className="text-red-500">{c.nombre}</span>
+                    <span className="font-mono font-semibold text-red-600">{formatCOP(c.total)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -954,7 +1020,7 @@ export default function CajaPage() {
           )}
           {cuentas.map((c) => {
             const color = colorCuenta(c.nombre)
-            const saldo = saldosCuentas.get(c.key) ?? 0
+            const saldo = saldosCuentas.get(c.key)?.saldo ?? 0
             return (
               <div key={c.key} className={`${color.bg} rounded-xl border ${color.border} p-5 flex flex-col gap-3`}>
                 <p className="text-xs font-medium text-gray-500">{c.nombre}</p>
