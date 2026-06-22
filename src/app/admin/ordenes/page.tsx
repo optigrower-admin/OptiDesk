@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { OrderStatus } from '@/components/OrderStatus'
 import { normalizarPlaca, formatCOP } from '@/lib/utils'
 import { ImportadorExcel } from '@/components/ImportadorExcel'
+import { ManualesPartesModal } from '@/components/ManualesPartesModal'
 import { importarServicioTecnico, previsualizarServicioTecnico } from '@/lib/bulkImport'
 
 function formatFechaPlaca(iso: string): string {
@@ -66,6 +67,7 @@ export default function AdminOrdenesPage() {
   const [filtroOrdenPendiente, setFiltroOrdenPendiente] = useState(false)
   const [loadingCSV, setLoadingCSV] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
+  const [manualesOpen, setManualesOpen] = useState(false)
   const cancelRef = useRef(false)
   const hasLoadedRef = useRef(false)
 
@@ -307,17 +309,15 @@ export default function AdminOrdenesPage() {
           <p className="text-sm text-gray-500">{totalOrdenes} órdenes · {gruposFiltrados.length} motos</p>
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href="https://notebooklm.google.com/notebook/99d12f71-5452-4237-85d3-8e4381cb3c43/preview"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => setManualesOpen(true)}
             className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s4.332.477 5.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
             Ver Manuales de Partes
-          </a>
+          </button>
           <button
             onClick={handleDescargarCSV}
             disabled={loadingCSV || gruposFiltrados.length === 0}
@@ -697,6 +697,7 @@ export default function AdminOrdenesPage() {
           })}
         </div>
       )}
+      {manualesOpen && <ManualesPartesModal onClose={() => setManualesOpen(false)} />}
     </div>
   )
 }
