@@ -60,6 +60,12 @@ function formatFecha(iso: string): string {
   })
 }
 
+function estadoPagoDeTotales(abono: number, total: number): 'pagado' | 'abono' | 'pendiente' {
+  if (total <= 0 || abono <= 0) return 'pendiente'
+  if (abono >= total) return 'pagado'
+  return 'abono'
+}
+
 const ESTADO_PAGO_COLOR: Record<string, string> = {
   pagado: 'bg-green-100 text-green-700',
   abono: 'bg-amber-100 text-amber-700',
@@ -174,7 +180,9 @@ export default function VentaDetallePage() {
     await supabase.from('items_orden').delete().eq('id', item.id)
     const remaining = items.filter((i) => i.id !== item.id)
     const newTotal = remaining.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-    await supabase.from('ordenes').update({ valor_total: newTotal }).eq('id', ordenId)
+    const newAbono = Math.min(orden?.valor_abono ?? 0, newTotal)
+    const newEstadoPago = estadoPagoDeTotales(newAbono, newTotal)
+    await supabase.from('ordenes').update({ valor_total: newTotal, valor_abono: newAbono, estado_pago: newEstadoPago }).eq('id', ordenId)
     await registrarAuditoria(supabase, {
       tenant_id: profile?.tenant_id ?? '',
       tabla: 'items_orden',
@@ -205,7 +213,9 @@ export default function VentaDetallePage() {
       (s, i) => s + i.precio_venta * i.cantidad,
       0,
     )
-    await supabase.from('ordenes').update({ valor_total: newTotal }).eq('id', ordenId)
+    const newAbono = Math.min(orden?.valor_abono ?? 0, newTotal)
+    const newEstadoPago = estadoPagoDeTotales(newAbono, newTotal)
+    await supabase.from('ordenes').update({ valor_total: newTotal, valor_abono: newAbono, estado_pago: newEstadoPago }).eq('id', ordenId)
     await registrarAuditoria(supabase, {
       tenant_id: profile?.tenant_id ?? '',
       tabla: 'items_orden',
