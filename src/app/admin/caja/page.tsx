@@ -386,6 +386,9 @@ export default function CajaPage() {
   const [vistaTabla, setVistaTabla] = useState<'item' | 'metodo'>('item')
 
   const esGerencia = profile?.rol === 'gerencia'
+  // Editar/eliminar gastos de caja (incluye transferencias) — Gerencia y Admin.
+  // Los ajustes de caja siguen exclusivos de Gerencia (requisito explícito distinto).
+  const puedeEditarGastos = esGerencia || profile?.rol === 'admin'
   const { desde, hasta } = calcularRango(periodo, desdeManual, hastaManual)
 
   const cargar = useCallback(async () => {
@@ -920,7 +923,7 @@ export default function CajaPage() {
                     {m.monto >= 0 ? '+' : ''}{formatCOP(m.monto)}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap space-x-2">
-                    {m.categoria === 'gasto' && esGerencia && (
+                    {m.categoria === 'gasto' && puedeEditarGastos && (
                       <>
                         <button
                           onClick={() => setEditGasto({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId })}
@@ -985,7 +988,7 @@ export default function CajaPage() {
                     {f.monto >= 0 ? '+' : ''}{formatCOP(f.monto)}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap space-x-2">
-                    {f.categoria === 'gasto' && esGerencia && (
+                    {f.categoria === 'gasto' && puedeEditarGastos && (
                       <>
                         <button
                           onClick={() => setEditGasto({ id: f.rawId, descripcion: f.concepto, monto: Math.abs(f.monto), metodoPagoId: f.metodoPagoId })}
