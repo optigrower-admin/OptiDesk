@@ -257,6 +257,7 @@ export default function AdminOrdenDetallePage() {
   const [nuevoPagoNotas, setNuevoPagoNotas] = useState('')
   const [savingPago, setSavingPago] = useState(false)
   const [showPrintModal, setShowPrintModal] = useState(false)
+  const [tipoFactura, setTipoFactura] = useState<'normal' | 'general'>('normal')
   const [tenantNombre, setTenantNombre] = useState('Motospace')
   const [uploadingMedio, setUploadingMedio] = useState(false)
   const [uploadError, setUploadError] = useState('')
@@ -1292,8 +1293,11 @@ export default function AdminOrdenDetallePage() {
     ).join('')
     const lmTotalPrint = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
     const totalConLM = total + lmTotalPrint
+    const esGeneral = tipoFactura === 'general'
+    const nombreEncabezado = esGeneral ? 'Centro de Diagnóstico de Motos' : tenantNombre.toUpperCase()
+    const tituloFactura = esGeneral ? 'REFERENCIA' : 'FACTURA'
     const html = `<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8"><title>Factura #${orden.numero}</title>
+<html lang="es"><head><meta charset="UTF-8"><title>${tituloFactura} #${orden.numero}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:${isTermica ? "'Courier New',monospace" : 'Arial,sans-serif'};font-size:${isTermica ? '11px' : '12px'};color:#000;padding:${margin};width:${isTermica ? '80mm' : 'auto'}}
@@ -1302,10 +1306,10 @@ table{width:100%;border-collapse:collapse}
 .c{text-align:center}.b{font-weight:bold}.sm{font-size:${isTermica ? '9px' : '10px'};color:#555}
 hr{border:none;border-top:${isTermica ? '1px dashed #000' : '1px solid #ccc'};margin:5px 0}
 </style></head><body>
-<div class="c b" style="font-size:${isTermica ? '18px' : '24px'};letter-spacing:3px;margin-bottom:2px">${tenantNombre.toUpperCase()}</div>
+<div class="c b" style="font-size:${isTermica ? '18px' : '24px'};letter-spacing:3px;margin-bottom:2px">${nombreEncabezado.toUpperCase()}</div>
 <div class="c sm" style="margin-bottom:6px">Taller de Motos</div>
 <hr>
-<div class="c b" style="font-size:${isTermica ? '13px' : '16px'};margin:4px 0">FACTURA #${orden.numero}</div>
+<div class="c b" style="font-size:${isTermica ? '13px' : '16px'};margin:4px 0">${tituloFactura} #${orden.numero}</div>
 <hr>
 <table style="margin:4px 0 6px">
 <tr><td class="sm" style="width:42%">Cliente:</td><td class="sm b">${orden.cliente}</td></tr>
@@ -1456,6 +1460,25 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
+              </button>
+            </div>
+            <p className="text-sm text-gray-500">Tipo de factura:</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setTipoFactura('normal')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  tipoFactura === 'normal' ? 'bg-blue-700 text-white border-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Normal
+              </button>
+              <button
+                onClick={() => setTipoFactura('general')}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  tipoFactura === 'general' ? 'bg-blue-700 text-white border-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                General
               </button>
             </div>
             <p className="text-sm text-gray-500">Selecciona el formato de impresión:</p>

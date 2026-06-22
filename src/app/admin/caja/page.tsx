@@ -44,7 +44,7 @@ const CATEGORIA_BADGE: Record<Categoria, string> = {
   ingreso_lavado:  'bg-cyan-100 text-cyan-700',
   ingreso_externo: 'bg-teal-100 text-teal-700',
   costo_externo:   'bg-amber-100 text-amber-700',
-  costo_lavado:    'bg-orange-100 text-orange-700',
+  costo_lavado:    'bg-teal-200 text-teal-800',
   gasto:           'bg-red-100 text-red-700',
   ajuste:          'bg-gray-700 text-white',
 }
