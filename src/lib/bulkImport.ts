@@ -41,7 +41,13 @@ function agrupar(filas: Record<string, string>[], ...posiblesCampos: string[]): 
 
 const ORIGENES_ST = ['uma', 'externo', 'mano_obra', 'insumo']
 const ORIGENES_VENTA = ['uma', 'externo']
-const ESTADOS_ORDEN = ['en_proceso', 'pendiente', 'listo']
+const ESTADO_ALIASES: Record<string, string> = {
+  en_proceso: 'en_proceso',
+  pendiente: 'pendiente',
+  pagado: 'pagado',
+  finalizado: 'listo',
+  listo: 'listo',
+}
 
 interface ImportarOrdenesParams {
   supabase: SupabaseClient
@@ -75,12 +81,21 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
     const cedula = String(cab['Cedula'] ?? '').trim() || null
     const celular = String(cab['Celular'] ?? '').trim() || null
 
-    // Validar items de este grupo
+    let estado = 'listo'
+    if (tipoOrden === 'servicio') {
+      const estadoRaw = String(cab['Estado (en_proceso/pendiente/pagado/finalizado)'] ?? cab['Estado (en_proceso/pendiente/listo)'] ?? '').trim().toLowerCase()
+      const estadoResuelto = ESTADO_ALIASES[estadoRaw]
+      if (!estadoResuelto) { errores.push({ fila: filaIdxBase, mensaje: `Referencia ${referencia}: falta el Estado o no es válido — usa en_proceso, pendiente, pagado o finalizado` }); continue }
+      estado = estadoResuelto
+    }
+
+    // Validar items de este grupo (son opcionales: una Referencia sin ítems igual crea la orden/entrada para esa moto)
     const itemsValidados: { descripcion: string; origen: string; cantidad: number; costo: number; precio_venta: number; codigoUma: string; codigoExterno: string; proveedor: string }[] = []
     let filaError = false
     grupoFilas.forEach((fila, i) => {
       const descripcion = String(fila['Descripcion del item'] ?? '').trim()
       const origen = String(fila['Origen (uma/externo/mano_obra/insumo)'] ?? fila['Origen (uma/externo)'] ?? '').trim().toLowerCase()
+      if (!descripcion && !origen) return // fila sin ítem (solo trae los datos de la orden), se ignora sin error
       if (!descripcion) { errores.push({ fila: filaIdxBase + i, mensaje: 'Falta la Descripción del ítem' }); filaError = true; return }
       if (!origenesValidos.includes(origen)) { errores.push({ fila: filaIdxBase + i, mensaje: `Origen "${origen}" inválido — usa: ${origenesValidos.join(', ')}` }); filaError = true; return }
       const codigoUma = String(fila['Codigo UMA (si Origen=uma)'] ?? '').trim()
@@ -95,7 +110,7 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
         proveedor: String(fila['Proveedor (opcional, si Origen=externo)'] ?? '').trim(),
       })
     })
-    if (filaError || itemsValidados.length === 0) continue
+    if (filaError) continue
 
     try {
       const { motoId, clienteId } = await upsertMotoCliente({
@@ -163,8 +178,6 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
       const montoPagadoCol = cab['Monto pagado (solo en la primera fila de cada orden)'] ?? cab['Monto pagado (solo en la primera fila de cada venta)']
       const montoPagado = Math.min(parseNum(montoPagadoCol), valorTotal)
       const estadoPago = montoPagado <= 0 ? 'pendiente' : montoPagado >= valorTotal ? 'pagado' : 'abono'
-      const estadoOrdenRaw = String(cab['Estado (en_proceso/pendiente/listo)'] ?? '').trim().toLowerCase()
-      const estado = tipoOrden === 'venta_repuestos' ? 'listo' : (ESTADOS_ORDEN.includes(estadoOrdenRaw) ? estadoOrdenRaw : 'listo')
 
       const { data: ordenData, error: ordenErr } = await supabase
         .from('ordenes')
@@ -187,23 +200,27 @@ async function importarOrdenesMultiFila({ supabase, tenantId, usuarioId, filas, 
       if (ordenErr || !ordenData) throw new Error(ordenErr?.message ?? 'No se pudo crear la orden')
       const orden = ordenData as { id: string; numero: number }
 
-      const { data: itemsInsertados, error: itemsErr } = await supabase.from('items_orden').insert(
-        itemsResueltos.map((it) => ({
-          orden_id: orden.id,
-          descripcion: it.descripcion,
-          origen: it.origen,
-          repuesto_uma_id: it.repuesto_uma_id,
-          repuesto_externo_id: it.repuesto_externo_id,
-          cantidad: it.cantidad,
-          costo: it.costo,
-          precio_venta: it.precio_venta,
-          created_at: fechaISO,
-        }))
-      ).select('id, repuesto_uma_id, repuesto_externo_id, cantidad, costo, precio_venta')
-      if (itemsErr) throw new Error(itemsErr.message)
+      let itemsInsertados: { id: string; repuesto_uma_id: string | null; repuesto_externo_id: string | null; cantidad: number; costo: number; precio_venta: number }[] = []
+      if (itemsResueltos.length > 0) {
+        const { data, error: itemsErr } = await supabase.from('items_orden').insert(
+          itemsResueltos.map((it) => ({
+            orden_id: orden.id,
+            descripcion: it.descripcion,
+            origen: it.origen,
+            repuesto_uma_id: it.repuesto_uma_id,
+            repuesto_externo_id: it.repuesto_externo_id,
+            cantidad: it.cantidad,
+            costo: it.costo,
+            precio_venta: it.precio_venta,
+            created_at: fechaISO,
+          }))
+        ).select('id, repuesto_uma_id, repuesto_externo_id, cantidad, costo, precio_venta')
+        if (itemsErr) throw new Error(itemsErr.message)
+        itemsInsertados = (data ?? []) as typeof itemsInsertados
+      }
 
       await Promise.all(
-        ((itemsInsertados ?? []) as { id: string; repuesto_uma_id: string | null; repuesto_externo_id: string | null; cantidad: number; costo: number; precio_venta: number }[]).map((it) =>
+        itemsInsertados.map((it) =>
           registrarSalida(supabase, tipoOrden === 'venta_repuestos' ? 'venta_directa' : 'uso_st', {
             tenantId,
             repuesto_uma_id: it.repuesto_uma_id,
