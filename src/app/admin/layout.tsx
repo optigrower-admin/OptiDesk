@@ -12,6 +12,7 @@ type NavItem = {
   label: string
   seccion: string | null
   soloGerencia: boolean
+  rolesPermitidos?: ('gerencia' | 'dueno')[]
   defaultOrden: number
   external?: boolean
 }
@@ -23,6 +24,14 @@ type NavGroup = {
 }
 
 const NAV_GROUPS: NavGroup[] = [
+  {
+    key: 'dashboard',
+    label: 'Dashboard',
+    items: [
+      { href: '/admin/dashboard/servicio-tecnico', label: 'Dashboard Serv. Técnico', seccion: 'dashboard_servicio_tecnico', soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 5 },
+      { href: '/admin/dashboard/repuestos',        label: 'Dashboard Repuestos',     seccion: 'dashboard_repuestos',        soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 6 },
+    ],
+  },
   {
     key: 'serv-tec',
     label: 'Serv Tec & Rep',
@@ -474,6 +483,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     items
       .filter(i => {
         if (i.soloGerencia && profile?.rol !== 'gerencia') return false
+        if (i.rolesPermitidos && !i.rolesPermitidos.includes(profile?.rol as 'gerencia' | 'dueno')) return false
         return i.seccion === null || tienePermiso(i.seccion)
       })
       .sort((a, b) => {
@@ -615,7 +625,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="px-3 py-2">
             <p className="text-xs font-medium text-gray-900 truncate">{profile?.nombre}</p>
             <p className="text-xs text-gray-500 truncate">
-              {profile?.rol === 'gerencia' ? 'Gerencia' : 'Administración'}
+              {profile?.rol === 'gerencia' ? 'Gerencia' : profile?.rol === 'dueno' ? 'Dueño' : 'Administración'}
             </p>
           </div>
 

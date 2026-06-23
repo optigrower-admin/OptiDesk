@@ -67,7 +67,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(getRolRoute(usuario.rol), request.url))
   }
 
-  if (pathname.startsWith('/admin') && !['admin', 'gerencia', 'control_total'].includes(usuario.rol)) {
+  if (pathname.startsWith('/admin') && !['admin', 'gerencia', 'control_total', 'dueno'].includes(usuario.rol)) {
     return NextResponse.redirect(new URL(getRolRoute(usuario.rol), request.url))
   }
 
@@ -83,6 +83,7 @@ function getRolRoute(rol: string): string {
     case 'control_total': return '/control_total/tenants'
     case 'gerencia': return '/admin/ordenes'
     case 'admin': return '/admin/ordenes'
+    case 'dueno': return '/admin/dashboard/servicio-tecnico'
     case 'mecanico': return '/mecanico'
     default: return '/login'
   }

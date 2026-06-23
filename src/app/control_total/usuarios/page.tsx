@@ -11,7 +11,7 @@ interface Usuario {
   id: string
   nombre: string
   email: string
-  rol: 'mecanico' | 'admin' | 'gerencia' | 'control_total'
+  rol: 'mecanico' | 'admin' | 'gerencia' | 'control_total' | 'dueno'
   activo: boolean
   tenant_id: string | null
   created_at: string
@@ -28,6 +28,7 @@ const rolColors: Record<string, 'blue' | 'amber' | 'purple' | 'green'> = {
   admin: 'amber',
   gerencia: 'green',
   control_total: 'purple',
+  dueno: 'green',
 }
 
 const rolLabels: Record<string, string> = {
@@ -35,6 +36,7 @@ const rolLabels: Record<string, string> = {
   gerencia: 'Gerencia',
   admin: 'Administración',
   mecanico: 'Profesional',
+  dueno: 'Dueño',
 }
 
 export default function UsuariosPage() {
@@ -48,7 +50,7 @@ export default function UsuariosPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [editando, setEditando] = useState<Usuario | null>(null)
-  const [editRol, setEditRol] = useState<'gerencia' | 'admin' | 'mecanico'>('mecanico')
+  const [editRol, setEditRol] = useState<'gerencia' | 'admin' | 'mecanico' | 'dueno'>('mecanico')
   const [editNombre, setEditNombre] = useState('')
   const [savingRol, setSavingRol] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -118,7 +120,7 @@ export default function UsuariosPage() {
 
   const abrirEditar = (u: Usuario) => {
     setEditando(u)
-    setEditRol(u.rol as 'gerencia' | 'admin' | 'mecanico')
+    setEditRol(u.rol as 'gerencia' | 'admin' | 'mecanico' | 'dueno')
     setEditNombre(u.nombre)
     setConfirmDelete(false)
     setDeleteMsg('')
@@ -219,10 +221,10 @@ export default function UsuariosPage() {
                 </span>
                 {/* Resumen de roles */}
                 <div className="flex gap-1">
-                  {(['gerencia', 'admin', 'mecanico'] as const).map((rol) => {
+                  {(['gerencia', 'dueno', 'admin', 'mecanico'] as const).map((rol) => {
                     const count = miembros.filter((m) => m.rol === rol).length
                     if (!count) return null
-                    const colors = { gerencia: 'bg-green-100 text-green-700', admin: 'bg-amber-100 text-amber-700', mecanico: 'bg-blue-100 text-blue-700' }
+                    const colors = { gerencia: 'bg-green-100 text-green-700', dueno: 'bg-emerald-100 text-emerald-700', admin: 'bg-amber-100 text-amber-700', mecanico: 'bg-blue-100 text-blue-700' }
                     return (
                       <span key={rol} className={`text-xs px-1.5 py-0.5 rounded font-medium ${colors[rol]}`}>
                         {count} {rolLabels[rol]}
@@ -265,6 +267,7 @@ export default function UsuariosPage() {
             <option value="mecanico">Profesional</option>
             <option value="admin">Administración</option>
             <option value="gerencia">Gerencia</option>
+            <option value="dueno">Dueño</option>
           </select>
           <select value={form.tenant_id} onChange={(e) => setForm((p) => ({ ...p, tenant_id: e.target.value }))}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
@@ -310,15 +313,17 @@ export default function UsuariosPage() {
               <div className="space-y-2">
                 {([
                   { value: 'gerencia', label: 'Gerencia',           desc: 'Control total de su empresa' },
+                  { value: 'dueno',    label: 'Dueño',              desc: 'Solo lectura: dashboards ejecutivos' },
                   { value: 'admin',    label: 'Administración',     desc: 'Acceso por secciones según permisos' },
                   { value: 'mecanico', label: 'Profesional',        desc: 'Solo sus órdenes de trabajo' },
-                ] as { value: 'gerencia' | 'admin' | 'mecanico'; label: string; desc: string }[]).map((op) => (
+                ] as { value: 'gerencia' | 'admin' | 'mecanico' | 'dueno'; label: string; desc: string }[]).map((op) => (
                   <button
                     key={op.value}
                     onClick={() => setEditRol(op.value)}
                     className={`w-full p-3 rounded-xl border-2 text-left transition-colors ${
                       editRol === op.value
                         ? op.value === 'gerencia' ? 'border-green-400 bg-green-50'
+                        : op.value === 'dueno'    ? 'border-emerald-400 bg-emerald-50'
                         : op.value === 'admin'    ? 'border-amber-400 bg-amber-50'
                         :                           'border-blue-400 bg-blue-50'
                         : 'border-gray-200 hover:border-gray-300'

@@ -7,7 +7,7 @@ import { clearPermisosCache } from '@/hooks/usePermisos'
 import { registrarAuditoria } from '@/lib/audit'
 
 type Tab = 'integrantes' | 'secciones'
-type Rol = 'gerencia' | 'admin' | 'mecanico'
+type Rol = 'gerencia' | 'admin' | 'mecanico' | 'dueno'
 
 interface UsuarioEquipo {
   id: string
@@ -17,7 +17,13 @@ interface UsuarioEquipo {
   activo: boolean
 }
 
-interface SeccionDef { key: string; label: string; defaultOrden: number; soloGerencia?: boolean }
+interface SeccionDef { key: string; label: string; defaultOrden: number; soloGerencia?: boolean; soloRoles?: Rol[] }
+
+// soloRoles tiene prioridad sobre soloGerencia cuando está presente — permite
+// restringir una sección a un conjunto específico de roles (ej. Dashboard:
+// gerencia + dueño) en vez del binario "solo gerencia / todos".
+const seccionVisibleParaRol = (s: SeccionDef, rol: Rol): boolean =>
+  s.soloRoles ? s.soloRoles.includes(rol) : (rol === 'gerencia' || !s.soloGerencia)
 interface GrupoDef { key: string; label: string; secciones: SeccionDef[] }
 interface PermisoLocal { habilitado: boolean; orden: number }
 
@@ -25,14 +31,24 @@ const ROL_LABEL: Record<Rol, string> = {
   gerencia: 'Gerencia',
   admin:    'Administración',
   mecanico: 'Profesional',
+  dueno:    'Dueño',
 }
 const ROL_COLOR: Record<Rol, string> = {
   gerencia: 'bg-green-100 text-green-700 border border-green-200',
   admin:    'bg-amber-100 text-amber-700 border border-amber-200',
   mecanico: 'bg-blue-100 text-blue-700 border border-blue-200',
+  dueno:    'bg-emerald-100 text-emerald-700 border border-emerald-200',
 }
 
 const GRUPOS_ADMIN: GrupoDef[] = [
+  {
+    key: 'dashboard',
+    label: 'Dashboard',
+    secciones: [
+      { key: 'dashboard_servicio_tecnico', label: 'Dashboard Servicio Técnico', defaultOrden: 5, soloRoles: ['gerencia', 'dueno'] },
+      { key: 'dashboard_repuestos',        label: 'Dashboard Repuestos',        defaultOrden: 6, soloRoles: ['gerencia', 'dueno'] },
+    ],
+  },
   {
     key: 'serv-tec',
     label: 'Serv Tec & Rep',
@@ -93,9 +109,10 @@ const SECCIONES_POR_ROL: Record<Rol, SeccionDef[]> = {
   gerencia: SECCIONES_ADMIN,
   admin:    SECCIONES_ADMIN,
   mecanico: SECCIONES_MECANICO,
+  dueno:    SECCIONES_ADMIN,
 }
 
-const ROLES_ORDEN: Rol[] = ['gerencia', 'admin', 'mecanico']
+const ROLES_ORDEN: Rol[] = ['gerencia', 'dueno', 'admin', 'mecanico']
 
 export default function EquipoPage() {
   const { profile } = useAuth()
@@ -557,7 +574,7 @@ export default function EquipoPage() {
             const abierto = expandidoRol === rol
             const conteoUsuarios = usuarios.filter((u) => u.rol === rol).length
             const conteoSecciones = rol !== 'mecanico'
-              ? SECCIONES_ADMIN.filter(s => rol === 'gerencia' || !s.soloGerencia).length
+              ? SECCIONES_ADMIN.filter(s => seccionVisibleParaRol(s, rol)).length
               : SECCIONES_MECANICO.length
 
             return (
@@ -588,7 +605,7 @@ export default function EquipoPage() {
                       <>
                         {/* Grupos con sus paneles */}
                         {GRUPOS_ADMIN.map((grupo) => {
-                          const secsGrupoBase = grupo.secciones.filter(s => rol === 'gerencia' || !s.soloGerencia)
+                          const secsGrupoBase = grupo.secciones.filter(s => seccionVisibleParaRol(s, rol))
                           if (secsGrupoBase.length === 0) return null
                           const secsGrupo = ordenarSubgrupo(rol, secsGrupoBase)
                           const grupoOn = secsGrupo.every(s => getPermiso(rol, s.key).habilitado)
@@ -621,7 +638,9 @@ export default function EquipoPage() {
                                     </div>
                                     <p className={`flex-1 text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
                                       {s.label}
-                                      {s.soloGerencia && <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia</span>}
+                                      {s.soloRoles
+                                        ? <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia y dueño</span>
+                                        : s.soloGerencia && <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia</span>}
                                     </p>
                                     <button
                                       onClick={() => toggleSeccion(rol, s.key)}
@@ -637,7 +656,7 @@ export default function EquipoPage() {
                         })}
                         {/* Standalone */}
                         {(() => {
-                          const standaloneBase = STANDALONE_ADMIN.filter(s => rol === 'gerencia' || !s.soloGerencia)
+                          const standaloneBase = STANDALONE_ADMIN.filter(s => seccionVisibleParaRol(s, rol))
                           if (standaloneBase.length === 0) return null
                           const standaloneVisible = ordenarSubgrupo(rol, standaloneBase)
                           return (
@@ -669,7 +688,9 @@ export default function EquipoPage() {
                                     </div>
                                     <p className={`flex-1 text-sm font-medium ${p.habilitado ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
                                       {s.label}
-                                      {s.soloGerencia && <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia</span>}
+                                      {s.soloRoles
+                                        ? <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia y dueño</span>
+                                        : s.soloGerencia && <span className="ml-2 text-xs text-gray-300 font-normal">· solo gerencia</span>}
                                     </p>
                                     <button
                                       onClick={() => toggleSeccion(rol, s.key)}

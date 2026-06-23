@@ -23,6 +23,7 @@ const navItems = [
 
 const ROLES = [
   { value: 'gerencia', label: 'Gerencia' },
+  { value: 'dueno', label: 'Dueño' },
   { value: 'admin', label: 'Administración' },
   { value: 'mecanico', label: 'Profesional' },
 ]
