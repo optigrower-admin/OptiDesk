@@ -8,12 +8,24 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-  const { data: perfil } = await supabase.from('usuarios').select('rol').eq('id', user.id).single()
-  if (!perfil || perfil.rol !== 'control_total') {
-    return NextResponse.json({ error: 'Solo control_total puede crear usuarios' }, { status: 403 })
+  const { data: perfil } = await supabase.from('usuarios').select('rol, tenant_id').eq('id', user.id).single()
+  if (!perfil || !['control_total', 'gerencia'].includes(perfil.rol)) {
+    return NextResponse.json({ error: 'No autorizado para crear usuarios' }, { status: 403 })
   }
 
-  const { nombre, email, password, rol, tenant_id } = await req.json()
+  const body = await req.json()
+  const { nombre, email, password, rol } = body
+  let tenant_id = body.tenant_id
+
+  if (perfil.rol === 'gerencia') {
+    // Gerencia solo puede crear integrantes dentro de su propia empresa,
+    // y nunca con rol control_total (eso es exclusivo de la plataforma).
+    tenant_id = perfil.tenant_id
+    if (rol === 'control_total') {
+      return NextResponse.json({ error: 'No puedes asignar el rol Control Total' }, { status: 403 })
+    }
+  }
+
   if (!nombre || !email || !password || !rol || !tenant_id) {
     return NextResponse.json({ error: 'Todos los campos son requeridos' }, { status: 400 })
   }

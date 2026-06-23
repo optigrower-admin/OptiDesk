@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { clearPermisosCache } from '@/hooks/usePermisos'
 import { registrarAuditoria } from '@/lib/audit'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 
 type Tab = 'integrantes' | 'secciones'
 type Rol = 'gerencia' | 'admin' | 'mecanico' | 'dueno'
@@ -122,6 +124,12 @@ export default function EquipoPage() {
   const [usuarios, setUsuarios] = useState<UsuarioEquipo[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Nuevo usuario
+  const [showNuevoModal, setShowNuevoModal] = useState(false)
+  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', password: '', rol: 'mecanico' as Rol })
+  const [savingNuevo, setSavingNuevo] = useState(false)
+  const [errorNuevo, setErrorNuevo] = useState('')
+
   // Permisos por rol: Map<rol, Map<seccion, PermisoLocal>>
   const permisosRef = useRef<Map<Rol, Map<string, PermisoLocal>>>(new Map())
   const [permisosPorRol, setPermisosPorRol] = useState<Map<Rol, Map<string, PermisoLocal>>>(new Map())
@@ -137,6 +145,7 @@ export default function EquipoPage() {
 
   // Modal editar usuario completo
   const [editModal, setEditModal] = useState<UsuarioEquipo | null>(null)
+  const [editRolModal, setEditRolModal] = useState<Rol>('mecanico')
   const [editNombreModal, setEditNombreModal] = useState('')
   const [savingNombre, setSavingNombre] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -285,25 +294,42 @@ export default function EquipoPage() {
   const abrirEditModal = (u: UsuarioEquipo) => {
     setEditModal(u)
     setEditNombreModal(u.nombre)
+    setEditRolModal(u.rol)
     setConfirmDelete(false)
     setDeleteMsg('')
   }
 
-  const guardarNombre = async () => {
+  const guardarCambiosModal = async () => {
     if (!editModal || !editNombreModal.trim()) return
     setSavingNombre(true)
-    await supabase.from('usuarios').update({ nombre: editNombreModal.trim() }).eq('id', editModal.id)
-    await registrarAuditoria(supabase, {
-      tenant_id: profile?.tenant_id ?? '',
-      tabla: 'usuarios',
-      registro_id: editModal.id,
-      tipo: 'edicion',
-      valor_anterior: { nombre: editModal.nombre },
-      valor_nuevo: { nombre: editNombreModal.trim() },
-      descripcion: `Editó nombre de integrante: "${editModal.nombre}" → "${editNombreModal.trim()}"`,
-      usuario_id: profile?.id,
-    })
-    setUsuarios((prev) => prev.map((x) => x.id === editModal.id ? { ...x, nombre: editNombreModal.trim() } : x))
+    const nombreCambio = editNombreModal.trim() !== editModal.nombre
+    const rolCambio = editRolModal !== editModal.rol
+    await supabase.from('usuarios').update({ nombre: editNombreModal.trim(), rol: editRolModal }).eq('id', editModal.id)
+    if (nombreCambio) {
+      await registrarAuditoria(supabase, {
+        tenant_id: profile?.tenant_id ?? '',
+        tabla: 'usuarios',
+        registro_id: editModal.id,
+        tipo: 'edicion',
+        valor_anterior: { nombre: editModal.nombre },
+        valor_nuevo: { nombre: editNombreModal.trim() },
+        descripcion: `Editó nombre de integrante: "${editModal.nombre}" → "${editNombreModal.trim()}"`,
+        usuario_id: profile?.id,
+      })
+    }
+    if (rolCambio) {
+      await registrarAuditoria(supabase, {
+        tenant_id: profile?.tenant_id ?? '',
+        tabla: 'usuarios',
+        registro_id: editModal.id,
+        tipo: 'edicion',
+        valor_anterior: { rol: editModal.rol },
+        valor_nuevo: { rol: editRolModal },
+        descripcion: `Cambió el rol de "${editModal.nombre}" de ${editModal.rol} a ${editRolModal}`,
+        usuario_id: profile?.id,
+      })
+    }
+    setUsuarios((prev) => prev.map((x) => x.id === editModal.id ? { ...x, nombre: editNombreModal.trim(), rol: editRolModal } : x))
     setEditModal(null)
     setSavingNombre(false)
   }
@@ -375,12 +401,84 @@ export default function EquipoPage() {
     setTimeout(() => setResetState((p) => { const n = { ...p }; delete n[u.id]; return n }), 3000)
   }
 
+  const handleCrearUsuario = async () => {
+    setErrorNuevo('')
+    setSavingNuevo(true)
+    try {
+      const res = await fetch('/api/admin/crear-usuario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...nuevoForm, tenant_id: profile?.tenant_id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setShowNuevoModal(false)
+      setNuevoForm({ nombre: '', email: '', password: '', rol: 'mecanico' })
+      await cargar()
+    } catch (e: unknown) {
+      setErrorNuevo(e instanceof Error ? e.message : 'Error al crear el usuario')
+    } finally {
+      setSavingNuevo(false)
+    }
+  }
+
   return (
     <div className="p-6 space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Mi equipo</h1>
-        <p className="text-sm text-gray-500">{usuarios.length} integrantes en tu empresa</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Mi equipo</h1>
+          <p className="text-sm text-gray-500">{usuarios.length} integrantes en tu empresa</p>
+        </div>
+        <Button onClick={() => setShowNuevoModal(true)}>+ Agregar usuario</Button>
       </div>
+
+      {/* Modal nuevo usuario */}
+      <Modal open={showNuevoModal} onClose={() => setShowNuevoModal(false)} title="Agregar usuario" size="sm">
+        <div className="space-y-3">
+          {errorNuevo && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{errorNuevo}</div>}
+          <input
+            value={nuevoForm.nombre}
+            onChange={(e) => setNuevoForm((p) => ({ ...p, nombre: e.target.value }))}
+            placeholder="Nombre completo"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          />
+          <input
+            type="email"
+            value={nuevoForm.email}
+            onChange={(e) => setNuevoForm((p) => ({ ...p, email: e.target.value }))}
+            placeholder="Email"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          />
+          <input
+            type="password"
+            value={nuevoForm.password}
+            onChange={(e) => setNuevoForm((p) => ({ ...p, password: e.target.value }))}
+            placeholder="Contraseña (mínimo 6 caracteres)"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          />
+          <select
+            value={nuevoForm.rol}
+            onChange={(e) => setNuevoForm((p) => ({ ...p, rol: e.target.value as Rol }))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          >
+            <option value="mecanico">Profesional</option>
+            <option value="admin">Administración</option>
+            <option value="gerencia">Gerencia</option>
+            <option value="dueno">Dueño</option>
+          </select>
+          <div className="flex gap-2 pt-2">
+            <Button
+              onClick={handleCrearUsuario}
+              loading={savingNuevo}
+              disabled={!nuevoForm.nombre || !nuevoForm.email || !nuevoForm.password}
+              className="flex-1"
+            >
+              Crear usuario
+            </Button>
+            <Button variant="secondary" onClick={() => setShowNuevoModal(false)} className="flex-1">Cancelar</Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Tabs */}
       <div className="flex bg-gray-100 rounded-xl p-1 gap-1 w-fit">
@@ -511,13 +609,26 @@ export default function EquipoPage() {
               />
             </div>
 
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Rol</label>
+              <select
+                value={editRolModal}
+                onChange={(e) => setEditRolModal(e.target.value as Rol)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                {ROLES_ORDEN.map((r) => (
+                  <option key={r} value={r}>{ROL_LABEL[r]}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="flex gap-2">
               <button
-                onClick={guardarNombre}
-                disabled={savingNombre || !editNombreModal.trim() || editNombreModal.trim() === editModal.nombre}
+                onClick={guardarCambiosModal}
+                disabled={savingNombre || !editNombreModal.trim() || (editNombreModal.trim() === editModal.nombre && editRolModal === editModal.rol)}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors"
               >
-                {savingNombre ? 'Guardando...' : 'Guardar nombre'}
+                {savingNombre ? 'Guardando...' : 'Guardar cambios'}
               </button>
               <button
                 onClick={() => setEditModal(null)}
