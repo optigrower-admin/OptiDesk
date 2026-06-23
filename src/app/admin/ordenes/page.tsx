@@ -60,6 +60,7 @@ export default function AdminOrdenesPage() {
   const supabase = createClient()
   const [grupos, setGrupos] = useState<GrupoPlaca[]>([])
   const [loading, setLoading] = useState(true)
+  const [errorCarga, setErrorCarga] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos')
   const [filtroCategoria, setFiltroCategoria] = useState('todos')
@@ -131,8 +132,15 @@ export default function AdminOrdenesPage() {
       if (fechaDesde) q = q.gte('created_at', fechaDesde)
       if (fechaHasta) q = q.lte('created_at', fechaHasta + 'T23:59:59')
 
-      const { data: sData } = await q.limit(300)
+      const { data: sData, error: sError } = await q.limit(300)
       if (cancelRef.current) return
+      if (sError) {
+        console.error('Error cargando órdenes de servicio técnico:', sError.message)
+        setErrorCarga(sError.message)
+        setLoading(false)
+        return
+      }
+      setErrorCarga('')
 
       const sOrdenes = (sData as unknown as Orden[]) ?? []
       const placas = [...new Set(sOrdenes.map((o) => o.placa).filter(Boolean))]
@@ -305,6 +313,11 @@ export default function AdminOrdenesPage() {
 
   return (
     <div className="p-6 space-y-4">
+      {errorCarga && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          No se pudieron cargar las órdenes: {errorCarga}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

@@ -32,6 +32,14 @@ export async function convertirAMp4(buffer: Buffer, extOriginal: string): Promis
     fs.unlink(inputPath).catch(() => {}),
     fs.unlink(outputPath).catch(() => {}),
   ])
+
+  // ffmpeg puede terminar sin error pero producir un archivo vacío/truncado
+  // (remux fallido en silencio). Nunca tratamos eso como conversión exitosa —
+  // el llamador conserva el original en vez de reemplazarlo por un mp4 roto.
+  if (resultado.length < 1024) {
+    throw new Error(`Conversión a mp4 produjo un archivo demasiado pequeño (${resultado.length} bytes)`)
+  }
+
   return resultado
 }
 

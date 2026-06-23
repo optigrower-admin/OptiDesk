@@ -1271,7 +1271,7 @@ export default function AdminOrdenDetallePage() {
   const manoObraItems = items.filter((i) => i.origen === 'mano_obra')
   const totalRepuestos = repuestosItems.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
   const totalManoObra = manoObraItems.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-  const costoTotal = repuestosItems.reduce((s, i) => s + i.costo * i.cantidad, 0)
+  const totalCostoProveedor = repuestosItems.filter((i) => i.origen === 'externo').reduce((s, i) => s + i.costo * i.cantidad, 0)
   const total = totalRepuestos + totalManoObra
   const saldo = total - (parseFloat(valorAbono) || 0)
   const esFaltaRevision = orden.estado === 'falta_revision'
@@ -2196,8 +2196,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </table>
               )}
               <div className="px-5 py-3 border-t bg-blue-50 flex justify-between text-sm font-semibold">
-                <span className="text-blue-700">Subtotal repuestos</span>
-                <span className="text-blue-900">{formatCOP(totalRepuestos)}</span>
+                <span className="text-gray-500">Total costo proveedor: {formatCOP(totalCostoProveedor)}</span>
+                <span className="text-blue-700">Subtotal repuestos: <span className="text-blue-900">{formatCOP(totalRepuestos)}</span></span>
               </div>
             </div>
           </div>
