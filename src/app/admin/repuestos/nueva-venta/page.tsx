@@ -416,15 +416,17 @@ function NuevaVentaContent() {
 
   const total = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
   const placaNorm = placa ? normalizarPlaca(placa) : ''
-  const ordenActiva = historialPlaca.find((o) => ['falta_revision', 'en_proceso', 'pendiente'].includes(o.estado))
+  const ordenActiva = historialPlaca.find((o) => ['programado', 'falta_revision', 'en_proceso', 'pendiente'].includes(o.estado))
 
   const estadoColor: Record<string, string> = {
+    programado: 'bg-orange-100 text-orange-700',
     falta_revision: 'bg-red-100 text-red-700',
     en_proceso: 'bg-blue-100 text-blue-700',
     pendiente: 'bg-amber-100 text-amber-700',
     listo: 'bg-green-100 text-green-700',
   }
   const estadoLabel: Record<string, string> = {
+    programado: 'Programado',
     falta_revision: 'Falta revisión', en_proceso: 'En proceso', pendiente: 'Pendiente', listo: 'Cerrada',
   }
 

@@ -48,13 +48,14 @@ interface ItemOrdenRow {
 const SELECT_ORDEN = 'id, numero, placa, cliente, cliente_id, moto_id, estado, estado_pago, valor_total, valor_abono, mecanico_id, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, diagnostico, created_at, updated_at, fecha_finalizacion'
 
 const ESTADO_INFO: Record<string, { label: string; color: string }> = {
+  programado:     { label: 'Programado',     color: '#f97316' },
   falta_revision: { label: 'Falta revisión', color: '#ef4444' },
   en_proceso:     { label: 'En proceso',     color: '#3b82f6' },
   pendiente:      { label: 'Pendiente',      color: '#f59e0b' },
   pagado:         { label: 'Pagado',         color: '#0d9488' },
   listo:          { label: 'Finalizado',     color: '#10b981' },
 }
-const ORDEN_ESTADOS = ['falta_revision', 'en_proceso', 'pendiente', 'pagado', 'listo']
+const ORDEN_ESTADOS = ['programado', 'falta_revision', 'en_proceso', 'pendiente', 'pagado', 'listo']
 
 function unicos<T>(arr: (T | null | undefined)[]): T[] {
   return Array.from(new Set(arr.filter((v): v is T => v !== null && v !== undefined)))

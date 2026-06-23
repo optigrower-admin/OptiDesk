@@ -44,10 +44,12 @@ function mesesEntre(desde: string, hasta: string | null) {
 }
 
 const ESTADO_COLOR: Record<string, string> = {
+  programado: 'bg-orange-100 text-orange-700',
   falta_revision: 'bg-red-100 text-red-700', en_proceso: 'bg-blue-100 text-blue-700',
   pendiente: 'bg-amber-100 text-amber-700',  listo: 'bg-green-100 text-green-700',
 }
 const ESTADO_LABEL: Record<string, string> = {
+  programado: 'Programado',
   falta_revision: 'Falta rev.', en_proceso: 'En proceso', pendiente: 'Pendiente', listo: 'Cerrada',
 }
 
@@ -253,7 +255,7 @@ export default function MotoPerfilPage() {
   if (!moto) return null
 
   const totalFacturado = ordenes.filter(o => o.estado === 'listo').reduce((s, o) => s + o.valor_total, 0)
-  const tieneActiva    = ordenes.some(o => ['falta_revision','en_proceso','pendiente'].includes(o.estado))
+  const tieneActiva    = ordenes.some(o => ['programado','falta_revision','en_proceso','pendiente'].includes(o.estado))
 
   return (
     <div className="p-6 max-w-4xl mx-auto">

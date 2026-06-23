@@ -50,6 +50,9 @@ export default function NuevaOrdenAdminPage() {
   const [archivos, setArchivos] = useState<File[]>([])
   const [previews, setPreviews] = useState<{ url: string; tipo: 'imagen' | 'video' }[]>([])
   const [tipoOrden, setTipoOrden] = useState<'servicio' | 'venta_repuestos'>('servicio')
+  const [esProgramada, setEsProgramada] = useState(false)
+  const [fechaProgramada, setFechaProgramada] = useState('')
+  const [duracionEstimada, setDuracionEstimada] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
@@ -75,6 +78,9 @@ export default function NuevaOrdenAdminPage() {
         if (d.tipoServicio) setTipoServicio(d.tipoServicio)
         if (d.numeroOt) setNumeroOt(d.numeroOt)
         if (d.numerosOrdenUMA) setNumerosOrdenUMA(d.numerosOrdenUMA)
+        if (d.esProgramada) setEsProgramada(d.esProgramada)
+        if (d.fechaProgramada) setFechaProgramada(d.fechaProgramada)
+        if (d.duracionEstimada) setDuracionEstimada(d.duracionEstimada)
       }
     } catch { /* borrador inválido */ }
   }, [])
@@ -82,12 +88,12 @@ export default function NuevaOrdenAdminPage() {
   useEffect(() => {
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, cedula, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, cedula, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA, esProgramada, fechaProgramada, duracionEstimada }))
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [placa, cliente, telefono, cedula, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA])
+  }, [placa, cliente, telefono, cedula, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA, esProgramada, fechaProgramada, duracionEstimada])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -133,6 +139,10 @@ export default function NuevaOrdenAdminPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!profile?.tenant_id) return
+    if (tipoOrden === 'servicio' && esProgramada && !fechaProgramada) {
+      setError('Ingresa la fecha y hora de la cita programada.')
+      return
+    }
     setError('')
     setSaving(true)
 
@@ -145,7 +155,7 @@ export default function NuevaOrdenAdminPage() {
           .select('numero')
           .eq('tenant_id', profile.tenant_id)
           .eq('placa', placaNorm)
-          .in('estado', ['falta_revision', 'en_proceso', 'pendiente'])
+          .in('estado', ['programado', 'falta_revision', 'en_proceso', 'pendiente'])
           .maybeSingle()
 
         if (activa) {
@@ -183,7 +193,9 @@ export default function NuevaOrdenAdminPage() {
           numero_ot: tipoServicio === 'uma' ? (numeroOt || null) : null,
           numeros_orden_uma: esUMACategoria ? numerosOrdenUMA : [],
           mecanico_id: profile.id,
-          estado: 'en_proceso',
+          estado: tipoOrden === 'servicio' && esProgramada ? 'programado' : 'en_proceso',
+          fecha_programada: tipoOrden === 'servicio' && esProgramada && fechaProgramada ? new Date(fechaProgramada).toISOString() : null,
+          duracion_estimada_horas: tipoOrden === 'servicio' && esProgramada && duracionEstimada ? parseFloat(duracionEstimada) : null,
           numero: 0,
           moto_id: motoId,
           cliente_id: clienteId,
@@ -245,6 +257,48 @@ export default function NuevaOrdenAdminPage() {
             </button>
           </div>
         </div>
+
+        {/* ¿Cuándo se realiza el servicio? (solo servicio técnico) */}
+        {tipoOrden === 'servicio' && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+            <h2 className="font-semibold text-gray-900">¿Cuándo se realiza el servicio?</h2>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setEsProgramada(false)}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${!esProgramada ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                Ahora
+              </button>
+              <button type="button" onClick={() => setEsProgramada(true)}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${esProgramada ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                📅 Programar para después
+              </button>
+            </div>
+            {esProgramada && (
+              <div className="space-y-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <div>
+                  <label className="block text-xs font-medium text-orange-700 mb-1">Fecha y hora de la cita *</label>
+                  <input
+                    type="datetime-local"
+                    value={fechaProgramada}
+                    onChange={(e) => setFechaProgramada(e.target.value)}
+                    className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-orange-700 mb-1">Duración estimada del servicio (horas)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={duracionEstimada}
+                    onChange={(e) => setDuracionEstimada(e.target.value)}
+                    placeholder="Ej: 1.5"
+                    className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tipo de servicio (solo servicio técnico) */}
         {tipoOrden === 'servicio' && (

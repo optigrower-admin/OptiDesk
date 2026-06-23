@@ -92,7 +92,7 @@ function formatAbonoDisplay(raw: string): string {
   return '$' + num.toLocaleString('es-CO')
 }
 
-type EstadoOrden = 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
+type EstadoOrden = 'programado' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
 type EstadoPago = 'pagado' | 'abono' | 'pendiente'
 
 interface Categoria {
@@ -112,6 +112,8 @@ interface OrdenDetalle {
   valor_total: number
   valor_abono: number
   motivo_pendiente: string | null
+  fecha_programada: string | null
+  duracion_estimada_horas: number | null
   descripcion: string | null
   manifiesta_cliente: string | null
   diagnostico: string | null
@@ -182,7 +184,7 @@ const ORDEN_DRAFT_KEY = (id: string) => `optiDesk_orden_draft_${id}`
 // ya guardado en la base de datos (ej: la orden ya quedó Pagada/Finalizada
 // en otra sesión, pero el borrador local todavía dice "en_proceso").
 const ESTADO_RANGO: Record<string, number> = {
-  falta_revision: 0, en_proceso: 1, pendiente: 1, pagado: 2, listo: 3,
+  programado: -1, falta_revision: 0, en_proceso: 1, pendiente: 1, pagado: 2, listo: 3,
 }
 
 export default function AdminOrdenDetallePage() {
@@ -233,6 +235,8 @@ export default function AdminOrdenDetallePage() {
   const [valorAbono, setValorAbono] = useState('')
   const [metodoPagoId, setMetodoPagoId] = useState('')
   const [motivoPendiente, setMotivoPendiente] = useState('')
+  const [fechaProgramada, setFechaProgramada] = useState('')
+  const [duracionEstimada, setDuracionEstimada] = useState('')
   const [telefono, setTelefono] = useState('')
 
   // Control de cambios sin guardar
@@ -284,7 +288,7 @@ export default function AdminOrdenDetallePage() {
     if (!profile?.tenant_id) return
     const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }, { data: lmCfg }, { data: lmOrd }] = await Promise.all([
       supabase.from('ordenes')
-        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id,
+        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
         .eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto').eq('orden_id', ordenId),
@@ -375,6 +379,8 @@ export default function AdminOrdenDetallePage() {
             try { localStorage.setItem(ORDEN_DRAFT_KEY(ordenId), JSON.stringify({ ...d, estado: estadoFinal })) } catch { /* ignore */ }
           }
           setMotivoPendiente(d.motivoPendiente ?? (ord.motivo_pendiente ?? ''))
+          setFechaProgramada(d.fechaProgramada ?? (ord.fecha_programada ? isoToDatetimeLocal(ord.fecha_programada) : ''))
+          setDuracionEstimada(d.duracionEstimada ?? (ord.duracion_estimada_horas != null ? String(ord.duracion_estimada_horas) : ''))
           setTelefono(d.telefono ?? soloDigitos(ord.telefono ?? ''))
           setNotas(d.notas ?? (ord.notas ?? ''))
           setNumerosOrdenUMA(d.numerosOrdenUMA ?? (ord.numeros_orden_uma ?? []))
@@ -386,6 +392,8 @@ export default function AdminOrdenDetallePage() {
       if (!draftAplicado) {
         setEstado(ord.estado)
         setMotivoPendiente(ord.motivo_pendiente ?? '')
+        setFechaProgramada(ord.fecha_programada ? isoToDatetimeLocal(ord.fecha_programada) : '')
+        setDuracionEstimada(ord.duracion_estimada_horas != null ? String(ord.duracion_estimada_horas) : '')
         setTelefono(soloDigitos(ord.telefono ?? ''))
         setNotas(ord.notas ?? '')
         setNumerosOrdenUMA(ord.numeros_orden_uma ?? [])
@@ -464,6 +472,8 @@ export default function AdminOrdenDetallePage() {
     const hayCambios =
       estado !== orden.estado ||
       motivoPendiente !== (orden.motivo_pendiente ?? '') ||
+      fechaProgramada !== (orden.fecha_programada ? isoToDatetimeLocal(orden.fecha_programada) : '') ||
+      duracionEstimada !== (orden.duracion_estimada_horas != null ? String(orden.duracion_estimada_horas) : '') ||
       telefono !== soloDigitos(orden.telefono ?? '') ||
       notas !== (orden.notas ?? '') ||
       JSON.stringify(numerosOrdenUMA) !== JSON.stringify(orden.numeros_orden_uma ?? [])
@@ -471,7 +481,7 @@ export default function AdminOrdenDetallePage() {
     if (hayCambios) {
       try {
         localStorage.setItem(ORDEN_DRAFT_KEY(ordenId), JSON.stringify({
-          estado, motivoPendiente, telefono, notas, numerosOrdenUMA,
+          estado, motivoPendiente, fechaProgramada, duracionEstimada, telefono, notas, numerosOrdenUMA,
         }))
       } catch { /* ignore */ }
       setDirty(true)
@@ -479,7 +489,7 @@ export default function AdminOrdenDetallePage() {
       try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
       setDirty(false)
     }
-  }, [estado, motivoPendiente, telefono, notas, numerosOrdenUMA, orden, ordenId])
+  }, [estado, motivoPendiente, fechaProgramada, duracionEstimada, telefono, notas, numerosOrdenUMA, orden, ordenId])
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -1170,6 +1180,11 @@ export default function AdminOrdenDetallePage() {
   }
 
   const handleGuardar = async () => {
+    if (estado === 'programado' && !fechaProgramada) {
+      alert('Ingresa la fecha y hora de la programación.')
+      return
+    }
+
     // Bloquear "Finalizado" si hay repuestos con estado "pedido"
     const repuestosPendientes = items.filter(
       (i) => i.origen !== 'mano_obra' && i.estado_repuesto === 'pedido'
@@ -1214,6 +1229,8 @@ export default function AdminOrdenDetallePage() {
         valor_abono: totalPagado,
         metodo_pago_id: metodoPagoId || null,
         motivo_pendiente: estado === 'pendiente' ? motivoPendiente : null,
+        fecha_programada: fechaProgramada ? new Date(fechaProgramada).toISOString() : null,
+        duracion_estimada_horas: duracionEstimada ? parseFloat(duracionEstimada) : null,
         telefono: telefono || null,
         notas: notas.trim() || null,
         numeros_orden_uma: numerosOrdenUMA,
@@ -2447,6 +2464,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             <h2 className="font-semibold text-gray-900">Estado</h2>
             <div className="space-y-2">
               {([
+                { value: 'programado', label: 'Programado' },
                 { value: 'en_proceso', label: 'En proceso' },
                 { value: 'pendiente', label: 'Pendiente' },
                 { value: 'pagado', label: 'Pagado' },
@@ -2482,7 +2500,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       bloqueado
                         ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
                         : estado === s.value
-                          ? 'bg-blue-700 text-white'
+                          ? s.value === 'programado' ? 'bg-orange-500 text-white' : 'bg-blue-700 text-white'
                           : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
                     }`}
                   >
@@ -2502,6 +2520,31 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 )
               })}
             </div>
+            {estado === 'programado' && (
+              <div className="space-y-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <div>
+                  <label className="block text-xs font-medium text-orange-700 mb-1">Fecha y hora de la cita *</label>
+                  <input
+                    type="datetime-local"
+                    value={fechaProgramada}
+                    onChange={(e) => setFechaProgramada(e.target.value)}
+                    className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-orange-700 mb-1">Duración estimada del servicio (horas)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={duracionEstimada}
+                    onChange={(e) => setDuracionEstimada(e.target.value)}
+                    placeholder="Ej: 1.5"
+                    className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+            )}
             {estado === 'pendiente' && (
               <input
                 value={motivoPendiente}

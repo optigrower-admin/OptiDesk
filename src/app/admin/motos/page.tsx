@@ -146,12 +146,14 @@ function MotosContent() {
   })
 
   const estadoColor: Record<string, string> = {
+    programado: 'bg-orange-100 text-orange-700',
     falta_revision: 'bg-red-100 text-red-700',
     en_proceso: 'bg-blue-100 text-blue-700',
     pendiente: 'bg-amber-100 text-amber-700',
     listo: 'bg-green-100 text-green-700',
   }
   const estadoLabel: Record<string, string> = {
+    programado: 'Programado',
     falta_revision: 'Falta rev.', en_proceso: 'En proceso', pendiente: 'Pendiente', listo: 'Cerrada',
   }
 
@@ -185,7 +187,7 @@ function MotosContent() {
         <div className="space-y-2">
           {motosFiltradas.map((m) => {
             const h = historial[m.id] ?? []
-            const ordenActiva = h.find((o) => ['falta_revision', 'en_proceso', 'pendiente'].includes(o.estado))
+            const ordenActiva = h.find((o) => ['programado', 'falta_revision', 'en_proceso', 'pendiente'].includes(o.estado))
             const totalCerradas = h.filter((o) => o.estado === 'listo').reduce((s, o) => s + o.valor_total, 0)
             return (
               <div key={m.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">

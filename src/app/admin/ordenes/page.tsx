@@ -27,6 +27,8 @@ interface Orden {
   estado_pago: string
   valor_total: number
   valor_abono: number | null
+  fecha_programada: string | null
+  duracion_estimada_horas: number | null
   tipo_orden: string | null
   tipo_servicio: string | null
   created_at: string
@@ -49,9 +51,9 @@ interface Categoria {
   subcategorias_servicio: { id: string; nombre: string }[]
 }
 
-type FiltroEstado = 'todos' | 'activos' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
+type FiltroEstado = 'todos' | 'activos' | 'programado' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
 
-const SELECT_FIELDS = 'id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, tipo_orden, tipo_servicio, created_at, fecha_finalizacion, numeros_orden_uma, categorias_servicio(nombre), usuarios:mecanico_id(nombre)'
+const SELECT_FIELDS = 'id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, fecha_programada, duracion_estimada_horas, tipo_orden, tipo_servicio, created_at, fecha_finalizacion, numeros_orden_uma, categorias_servicio(nombre), usuarios:mecanico_id(nombre)'
 
 export default function AdminOrdenesPage() {
   const { profile } = useAuth()
@@ -115,7 +117,7 @@ export default function AdminOrdenesPage() {
         .order('created_at', { ascending: false })
 
       if (filtroEstado === 'activos') {
-        q = q.in('estado', ['falta_revision', 'en_proceso', 'pendiente'])
+        q = q.in('estado', ['programado', 'falta_revision', 'en_proceso', 'pendiente'])
       } else if (filtroEstado !== 'todos') {
         q = q.eq('estado', filtroEstado)
       }
@@ -196,7 +198,7 @@ export default function AdminOrdenesPage() {
     setGrupos((prev) => prev.map((g) => g.placa === placa ? { ...g, expandido: !g.expandido } : g))
   }
 
-  const estadoActivo = (o: Orden) => ['falta_revision', 'en_proceso', 'pendiente'].includes(o.estado)
+  const estadoActivo = (o: Orden) => ['programado', 'falta_revision', 'en_proceso', 'pendiente'].includes(o.estado)
   const esServicio = (o: Orden) => o.tipo_orden !== 'venta_repuestos'
 
   const tieneOrdenUMAPendiente = (grupo: GrupoPlaca) =>
@@ -233,7 +235,7 @@ export default function AdminOrdenesPage() {
       }
 
       const ESTADO_LABELS: Record<string, string> = {
-        falta_revision: 'Falta revisión', en_proceso: 'En proceso',
+        programado: 'Programado', falta_revision: 'Falta revisión', en_proceso: 'En proceso',
         pendiente: 'Pendiente', pagado: 'Pagado', listo: 'Finalizado',
       }
       const PAGO_LABELS: Record<string, string> = {
@@ -447,6 +449,7 @@ export default function AdminOrdenesPage() {
         {([
           { value: 'todos', label: 'Todos' },
           { value: 'activos', label: 'Activos' },
+          { value: 'programado', label: 'Programado' },
           { value: 'falta_revision', label: 'Falta revisión' },
           { value: 'en_proceso', label: 'En proceso' },
           { value: 'pendiente', label: 'Pendiente' },
@@ -532,6 +535,11 @@ export default function AdminOrdenesPage() {
                     {ordenActual && ordenActual.estado_pago !== 'pagado' && (ordenActual.valor_total - (ordenActual.valor_abono ?? 0)) > 0 && (
                       <span className="text-xl font-bold text-red-600 flex-shrink-0">
                         {formatCOP(ordenActual.valor_total - (ordenActual.valor_abono ?? 0))}
+                      </span>
+                    )}
+                    {ordenActual?.estado === 'programado' && ordenActual.fecha_programada && (
+                      <span className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-1 rounded-full flex-shrink-0">
+                        📅 Programado: {formatFechaPlaca(ordenActual.fecha_programada)}
                       </span>
                     )}
                     <span className="text-sm text-gray-400 truncate">– {ordenActual?.cliente}</span>
@@ -626,7 +634,14 @@ export default function AdminOrdenesPage() {
                                 </span>
                               )
                             })()}
-                            <span>Entrada: {new Date(orden.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                            {orden.estado === 'programado' && orden.fecha_programada ? (
+                              <span className="text-orange-600 font-semibold">
+                                📅 Programado: {formatFechaPlaca(orden.fecha_programada)}
+                                {orden.duracion_estimada_horas != null && ` · ${orden.duracion_estimada_horas}h estimadas`}
+                              </span>
+                            ) : (
+                              <span>Entrada: {new Date(orden.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                            )}
                             {orden.fecha_finalizacion && (
                               <span className="text-green-600">Salida: {new Date(orden.fecha_finalizacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                             )}
