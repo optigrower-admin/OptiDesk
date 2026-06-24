@@ -13,6 +13,12 @@ import { importarVentaRepuestos, previsualizarVentaRepuestos } from '@/lib/bulkI
 type Tab = 'catalogo' | 'ventas'
 type FiltroOrigen = 'todos' | 'uma' | 'terceros'
 
+function estadoPagoDeTotales(abono: number, total: number): 'pagado' | 'abono' | 'pendiente' {
+  if (total <= 0 || abono <= 0) return 'pendiente'
+  if (abono >= total) return 'pagado'
+  return 'abono'
+}
+
 // ─── CATÁLOGO ────────────────────────────────────────────────
 interface ItemCatalogo {
   id: string
@@ -195,9 +201,18 @@ export default function AdminRepuestosPage() {
     if (!confirm(`¿Eliminar "${item.descripcion}"?`)) return
     await supabase.from('items_orden').delete().eq('id', item.id)
     if (item.ordenes) {
-      const { data: rest } = await supabase.from('items_orden').select('precio_venta, cantidad').eq('orden_id', item.ordenes.id)
+      const ordenIdDel = item.ordenes.id
+      const [{ data: rest }, { data: ordenActual }] = await Promise.all([
+        supabase.from('items_orden').select('precio_venta, cantidad').eq('orden_id', ordenIdDel),
+        supabase.from('ordenes').select('valor_abono').eq('id', ordenIdDel).single(),
+      ])
       const newTotal = ((rest as { precio_venta: number; cantidad: number }[]) ?? []).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-      await supabase.from('ordenes').update({ valor_total: newTotal }).eq('id', item.ordenes.id)
+      // Nunca dejar el abono guardado por encima del nuevo total — si se borran
+      // todos los ítems, el abono debe quedar en 0 (si no, Caja sigue mostrando
+      // un ingreso fantasma por una venta que ya no tiene nada que vender).
+      const newAbono = Math.min((ordenActual as { valor_abono: number } | null)?.valor_abono ?? 0, newTotal)
+      const newEstadoPago = estadoPagoDeTotales(newAbono, newTotal)
+      await supabase.from('ordenes').update({ valor_total: newTotal, valor_abono: newAbono, estado_pago: newEstadoPago }).eq('id', ordenIdDel)
     }
     await registrarAuditoria(supabase, {
       tenant_id: profile?.tenant_id ?? '',
