@@ -7,6 +7,7 @@ export interface MedioRegistrado {
   id: string
   url: string
   tipo: 'imagen' | 'video'
+  procesando: boolean
 }
 
 export async function subirArchivoOrden(params: {

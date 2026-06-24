@@ -155,6 +155,7 @@ interface Medio {
   nombre_archivo: string | null
   storage_location: 'r2' | 'drive'
   drive_url: string | null
+  procesando: boolean
 }
 
 interface PagoOrden {
@@ -292,7 +293,7 @@ export default function AdminOrdenDetallePage() {
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
         .eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto').eq('orden_id', ordenId),
-      supabase.from('medios').select('id, url, tipo, nombre_archivo, storage_location, drive_url').eq('orden_id', ordenId),
+      supabase.from('medios').select('id, url, tipo, nombre_archivo, storage_location, drive_url, procesando').eq('orden_id', ordenId),
       supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', profile.tenant_id).eq('activo', true),
       supabase.from('categorias_servicio').select('id, nombre, subcategorias_servicio(id, nombre)').eq('tenant_id', profile.tenant_id).eq('activo', true).order('orden'),
       supabase.from('pagos_orden').select('id, monto, metodo_pago_id, fecha, notas, metodos_pago(nombre)').eq('orden_id', ordenId).order('fecha', { ascending: true }),
@@ -409,6 +410,20 @@ export default function AdminOrdenDetallePage() {
   }, [ordenId, profile?.tenant_id])
 
   useEffect(() => { cargar() }, [cargar])
+
+  // Mientras haya un video procesándose en segundo plano (conversión a mp4),
+  // se refresca la lista de medios cada pocos segundos hasta que termine.
+  useEffect(() => {
+    if (!medios.some((m) => m.procesando)) return
+    const id = setInterval(async () => {
+      const { data } = await supabase
+        .from('medios')
+        .select('id, url, tipo, nombre_archivo, storage_location, drive_url, procesando')
+        .eq('orden_id', ordenId)
+      if (data) setMedios(data as unknown as Medio[])
+    }, 4000)
+    return () => clearInterval(id)
+  }, [medios, ordenId, supabase])
 
   useEffect(() => {
     if (!profile?.tenant_id) return

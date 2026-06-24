@@ -19,6 +19,7 @@ interface Medio {
   nombre_archivo: string | null
   storage_location: 'r2' | 'drive'
   drive_url: string | null
+  procesando: boolean
 }
 
 interface OrdenDetalle {
@@ -107,7 +108,7 @@ export default function ResumenMecanicoPage() {
         .order('orden'),
       supabase
         .from('medios')
-        .select('id, url, tipo, nombre_archivo, storage_location, drive_url')
+        .select('id, url, tipo, nombre_archivo, storage_location, drive_url, procesando')
         .eq('orden_id', ordenId),
     ]).then(([{ data: ordenData }, { data: cats }, { data: mediosData }]) => {
       if (ordenData) {
@@ -131,6 +132,20 @@ export default function ResumenMecanicoPage() {
       setLoading(false)
     })
   }, [ordenId, profile?.tenant_id])
+
+  // Mientras haya un video procesándose en segundo plano (conversión a mp4),
+  // se refresca la lista de medios cada pocos segundos hasta que termine.
+  useEffect(() => {
+    if (!medios.some((m) => m.procesando)) return
+    const id = setInterval(async () => {
+      const { data } = await supabase
+        .from('medios')
+        .select('id, url, tipo, nombre_archivo, storage_location, drive_url, procesando')
+        .eq('orden_id', ordenId)
+      if (data) setMedios(data as unknown as Medio[])
+    }, 4000)
+    return () => clearInterval(id)
+  }, [medios, ordenId, supabase])
 
   const subcategoriasEdit = categorias.find((c) => c.id === editCategoriaId)?.subcategorias_servicio ?? []
 

@@ -37,6 +37,7 @@ async function convertirEnSegundoPlano(
       url: nuevaKey,
       nombre_archivo: nuevoNombre,
       tamano_bytes: convertido.length,
+      procesando: false,
     }).eq('id', medioId)
 
     if (deltaBytes !== 0) {
@@ -44,6 +45,9 @@ async function convertirEnSegundoPlano(
     }
   } catch (e) {
     console.error('[upload/register] Error convirtiendo video a mp4 en segundo plano, se conserva el original:', e)
+    // Se conserva el original tal cual — se quita el estado "procesando" para
+    // que la galería al menos intente reproducirlo en vez de quedarse cargando.
+    await supabase.from('medios').update({ procesando: false }).eq('id', medioId)
   }
 }
 
@@ -69,6 +73,8 @@ export async function POST(req: NextRequest) {
   // celular (mov, 3gpp, webm, etc.). Se registra YA con el archivo original
   // (para que aparezca de inmediato) y la conversión a mp4 corre después, en
   // segundo plano, sin que el usuario tenga que esperarla.
+  const necesitaConversion = tipo === 'video' && !key.toLowerCase().endsWith('.mp4')
+
   const { data: medio } = await supabase.from('medios').insert({
     orden_id,
     tenant_id: perfil.tenant_id,
@@ -78,7 +84,8 @@ export async function POST(req: NextRequest) {
     tamano_bytes: tamano_bytes ?? 0,
     storage_location: 'r2',
     subido_por: user.id,
-  }).select('id, url, tipo').single()
+    procesando: necesitaConversion,
+  }).select('id, url, tipo, procesando').single()
 
   if (medio) {
     await registrarAuditoria(supabase, {
@@ -91,7 +98,7 @@ export async function POST(req: NextRequest) {
       usuario_id: user.id,
     })
 
-    if (tipo === 'video' && !key.toLowerCase().endsWith('.mp4')) {
+    if (necesitaConversion) {
       waitUntil(convertirEnSegundoPlano(supabase, medio.id, key, nombre_archivo, perfil.tenant_id))
     }
   }

@@ -2,6 +2,18 @@
 import { useState, useRef } from 'react'
 import { Badge } from '@/components/ui/Badge'
 
+function ProcesandoThumb() {
+  return (
+    <div className="relative w-full h-full bg-gray-900 flex flex-col items-center justify-center gap-1.5 text-white/80">
+      <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+      <span className="text-[10px]">Procesando...</span>
+    </div>
+  )
+}
+
 function VideoThumb({ src }: { src: string }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [ready, setReady] = useState(false)
@@ -73,6 +85,7 @@ interface Medio {
   nombre_archivo: string | null
   storage_location: 'r2' | 'drive'
   drive_url: string | null
+  procesando?: boolean
 }
 
 export function MediaGallery({ medios, onDelete }: {
@@ -109,8 +122,11 @@ export function MediaGallery({ medios, onDelete }: {
             <button
               onClick={() => setViewing(medio)}
               className="w-full h-full bg-gray-100 rounded-lg overflow-hidden"
+              disabled={medio.procesando}
             >
-              {medio.tipo === 'imagen' ? (
+              {medio.procesando ? (
+                <ProcesandoThumb />
+              ) : medio.tipo === 'imagen' ? (
                 <img
                   src={getMediaUrl(medio)}
                   alt={medio.nombre_archivo ?? 'Imagen'}
