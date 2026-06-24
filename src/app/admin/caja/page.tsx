@@ -395,7 +395,7 @@ async function construirMovimientos(
   hastaISO: string | null
 ): Promise<Movimiento[]> {
   let qPagos = supabase.from('pagos_orden')
-    .select('id, monto, fecha, metodo_pago_id, metodos_pago(nombre), ordenes(numero, placa, cliente, tipo_orden)')
+    .select('id, orden_id, monto, fecha, metodo_pago_id, metodos_pago(nombre), ordenes(numero, placa, cliente, tipo_orden)')
     .eq('tenant_id', tenantId)
   if (desdeISO) qPagos = qPagos.gte('fecha', desdeISO)
   if (hastaISO) qPagos = qPagos.lte('fecha', hastaISO)
@@ -447,9 +447,17 @@ async function construirMovimientos(
 
   const lista: Movimiento[] = []
 
-  for (const p of (pagos ?? []) as unknown as { id: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
+  // Una venta directa de repuestos puede recibir su pago desde la pantalla
+  // general de la orden (que registra en pagos_orden) en vez de la pantalla
+  // de Repuestos (que solo actualiza ordenes.valor_abono). Si ya tiene algún
+  // pago en pagos_orden, esa es la fuente de verdad — no se vuelve a contar
+  // el mismo ingreso por el lado de ordenes.valor_abono.
+  const ordenesConPagoRegistrado = new Set<string>()
+
+  for (const p of (pagos ?? []) as unknown as { id: string; orden_id: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
     const ord = p.ordenes
     const esVenta = ord?.tipo_orden === 'venta_repuestos'
+    if (esVenta) ordenesConPagoRegistrado.add(p.orden_id)
     lista.push({
       id: `pago_${p.id}`,
       rawId: p.id,
@@ -467,6 +475,7 @@ async function construirMovimientos(
   }
 
   for (const v of (ventaDirecta ?? []) as unknown as { id: string; numero: number; placa: string; cliente: string; valor_abono: number; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; created_at: string }[]) {
+    if (ordenesConPagoRegistrado.has(v.id)) continue
     lista.push({
       id: `ventadirecta_${v.id}`,
       rawId: v.id,
