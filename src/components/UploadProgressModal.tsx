@@ -34,7 +34,10 @@ export function UploadProgressModal({
               <div className="flex justify-between gap-2 text-xs text-gray-600">
                 <span className="truncate">{it.tipo === 'video' ? '🎥' : '🖼️'} {it.name}</span>
                 <span className="flex-shrink-0">
-                  {it.status === 'error' ? 'Error' : it.stage === 'comprimiendo' ? 'Comprimiendo...' : `${it.progress}%`}
+                  {it.status === 'error' ? 'Error'
+                    : it.status === 'done' ? '100%'
+                    : it.stage === 'comprimiendo' ? 'Comprimiendo...'
+                    : `${it.progress}%`}
                 </span>
               </div>
               <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
