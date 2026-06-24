@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
   // segundo plano, sin que el usuario tenga que esperarla.
   const necesitaConversion = tipo === 'video' && !key.toLowerCase().endsWith('.mp4')
 
-  const { data: medio } = await supabase.from('medios').insert({
+  const { data: medio, error: medioErr } = await supabase.from('medios').insert({
     orden_id,
     tenant_id: perfil.tenant_id,
     url: key,
@@ -87,20 +87,23 @@ export async function POST(req: NextRequest) {
     procesando: necesitaConversion,
   }).select('id, url, tipo, procesando').single()
 
-  if (medio) {
-    await registrarAuditoria(supabase, {
-      tenant_id: perfil.tenant_id,
-      tabla: 'medios',
-      registro_id: medio.id,
-      tipo: 'movimiento',
-      valor_nuevo: { tipo, nombre_archivo, orden_id },
-      descripcion: `Subió ${tipo === 'video' ? 'un video' : 'una foto'} (${nombre_archivo}) a la orden`,
-      usuario_id: user.id,
-    })
+  if (medioErr || !medio) {
+    console.error('[upload/register] Error guardando el registro del medio:', medioErr)
+    return NextResponse.json({ error: medioErr?.message ?? 'No se guardó el registro' }, { status: 500 })
+  }
 
-    if (necesitaConversion) {
-      waitUntil(convertirEnSegundoPlano(supabase, medio.id, key, nombre_archivo, perfil.tenant_id))
-    }
+  await registrarAuditoria(supabase, {
+    tenant_id: perfil.tenant_id,
+    tabla: 'medios',
+    registro_id: medio.id,
+    tipo: 'movimiento',
+    valor_nuevo: { tipo, nombre_archivo, orden_id },
+    descripcion: `Subió ${tipo === 'video' ? 'un video' : 'una foto'} (${nombre_archivo}) a la orden`,
+    usuario_id: user.id,
+  })
+
+  if (necesitaConversion) {
+    waitUntil(convertirEnSegundoPlano(supabase, medio.id, key, nombre_archivo, perfil.tenant_id))
   }
 
   await supabase.rpc('increment_tenant_storage', {
@@ -118,5 +121,5 @@ export async function POST(req: NextRequest) {
     archiveToLimit(perfil.tenant_id, tenantPost, supabase).catch(() => {})
   }
 
-  return NextResponse.json(medio ?? { error: 'No se guardó el registro' })
+  return NextResponse.json(medio)
 }
