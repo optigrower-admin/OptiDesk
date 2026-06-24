@@ -267,6 +267,7 @@ export default function AdminOrdenDetallePage() {
   const [uploadingMedio, setUploadingMedio] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadStage, setUploadStage] = useState<'leyendo' | 'subiendo' | 'comprimiendo'>('leyendo')
   const [pagoError, setPagoError] = useState('')
   // Lava moto
   const [lavaMotoConfig, setLavaMotoConfig] = useState<LavaMotoConfig | null>(null)
@@ -691,6 +692,7 @@ export default function AdminOrdenDetallePage() {
     setUploadingMedio(true)
     setUploadError('')
     setUploadProgress(0)
+    setUploadStage('leyendo')
     try {
       const file = e.target.files?.[0]
       if (!file) {
@@ -779,7 +781,9 @@ export default function AdminOrdenDetallePage() {
         xhr.send(fileBuffer)
       })
 
-      // Registrar en Supabase
+      // Registrar en Supabase (si es video sin extensión mp4, esto recodifica
+      // a H.264/AAC en el servidor antes de responder — puede tardar un poco)
+      if (tipo === 'video' && !key.toLowerCase().endsWith('.mp4')) setUploadStage('comprimiendo')
       const regRes = await fetch('/api/upload/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2076,7 +2080,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                     </svg>
-                    {uploadProgress > 0 && uploadProgress <= 40 ? `Leyendo ${uploadProgress * 2.5 | 0}%`
+                    {uploadStage === 'comprimiendo' ? 'Comprimiendo...'
+                      : uploadProgress > 0 && uploadProgress <= 40 ? `Leyendo ${uploadProgress * 2.5 | 0}%`
                       : uploadProgress > 40 ? `Subiendo ${uploadProgress}%`
                       : 'Preparando...'}
                   </span>

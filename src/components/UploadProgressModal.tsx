@@ -5,6 +5,7 @@ export interface UploadItemState {
   tipo: 'imagen' | 'video'
   progress: number
   status: 'uploading' | 'done' | 'error'
+  stage?: 'subiendo' | 'comprimiendo'
   error?: string
 }
 
@@ -32,14 +33,23 @@ export function UploadProgressModal({
             <div key={i} className="space-y-1">
               <div className="flex justify-between gap-2 text-xs text-gray-600">
                 <span className="truncate">{it.tipo === 'video' ? '🎥' : '🖼️'} {it.name}</span>
-                <span className="flex-shrink-0">{it.status === 'error' ? 'Error' : `${it.progress}%`}</span>
+                <span className="flex-shrink-0">
+                  {it.status === 'error' ? 'Error' : it.stage === 'comprimiendo' ? 'Comprimiendo...' : `${it.progress}%`}
+                </span>
               </div>
               <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all ${it.status === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}
-                  style={{ width: `${it.status === 'done' ? 100 : it.progress}%` }}
-                />
+                {it.status === 'uploading' && it.stage === 'comprimiendo' ? (
+                  <div className="h-full bg-blue-400 animate-pulse w-full" />
+                ) : (
+                  <div
+                    className={`h-full transition-all ${it.status === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}
+                    style={{ width: `${it.status === 'done' ? 100 : it.progress}%` }}
+                  />
+                )}
               </div>
+              {it.status === 'uploading' && it.stage === 'comprimiendo' && (
+                <p className="text-[11px] text-gray-400">Comprimiendo a mp4 — puede tardar uno o dos minutos.</p>
+              )}
               {it.status === 'error' && <p className="text-xs text-red-600">{it.error}</p>}
             </div>
           ))}

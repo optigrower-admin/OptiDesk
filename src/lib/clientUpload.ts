@@ -7,7 +7,6 @@ export interface MedioRegistrado {
   id: string
   url: string
   tipo: 'imagen' | 'video'
-  procesando: boolean
 }
 
 export async function subirArchivoOrden(params: {
@@ -15,8 +14,9 @@ export async function subirArchivoOrden(params: {
   file: File
   tipo: 'imagen' | 'video'
   onProgress?: (pct: number) => void
+  onStage?: (stage: 'subiendo' | 'comprimiendo') => void
 }): Promise<MedioRegistrado> {
-  const { ordenId, file, tipo, onProgress } = params
+  const { ordenId, file, tipo, onProgress, onStage } = params
 
   const presignRes = await fetch('/api/upload/presign', {
     method: 'POST',
@@ -71,6 +71,9 @@ export async function subirArchivoOrden(params: {
     xhr.ontimeout = () => reject(new Error('Tiempo agotado (10 min). Conexión muy lenta o archivo demasiado grande.'))
     xhr.send(fileBuffer)
   })
+
+  const necesitaConversion = tipo === 'video' && !key.toLowerCase().endsWith('.mp4')
+  if (necesitaConversion) onStage?.('comprimiendo')
 
   const regRes = await fetch('/api/upload/register', {
     method: 'POST',

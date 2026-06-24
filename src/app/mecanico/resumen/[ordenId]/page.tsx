@@ -243,6 +243,7 @@ export default function ResumenMecanicoPage() {
           file,
           tipo,
           onProgress: (pct) => setUploadItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, progress: pct } : it))),
+          onStage: (stage) => setUploadItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, stage } : it))),
         })
         setMedios((prev) => [...prev, medio as Medio])
         setUploadItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, status: 'done', progress: 100 } : it)))

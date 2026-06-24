@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { waitUntil } from '@vercel/functions'
 import { createClient } from '@/lib/supabase/server'
 import { archiveToLimit, LIMITE_TRIGGER_BYTES } from '@/lib/archiveToLimit'
 import { registrarAuditoria } from '@/lib/audit'
@@ -8,71 +7,24 @@ import { convertirAMp4 } from '@/lib/video'
 
 export const maxDuration = 300
 
-// Convierte el video a mp4 en segundo plano y actualiza el registro cuando
-// termina — así la subida nunca espera a ffmpeg. waitUntil() le garantiza a
-// Vercel que mantenga la función viva hasta que esta promesa termine, aunque
-// la respuesta ya se haya devuelto al cliente.
-const TIMEOUT_CONVERSION_MS = 260_000 // por debajo de maxDuration (300s) para alcanzar a limpiar "procesando" antes de que Vercel mate la función
+// Cada paso tiene su propio límite de tiempo para nunca colgar la petición
+// indefinidamente. Se intentó antes hacer la conversión en segundo plano con
+// waitUntil() de Vercel para responder rápido, pero en este proyecto la
+// función se congelaba a medio camino sin terminar ni fallar (confirmado en
+// logs: la conversión arrancaba y nunca volvía a aparecer ni éxito ni error).
+// Una función "viva" atendiendo una petición real es la única garantía
+// confiable de que Vercel la deja correr hasta el límite configurado — por
+// eso la conversión se espera aquí mismo, de forma síncrona.
+const TIMEOUT_PASO_MS = 250_000
 
 function conTimeout<T>(promesa: Promise<T>, ms: number, etiqueta: string): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Tiempo agotado en ${etiqueta} (${ms}ms)`)), ms)
+    const timer = setTimeout(() => reject(new Error(`Tiempo agotado en ${etiqueta} (${Math.round(ms / 1000)}s)`)), ms)
     promesa.then(
       (v) => { clearTimeout(timer); resolve(v) },
       (e) => { clearTimeout(timer); reject(e) }
     )
   })
-}
-
-async function convertirEnSegundoPlano(
-  supabase: ReturnType<typeof createClient>,
-  medioId: string,
-  key: string,
-  nombreArchivo: string,
-  tenantId: string
-) {
-  try {
-    console.log(`[upload/register] medio ${medioId}: iniciando conversión de ${key}`)
-    const extOriginal = (key.split('.').pop() ?? 'mp4').toLowerCase()
-
-    const original = await conTimeout(downloadFromR2(key), TIMEOUT_CONVERSION_MS, 'descarga de R2')
-    console.log(`[upload/register] medio ${medioId}: descargado (${original.length} bytes), convirtiendo...`)
-
-    const convertido = Buffer.from(
-      await conTimeout(convertirAMp4(original, extOriginal), TIMEOUT_CONVERSION_MS, 'conversión ffmpeg')
-    )
-    console.log(`[upload/register] medio ${medioId}: convertido (${convertido.length} bytes), subiendo a R2...`)
-
-    const nuevaKey = key.replace(/\.[^./]+$/, '.mp4')
-    const nuevoNombre = nombreArchivo.replace(/\.[^./]+$/, '.mp4')
-
-    await conTimeout(uploadToR2(nuevaKey, convertido, 'video/mp4'), TIMEOUT_CONVERSION_MS, 'subida a R2')
-    if (nuevaKey !== key) await deleteFromR2(key).catch(() => {})
-
-    // El tamaño original ya se contó en /api/upload/register — solo se ajusta
-    // la diferencia contra el tamaño final convertido (normalmente más chico).
-    const deltaBytes = convertido.length - original.length
-    await supabase.from('medios').update({
-      url: nuevaKey,
-      nombre_archivo: nuevoNombre,
-      tamano_bytes: convertido.length,
-      procesando: false,
-    }).eq('id', medioId)
-
-    if (deltaBytes !== 0) {
-      await supabase.rpc('increment_tenant_storage', { p_tenant_id: tenantId, p_bytes: deltaBytes })
-    }
-    console.log(`[upload/register] medio ${medioId}: conversión terminada OK`)
-  } catch (e) {
-    console.error(`[upload/register] medio ${medioId}: error convirtiendo video a mp4, se conserva el original:`, e)
-    // Se conserva el original tal cual — se quita el estado "procesando" para
-    // que la galería al menos intente reproducirlo en vez de quedarse cargando
-    // para siempre. Nunca debe quedar procesando=true sin salida.
-    await supabase.from('medios').update({ procesando: false }).eq('id', medioId).then(
-      () => {},
-      (updErr) => console.error(`[upload/register] medio ${medioId}: tampoco se pudo limpiar "procesando":`, updErr)
-    )
-  }
 }
 
 export async function POST(req: NextRequest) {
@@ -83,7 +35,7 @@ export async function POST(req: NextRequest) {
   const { data: perfil } = await supabase.from('usuarios').select('tenant_id').eq('id', user.id).single()
   if (!perfil) return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 403 })
 
-  const { orden_id, key, tipo, nombre_archivo, tamano_bytes } = await req.json() as {
+  let { orden_id, key, tipo, nombre_archivo, tamano_bytes } = await req.json() as {
     orden_id: string; key: string; tipo: 'imagen' | 'video'
     nombre_archivo: string; tamano_bytes: number
   }
@@ -94,10 +46,31 @@ export async function POST(req: NextRequest) {
 
   // Este registro viene de una subida directa a R2 (presign), que no pasa por
   // /api/upload — así que los videos llegan aquí en el formato original del
-  // celular (mov, 3gpp, webm, etc.). Se registra YA con el archivo original
-  // (para que aparezca de inmediato) y la conversión a mp4 corre después, en
-  // segundo plano, sin que el usuario tenga que esperarla.
-  const necesitaConversion = tipo === 'video' && !key.toLowerCase().endsWith('.mp4')
+  // celular (mov, 3gpp, webm, etc.). Se convierten a mp4 real (H.264/AAC) aquí
+  // mismo antes de guardar el registro, para que TODOS los videos de Servicio
+  // Técnico salgan siempre reproducibles en cualquier dispositivo.
+  if (tipo === 'video' && !key.toLowerCase().endsWith('.mp4')) {
+    try {
+      const extOriginal = (key.split('.').pop() ?? 'mp4').toLowerCase()
+      console.log(`[upload/register] Convirtiendo ${key} (${tamano_bytes ?? '?'} bytes original)`)
+
+      const original = await conTimeout(downloadFromR2(key), TIMEOUT_PASO_MS, 'descarga de R2')
+      const convertido = Buffer.from(await conTimeout(convertirAMp4(original, extOriginal), TIMEOUT_PASO_MS, 'conversión ffmpeg'))
+
+      const nuevaKey = key.replace(/\.[^./]+$/, '.mp4')
+      const nuevoNombre = nombre_archivo.replace(/\.[^./]+$/, '.mp4')
+
+      await conTimeout(uploadToR2(nuevaKey, convertido, 'video/mp4'), TIMEOUT_PASO_MS, 'subida a R2')
+      if (nuevaKey !== key) await deleteFromR2(key).catch(() => {})
+
+      key = nuevaKey
+      nombre_archivo = nuevoNombre
+      tamano_bytes = convertido.length
+      console.log(`[upload/register] Conversión OK: ${key} (${tamano_bytes} bytes)`)
+    } catch (e) {
+      console.error('[upload/register] Error convirtiendo video a mp4, se conserva el original:', e)
+    }
+  }
 
   const { data: medio, error: medioErr } = await supabase.from('medios').insert({
     orden_id,
@@ -108,8 +81,7 @@ export async function POST(req: NextRequest) {
     tamano_bytes: tamano_bytes ?? 0,
     storage_location: 'r2',
     subido_por: user.id,
-    procesando: necesitaConversion,
-  }).select('id, url, tipo, procesando').single()
+  }).select('id, url, tipo').single()
 
   if (medioErr || !medio) {
     console.error('[upload/register] Error guardando el registro del medio:', medioErr)
@@ -125,10 +97,6 @@ export async function POST(req: NextRequest) {
     descripcion: `Subió ${tipo === 'video' ? 'un video' : 'una foto'} (${nombre_archivo}) a la orden`,
     usuario_id: user.id,
   })
-
-  if (necesitaConversion) {
-    waitUntil(convertirEnSegundoPlano(supabase, medio.id, key, nombre_archivo, perfil.tenant_id))
-  }
 
   await supabase.rpc('increment_tenant_storage', {
     p_tenant_id: perfil.tenant_id,
