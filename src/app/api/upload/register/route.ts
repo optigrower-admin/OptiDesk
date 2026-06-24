@@ -12,6 +12,18 @@ export const maxDuration = 300
 // termina — así la subida nunca espera a ffmpeg. waitUntil() le garantiza a
 // Vercel que mantenga la función viva hasta que esta promesa termine, aunque
 // la respuesta ya se haya devuelto al cliente.
+const TIMEOUT_CONVERSION_MS = 260_000 // por debajo de maxDuration (300s) para alcanzar a limpiar "procesando" antes de que Vercel mate la función
+
+function conTimeout<T>(promesa: Promise<T>, ms: number, etiqueta: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Tiempo agotado en ${etiqueta} (${ms}ms)`)), ms)
+    promesa.then(
+      (v) => { clearTimeout(timer); resolve(v) },
+      (e) => { clearTimeout(timer); reject(e) }
+    )
+  })
+}
+
 async function convertirEnSegundoPlano(
   supabase: ReturnType<typeof createClient>,
   medioId: string,
@@ -20,14 +32,21 @@ async function convertirEnSegundoPlano(
   tenantId: string
 ) {
   try {
+    console.log(`[upload/register] medio ${medioId}: iniciando conversión de ${key}`)
     const extOriginal = (key.split('.').pop() ?? 'mp4').toLowerCase()
-    const original = await downloadFromR2(key)
-    const convertido = Buffer.from(await convertirAMp4(original, extOriginal))
+
+    const original = await conTimeout(downloadFromR2(key), TIMEOUT_CONVERSION_MS, 'descarga de R2')
+    console.log(`[upload/register] medio ${medioId}: descargado (${original.length} bytes), convirtiendo...`)
+
+    const convertido = Buffer.from(
+      await conTimeout(convertirAMp4(original, extOriginal), TIMEOUT_CONVERSION_MS, 'conversión ffmpeg')
+    )
+    console.log(`[upload/register] medio ${medioId}: convertido (${convertido.length} bytes), subiendo a R2...`)
 
     const nuevaKey = key.replace(/\.[^./]+$/, '.mp4')
     const nuevoNombre = nombreArchivo.replace(/\.[^./]+$/, '.mp4')
 
-    await uploadToR2(nuevaKey, convertido, 'video/mp4')
+    await conTimeout(uploadToR2(nuevaKey, convertido, 'video/mp4'), TIMEOUT_CONVERSION_MS, 'subida a R2')
     if (nuevaKey !== key) await deleteFromR2(key).catch(() => {})
 
     // El tamaño original ya se contó en /api/upload/register — solo se ajusta
@@ -43,11 +62,16 @@ async function convertirEnSegundoPlano(
     if (deltaBytes !== 0) {
       await supabase.rpc('increment_tenant_storage', { p_tenant_id: tenantId, p_bytes: deltaBytes })
     }
+    console.log(`[upload/register] medio ${medioId}: conversión terminada OK`)
   } catch (e) {
-    console.error('[upload/register] Error convirtiendo video a mp4 en segundo plano, se conserva el original:', e)
+    console.error(`[upload/register] medio ${medioId}: error convirtiendo video a mp4, se conserva el original:`, e)
     // Se conserva el original tal cual — se quita el estado "procesando" para
-    // que la galería al menos intente reproducirlo en vez de quedarse cargando.
-    await supabase.from('medios').update({ procesando: false }).eq('id', medioId)
+    // que la galería al menos intente reproducirlo en vez de quedarse cargando
+    // para siempre. Nunca debe quedar procesando=true sin salida.
+    await supabase.from('medios').update({ procesando: false }).eq('id', medioId).then(
+      () => {},
+      (updErr) => console.error(`[upload/register] medio ${medioId}: tampoco se pudo limpiar "procesando":`, updErr)
+    )
   }
 }
 

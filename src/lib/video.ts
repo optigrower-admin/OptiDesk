@@ -20,12 +20,14 @@ export async function convertirAMp4(buffer: Buffer, extOriginal: string): Promis
   const outputPath = path.join(tmpDir, `${id}.mp4`)
 
   await fs.writeFile(inputPath, buffer)
+  console.log(`[video] Convirtiendo ${inputPath} (${buffer.length} bytes) → mp4`)
 
-  try {
-    await intentarConversion(inputPath, outputPath, true)
-  } catch {
-    await intentarConversion(inputPath, outputPath, false)
-  }
+  // Siempre se recodifica a H.264/AAC — un simple remux (copiar streams) no
+  // sirve para videos HEVC (formato por defecto en iPhones recientes): el
+  // archivo queda con extensión .mp4 pero el codec sigue siendo HEVC, que
+  // Chrome/Firefox/Android no pueden reproducir. Recodificar garantiza que
+  // el resultado se reproduzca en cualquier dispositivo/navegador.
+  await intentarConversion(inputPath, outputPath)
 
   const resultado = await fs.readFile(outputPath)
   await Promise.all([
@@ -33,25 +35,21 @@ export async function convertirAMp4(buffer: Buffer, extOriginal: string): Promis
     fs.unlink(outputPath).catch(() => {}),
   ])
 
-  // ffmpeg puede terminar sin error pero producir un archivo vacío/truncado
-  // (remux fallido en silencio). Nunca tratamos eso como conversión exitosa —
-  // el llamador conserva el original en vez de reemplazarlo por un mp4 roto.
+  // ffmpeg puede terminar sin error pero producir un archivo vacío/truncado.
+  // Nunca tratamos eso como conversión exitosa — el llamador conserva el
+  // original en vez de reemplazarlo por un mp4 roto.
   if (resultado.length < 1024) {
     throw new Error(`Conversión a mp4 produjo un archivo demasiado pequeño (${resultado.length} bytes)`)
   }
 
+  console.log(`[video] Conversión OK: ${resultado.length} bytes`)
   return resultado
 }
 
-function intentarConversion(input: string, output: string, soloRemux: boolean): Promise<void> {
+function intentarConversion(input: string, output: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const comando = ffmpeg(input)
-    if (soloRemux) {
-      comando.outputOptions(['-c:v', 'copy', '-c:a', 'copy'])
-    } else {
-      comando.outputOptions(['-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac'])
-    }
-    comando
+    ffmpeg(input)
+      .outputOptions(['-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac', '-movflags', '+faststart'])
       .output(output)
       .on('end', () => resolve())
       .on('error', (err: Error) => reject(err))
