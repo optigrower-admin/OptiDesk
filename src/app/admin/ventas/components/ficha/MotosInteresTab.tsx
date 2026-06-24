@@ -39,17 +39,30 @@ export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Prop
 
   const disponibles = catalogo.filter(c => !seleccion.some(s => s.moto_catalogo_id === c.id))
 
+  async function sincronizarValorEstimado() {
+    const { data: sel } = await supabase.from('clientes_motos_interes')
+      .select('motos_catalogo(precio, costo_documentos)')
+      .eq('cliente_id', clienteId)
+    const total = (sel ?? []).reduce((acc, s) => {
+      const m = Array.isArray(s.motos_catalogo) ? s.motos_catalogo[0] : s.motos_catalogo
+      return acc + (m ? m.precio + m.costo_documentos : 0)
+    }, 0)
+    await supabase.from('clientes').update({ valor_estimado_venta: total || null }).eq('id', clienteId)
+  }
+
   async function agregar() {
     if (!agregando) return
     await supabase.from('clientes_motos_interes').insert({
       cliente_id: clienteId, moto_catalogo_id: agregando, disponibilidad: 'pedir', created_by: usuarioId,
     })
     setAgregando('')
+    await sincronizarValorEstimado()
     cargar()
   }
 
   async function quitar(id: string) {
     await supabase.from('clientes_motos_interes').delete().eq('id', id)
+    await sincronizarValorEstimado()
     cargar()
   }
 

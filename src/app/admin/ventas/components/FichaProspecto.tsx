@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { ETAPAS, ETAPA_MAP, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import VincularClienteModal from './VincularClienteModal'
+import ResumenTab from './ficha/ResumenTab'
 import DatosClienteTab from './ficha/DatosClienteTab'
 import MotosInteresTab from './ficha/MotosInteresTab'
 import PagoTab from './ficha/PagoTab'
@@ -60,10 +61,10 @@ const ROL_LABEL: Record<string, string> = {
   admin: 'Admin', superadmin: 'SuperAdmin', mecanico: 'Mecánico', gerencia: 'Gerencia', control_total: 'Control total',
 }
 
-type TabDerecha = 'venta' | 'datos' | 'motos' | 'pago' | 'archivos' | 'comentarios' | 'pasos' | 'recordatorios' | 'historial' | 'visibilidad'
+type TabDerecha = 'resumen' | 'datos' | 'motos' | 'pago' | 'archivos' | 'comentarios' | 'pasos' | 'recordatorios' | 'historial' | 'visibilidad'
 
 const TABS: { id: TabDerecha; label: string; icon: string }[] = [
-  { id: 'venta',         label: 'Venta',         icon: '📋' },
+  { id: 'resumen',       label: 'Resumen',       icon: '📋' },
   { id: 'datos',         label: 'Datos',         icon: '🪪' },
   { id: 'motos',         label: 'Motos',         icon: '🏍️' },
   { id: 'pago',          label: 'Pago',          icon: '💳' },
@@ -88,16 +89,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
   const [tipoMsg, setTipoMsg]           = useState<'mensaje' | 'nota'>('mensaje')
   const [sending, setSending]           = useState(false)
   const [saving, setSaving]             = useState(false)
-  const [tabDer, setTabDer]             = useState<TabDerecha>('venta')
+  const [tabDer, setTabDer]             = useState<TabDerecha>('resumen')
   const [vincularOpen, setVincularOpen] = useState(false)
   const [convActivaId, setConvActivaId] = useState(lead.todas_conversaciones[0]?.id ?? '')
 
-  // Campos editables — tab Venta
-  const [presupuesto, setPresupuesto]   = useState(lead.valor_estimado_venta?.toString() ?? '')
-  const [proxAccion, setProxAccion]     = useState(lead.proxima_accion ?? '')
-  const [proxFecha, setProxFecha]       = useState(
-    lead.proxima_accion_fecha ? lead.proxima_accion_fecha.slice(0, 16) : ''
-  )
+  // Campos editables — tab Resumen
   const [etapa, setEtapa]         = useState<EtapaVenta>(lead.etapa_venta)
   const [assignedTo, setAssignedTo] = useState('')
 
@@ -152,12 +148,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cliente_id:           lead.id,
-          valor_estimado_venta: presupuesto ? parseFloat(presupuesto) : null,
-          proxima_accion:       proxAccion || null,
-          proxima_accion_fecha: proxFecha ? new Date(proxFecha).toISOString() : null,
-          etapa_venta:          etapa,
-          assigned_to:          assignedTo || null,
+          cliente_id:  lead.id,
+          etapa_venta: etapa,
+          ...(esGerencia ? { assigned_to: assignedTo || null } : {}),
         }),
       })
       if (!res.ok) {
@@ -377,7 +370,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
 
             <div className="flex-1 overflow-y-auto p-4">
 
-              {tabDer === 'venta' && (
+              {tabDer === 'resumen' && (
                 <div className="space-y-4">
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Cliente</p>
@@ -408,32 +401,31 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
                       </div>
                       <div>
                         <label className="text-xs text-gray-500">Asignado a</label>
-                        <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5">
-                          <option value="">Sin asignar</option>
-                          {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500">Valor estimado (COP)</label>
-                        <input type="number" value={presupuesto} onChange={e => setPresupuesto(e.target.value)}
-                          placeholder="ej: 9500000"
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+                        {esGerencia ? (
+                          <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5">
+                            <option value="">Sin asignar</option>
+                            {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                          </select>
+                        ) : (
+                          <p className="text-sm text-gray-700 mt-0.5">
+                            {usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'}
+                            <span className="text-xs text-gray-400 ml-1">(solo Gerencia puede cambiarlo)</span>
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Próxima acción</p>
-                    <input value={proxAccion} onChange={e => setProxAccion(e.target.value)}
-                      placeholder="ej: Llamar para confirmar cita"
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2" />
-                    <input type="datetime-local" value={proxFecha} onChange={e => setProxFecha(e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
+                  <button onClick={guardarVenta} disabled={saving}
+                    className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
+                    {saving ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+
+                  <ResumenTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />
 
                   {ordenes.length > 0 && (
-                    <div>
+                    <div className="border-t pt-3">
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                         Historial de servicio técnico ({ordenes.length})
                       </p>
@@ -446,10 +438,23 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
                     </div>
                   )}
 
-                  <button onClick={guardarVenta} disabled={saving}
-                    className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
-                    {saving ? 'Guardando...' : 'Guardar cambios'}
-                  </button>
+                  {lead.todas_conversaciones.length > 0 && (
+                    <div className="border-t pt-3">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Canales activos</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {lead.todas_conversaciones.map(c => (
+                          <span key={c.id} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full font-medium">
+                            {CANAL_ICON[c.canal] ?? '💭'} {CANAL_LABEL[c.canal] ?? c.canal}
+                            {c.no_leidos_count > 0 && (
+                              <span className="bg-green-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold">
+                                {c.no_leidos_count > 9 ? '9+' : c.no_leidos_count}
+                              </span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

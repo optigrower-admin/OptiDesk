@@ -43,6 +43,17 @@ export default function RecordatoriosTab({ clienteId, tenantId, usuarioId, clien
 
   useEffect(() => { cargar() }, [cargar])
 
+  async function sincronizarProximaAccion() {
+    const { data: prox } = await supabase.from('recordatorios')
+      .select('nota, fecha_recordatorio')
+      .eq('cliente_id', clienteId).eq('completado', false)
+      .order('fecha_recordatorio', { ascending: true }).limit(1).maybeSingle()
+    await supabase.from('clientes').update({
+      proxima_accion: prox?.nota ?? null,
+      proxima_accion_fecha: prox?.fecha_recordatorio ?? null,
+    }).eq('id', clienteId)
+  }
+
   async function crear() {
     if (!nota.trim() || !fecha) return
     await supabase.from('recordatorios').insert({
@@ -51,11 +62,13 @@ export default function RecordatoriosTab({ clienteId, tenantId, usuarioId, clien
       enviar_email: enviarEmail, email_destino: enviarEmail ? (emailDestino || null) : null,
     })
     setNota(''); setFecha(''); setEnviarEmail(false)
+    await sincronizarProximaAccion()
     cargar()
   }
 
   async function completar(id: string) {
     await supabase.from('recordatorios').update({ completado: true, completado_at: new Date().toISOString() }).eq('id', id)
+    await sincronizarProximaAccion()
     cargar()
   }
 
