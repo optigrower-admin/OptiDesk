@@ -261,21 +261,9 @@ function NuevaVentaContent() {
       })
 
       if (editId) {
-        // ─── Modo edición: actualizar orden y reconciliar ítems ───
-        const { error: updErr } = await supabase.from('ordenes').update({
-          placa: placaNorm || null,
-          cliente,
-          cedula: cedula || null,
-          celular: celular || null,
-          estado_pago: estadoPago,
-          valor_total: total,
-          valor_abono: valorAbonoNum,
-          metodo_pago_id: metodoPagoId || null,
-          moto_id: motoId,
-          cliente_id: clienteId,
-        }).eq('id', editId)
-        if (updErr) throw updErr
-
+        // ─── Modo edición: reconciliar ítems primero, y solo si todo sale bien
+        // actualizar el total/abono de la orden — así un insert de ítems fallido
+        // nunca deja la orden con un abono que no corresponde a ningún ítem real.
         const removidos = originalItems.filter((orig) => !items.some((i) => i.id === orig.id))
         const agregados = items.filter((i) => !i.id)
 
@@ -298,7 +286,7 @@ function NuevaVentaContent() {
         }
 
         if (agregados.length > 0) {
-          await supabase.from('items_orden').insert(
+          const { error: insErr } = await supabase.from('items_orden').insert(
             agregados.map((item) => ({
               orden_id: editId,
               descripcion: item.descripcion,
@@ -311,6 +299,7 @@ function NuevaVentaContent() {
               metodo_pago_id: item.metodo_pago_id ?? null,
             }))
           )
+          if (insErr) throw insErr
           await Promise.all(
             agregados.map((item) =>
               registrarSalida(supabase, 'venta_directa', {
@@ -326,6 +315,22 @@ function NuevaVentaContent() {
             )
           )
         }
+
+        // El total/abono se guarda solo después de que los ítems ya quedaron
+        // reconciliados con éxito en items_orden.
+        const { error: updErr } = await supabase.from('ordenes').update({
+          placa: placaNorm || null,
+          cliente,
+          cedula: cedula || null,
+          celular: celular || null,
+          estado_pago: estadoPago,
+          valor_total: total,
+          valor_abono: valorAbonoNum,
+          metodo_pago_id: metodoPagoId || null,
+          moto_id: motoId,
+          cliente_id: clienteId,
+        }).eq('id', editId)
+        if (updErr) throw updErr
 
         await registrarAuditoria(supabase, {
           tenant_id: profile.tenant_id,
@@ -365,7 +370,7 @@ function NuevaVentaContent() {
       if (ordenErr || !orden) throw ordenErr ?? new Error('No se pudo crear la venta')
       const ordenData = orden as { id: string }
 
-      await supabase.from('items_orden').insert(
+      const { error: itemsErr } = await supabase.from('items_orden').insert(
         items.map((item) => ({
           orden_id: ordenData.id,
           descripcion: item.descripcion,
@@ -378,6 +383,14 @@ function NuevaVentaContent() {
           metodo_pago_id: item.metodo_pago_id ?? null,
         }))
       )
+      if (itemsErr) {
+        // Si los ítems no se guardaron, la orden no puede quedar registrando un
+        // total/abono que no corresponde a ningún ítem real (la "venta fantasma"
+        // que aparece en Caja sin nada que la respalde). Se revierte la orden y
+        // se avisa para que el usuario reintente — no queda ningún dato a medias.
+        await supabase.from('ordenes').delete().eq('id', ordenData.id)
+        throw itemsErr
+      }
 
       // Registrar salidas en inventario y decrementar stock UMA
       await Promise.all(
@@ -408,7 +421,13 @@ function NuevaVentaContent() {
       localStorage.removeItem(DRAFT_KEY)
       router.push('/admin/repuestos')
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al guardar')
+      const mensaje =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Error al guardar'
+      setError(mensaje)
     } finally {
       setSaving(false)
     }

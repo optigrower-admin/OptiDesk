@@ -150,16 +150,24 @@ export default function VentaDetallePage() {
   const handleGuardarPago = async () => {
     if (!orden) return
     setErrorPago('')
+    const total = orden.valor_total ?? 0
+    if (total <= 0) {
+      setErrorPago('Esta venta no tiene ítems — agrega al menos uno antes de registrar un pago.')
+      return
+    }
     if (estadoPago === 'abono') {
       const v = parseInt(soloD(valorAbono) || '0', 10)
       if (v <= 0) { setErrorPago('Ingresa el valor del abono.'); return }
+      // El abono nunca puede superar el total real de los ítems — de lo
+      // contrario Caja registra un ingreso que no corresponde a ninguna venta.
+      if (v > total) { setErrorPago(`El abono no puede superar el total de la venta (${formatCOP(total)}).`); return }
     }
     setSaving(true)
     const valorAbonoNum =
       estadoPago === 'abono'
-        ? parseInt(soloD(valorAbono) || '0', 10)
+        ? Math.min(parseInt(soloD(valorAbono) || '0', 10), total)
         : estadoPago === 'pagado'
-        ? orden.valor_total ?? 0
+        ? total
         : 0
     await supabase
       .from('ordenes')
@@ -169,6 +177,15 @@ export default function VentaDetallePage() {
         metodo_pago_id: metodoPagoId || null,
       })
       .eq('id', ordenId)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'ordenes',
+      registro_id: ordenId,
+      tipo: 'edicion',
+      valor_nuevo: { estado_pago: estadoPago, valor_abono: valorAbonoNum },
+      descripcion: `Registró pago (${estadoPago}, ${formatCOP(valorAbonoNum)}) en venta directa #${orden.numero}`,
+      usuario_id: profile?.id,
+    })
     setSavedOk(true)
     setTimeout(() => setSavedOk(false), 3000)
     setSaving(false)
