@@ -10,6 +10,7 @@ import { MediaGallery } from '@/components/MediaGallery'
 import { formatCOP } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
 import { subirArchivoOrden } from '@/lib/clientUpload'
+import { UploadProgressModal, type UploadItemState } from '@/components/UploadProgressModal'
 
 interface Medio {
   id: string
@@ -70,8 +71,7 @@ export default function ResumenMecanicoPage() {
   const [medios, setMedios] = useState<Medio[]>([])
   const [loading, setLoading] = useState(true)
   const [uploadingMedia, setUploadingMedia] = useState(false)
-  const [uploadMediaProgress, setUploadMediaProgress] = useState('')
-  const [uploadMediaError, setUploadMediaError] = useState('')
+  const [uploadItems, setUploadItems] = useState<UploadItemState[]>([])
 
   // Inline edit states
   const [editField, setEditField] = useState<string | null>(null)
@@ -211,25 +211,30 @@ export default function ResumenMecanicoPage() {
 
   const handleUploadFiles = async (files: File[]) => {
     setUploadingMedia(true)
-    setUploadMediaError('')
-    const errores: string[] = []
+    const items: UploadItemState[] = files.map((f) => ({
+      name: f.name,
+      tipo: f.type.startsWith('video/') ? 'video' : 'imagen',
+      progress: 0,
+      status: 'uploading',
+    }))
+    setUploadItems(items)
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
-      const tipo = file.type.startsWith('video/') ? 'video' : 'imagen'
+      const tipo = items[i].tipo
       try {
         const medio = await subirArchivoOrden({
           ordenId,
           file,
           tipo,
-          onProgress: (pct) => setUploadMediaProgress(`${tipo === 'video' ? 'Video' : 'Foto'} ${i + 1} de ${files.length}... ${pct}%`),
+          onProgress: (pct) => setUploadItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, progress: pct } : it))),
         })
         setMedios((prev) => [...prev, medio as Medio])
+        setUploadItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, status: 'done', progress: 100 } : it)))
       } catch (e) {
-        errores.push(e instanceof Error ? e.message : `No se pudo subir ${file.name}`)
+        setUploadItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, status: 'error', error: e instanceof Error ? e.message : 'No se pudo subir' } : it)))
       }
     }
-    setUploadMediaProgress('')
-    if (errores.length) setUploadMediaError(errores.join('; '))
     setUploadingMedia(false)
   }
 
@@ -242,6 +247,9 @@ export default function ResumenMecanicoPage() {
 
   return (
     <div className="p-4 space-y-4 max-w-lg mx-auto pb-8">
+      {uploadItems.length > 0 && (
+        <UploadProgressModal items={uploadItems} onClose={() => setUploadItems([])} />
+      )}
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-700">
@@ -560,7 +568,7 @@ export default function ResumenMecanicoPage() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              {uploadMediaProgress || 'Subiendo...'}
+              Subiendo...
             </span>
           ) : (
             <div className="flex items-center gap-1.5">
@@ -602,9 +610,6 @@ export default function ResumenMecanicoPage() {
             </div>
           )}
         </div>
-        {uploadMediaError && (
-          <div className="px-4 py-2 bg-red-50 text-red-700 text-xs">{uploadMediaError}</div>
-        )}
         <div className="p-3">
           <MediaGallery medios={medios} onDelete={handleDeleteMedio} />
         </div>

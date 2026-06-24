@@ -9,6 +9,7 @@ import { ClienteMotoPanel } from '@/components/ClienteMotoPanel'
 import { normalizarPlaca } from '@/lib/utils'
 import { upsertMotoCliente } from '@/lib/clienteMoto'
 import { subirArchivoOrden } from '@/lib/clientUpload'
+import { UploadProgressModal, type UploadItemState } from '@/components/UploadProgressModal'
 import type { ClienteMotoPanelResult } from '@/components/ClienteMotoPanel'
 
 interface Categoria {
@@ -50,7 +51,7 @@ export default function RecepcionPage() {
   const [archivos, setArchivos] = useState<File[]>([])
   const [previews, setPreviews] = useState<{ url: string; tipo: 'imagen' | 'video' }[]>([])
   const [saving, setSaving] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState('')
+  const [uploadItems, setUploadItems] = useState<UploadItemState[]>([])
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
   const [panelResult, setPanelResult] = useState<ClienteMotoPanelResult>(PANEL_INIT)
@@ -194,30 +195,37 @@ export default function RecepcionPage() {
 
       if (ordenErr || !orden) throw ordenErr ?? new Error('No se pudo crear la orden')
 
-      const erroresUpload: string[] = []
+      localStorage.removeItem(DRAFT_KEY)
+
+      if (archivos.length === 0) {
+        router.push('/mecanico')
+        return
+      }
+
+      const items: UploadItemState[] = archivos.map((f) => ({
+        name: f.name,
+        tipo: isVideoFile(f) ? 'video' : 'imagen',
+        progress: 0,
+        status: 'uploading',
+      }))
+      setUploadItems(items)
+      setSaving(false)
+
       for (let i = 0; i < archivos.length; i++) {
         const file = archivos[i]
-        const esVideo = isVideoFile(file)
+        const tipo = items[i].tipo
         try {
           await subirArchivoOrden({
             ordenId: (orden as { id: string }).id,
             file,
-            tipo: esVideo ? 'video' : 'imagen',
-            onProgress: (pct) => setUploadProgress(`Subiendo ${esVideo ? 'video' : 'foto'} ${i + 1} de ${archivos.length}... ${pct}%`),
+            tipo,
+            onProgress: (pct) => setUploadItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, progress: pct } : it))),
           })
+          setUploadItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, status: 'done', progress: 100 } : it)))
         } catch (e) {
-          erroresUpload.push(e instanceof Error ? e.message : `No se pudo subir ${file.name}`)
+          setUploadItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, status: 'error', error: e instanceof Error ? e.message : 'No se pudo subir' } : it)))
         }
       }
-      setUploadProgress('')
-
-      localStorage.removeItem(DRAFT_KEY)
-      if (erroresUpload.length) {
-        setError(`Orden creada, pero ${erroresUpload.join('; ')}`)
-        setSaving(false)
-        return
-      }
-      router.push('/mecanico')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al guardar')
     } finally {
@@ -421,9 +429,12 @@ export default function RecepcionPage() {
         </div>
 
         <Button type="submit" className="w-full" size="lg" loading={saving}>
-          {uploadProgress || 'Guardar recepción'}
+          {saving ? 'Guardando...' : 'Guardar recepción'}
         </Button>
       </form>
+      {uploadItems.length > 0 && (
+        <UploadProgressModal items={uploadItems} onClose={() => router.push('/mecanico')} />
+      )}
     </div>
   )
 }
