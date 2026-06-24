@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { ClienteMotoPanel } from '@/components/ClienteMotoPanel'
 import { normalizarPlaca } from '@/lib/utils'
 import { upsertMotoCliente } from '@/lib/clienteMoto'
+import { subirArchivoOrden } from '@/lib/clientUpload'
 import type { ClienteMotoPanelResult } from '@/components/ClienteMotoPanel'
 
 interface Categoria {
@@ -197,19 +198,15 @@ export default function RecepcionPage() {
       for (let i = 0; i < archivos.length; i++) {
         const file = archivos[i]
         const esVideo = isVideoFile(file)
-        setUploadProgress(`Subiendo ${esVideo ? 'video' : 'foto'} ${i + 1} de ${archivos.length}...`)
         try {
-          const formData = new FormData()
-          formData.append('file', file)
-          formData.append('orden_id', (orden as { id: string }).id)
-          formData.append('tipo', esVideo ? 'video' : 'imagen')
-          const res = await fetch('/api/upload', { method: 'POST', body: formData })
-          if (!res.ok) {
-            const j = await res.json().catch(() => ({}))
-            erroresUpload.push(j.error ?? `Error al subir ${file.name}`)
-          }
-        } catch {
-          erroresUpload.push(`No se pudo subir ${file.name}`)
+          await subirArchivoOrden({
+            ordenId: (orden as { id: string }).id,
+            file,
+            tipo: esVideo ? 'video' : 'imagen',
+            onProgress: (pct) => setUploadProgress(`Subiendo ${esVideo ? 'video' : 'foto'} ${i + 1} de ${archivos.length}... ${pct}%`),
+          })
+        } catch (e) {
+          erroresUpload.push(e instanceof Error ? e.message : `No se pudo subir ${file.name}`)
         }
       }
       setUploadProgress('')

@@ -9,6 +9,7 @@ import { ClienteMotoPanel } from '@/components/ClienteMotoPanel'
 import { BuscarClienteModal } from '@/components/BuscarClienteModal'
 import { normalizarPlaca } from '@/lib/utils'
 import { upsertMotoCliente } from '@/lib/clienteMoto'
+import { subirArchivoOrden } from '@/lib/clientUpload'
 import type { ClienteMotoPanelResult } from '@/components/ClienteMotoPanel'
 import type { ClienteEncontrado } from '@/components/BuscarClienteModal'
 
@@ -205,15 +206,25 @@ export default function NuevaOrdenAdminPage() {
 
       if (ordenErr || !orden) throw ordenErr ?? new Error('No se pudo crear la orden')
 
+      const erroresUpload: string[] = []
       for (const file of archivos) {
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('orden_id', (orden as { id: string }).id)
-        formData.append('tipo', file.type.startsWith('video/') ? 'video' : 'imagen')
-        await fetch('/api/upload', { method: 'POST', body: formData })
+        try {
+          await subirArchivoOrden({
+            ordenId: (orden as { id: string }).id,
+            file,
+            tipo: file.type.startsWith('video/') ? 'video' : 'imagen',
+          })
+        } catch (e) {
+          erroresUpload.push(e instanceof Error ? e.message : `No se pudo subir ${file.name}`)
+        }
       }
 
       localStorage.removeItem(DRAFT_KEY)
+      if (erroresUpload.length) {
+        setError(`Orden creada, pero ${erroresUpload.join('; ')}`)
+        setSaving(false)
+        return
+      }
       router.push(`/admin/ordenes/${(orden as { id: string }).id}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al guardar')
