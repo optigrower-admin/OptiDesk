@@ -117,9 +117,10 @@ export default function NuevaOrdenAdminPage() {
 
   const subcategorias = categorias.find((c) => c.id === categoriaId)?.subcategorias_servicio ?? []
   const esUMACategoria = categorias.find(c => c.id === categoriaId)?.nombre?.toLowerCase().includes('uma') ?? false
-  // Solo categorías UMA aquí — si se mostraran todas, junto al toggle de
-  // "Tipo de servicio" de arriba parecía preguntar dos veces UMA/Terceros.
+  // La categoría se filtra según UMA/Terceros para que la pregunta de
+  // "Tipo de ingreso" se responda una sola vez (toggle + categoría juntos).
   const categoriasUma = categorias.filter((c) => c.nombre.toLowerCase().includes('uma'))
+  const categoriasTerceros = categorias.filter((c) => !c.nombre.toLowerCase().includes('uma'))
   const esGarantia = subcategorias.some((s) => subcategoriaIds.includes(s.id) && s.nombre.toLowerCase().includes('garant'))
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,11 +149,11 @@ export default function NuevaOrdenAdminPage() {
       return
     }
     if (tipoOrden === 'servicio' && !tipoServicio) {
-      setError('Selecciona el tipo de servicio: UMA o Terceros.')
+      setError('Selecciona el tipo de ingreso: UMA o Terceros.')
       return
     }
-    if (tipoOrden === 'servicio' && tipoServicio === 'uma' && !categoriaId) {
-      setError('Selecciona el subtipo de servicio UMA.')
+    if (tipoOrden === 'servicio' && !categoriaId) {
+      setError('Selecciona la categoría del tipo de ingreso.')
       return
     }
     setError('')
@@ -322,10 +323,10 @@ export default function NuevaOrdenAdminPage() {
           </div>
         )}
 
-        {/* Tipo de servicio (solo servicio técnico) */}
+        {/* Tipo de ingreso (solo servicio técnico): UMA/Terceros + categoría en una sola pregunta */}
         {tipoOrden === 'servicio' && (
-          <div className={`bg-white rounded-xl border p-5 space-y-3 ${!tipoServicio ? 'border-red-300 ring-2 ring-red-100' : 'border-gray-200'}`}>
-            <h2 className="font-semibold text-gray-900">Tipo de servicio *</h2>
+          <div className={`bg-white rounded-xl border p-5 space-y-3 ${(!tipoServicio || !categoriaId) ? 'border-red-300 ring-2 ring-red-100' : 'border-gray-200'}`}>
+            <h2 className="font-semibold text-gray-900">Tipo de ingreso *</h2>
             <div className="flex gap-2">
               {([
                 { value: 'terceros', label: 'Terceros / Independiente' },
@@ -334,7 +335,7 @@ export default function NuevaOrdenAdminPage() {
                 <button
                   type="button"
                   key={t.value}
-                  onClick={() => setTipoServicio(t.value)}
+                  onClick={() => { setTipoServicio(t.value); setCategoriaId(''); setSubcategoriaIds([]) }}
                   className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
                     tipoServicio === t.value
                       ? t.value === 'uma' ? 'bg-purple-700 text-white' : 'bg-amber-500 text-white'
@@ -345,6 +346,38 @@ export default function NuevaOrdenAdminPage() {
                 </button>
               ))}
             </div>
+            {tipoServicio && (
+              <>
+                <select
+                  value={categoriaId}
+                  onChange={(e) => { setCategoriaId(e.target.value); setSubcategoriaIds([]) }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                >
+                  <option value="">Selecciona la categoría...</option>
+                  {(tipoServicio === 'uma' ? categoriasUma : categoriasTerceros).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+                {subcategorias.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {subcategorias.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSubcategoriaIds(prev =>
+                          prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
+                        )}
+                        className={`px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-colors ${
+                          subcategoriaIds.includes(s.id)
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300'
+                        }`}
+                      >
+                        {s.nombre}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -445,105 +478,71 @@ export default function NuevaOrdenAdminPage() {
           )}
         </div>
 
-        {/* Servicio — categorías + # Orden UMA (solo servicio técnico UMA) */}
-        {tipoOrden === 'servicio' && tipoServicio === 'uma' && (
-          <div className="space-y-3">
-            <div className={`bg-white rounded-xl border p-5 space-y-3 ${!categoriaId ? 'border-red-300 ring-2 ring-red-100' : 'border-purple-200'}`}>
-              <h2 className="font-semibold text-gray-900">Subtipo de servicio UMA *</h2>
-              <select
-                value={categoriaId}
-                onChange={(e) => { setCategoriaId(e.target.value); setSubcategoriaIds([]) }}
-                className="w-full px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-sm"
-              >
-                <option value="">Selecciona...</option>
-                {categoriasUma.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </select>
-              {subcategorias.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {subcategorias.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setSubcategoriaIds(prev =>
-                        prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id]
-                      )}
-                      className={`px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-colors ${
-                        subcategoriaIds.includes(s.id)
-                          ? 'border-purple-600 bg-purple-600 text-white'
-                          : 'border-purple-200 bg-purple-50 text-purple-700 hover:border-purple-400'
-                      }`}
-                    >
-                      {s.nombre}
-                    </button>
-                  ))}
-                </div>
+        {/* # Orden UMA — solo cuando la categoría elegida arriba es UMA */}
+        {esUMACategoria && (
+          <div className={`rounded-xl border p-5 space-y-3 transition-colors ${numerosOrdenUMA.length === 0 ? 'border-amber-300 bg-amber-50' : 'bg-white border-gray-200'}`}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900"># Orden UMA</h2>
+              {numerosOrdenUMA.length === 0 && (
+                <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                  ⚠ Importante: agrega el número de orden
+                </span>
               )}
             </div>
-
-            {esUMACategoria && <div className={`rounded-xl border p-5 space-y-3 transition-colors ${numerosOrdenUMA.length === 0 ? 'border-amber-300 bg-amber-50' : 'bg-white border-gray-200'}`}>
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-gray-900"># Orden UMA</h2>
-                {numerosOrdenUMA.length === 0 && (
-                  <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                    ⚠ Importante: agrega el número de orden
-                  </span>
-                )}
+            {numerosOrdenUMA.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {numerosOrdenUMA.map((num, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5 bg-purple-50 border border-purple-200 rounded-lg px-3 py-1.5">
+                    <span className="font-mono text-sm font-semibold text-purple-800">{num}</span>
+                    <button
+                      type="button"
+                      onClick={() => setNumerosOrdenUMA((prev) => prev.filter((_, i) => i !== idx))}
+                      className="text-purple-300 hover:text-red-500 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
               </div>
-              {numerosOrdenUMA.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {numerosOrdenUMA.map((num, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5 bg-purple-50 border border-purple-200 rounded-lg px-3 py-1.5">
-                      <span className="font-mono text-sm font-semibold text-purple-800">{num}</span>
-                      <button
-                        type="button"
-                        onClick={() => setNumerosOrdenUMA((prev) => prev.filter((_, i) => i !== idx))}
-                        className="text-purple-300 hover:text-red-500 transition-colors"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={nuevoNumOrden}
-                  onChange={(e) => setNuevoNumOrden(e.target.value.replace(/\D/g, ''))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      const num = nuevoNumOrden.trim()
-                      if (num && !numerosOrdenUMA.includes(num)) setNumerosOrdenUMA((prev) => [...prev, num])
-                      setNuevoNumOrden('')
-                    }
-                  }}
-                  placeholder="Ej: 349384"
-                  className={`flex-1 px-3 py-2 border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400 ${numerosOrdenUMA.length === 0 ? 'border-amber-300 bg-white placeholder-amber-400' : 'border-gray-200'}`}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
+            )}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={nuevoNumOrden}
+                onChange={(e) => setNuevoNumOrden(e.target.value.replace(/\D/g, ''))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
                     const num = nuevoNumOrden.trim()
-                    if (!num || numerosOrdenUMA.includes(num)) return
-                    setNumerosOrdenUMA((prev) => [...prev, num])
+                    if (num && !numerosOrdenUMA.includes(num)) setNumerosOrdenUMA((prev) => [...prev, num])
                     setNuevoNumOrden('')
-                  }}
-                  disabled={!nuevoNumOrden.trim()}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors"
-                >
-                  + Agregar
-                </button>
-              </div>
-              {numerosOrdenUMA.length === 0 && (
-                <p className="text-xs text-amber-700">
-                  El número de orden UMA es requerido para este tipo de ingreso. Puedes agregarlo ahora o más adelante en el detalle del caso.
-                </p>
-              )}
-            </div>}
+                  }
+                }}
+                placeholder="Ej: 349384"
+                className={`flex-1 px-3 py-2 border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400 ${numerosOrdenUMA.length === 0 ? 'border-amber-300 bg-white placeholder-amber-400' : 'border-gray-200'}`}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const num = nuevoNumOrden.trim()
+                  if (!num || numerosOrdenUMA.includes(num)) return
+                  setNumerosOrdenUMA((prev) => [...prev, num])
+                  setNuevoNumOrden('')
+                }}
+                disabled={!nuevoNumOrden.trim()}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors"
+              >
+                + Agregar
+              </button>
+            </div>
+            {numerosOrdenUMA.length === 0 && (
+              <p className="text-xs text-amber-700">
+                El número de orden UMA es requerido para este tipo de ingreso. Puedes agregarlo ahora o más adelante en el detalle del caso.
+              </p>
+            )}
           </div>
         )}
 
