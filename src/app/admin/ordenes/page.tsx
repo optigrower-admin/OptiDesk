@@ -131,8 +131,10 @@ export default function AdminOrdenesPage() {
         // Búsqueda por placa, nombre cliente o # orden UMA
         q = q.or(`placa.ilike.%${normalizarPlaca(b)}%,cliente.ilike.%${b}%,numeros_orden_uma.cs.{${b}}`)
       }
-      if (fechaDesde) q = q.gte('created_at', fechaDesde)
-      if (fechaHasta) q = q.lte('created_at', fechaHasta + 'T23:59:59')
+      // Colombia es UTC-5 todo el año — sin el offset explícito, Postgres
+      // interpreta la fecha como UTC y el filtro queda corrido ~5 horas.
+      if (fechaDesde) q = q.gte('created_at', `${fechaDesde}T00:00:00-05:00`)
+      if (fechaHasta) q = q.lte('created_at', `${fechaHasta}T23:59:59-05:00`)
 
       const { data: sData, error: sError } = await q.limit(300)
       if (cancelRef.current) return

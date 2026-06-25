@@ -168,8 +168,10 @@ export default function AdminRepuestosPage() {
 
     if (filtroOrigen === 'uma') query = query.eq('origen', 'uma')
     else if (filtroOrigen === 'terceros') query = query.eq('origen', 'externo')
-    if (fechaDesde) query = query.gte('created_at', fechaDesde)
-    if (fechaHasta) query = query.lte('created_at', fechaHasta + 'T23:59:59')
+    // Colombia es UTC-5 todo el año — sin el offset explícito, Postgres
+    // interpreta la fecha como UTC y el filtro queda corrido ~5 horas.
+    if (fechaDesde) query = query.gte('created_at', `${fechaDesde}T00:00:00-05:00`)
+    if (fechaHasta) query = query.lte('created_at', `${fechaHasta}T23:59:59-05:00`)
 
     const { data } = await query
     let items = (data as unknown as ItemVenta[]) ?? []

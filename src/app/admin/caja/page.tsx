@@ -884,8 +884,12 @@ export default function CajaPage() {
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
     setLoading(true)
-    const desdeISO = `${desde}T00:00:00`
-    const hastaISO = `${hasta}T23:59:59`
+    // Colombia es UTC-5 todo el año (sin horario de verano). Sin el offset
+    // explícito, Postgres interpretaba "hoy 00:00" como UTC, no como hora
+    // local — el filtro de "Hoy" quedaba corrido ~5 horas (perdía pagos de la
+    // noche de hoy y sumaba pagos de la noche de ayer).
+    const desdeISO = `${desde}T00:00:00-05:00`
+    const hastaISO = `${hasta}T23:59:59-05:00`
 
     const [lista, listaTotal] = await Promise.all([
       construirMovimientos(supabase, profile.tenant_id, desdeISO, hastaISO),
