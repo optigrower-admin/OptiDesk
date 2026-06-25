@@ -1441,6 +1441,11 @@ export default function AdminOrdenDetallePage() {
   const totalCostoProveedorLive = totalCostoProveedor + totalCostoLavado + draftCostoProveedor
   const totalVentaLive = totalRepuestos + totalLavado + draftRepuestosTotal + draftLavadoTotal
   const hayBorradorRepuestos = draftRepuestosTotal + draftLavadoTotal > 0
+  // Repuestos + mano de obra en vivo: lo ya guardado + lo que está en borrador sin guardar,
+  // para que el TOTAL GENERAL se vaya actualizando mientras se ingresa, no solo al guardar.
+  const totalRepuestosLive = totalRepuestos + draftRepuestosTotal
+  const totalManoObraLive = totalManoObra + draftManoObraTotal
+  const totalLive = totalRepuestosLive + totalManoObraLive
   const total = totalRepuestos + totalManoObra
   const saldo = total - (parseFloat(valorAbono) || 0)
   const esFaltaRevision = orden.estado === 'falta_revision'
@@ -2863,15 +2868,15 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
           <div className="bg-gray-900 rounded-xl px-5 py-4 space-y-1.5">
             <div className="flex justify-between text-sm text-gray-300">
               <span>Repuestos</span>
-              <span>{formatCOP(totalRepuestos)}</span>
+              <span>{formatCOP(totalRepuestosLive)}</span>
             </div>
             <div className="flex justify-between text-sm text-gray-300">
               <span>Mano de obra</span>
-              <span>{formatCOP(totalManoObra)}</span>
+              <span>{formatCOP(totalManoObraLive)}</span>
             </div>
             <div className="flex justify-between font-bold text-white text-base pt-1 border-t border-gray-700">
               <span>Total</span>
-              <span>{formatCOP(total)}</span>
+              <span>{formatCOP(totalLive)}</span>
             </div>
           </div>
         </div>

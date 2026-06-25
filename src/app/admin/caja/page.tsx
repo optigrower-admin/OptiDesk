@@ -70,6 +70,18 @@ function ymdLocal(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+function formatFechaCorta(ymd: string): string {
+  const [y, m, d] = ymd.split('-')
+  return `${d}/${m}/${y.slice(2)}`
+}
+
+function etiquetaPeriodo(periodo: Periodo, desde: string, hasta: string): string {
+  if (periodo === 'hoy') return 'de hoy'
+  if (periodo === 'semana') return 'de la semana'
+  if (periodo === 'mes') return 'del mes'
+  return `desde ${formatFechaCorta(desde)} hasta ${formatFechaCorta(hasta)}`
+}
+
 function calcularRango(periodo: Periodo, desdeManual: string, hastaManual: string): { desde: string; hasta: string } {
   const hoy = new Date()
   const hastaHoy = ymdLocal(hoy)
@@ -87,7 +99,8 @@ function calcularRango(periodo: Periodo, desdeManual: string, hastaManual: strin
 }
 
 function NuevoGastoModal({ tenantId, usuarioId, titulo = 'Nuevo gasto de caja', descripcionInicial = '', onClose, onCreado }: {
-  tenantId: string; usuarioId: string; titulo?: string; descripcionInicial?: string; onClose: () => void; onCreado: () => void
+  tenantId: string; usuarioId: string; titulo?: string; descripcionInicial?: string
+  onClose: () => void; onCreado: () => void
 }) {
   const supabase = createClient()
   const [descripcion, setDescripcion] = useState(descripcionInicial)
@@ -570,8 +583,6 @@ function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
 }
 
 const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_manual', 'gasto', 'costo_lavado', 'costo_externo', 'ajuste']
-const INGRESO_CATEGORIAS: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_insumo', 'ingreso_lavado', 'ingreso_externo', 'ingreso_manual']
-const GASTO_CATEGORIAS: Categoria[] = ['costo_externo', 'costo_lavado', 'gasto']
 
 // Construye la lista de movimientos para un tenant. Si desdeISO/hastaISO son null no se
 // filtra por fecha (uso para el saldo histórico, que no depende del período seleccionado).
@@ -859,7 +870,6 @@ export default function CajaPage() {
   const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null } | null>(null)
   const [ingresoModalOpen, setIngresoModalOpen] = useState(false)
   const [editIngreso, setEditIngreso] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null } | null>(null)
-  const [vistaResumen, setVistaResumen] = useState<'total' | 'cuenta'>('cuenta')
   const [vistaTabla, setVistaTabla] = useState<'item' | 'metodo'>('item')
 
   const esGerencia = profile?.rol === 'gerencia'
@@ -869,6 +879,7 @@ export default function CajaPage() {
   // El monto de los ajustes de caja solo lo ve gerencia; admin ve la fila pero el monto oculto.
   const ocultarMontoAjuste = (categoria: Categoria) => categoria === 'ajuste' && profile?.rol === 'admin'
   const { desde, hasta } = calcularRango(periodo, desdeManual, hastaManual)
+  const etiquetaIngresoGasto = etiquetaPeriodo(periodo, desde, hasta)
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
@@ -902,48 +913,16 @@ export default function CajaPage() {
     return r
   }, [movimientos, catFiltro, busqueda])
 
-  const cuentas = useMemo(() => {
-    const mapa = new Map<string, { key: string; nombre: string; ingreso: number; egreso: number }>()
-    for (const m of movimientos) {
-      if (!CATEGORIAS_CON_CUENTA.includes(m.categoria)) continue
-      if (m.cuentaEspecial === 'caja_fuerte') continue // se muestra aparte, en su propia tarjeta
-      const key = m.metodoPagoId ?? 'sin_metodo'
-      const nombre = m.metodoPago ?? 'Sin método especificado'
-      if (!mapa.has(key)) mapa.set(key, { key, nombre, ingreso: 0, egreso: 0 })
-      const c = mapa.get(key)!
-      if (m.monto >= 0) c.ingreso += m.monto
-      else c.egreso += Math.abs(m.monto)
-    }
-    return [...mapa.values()].sort((a, b) => (b.ingreso - b.egreso) - (a.ingreso - a.egreso))
-  }, [movimientos])
-
-  // "Caja fuerte" no es un método de pago del catálogo, es una cuenta independiente
-  // donde Gerencia guarda parte del dinero. Se alimenta de las transferencias hechas
-  // con el botón "Transferir a caja fuerte" (un gasto en la cuenta de origen) y de los
-  // ajustes de caja registrados directamente contra "Caja fuerte".
-  const cajaFuerte = useMemo(() => {
-    let ingreso = 0, egreso = 0
-    for (const m of movimientos) {
-      if (m.categoria === 'gasto' && m.concepto.trim().toLowerCase().startsWith(TRANSFERENCIA_CAJA_FUERTE)) {
-        ingreso += Math.abs(m.monto)
-      } else if (m.cuentaEspecial === 'caja_fuerte') {
-        if (m.monto >= 0) ingreso += m.monto
-        else egreso += Math.abs(m.monto)
-      }
-    }
-    return { ingreso, egreso }
-  }, [movimientos])
-
   // Saldo actual (histórico, no depende del período seleccionado) por cuenta y de
   // Caja fuerte — se calcula sobre movimientosTotales (todos los movimientos sin filtrar).
   const saldosCuentas = useMemo(() => {
-    const mapa = new Map<string, { nombre: string; saldo: number }>()
+    const mapa = new Map<string, { id: string; nombre: string; saldo: number }>()
     for (const m of movimientosTotales) {
       if (!CATEGORIAS_CON_CUENTA.includes(m.categoria)) continue
       if (m.cuentaEspecial === 'caja_fuerte') continue
       const key = m.metodoPagoId ?? 'sin_metodo'
       const nombre = m.metodoPago ?? 'Sin método especificado'
-      if (!mapa.has(key)) mapa.set(key, { nombre, saldo: 0 })
+      if (!mapa.has(key)) mapa.set(key, { id: key, nombre, saldo: 0 })
       mapa.get(key)!.saldo += m.monto
     }
     return mapa
@@ -994,46 +973,38 @@ export default function CajaPage() {
     return [...mapa.values()].sort((a, b) => b.fecha.localeCompare(a.fecha))
   }, [filtrados])
 
-  const totalIngresos = movimientos
-    .filter(m => m.categoria === 'ingreso_st' || m.categoria === 'ingreso_venta' || m.categoria === 'ingreso_insumo' || m.categoria === 'ingreso_lavado' || m.categoria === 'ingreso_externo')
-    .reduce((s, m) => s + m.monto, 0)
-  const totalGastos = movimientos
-    .filter(m => m.categoria === 'costo_externo' || m.categoria === 'costo_lavado' || m.categoria === 'gasto')
-    .reduce((s, m) => s + Math.abs(m.monto), 0)
-
-  // Desglose por cuenta del ingreso/gasto del período (para la vista "Total"), con las
-  // mismas categorías que totalIngresos/totalGastos para que la suma de las filas
-  // siempre coincida con el número grande.
-  const ingresosPorCuenta = useMemo(() => {
-    const mapa = new Map<string, { nombre: string; total: number }>()
+  // Ingreso y gasto del período seleccionado, por cuenta — para emparejar cada cuenta
+  // con su propia tarjeta de movimiento del período, justo debajo de su saldo.
+  const movimientosPorCuenta = useMemo(() => {
+    const mapa = new Map<string, { ingreso: number; egreso: number }>()
     for (const m of movimientos) {
-      if (!INGRESO_CATEGORIAS.includes(m.categoria)) continue
+      if (!CATEGORIAS_CON_CUENTA.includes(m.categoria)) continue
+      if (m.cuentaEspecial === 'caja_fuerte') continue
       const key = m.metodoPagoId ?? 'sin_metodo'
-      const nombre = m.metodoPago ?? 'Sin método especificado'
-      if (!mapa.has(key)) mapa.set(key, { nombre, total: 0 })
-      mapa.get(key)!.total += m.monto
+      if (!mapa.has(key)) mapa.set(key, { ingreso: 0, egreso: 0 })
+      const c = mapa.get(key)!
+      if (m.monto >= 0) c.ingreso += m.monto
+      else c.egreso += Math.abs(m.monto)
     }
-    return [...mapa.values()].sort((a, b) => b.total - a.total)
+    return mapa
   }, [movimientos])
 
-  const gastosPorCuenta = useMemo(() => {
-    const mapa = new Map<string, { nombre: string; total: number }>()
+  // "Caja fuerte" no es un método de pago del catálogo, es una cuenta independiente
+  // donde Gerencia guarda parte del dinero. Se alimenta de las transferencias hechas
+  // con el botón "Transferir a caja fuerte" (un gasto en la cuenta de origen) y de los
+  // ajustes de caja registrados directamente contra "Caja fuerte".
+  const cajaFuertePeriodo = useMemo(() => {
+    let ingreso = 0, egreso = 0
     for (const m of movimientos) {
-      if (!GASTO_CATEGORIAS.includes(m.categoria)) continue
-      const key = m.metodoPagoId ?? 'sin_metodo'
-      const nombre = m.metodoPago ?? 'Sin método especificado'
-      if (!mapa.has(key)) mapa.set(key, { nombre, total: 0 })
-      mapa.get(key)!.total += Math.abs(m.monto)
+      if (m.categoria === 'gasto' && m.concepto.trim().toLowerCase().startsWith(TRANSFERENCIA_CAJA_FUERTE)) {
+        ingreso += Math.abs(m.monto)
+      } else if (m.cuentaEspecial === 'caja_fuerte') {
+        if (m.monto >= 0) ingreso += m.monto
+        else egreso += Math.abs(m.monto)
+      }
     }
-    return [...mapa.values()].sort((a, b) => b.total - a.total)
+    return { ingreso, egreso }
   }, [movimientos])
-
-  // Saldo actual total (suma de todas las cuentas, sin caja fuerte) para la vista "Total".
-  const saldoActualTotal = useMemo(() => {
-    let total = 0
-    for (const s of saldosCuentas.values()) total += s.saldo
-    return total
-  }, [saldosCuentas])
 
   const saldosCuentasOrdenados = useMemo(() => [...saldosCuentas.values()].sort((a, b) => b.saldo - a.saldo), [saldosCuentas])
 
@@ -1202,103 +1173,35 @@ export default function CajaPage() {
         )}
       </div>
 
-      {/* Tarjetas resumen */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
-          {([
-            { id: 'total', label: 'Total' },
-            { id: 'cuenta', label: 'Por cuenta' },
-          ] as { id: 'total' | 'cuenta'; label: string }[]).map(v => (
-            <button key={v.id} onClick={() => setVistaResumen(v.id)}
-              className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                vistaResumen === v.id ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-              }`}>
-              {v.label}
-            </button>
-          ))}
-        </div>
-        {vistaResumen === 'cuenta' && (
-          <p className="text-xs text-gray-400">
-            Solo incluye movimientos con método de pago asociado (pagos de clientes, gastos de caja, costo de lavado y costo de repuestos externos).
-            El saldo actual de cada cuenta es el total acumulado y no cambia según el período; el ingreso y el gasto sí son del período seleccionado.
-          </p>
-        )}
-      </div>
-
-      {vistaResumen === 'total' && (
+      {/* Por cuenta: saldo actual (histórico) + ingreso/gasto del período seleccionado */}
+      <div>
+        <p className="text-xs text-gray-400 mb-2">
+          El saldo actual es el total acumulado y no cambia según el período; el ingreso y el gasto sí son del período seleccionado.
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-3">
-            <p className="text-xs text-gray-400">Monto en caja</p>
-            <p className={`text-3xl font-bold font-mono leading-tight ${saldoActualTotal >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-              {formatCOP(saldoActualTotal)}
-            </p>
-            {saldosCuentasOrdenados.length > 0 && (
-              <div className="pt-3 border-t border-gray-100 space-y-1.5">
-                {saldosCuentasOrdenados.map(s => (
-                  <div key={s.nombre} className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500">{s.nombre}</span>
-                    <span className={`font-mono font-semibold ${s.saldo >= 0 ? 'text-gray-700' : 'text-red-600'}`}>{formatCOP(s.saldo)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-5 flex flex-col gap-3">
-            <p className="text-xs text-emerald-600">Ingreso del período</p>
-            <p className="text-3xl font-bold font-mono leading-tight text-emerald-700">{formatCOP(totalIngresos)}</p>
-            {ingresosPorCuenta.length > 0 && (
-              <div className="pt-3 border-t border-emerald-100 space-y-1.5">
-                {ingresosPorCuenta.map(c => (
-                  <div key={c.nombre} className="flex items-center justify-between text-xs">
-                    <span className="text-emerald-600">{c.nombre}</span>
-                    <span className="font-mono font-semibold text-emerald-700">{formatCOP(c.total)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="bg-red-50 rounded-xl border border-red-200 p-5 flex flex-col gap-3">
-            <p className="text-xs text-red-500">Gasto del período</p>
-            <p className="text-3xl font-bold font-mono leading-tight text-red-700">{formatCOP(totalGastos)}</p>
-            {gastosPorCuenta.length > 0 && (
-              <div className="pt-3 border-t border-red-100 space-y-1.5">
-                {gastosPorCuenta.map(c => (
-                  <div key={c.nombre} className="flex items-center justify-between text-xs">
-                    <span className="text-red-500">{c.nombre}</span>
-                    <span className="font-mono font-semibold text-red-600">{formatCOP(c.total)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {vistaResumen === 'cuenta' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {cuentas.length === 0 && !esGerencia && (
-            <p className="text-sm text-gray-400 col-span-full text-center py-6">Sin movimientos en este período</p>
+          {saldosCuentasOrdenados.length === 0 && !esGerencia && (
+            <p className="text-sm text-gray-400 col-span-full text-center py-6">Sin movimientos registrados</p>
           )}
-          {cuentas.map((c) => {
-            const color = colorCuenta(c.nombre)
-            const saldo = saldosCuentas.get(c.key)?.saldo ?? 0
+          {saldosCuentasOrdenados.map(s => {
+            const color = colorCuenta(s.nombre)
+            const mov = movimientosPorCuenta.get(s.id) ?? { ingreso: 0, egreso: 0 }
             return (
-              <div key={c.key} className={`${color.bg} rounded-xl border ${color.border} p-5 flex flex-col gap-3`}>
-                <p className="text-xs font-medium text-gray-500">{c.nombre}</p>
-                <div>
+              <div key={s.id} className="flex flex-col gap-3">
+                <div className={`${color.bg} rounded-xl border ${color.border} p-5`}>
+                  <p className="text-xs font-medium text-gray-500 mb-2">{s.nombre}</p>
                   <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Saldo actual</p>
-                  <p className={`text-3xl font-bold font-mono leading-tight ${saldo >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-                    {formatCOP(saldo)}
+                  <p className={`text-3xl font-bold font-mono leading-tight ${s.saldo >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                    {formatCOP(s.saldo)}
                   </p>
                 </div>
-                <div className="pt-3 border-t border-black/10 space-y-2">
-                  <div>
-                    <p className="text-[10px] text-emerald-600 uppercase tracking-wide mb-0.5">Ingreso del período</p>
-                    <p className="text-lg font-semibold font-mono text-emerald-700">{formatCOP(c.ingreso)}</p>
+                <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-emerald-600 uppercase tracking-wide">Ingreso {etiquetaIngresoGasto}</p>
+                    <p className="text-sm font-semibold font-mono text-emerald-700">{formatCOP(mov.ingreso)}</p>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-red-500 uppercase tracking-wide mb-0.5">Gasto del período</p>
-                    <p className="text-lg font-semibold font-mono text-red-600">{formatCOP(c.egreso)}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-red-500 uppercase tracking-wide">Gasto {etiquetaIngresoGasto}</p>
+                    <p className="text-sm font-semibold font-mono text-red-600">{formatCOP(mov.egreso)}</p>
                   </div>
                 </div>
               </div>
@@ -1307,29 +1210,29 @@ export default function CajaPage() {
           {esGerencia && (() => {
             const color = colorCuenta('caja fuerte')
             return (
-              <div className={`${color.bg} rounded-xl border ${color.border} p-5 flex flex-col gap-3`}>
-                <p className="text-xs font-medium text-gray-500">Caja fuerte</p>
-                <div>
+              <div className="flex flex-col gap-3">
+                <div className={`${color.bg} rounded-xl border ${color.border} p-5`}>
+                  <p className="text-xs font-medium text-gray-500 mb-2">Caja fuerte</p>
                   <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Saldo actual</p>
                   <p className={`text-3xl font-bold font-mono leading-tight ${saldoCajaFuerte >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
                     {formatCOP(saldoCajaFuerte)}
                   </p>
                 </div>
-                <div className="pt-3 border-t border-black/10 space-y-2">
-                  <div>
-                    <p className="text-[10px] text-emerald-600 uppercase tracking-wide mb-0.5">Ingreso del período</p>
-                    <p className="text-lg font-semibold font-mono text-emerald-700">{formatCOP(cajaFuerte.ingreso)}</p>
+                <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-emerald-600 uppercase tracking-wide">Ingreso {etiquetaIngresoGasto}</p>
+                    <p className="text-sm font-semibold font-mono text-emerald-700">{formatCOP(cajaFuertePeriodo.ingreso)}</p>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-red-500 uppercase tracking-wide mb-0.5">Gasto del período</p>
-                    <p className="text-lg font-semibold font-mono text-red-600">{formatCOP(cajaFuerte.egreso)}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-red-500 uppercase tracking-wide">Gasto {etiquetaIngresoGasto}</p>
+                    <p className="text-sm font-semibold font-mono text-red-600">{formatCOP(cajaFuertePeriodo.egreso)}</p>
                   </div>
                 </div>
               </div>
             )
           })()}
         </div>
-      )}
+      </div>
 
       {/* Filtros de lista */}
       <div className="flex flex-wrap gap-2 items-center">
