@@ -24,6 +24,13 @@ const isVideoFile = (file: File): boolean =>
   VIDEO_EXTENSIONS.has('.' + (file.name.split('.').pop() ?? '').toLowerCase())
 
 const DRAFT_KEY = 'optiDesk_recepcion_draft'
+// Un borrador más viejo que esto casi seguro es de una moto distinta a la que
+// se está recibiendo ahora — se descarta en vez de mostrarlo como si fuera de
+// la moto actual (esto generaba confusión: "le sale la info de una moto pasada").
+const DRAFT_MAX_AGE_MS = 4 * 60 * 60 * 1000
+// Subidas en paralelo (no una por una) para que varias fotos no se demoren
+// turnándose en una conexión móvil lenta.
+const CONCURRENCIA_SUBIDA = 3
 const PANEL_INIT: ClienteMotoPanelResult = { motoId: null, clienteId: null, motoExtras: { marca: '', modelo: '', año: '', color: '', kilometraje: '' }, isKnownMoto: false }
 
 const formatTelefono = (value: string) => {
@@ -40,6 +47,7 @@ export default function RecepcionPage() {
   const supabase = createClient()
 
   const [placa, setPlaca] = useState(params.placa === 'nueva' ? '' : String(params.placa))
+  const [tipoServicio, setTipoServicio] = useState<'terceros' | 'uma' | ''>('')
   const [cliente, setCliente] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [manifiestaCliente, setManifiestaCliente] = useState('')
@@ -54,9 +62,28 @@ export default function RecepcionPage() {
   const [uploadItems, setUploadItems] = useState<UploadItemState[]>([])
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
+  const [draftRecuperado, setDraftRecuperado] = useState(false)
   const [panelResult, setPanelResult] = useState<ClienteMotoPanelResult>(PANEL_INIT)
   const [autoCliente, setAutoCliente] = useState<{ nombre: string; celular: string } | null>(null)
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const vaciarFormulario = () => {
+    setPlaca('')
+    setTipoServicio('')
+    setCliente('')
+    setTelefono('')
+    setDescripcion('')
+    setManifiestaCliente('')
+    setDiagnostico('')
+    setCategoriaId('')
+    setSubcategoriaIds([])
+    setArchivos([])
+    setPreviews([])
+    setAutoCliente(null)
+    setPanelResult(PANEL_INIT)
+    setDraftRecuperado(false)
+    try { localStorage.removeItem(DRAFT_KEY) } catch { /* ignore */ }
+  }
 
   useEffect(() => {
     if (params.placa !== 'nueva') return
@@ -64,7 +91,13 @@ export default function RecepcionPage() {
       const saved = localStorage.getItem(DRAFT_KEY)
       if (saved) {
         const d = JSON.parse(saved)
+        const esViejo = !d._ts || (Date.now() - d._ts) > DRAFT_MAX_AGE_MS
+        if (esViejo) {
+          localStorage.removeItem(DRAFT_KEY)
+          return
+        }
         if (d.placa) setPlaca(d.placa)
+        if (d.tipoServicio) setTipoServicio(d.tipoServicio)
         if (d.cliente) setCliente(d.cliente)
         if (d.telefono) setTelefono(d.telefono)
         if (d.descripcion) setDescripcion(d.descripcion)
@@ -72,6 +105,7 @@ export default function RecepcionPage() {
         if (d.diagnostico) setDiagnostico(d.diagnostico)
         if (d.categoriaId) setCategoriaId(d.categoriaId)
         if (d.subcategoriaIds) setSubcategoriaIds(d.subcategoriaIds)
+        if (d.placa || d.cliente) setDraftRecuperado(true)
       }
     } catch { /* borrador inválido */ }
   }, [params.placa])
@@ -80,12 +114,12 @@ export default function RecepcionPage() {
     if (params.placa !== 'nueva') return
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, tipoServicio, cliente, telefono, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, _ts: Date.now() }))
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [placa, cliente, telefono, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, params.placa])
+  }, [placa, tipoServicio, cliente, telefono, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, params.placa])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -133,6 +167,10 @@ export default function RecepcionPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!profile?.tenant_id || !profile.id) return
+    if (!tipoServicio) {
+      setError('Selecciona el tipo de servicio: UMA o Terceros.')
+      return
+    }
     setError('')
     setSaving(true)
 
@@ -184,6 +222,7 @@ export default function RecepcionPage() {
           categoria_servicio_id: categoriaId || null,
           subcategoria_servicio_id: subcategoriaIds[0] || null,
           subcategoria_servicio_ids: subcategoriaIds,
+          tipo_servicio: tipoServicio,
           mecanico_id: profile.id,
           estado: 'falta_revision',
           numero: 0,
@@ -211,7 +250,12 @@ export default function RecepcionPage() {
       setUploadItems(items)
       setSaving(false)
 
-      for (let i = 0; i < archivos.length; i++) {
+      // Varios archivos a la vez (no uno por uno) para que la subida no se
+      // demore turnándose en una conexión móvil lenta.
+      let cursor = 0
+      const subirSiguiente = async (): Promise<void> => {
+        const i = cursor++
+        if (i >= archivos.length) return
         const file = archivos[i]
         const tipo = items[i].tipo
         try {
@@ -226,7 +270,11 @@ export default function RecepcionPage() {
         } catch (e) {
           setUploadItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, status: 'error', error: e instanceof Error ? e.message : 'No se pudo subir' } : it)))
         }
+        return subirSiguiente()
       }
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCIA_SUBIDA, archivos.length) }, () => subirSiguiente())
+      )
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al guardar')
     } finally {
@@ -246,6 +294,15 @@ export default function RecepcionPage() {
         {draftSaved && <span className="text-xs text-green-600 ml-auto">Borrador guardado</span>}
       </div>
 
+      {draftRecuperado && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-center justify-between gap-3">
+          <span>Recuperamos un formulario sin terminar. Si es de otra moto, vacíalo.</span>
+          <button type="button" onClick={vaciarFormulario} className="text-xs font-semibold text-amber-900 underline whitespace-nowrap">
+            Vaciar y empezar de nuevo
+          </button>
+        </div>
+      )}
+
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
       )}
@@ -261,6 +318,29 @@ export default function RecepcionPage() {
             placeholder="ABC123"
             maxLength={10}
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de servicio *</label>
+          <div className="flex gap-2">
+            {([
+              { value: 'terceros', label: 'Terceros / Independiente' },
+              { value: 'uma', label: 'UMA (Autorizado)' },
+            ] as { value: 'terceros' | 'uma'; label: string }[]).map((t) => (
+              <button
+                type="button"
+                key={t.value}
+                onClick={() => setTipoServicio(t.value)}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                  tipoServicio === t.value
+                    ? t.value === 'uma' ? 'bg-purple-700 text-white' : 'bg-amber-500 text-white'
+                    : !tipoServicio ? 'bg-red-50 text-gray-700 border border-red-200 hover:bg-gray-100' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Panel inteligente de moto */}

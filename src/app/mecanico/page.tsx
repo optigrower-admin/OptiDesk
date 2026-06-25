@@ -145,6 +145,12 @@ export default function MecanicoHome() {
         </div>
         <Link
           href="/mecanico/recepcion/nueva"
+          onClick={(e) => {
+            // Fuerza un formulario en blanco — ver mismo comentario en mecanico/layout.tsx.
+            e.preventDefault()
+            try { localStorage.removeItem('optiDesk_recepcion_draft') } catch { /* ignore */ }
+            window.location.href = '/mecanico/recepcion/nueva'
+          }}
           className="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-blue-800"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

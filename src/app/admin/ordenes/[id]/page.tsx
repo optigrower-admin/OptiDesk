@@ -243,12 +243,12 @@ export default function AdminOrdenDetallePage() {
   const [numerosOrdenUMA, setNumerosOrdenUMA] = useState<string[]>([])
   const [nuevoNumOrden, setNuevoNumOrden] = useState('')
   // Secciones colapsables (cerradas por defecto, muestran un resumen al frente)
-  const [abiertoDatos, setAbiertoDatos] = useState(false)
-  const [abiertoFotos, setAbiertoFotos] = useState(false)
-  const [abiertoRepuestos, setAbiertoRepuestos] = useState(false)
+  const [abiertoDatos, setAbiertoDatos] = useState(true)
+  const [abiertoFotos, setAbiertoFotos] = useState(true)
+  const [abiertoRepuestos, setAbiertoRepuestos] = useState(true)
   // Edición de datos del ingreso
   const [categorias, setCategorias] = useState<Categoria[]>([])
-  const [editingOrden, setEditingOrden] = useState<'cliente' | 'descripcion' | 'categoria' | 'placa' | null>(null)
+  const [editingOrden, setEditingOrden] = useState<'cliente' | 'descripcion' | 'categoria' | 'placa' | 'tipo_servicio' | null>(null)
   const [editCliente, setEditCliente] = useState('')
   const [editPlaca, setEditPlaca] = useState('')
   const [editDescripcion, setEditDescripcion] = useState('')
@@ -256,6 +256,7 @@ export default function AdminOrdenDetallePage() {
   const [editDiagnostico, setEditDiagnostico] = useState('')
   const [editCategoriaId, setEditCategoriaId] = useState('')
   const [editSubcategoriaIds, setEditSubcategoriaIds] = useState<string[]>([])
+  const [editTipoServicio, setEditTipoServicio] = useState<'terceros' | 'uma' | ''>('')
   const [savingOrden, setSavingOrden] = useState(false)
   const [showAudit, setShowAudit] = useState(false)
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
@@ -392,6 +393,7 @@ export default function AdminOrdenDetallePage() {
           ? ord.subcategoria_servicio_ids
           : ord.subcategoria_servicio_id ? [ord.subcategoria_servicio_id] : []
       )
+      setEditTipoServicio((ord.tipo_servicio as 'terceros' | 'uma' | null) ?? '')
 
       setEstadoPago(ord.estado_pago)
       setValorAbono(String(ord.valor_abono ?? 0))
@@ -630,8 +632,12 @@ export default function AdminOrdenDetallePage() {
     return ids.some((id) => allSubs.find((s) => s.id === id)?.nombre.toLowerCase().includes('garant'))
   })()
 
-  const guardarCampoOrden = async (campo: 'cliente' | 'descripcion' | 'categoria' | 'placa') => {
+  const guardarCampoOrden = async (campo: 'cliente' | 'descripcion' | 'categoria' | 'placa' | 'tipo_servicio') => {
     if (!orden) return
+    if (campo === 'tipo_servicio' && !editTipoServicio) {
+      alert('Selecciona el tipo de servicio: UMA o Terceros.')
+      return
+    }
     setSavingOrden(true)
     const anterior: Record<string, unknown> = {}
     const update: Record<string, unknown> = {}
@@ -660,6 +666,10 @@ export default function AdminOrdenDetallePage() {
       update.categoria_servicio_id = editCategoriaId || null
       update.subcategoria_servicio_id = editSubcategoriaIds[0] || null
       update.subcategoria_servicio_ids = editSubcategoriaIds
+    }
+    if (campo === 'tipo_servicio') {
+      anterior.tipo_servicio = orden.tipo_servicio
+      update.tipo_servicio = editTipoServicio
     }
     await supabase.from('ordenes').update(update).eq('id', ordenId)
     await registrarAuditoria(supabase, {
@@ -2041,6 +2051,60 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </div>
               )}
             </div>
+
+            {/* Tipo de servicio: UMA o Terceros — obligatorio para Servicio Técnico */}
+            {orden.tipo_orden !== 'venta_repuestos' && (
+              <div className="px-5 py-3">
+                {editingOrden === 'tipo_servicio' ? (
+                  <div className="space-y-2">
+                    <label className="text-xs text-gray-500 font-medium">Tipo de servicio</label>
+                    <div className="flex gap-2">
+                      {([
+                        { value: 'terceros', label: 'Terceros / Independiente' },
+                        { value: 'uma', label: 'UMA (Autorizado)' },
+                      ] as { value: 'terceros' | 'uma'; label: string }[]).map((t) => (
+                        <button key={t.value} type="button" onClick={() => setEditTipoServicio(t.value)}
+                          className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                            editTipoServicio === t.value
+                              ? t.value === 'uma' ? 'bg-purple-700 text-white' : 'bg-amber-500 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}>
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => guardarCampoOrden('tipo_servicio')} disabled={savingOrden}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                        {savingOrden ? '...' : 'Guardar'}
+                      </button>
+                      <button onClick={() => { setEditingOrden(null); setEditTipoServicio((orden.tipo_servicio as 'terceros' | 'uma' | null) ?? '') }}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancelar</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-400">Tipo de servicio</p>
+                      {orden.tipo_servicio ? (
+                        <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          orden.tipo_servicio === 'uma' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {orden.tipo_servicio === 'uma' ? 'UMA (Autorizado)' : 'Terceros / Independiente'}
+                        </span>
+                      ) : (
+                        <p className="text-sm text-red-500 italic font-medium">⚠ Sin definir</p>
+                      )}
+                    </div>
+                    <button onClick={() => setEditingOrden('tipo_servicio')} className="text-gray-400 hover:text-blue-600 p-1">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Tipo de ingreso */}
             <div className="px-5 py-3">

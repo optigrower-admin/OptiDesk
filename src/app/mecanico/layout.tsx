@@ -78,10 +78,20 @@ export default function MecanicoLayout({ children }: { children: React.ReactNode
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex z-10">
         {navItems.map((item) => {
           const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href)
+          const esNuevaRecepcion = item.href === '/mecanico/recepcion/nueva'
           return (
             <Link
               key={item.href}
               href={item.href}
+              onClick={esNuevaRecepcion ? (e) => {
+                // "Nueva" siempre debe abrir un formulario en blanco. Una
+                // navegación normal puede reutilizar la instancia de React de
+                // la recepción anterior (o un borrador de otra moto) y mostrar
+                // datos de una moto pasada — se fuerza una recarga completa.
+                e.preventDefault()
+                try { localStorage.removeItem('optiDesk_recepcion_draft') } catch { /* ignore */ }
+                window.location.href = item.href
+              } : undefined}
               className={cn(
                 'flex-1 flex flex-col items-center gap-1 py-2 text-xs transition-colors',
                 isActive ? 'text-blue-700' : 'text-gray-500 hover:text-gray-700'

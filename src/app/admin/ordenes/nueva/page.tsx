@@ -43,7 +43,7 @@ export default function NuevaOrdenAdminPage() {
   const [diagnostico, setDiagnostico] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
   const [subcategoriaIds, setSubcategoriaIds] = useState<string[]>([])
-  const [tipoServicio, setTipoServicio] = useState<'terceros' | 'uma'>('terceros')
+  const [tipoServicio, setTipoServicio] = useState<'terceros' | 'uma' | ''>('')
   const [numeroOt, setNumeroOt] = useState('')
   const [numerosOrdenUMA, setNumerosOrdenUMA] = useState<string[]>([])
   const [nuevoNumOrden, setNuevoNumOrden] = useState('')
@@ -117,6 +117,9 @@ export default function NuevaOrdenAdminPage() {
 
   const subcategorias = categorias.find((c) => c.id === categoriaId)?.subcategorias_servicio ?? []
   const esUMACategoria = categorias.find(c => c.id === categoriaId)?.nombre?.toLowerCase().includes('uma') ?? false
+  // Solo categorías UMA aquí — si se mostraran todas, junto al toggle de
+  // "Tipo de servicio" de arriba parecía preguntar dos veces UMA/Terceros.
+  const categoriasUma = categorias.filter((c) => c.nombre.toLowerCase().includes('uma'))
   const esGarantia = subcategorias.some((s) => subcategoriaIds.includes(s.id) && s.nombre.toLowerCase().includes('garant'))
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -142,6 +145,14 @@ export default function NuevaOrdenAdminPage() {
     if (!profile?.tenant_id) return
     if (tipoOrden === 'servicio' && esProgramada && !fechaProgramada) {
       setError('Ingresa la fecha y hora de la cita programada.')
+      return
+    }
+    if (tipoOrden === 'servicio' && !tipoServicio) {
+      setError('Selecciona el tipo de servicio: UMA o Terceros.')
+      return
+    }
+    if (tipoOrden === 'servicio' && tipoServicio === 'uma' && !categoriaId) {
+      setError('Selecciona el subtipo de servicio UMA.')
       return
     }
     setError('')
@@ -313,8 +324,8 @@ export default function NuevaOrdenAdminPage() {
 
         {/* Tipo de servicio (solo servicio técnico) */}
         {tipoOrden === 'servicio' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-            <h2 className="font-semibold text-gray-900">Tipo de servicio</h2>
+          <div className={`bg-white rounded-xl border p-5 space-y-3 ${!tipoServicio ? 'border-red-300 ring-2 ring-red-100' : 'border-gray-200'}`}>
+            <h2 className="font-semibold text-gray-900">Tipo de servicio *</h2>
             <div className="flex gap-2">
               {([
                 { value: 'terceros', label: 'Terceros / Independiente' },
@@ -437,15 +448,15 @@ export default function NuevaOrdenAdminPage() {
         {/* Servicio — categorías + # Orden UMA (solo servicio técnico UMA) */}
         {tipoOrden === 'servicio' && tipoServicio === 'uma' && (
           <div className="space-y-3">
-            <div className="bg-white rounded-xl border border-purple-200 p-5 space-y-3">
-              <h2 className="font-semibold text-gray-900">Servicio UMA</h2>
+            <div className={`bg-white rounded-xl border p-5 space-y-3 ${!categoriaId ? 'border-red-300 ring-2 ring-red-100' : 'border-purple-200'}`}>
+              <h2 className="font-semibold text-gray-900">Subtipo de servicio UMA *</h2>
               <select
                 value={categoriaId}
                 onChange={(e) => { setCategoriaId(e.target.value); setSubcategoriaIds([]) }}
                 className="w-full px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-sm"
               >
-                <option value="">Seleccionar subcategoría</option>
-                {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                <option value="">Selecciona...</option>
+                {categoriasUma.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
               {subcategorias.length > 0 && (
                 <div className="flex flex-wrap gap-2">
