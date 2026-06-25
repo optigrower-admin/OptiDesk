@@ -1199,6 +1199,12 @@ export default function CajaPage() {
                   </p>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-2">
+                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide">Saldo {etiquetaIngresoGasto}</p>
+                    <p className={`text-sm font-bold font-mono ${(mov.ingreso - mov.egreso) >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                      {formatCOP(mov.ingreso - mov.egreso)}
+                    </p>
+                  </div>
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] text-emerald-600 uppercase tracking-wide">Ingreso {etiquetaIngresoGasto}</p>
                     <p className="text-sm font-semibold font-mono text-emerald-700">{formatCOP(mov.ingreso)}</p>
@@ -1223,6 +1229,12 @@ export default function CajaPage() {
                   </p>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-2">
+                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide">Saldo {etiquetaIngresoGasto}</p>
+                    <p className={`text-sm font-bold font-mono ${(cajaFuertePeriodo.ingreso - cajaFuertePeriodo.egreso) >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                      {formatCOP(cajaFuertePeriodo.ingreso - cajaFuertePeriodo.egreso)}
+                    </p>
+                  </div>
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] text-emerald-600 uppercase tracking-wide">Ingreso {etiquetaIngresoGasto}</p>
                     <p className="text-sm font-semibold font-mono text-emerald-700">{formatCOP(cajaFuertePeriodo.ingreso)}</p>
