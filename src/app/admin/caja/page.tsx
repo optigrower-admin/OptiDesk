@@ -8,7 +8,7 @@ import { formatCOP } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
-type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'costo_externo' | 'costo_lavado' | 'gasto' | 'ajuste'
+type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'gasto' | 'ajuste'
 
 interface Movimiento {
   id: string
@@ -31,6 +31,7 @@ const CATEGORIA_LABEL: Record<Categoria, string> = {
   ingreso_insumo:  'Ingresos Insumos',
   ingreso_lavado:  'Ingresos Servicio de Lavado',
   ingreso_externo: 'Ingresos repuestos Externos/Terceros',
+  ingreso_manual:  'Ingreso a Caja',
   costo_externo:   'Costo repuestos Externos/Terceros',
   costo_lavado:    'Costo Servicio de Lavado',
   gasto:           'Gastos de Caja',
@@ -43,6 +44,7 @@ const CATEGORIA_BADGE: Record<Categoria, string> = {
   ingreso_insumo:  'bg-purple-100 text-purple-700',
   ingreso_lavado:  'bg-cyan-100 text-cyan-700',
   ingreso_externo: 'bg-teal-100 text-teal-700',
+  ingreso_manual:  'bg-lime-100 text-lime-700',
   costo_externo:   'bg-amber-100 text-amber-700',
   costo_lavado:    'bg-teal-200 text-teal-800',
   gasto:           'bg-red-100 text-red-700',
@@ -269,6 +271,191 @@ function EditarGastoModal({ tenantId, usuarioId, gasto, onClose, onEditado }: {
   )
 }
 
+function NuevoIngresoModal({ tenantId, usuarioId, onClose, onCreado }: {
+  tenantId: string; usuarioId: string; onClose: () => void; onCreado: () => void
+}) {
+  const supabase = createClient()
+  const [descripcion, setDescripcion] = useState('')
+  const [monto, setMonto] = useState('')
+  const [metodoPagoId, setMetodoPagoId] = useState('')
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).order('nombre')
+      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
+  }, [supabase, tenantId])
+
+  const valido = descripcion.trim() !== '' && parseInt(monto.replace(/\D/g, ''), 10) > 0 && metodoPagoId !== ''
+
+  async function guardar() {
+    if (!valido) return
+    setGuardando(true); setError('')
+    const montoNum = parseInt(monto.replace(/\D/g, ''), 10)
+    try {
+      const { data, error: err } = await supabase.from('ingresos_caja').insert({
+        tenant_id: tenantId,
+        descripcion: descripcion.trim(),
+        monto: montoNum,
+        metodo_pago_id: metodoPagoId,
+        registrado_por: usuarioId,
+      }).select('id').single()
+      if (err) throw new Error(err.message)
+      await registrarAuditoria(supabase, {
+        tenant_id: tenantId,
+        tabla: 'ingresos_caja',
+        registro_id: (data as { id: string }).id,
+        tipo: 'movimiento',
+        valor_nuevo: { descripcion: descripcion.trim(), monto: montoNum },
+        descripcion: `Registró un ingreso a caja: "${descripcion.trim()}" por ${formatCOP(montoNum)}`,
+        usuario_id: usuarioId,
+      })
+      onCreado()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al guardar el ingreso')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h2 className="font-bold text-gray-900 mb-1">Ingreso a caja</h2>
+        <p className="text-xs text-gray-500 mb-4">Se registra con la fecha de hoy.</p>
+        <div className="space-y-2">
+          <div>
+            <label className="text-xs text-gray-500">Descripción</label>
+            <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Préstamo, capital, devolución..."
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 mt-0.5" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Monto</label>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-green-400 bg-white mt-0.5">
+              <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-1.5">$</span>
+              <input type="text" inputMode="numeric"
+                value={monto ? Number(monto.replace(/\D/g, '')).toLocaleString('es-CO') : ''}
+                onChange={e => setMonto(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="flex-1 px-2 py-1.5 text-sm font-mono text-right focus:outline-none" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Método de pago</label>
+            <select value={metodoPagoId} onChange={e => setMetodoPagoId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 mt-0.5 bg-white">
+              <option value="">Selecciona...</option>
+              {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={!valido || guardando}
+            className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
+            {guardando ? 'Guardando...' : 'Guardar ingreso'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EditarIngresoModal({ tenantId, usuarioId, ingreso, onClose, onEditado }: {
+  tenantId: string; usuarioId: string
+  ingreso: { id: string; descripcion: string; monto: number; metodoPagoId: string | null }
+  onClose: () => void; onEditado: () => void
+}) {
+  const supabase = createClient()
+  const [monto, setMonto] = useState(String(ingreso.monto))
+  const [metodoPagoId, setMetodoPagoId] = useState(ingreso.metodoPagoId ?? '')
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).order('nombre')
+      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
+  }, [supabase, tenantId])
+
+  const valido = parseInt(monto.replace(/\D/g, ''), 10) > 0 && metodoPagoId !== ''
+
+  async function guardar() {
+    if (!valido) return
+    if (!confirm('¿Seguro que deseas editar este ingreso?')) return
+    setGuardando(true); setError('')
+    const montoNum = parseInt(monto.replace(/\D/g, ''), 10)
+    try {
+      const { error: err } = await supabase.from('ingresos_caja').update({
+        monto: montoNum,
+        metodo_pago_id: metodoPagoId,
+      }).eq('id', ingreso.id)
+      if (err) throw new Error(err.message)
+      await registrarAuditoria(supabase, {
+        tenant_id: tenantId,
+        tabla: 'ingresos_caja',
+        registro_id: ingreso.id,
+        tipo: 'edicion',
+        valor_anterior: { monto: ingreso.monto, metodo_pago_id: ingreso.metodoPagoId },
+        valor_nuevo: { monto: montoNum, metodo_pago_id: metodoPagoId },
+        descripcion: `Editó el ingreso de caja "${ingreso.descripcion}"`,
+        usuario_id: usuarioId,
+      })
+      onEditado()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al editar el ingreso')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h2 className="font-bold text-gray-900 mb-1">Editar ingreso de caja</h2>
+        <p className="text-xs text-gray-500 mb-4">{ingreso.descripcion}</p>
+        <div className="space-y-2">
+          <div>
+            <label className="text-xs text-gray-500">Monto</label>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-green-400 bg-white mt-0.5">
+              <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-1.5">$</span>
+              <input type="text" inputMode="numeric"
+                value={monto ? Number(monto.replace(/\D/g, '')).toLocaleString('es-CO') : ''}
+                onChange={e => setMonto(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="flex-1 px-2 py-1.5 text-sm font-mono text-right focus:outline-none" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Método de pago</label>
+            <select value={metodoPagoId} onChange={e => setMetodoPagoId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 mt-0.5 bg-white">
+              <option value="">Selecciona...</option>
+              {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={!valido || guardando}
+            className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
+            {guardando ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const OPCION_CAJA_FUERTE = '__caja_fuerte__'
 
 function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
@@ -382,8 +569,8 @@ function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
   )
 }
 
-const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'gasto', 'costo_lavado', 'costo_externo', 'ajuste']
-const INGRESO_CATEGORIAS: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_insumo', 'ingreso_lavado', 'ingreso_externo']
+const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_manual', 'gasto', 'costo_lavado', 'costo_externo', 'ajuste']
+const INGRESO_CATEGORIAS: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_insumo', 'ingreso_lavado', 'ingreso_externo', 'ingreso_manual']
 const GASTO_CATEGORIAS: Categoria[] = ['costo_externo', 'costo_lavado', 'gasto']
 
 // Construye la lista de movimientos para un tenant. Si desdeISO/hastaISO son null no se
@@ -442,8 +629,14 @@ async function construirMovimientos(
   if (desdeISO) qAjustes = qAjustes.gte('fecha', desdeISO)
   if (hastaISO) qAjustes = qAjustes.lte('fecha', hastaISO)
 
-  const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }, { data: ajustes }] =
-    await Promise.all([qPagos, qCostosExt, qGastos, qInsumos, qLavados, qVentaDirecta, qAjustes])
+  let qIngresos = supabase.from('ingresos_caja')
+    .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre)')
+    .eq('tenant_id', tenantId)
+  if (desdeISO) qIngresos = qIngresos.gte('fecha', desdeISO)
+  if (hastaISO) qIngresos = qIngresos.lte('fecha', hastaISO)
+
+  const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }, { data: ajustes }, { data: ingresos }] =
+    await Promise.all([qPagos, qCostosExt, qGastos, qInsumos, qLavados, qVentaDirecta, qAjustes, qIngresos])
 
   const lista: Movimiento[] = []
 
@@ -628,6 +821,23 @@ async function construirMovimientos(
     })
   }
 
+  for (const ig of (ingresos ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null }[]) {
+    lista.push({
+      id: `ingreso_${ig.id}`,
+      rawId: ig.id,
+      fecha: ig.fecha,
+      categoria: 'ingreso_manual',
+      concepto: ig.descripcion,
+      nombre: ig.descripcion,
+      codigo: null,
+      monto: ig.monto,
+      metodoPagoId: ig.metodo_pago_id,
+      metodoPago: ig.metodos_pago?.nombre ?? null,
+      cuentaEspecial: null,
+      grupo: CATEGORIA_LABEL.ingreso_manual,
+    })
+  }
+
   lista.sort((a, b) => b.fecha.localeCompare(a.fecha))
   return lista
 }
@@ -647,6 +857,8 @@ export default function CajaPage() {
   const [gastoModal, setGastoModal] = useState<{ titulo: string; descripcionInicial: string } | null>(null)
   const [ajusteOpen, setAjusteOpen] = useState(false)
   const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null } | null>(null)
+  const [ingresoModalOpen, setIngresoModalOpen] = useState(false)
+  const [editIngreso, setEditIngreso] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null } | null>(null)
   const [vistaResumen, setVistaResumen] = useState<'total' | 'cuenta'>('cuenta')
   const [vistaTabla, setVistaTabla] = useState<'item' | 'metodo'>('item')
 
@@ -857,6 +1069,22 @@ export default function CajaPage() {
     await cargar()
   }
 
+  async function eliminarIngreso(m: { rawId: string; concepto: string; monto: number }) {
+    if (!confirm(`¿Eliminar el ingreso "${m.concepto}" por ${formatCOP(Math.abs(m.monto))}?`)) return
+    const { error } = await supabase.from('ingresos_caja').delete().eq('id', m.rawId)
+    if (error) { alert(`No se pudo eliminar: ${error.message}`); return }
+    await registrarAuditoria(supabase, {
+      tenant_id: profile!.tenant_id,
+      tabla: 'ingresos_caja',
+      registro_id: m.rawId,
+      tipo: 'eliminacion',
+      valor_anterior: { descripcion: m.concepto, monto: Math.abs(m.monto) },
+      descripcion: `Eliminó el ingreso de caja "${m.concepto}"`,
+      usuario_id: profile?.id,
+    })
+    await cargar()
+  }
+
   return (
     <div className="p-6 space-y-5 max-w-6xl">
       {gastoModal && profile?.tenant_id && profile?.id && (
@@ -889,6 +1117,25 @@ export default function CajaPage() {
         />
       )}
 
+      {ingresoModalOpen && profile?.tenant_id && profile?.id && (
+        <NuevoIngresoModal
+          tenantId={profile.tenant_id}
+          usuarioId={profile.id}
+          onClose={() => setIngresoModalOpen(false)}
+          onCreado={cargar}
+        />
+      )}
+
+      {editIngreso && profile?.tenant_id && profile?.id && (
+        <EditarIngresoModal
+          tenantId={profile.tenant_id}
+          usuarioId={profile.id}
+          ingreso={editIngreso}
+          onClose={() => setEditIngreso(null)}
+          onEditado={cargar}
+        />
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Caja</h1>
@@ -900,6 +1147,10 @@ export default function CajaPage() {
           <button onClick={() => setGastoModal({ titulo: 'Nuevo gasto de caja', descripcionInicial: '' })}
             className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-colors">
             + Nuevo gasto
+          </button>
+          <button onClick={() => setIngresoModalOpen(true)}
+            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors">
+            + Ingreso a caja
           </button>
           <button onClick={() => setGastoModal({ titulo: 'Transferir a profesional', descripcionInicial: 'Transferencia a profesional' })}
             className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition-colors">
@@ -1166,6 +1417,19 @@ export default function CajaPage() {
                         Eliminar
                       </button>
                     )}
+                    {m.categoria === 'ingreso_manual' && puedeEditarGastos && (
+                      <>
+                        <button
+                          onClick={() => setEditIngreso({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId })}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                        >
+                          Editar
+                        </button>
+                        <button onClick={() => eliminarIngreso(m)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
+                          Eliminar
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1230,6 +1494,19 @@ export default function CajaPage() {
                       <button onClick={() => eliminarAjuste(f)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
                         Eliminar
                       </button>
+                    )}
+                    {f.categoria === 'ingreso_manual' && puedeEditarGastos && (
+                      <>
+                        <button
+                          onClick={() => setEditIngreso({ id: f.rawId, descripcion: f.concepto, monto: Math.abs(f.monto), metodoPagoId: f.metodoPagoId })}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                        >
+                          Editar
+                        </button>
+                        <button onClick={() => eliminarIngreso(f)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
+                          Eliminar
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>

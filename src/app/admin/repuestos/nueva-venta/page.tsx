@@ -7,9 +7,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { ConsultaRepuestos } from '@/components/ConsultaRepuestos'
 import { ClienteMotoPanel } from '@/components/ClienteMotoPanel'
-import { formatCOP, generarCodigoExterno, normalizarPlaca } from '@/lib/utils'
+import { formatCOP, normalizarPlaca } from '@/lib/utils'
 import { upsertMotoCliente } from '@/lib/clienteMoto'
 import { registrarSalida, registrarDevolucion } from '@/lib/movimientos'
 import { registrarAuditoria } from '@/lib/audit'
@@ -27,14 +26,6 @@ interface ItemVenta {
   metodo_pago_id?: string | null
 }
 
-interface ExternoForm {
-  nombre: string
-  costo: string       // dígitos crudos, sin formato
-  precio_venta: string // dígitos crudos, sin formato
-  cantidad: string
-  metodoPagoId: string
-}
-
 function soloDigitos(v: string) { return v.replace(/\D/g, '') }
 
 function formatCelular(digits: string): string {
@@ -42,11 +33,6 @@ function formatCelular(digits: string): string {
   if (d.length <= 3) return d
   if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
-}
-
-function fmtCOP(raw: string): string {
-  const n = parseInt(soloDigitos(raw) || '0', 10)
-  return n ? n.toLocaleString('es-CO') : ''
 }
 
 interface OrdenPlaca {
@@ -58,7 +44,6 @@ interface OrdenPlaca {
   valor_total: number
 }
 
-const externoInit: ExternoForm = { nombre: '', costo: '', precio_venta: '', cantidad: '1', metodoPagoId: '' }
 const DRAFT_KEY = 'optiDesk_venta_directa_draft'
 const PANEL_INIT: ClienteMotoPanelResult = { motoId: null, clienteId: null, motoExtras: { marca: '', modelo: '', año: '', color: '' }, isKnownMoto: false }
 
@@ -79,11 +64,17 @@ function NuevaVentaContent() {
   const [historialPlaca, setHistorialPlaca] = useState<OrdenPlaca[]>([])
   const [loadingHistorial, setLoadingHistorial] = useState(false)
 
-  const [items, setItems] = useState<ItemVenta[]>([])
   const [originalItems, setOriginalItems] = useState<ItemVenta[]>([])
-  const [showConsulta, setShowConsulta] = useState(false)
-  const [showExternoForm, setShowExternoForm] = useState(false)
-  const [externoForm, setExternoForm] = useState<ExternoForm>(externoInit)
+  // Repuestos — una fila UMA y una fila Externo, igual de simple que en Servicio Técnico:
+  // sin catálogo ni botón de agregar, solo descripción (opcional, con valor predeterminado).
+  const UMA_DESC_DEFAULT = 'Repuesto UMA'
+  const EXT_DESC_DEFAULT = 'Repuesto externo'
+  const [umaSlot, setUmaSlot] = useState<{ id?: string; desc: string; valor: string }>({ desc: UMA_DESC_DEFAULT, valor: '' })
+  const [extSlot, setExtSlot] = useState<{ id?: string; desc: string; costo: string; valor: string; metodo: string }>({ desc: EXT_DESC_DEFAULT, costo: '', valor: '', metodo: '' })
+  // true mientras se está escribiendo/editando la fila; al perder el foco se "asienta" en
+  // vista de solo lectura con lápiz/papelera, igual que en Servicio Técnico.
+  const [umaEditando, setUmaEditando] = useState(false)
+  const [extEditando, setExtEditando] = useState(false)
 
   const [pagado, setPagado] = useState(true)
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
@@ -129,7 +120,7 @@ function NuevaVentaContent() {
     ;(async () => {
       const [{ data: orden }, { data: itemsData }] = await Promise.all([
         supabase.from('ordenes').select('cliente, cedula, celular, placa, estado_pago, metodo_pago_id, moto_id, cliente_id').eq('id', editId).single(),
-        supabase.from('items_orden').select('id, descripcion, origen, repuesto_uma_id, repuesto_externo_id, cantidad, costo, precio_venta').eq('orden_id', editId),
+        supabase.from('items_orden').select('id, descripcion, origen, repuesto_uma_id, repuesto_externo_id, cantidad, costo, precio_venta, metodo_pago_id').eq('orden_id', editId),
       ])
       if (!activo) return
       if (orden) {
@@ -143,8 +134,11 @@ function NuevaVentaContent() {
         setPanelResult({ motoId: o.moto_id, clienteId: o.cliente_id, motoExtras: { marca: '', modelo: '', año: '', color: '' }, isKnownMoto: !!o.moto_id })
       }
       const loadedItems = ((itemsData as ItemVenta[]) ?? []).filter((i) => i.origen === 'uma' || i.origen === 'externo')
-      setItems(loadedItems)
       setOriginalItems(loadedItems)
+      const umaIt = loadedItems.find((i) => i.origen === 'uma')
+      const extIt = loadedItems.find((i) => i.origen === 'externo')
+      if (umaIt) setUmaSlot({ id: umaIt.id, desc: umaIt.descripcion, valor: String(umaIt.precio_venta) })
+      if (extIt) setExtSlot({ id: extIt.id, desc: extIt.descripcion, costo: String(extIt.costo), valor: String(extIt.precio_venta), metodo: extIt.metodo_pago_id ?? '' })
       setLoadingEdit(false)
     })()
     return () => { activo = false }
@@ -183,54 +177,29 @@ function NuevaVentaContent() {
       .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
   }, [profile?.tenant_id])
 
-  const addItem = (item: Omit<ItemVenta, 'id'>) => setItems((prev) => [...prev, item as ItemVenta])
-  const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx))
-
-  const handleAgregarExterno = async () => {
-    if (!externoForm.nombre || !externoForm.precio_venta || !externoForm.metodoPagoId || !profile?.tenant_id) return
-    const costo = parseInt(soloDigitos(externoForm.costo) || '0', 10)
-    const precio = parseInt(soloDigitos(externoForm.precio_venta) || '0', 10)
-    if (!precio) return
-    setSaving(true)
-    try {
-      const codigo = await generarCodigoExterno(supabase, profile.tenant_id)
-      const { data: externo } = await supabase
-        .from('repuestos_externos')
-        .insert({
-          tenant_id: profile.tenant_id,
-          codigo,
-          nombre: externoForm.nombre,
-          ultimo_costo: costo,
-          ultimo_precio_venta: precio,
-          registrado_por: profile.id,
-        })
-        .select('id')
-        .single()
-      if (externo) {
-        await registrarAuditoria(supabase, {
-          tenant_id: profile.tenant_id,
-          tabla: 'repuestos_externos',
-          registro_id: (externo as { id: string }).id,
-          tipo: 'movimiento',
-          valor_nuevo: { codigo, nombre: externoForm.nombre, precio_venta: precio },
-          descripcion: `Creó repuesto externo "${externoForm.nombre}" (${codigo})`,
-          usuario_id: profile.id,
-        })
-        addItem({
-          descripcion: externoForm.nombre,
-          origen: 'externo',
-          repuesto_externo_id: (externo as { id: string }).id,
-          cantidad: parseInt(externoForm.cantidad) || 1,
-          costo,
-          precio_venta: precio,
-          metodo_pago_id: externoForm.metodoPagoId,
-        })
-        setExternoForm(externoInit)
-        setShowExternoForm(false)
-      }
-    } finally {
-      setSaving(false)
-    }
+  const umaListo = !!umaSlot.valor
+  const extListo = !!extSlot.valor && !!extSlot.metodo
+  const items: ItemVenta[] = []
+  if (umaListo) {
+    items.push({
+      id: umaSlot.id,
+      descripcion: umaSlot.desc.trim() || 'Repuesto UMA',
+      origen: 'uma',
+      cantidad: 1,
+      costo: 0,
+      precio_venta: parseInt(umaSlot.valor.replace(/\D/g, ''), 10),
+    })
+  }
+  if (extListo) {
+    items.push({
+      id: extSlot.id,
+      descripcion: extSlot.desc.trim() || 'Repuesto externo',
+      origen: 'externo',
+      cantidad: 1,
+      costo: parseInt(extSlot.costo.replace(/\D/g, '') || '0', 10),
+      precio_venta: parseInt(extSlot.valor.replace(/\D/g, ''), 10),
+      metodo_pago_id: extSlot.metodo,
+    })
   }
 
   const handleGuardar = async () => {
@@ -630,109 +599,150 @@ function NuevaVentaContent() {
 
       {/* Items */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">Repuestos</h2>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => setShowConsulta(true)}>Añadir Repuesto</Button>
-          </div>
+        <h2 className="font-semibold text-gray-900">Repuestos</h2>
+        <div>
+          <table className="w-full table-fixed text-sm">
+            <thead>
+              <tr className="text-[11px] text-gray-500 uppercase border-b">
+                <th className="text-left py-1 px-1 font-medium w-[13%]">Origen</th>
+                <th className="text-left py-1 px-1 font-medium w-[27%]">Descripción</th>
+                <th className="text-left py-1 px-1 font-medium w-[20%]">Método</th>
+                <th className="text-right py-1 px-1 font-medium w-[17%]">Costo prov.</th>
+                <th className="text-right py-1 px-1 font-medium w-[17%]">Venta</th>
+                <th className="py-1 px-1 w-[6%]" />
+              </tr>
+            </thead>
+            <tbody>
+              {/* UMA */}
+              <tr className="border-b">
+                <td className="py-1 px-1"><Badge variant="blue">UMA</Badge></td>
+                {umaListo && !umaEditando ? (
+                  <>
+                    <td className={`py-1 px-1 truncate ${umaSlot.desc.trim() === UMA_DESC_DEFAULT ? 'text-gray-400' : 'text-gray-800'}`}>{umaSlot.desc.trim() || UMA_DESC_DEFAULT}</td>
+                    <td className="py-1 px-1 text-center text-gray-300">—</td>
+                    <td className="py-1 px-1 text-center text-gray-300">—</td>
+                    <td className="py-1 px-1 text-right font-semibold truncate">{formatCOP(parseInt(umaSlot.valor.replace(/\D/g, '') || '0', 10))}</td>
+                    <td className="py-1 px-1">
+                      <div className="flex gap-0.5 justify-end">
+                        <button onClick={() => setUmaEditando(true)} className="text-gray-400 hover:text-blue-600 p-0.5">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button onClick={() => { setUmaSlot({ desc: UMA_DESC_DEFAULT, valor: '' }); setUmaEditando(false) }} className="text-gray-400 hover:text-red-500 p-0.5">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="py-1 px-1">
+                      <input
+                        value={umaSlot.desc}
+                        onChange={(e) => setUmaSlot((q) => ({ ...q, desc: e.target.value }))}
+                        onFocus={(e) => e.target.select()}
+                        onBlur={() => setUmaEditando(false)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        className={`w-full px-1.5 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${umaSlot.desc === UMA_DESC_DEFAULT ? 'text-gray-400' : 'text-gray-900'}`}
+                      />
+                    </td>
+                    <td className="py-1 px-1 text-center text-gray-300">—</td>
+                    <td className="py-1 px-1 text-center text-gray-300">—</td>
+                    <td className="py-1 px-1">
+                      <input
+                        type="text" inputMode="numeric"
+                        value={umaSlot.valor ? '$' + parseInt(umaSlot.valor || '0', 10).toLocaleString('es-CO') : ''}
+                        onChange={(e) => setUmaSlot((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
+                        onBlur={() => setUmaEditando(false)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        placeholder="$"
+                        className="w-full px-1.5 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                    </td>
+                    <td className="py-1 px-1" />
+                  </>
+                )}
+              </tr>
+
+              {/* Externo */}
+              <tr className="border-b">
+                <td className="py-1 px-1"><Badge variant="amber">Externo</Badge></td>
+                {extListo && !extEditando ? (
+                  <>
+                    <td className={`py-1 px-1 truncate ${extSlot.desc.trim() === EXT_DESC_DEFAULT ? 'text-gray-400' : 'text-gray-800'}`}>{extSlot.desc.trim() || EXT_DESC_DEFAULT}</td>
+                    <td className="py-1 px-1 text-gray-500 truncate">{metodosPago.find((m) => m.id === extSlot.metodo)?.nombre ?? '—'}</td>
+                    <td className="py-1 px-1 text-right text-gray-500 truncate">{formatCOP(parseInt(extSlot.costo.replace(/\D/g, '') || '0', 10))}</td>
+                    <td className="py-1 px-1 text-right font-semibold truncate">{formatCOP(parseInt(extSlot.valor.replace(/\D/g, '') || '0', 10))}</td>
+                    <td className="py-1 px-1">
+                      <div className="flex gap-0.5 justify-end">
+                        <button onClick={() => setExtEditando(true)} className="text-gray-400 hover:text-blue-600 p-0.5">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button onClick={() => { setExtSlot({ desc: EXT_DESC_DEFAULT, costo: '', valor: '', metodo: '' }); setExtEditando(false) }} className="text-gray-400 hover:text-red-500 p-0.5">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="py-1 px-1">
+                      <input
+                        value={extSlot.desc}
+                        onChange={(e) => setExtSlot((q) => ({ ...q, desc: e.target.value }))}
+                        onFocus={(e) => e.target.select()}
+                        onBlur={() => setExtEditando(false)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        className={`w-full px-1.5 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 ${extSlot.desc === EXT_DESC_DEFAULT ? 'text-gray-400' : 'text-gray-900'}`}
+                      />
+                    </td>
+                    <td className="py-1 px-1">
+                      <select
+                        value={extSlot.metodo}
+                        onChange={(e) => setExtSlot((q) => ({ ...q, metodo: e.target.value }))}
+                        onBlur={() => setExtEditando(false)}
+                        className="w-full px-1 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                      >
+                        <option value="">—</option>
+                        {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                      </select>
+                    </td>
+                    <td className="py-1 px-1">
+                      <input
+                        type="text" inputMode="numeric"
+                        value={extSlot.costo ? '$' + parseInt(extSlot.costo || '0', 10).toLocaleString('es-CO') : ''}
+                        onChange={(e) => setExtSlot((q) => ({ ...q, costo: e.target.value.replace(/\D/g, '') }))}
+                        onBlur={() => setExtEditando(false)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        placeholder="$"
+                        className="w-full px-1.5 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </td>
+                    <td className="py-1 px-1">
+                      <input
+                        type="text" inputMode="numeric"
+                        value={extSlot.valor ? '$' + parseInt(extSlot.valor || '0', 10).toLocaleString('es-CO') : ''}
+                        onChange={(e) => setExtSlot((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
+                        onBlur={() => setExtEditando(false)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                        placeholder="$"
+                        className="w-full px-1.5 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </td>
+                    <td className="py-1 px-1" />
+                  </>
+                )}
+              </tr>
+            </tbody>
+          </table>
         </div>
-
-        {items.length === 0 ? (
-          <p className="text-sm text-gray-400 py-4 text-center">Sin ítems agregados</p>
-        ) : (
-          <div className="space-y-2">
-            {items.map((item, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={item.origen === 'uma' ? 'blue' : 'amber'}>
-                      {item.origen === 'uma' ? 'UMA' : 'Externo'}
-                    </Badge>
-                    <span className="text-sm text-gray-800 truncate">{item.descripcion}</span>
-                  </div>
-                  <span className="text-xs text-gray-500">Cant: {item.cantidad} · {formatCOP(item.precio_venta * item.cantidad)}</span>
-                </div>
-                <button onClick={() => removeItem(i)} className="text-gray-300 hover:text-red-500">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {showExternoForm && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-amber-800">Repuesto externo / tercerizado</h3>
-            <input
-              value={externoForm.nombre}
-              onChange={(e) => setExternoForm((p) => ({ ...p, nombre: e.target.value }))}
-              placeholder="Nombre del repuesto *"
-              className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm"
-            />
-            <div className="grid grid-cols-3 gap-2">
-              {/* Costo */}
-              <div>
-                <label className="text-xs text-gray-600">Costo</label>
-                <div className="flex items-center border border-amber-200 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-amber-400 mt-0.5">
-                  <span className="px-2 text-gray-400 text-sm border-r border-amber-100 py-1.5">$</span>
-                  <input
-                    type="text" inputMode="numeric"
-                    value={fmtCOP(externoForm.costo)}
-                    onChange={(e) => setExternoForm((p) => ({ ...p, costo: soloDigitos(e.target.value) }))}
-                    placeholder="0"
-                    className="flex-1 px-2 py-1.5 text-sm font-mono text-right focus:outline-none bg-white"
-                  />
-                </div>
-              </div>
-              {/* Precio venta */}
-              <div>
-                <label className="text-xs text-gray-600">Precio venta *</label>
-                <div className="flex items-center border border-amber-200 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-amber-400 mt-0.5">
-                  <span className="px-2 text-gray-400 text-sm border-r border-amber-100 py-1.5">$</span>
-                  <input
-                    type="text" inputMode="numeric"
-                    value={fmtCOP(externoForm.precio_venta)}
-                    onChange={(e) => setExternoForm((p) => ({ ...p, precio_venta: soloDigitos(e.target.value) }))}
-                    placeholder="0"
-                    className="flex-1 px-2 py-1.5 text-sm font-mono text-right focus:outline-none bg-white"
-                  />
-                </div>
-              </div>
-              {/* Cantidad */}
-              <div>
-                <label className="text-xs text-gray-600">Cantidad</label>
-                <input
-                  type="number" min={1}
-                  value={externoForm.cantidad}
-                  onChange={(e) => setExternoForm((p) => ({ ...p, cantidad: e.target.value }))}
-                  placeholder="1"
-                  className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm mt-0.5 text-center focus:outline-none focus:ring-2 focus:ring-amber-400"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-gray-600">Método de pago al proveedor *</label>
-              <select
-                value={externoForm.metodoPagoId}
-                onChange={(e) => setExternoForm((p) => ({ ...p, metodoPagoId: e.target.value }))}
-                className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm mt-0.5 bg-white"
-              >
-                <option value="">Selecciona...</option>
-                {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-              </select>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={handleAgregarExterno} loading={saving} disabled={!externoForm.nombre || !externoForm.precio_venta || !externoForm.metodoPagoId}>
-                Agregar
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => { setShowExternoForm(false); setExternoForm(externoInit) }}>
-                Cancelar
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Pago */}
@@ -782,15 +792,6 @@ function NuevaVentaContent() {
       <Button className="w-full" size="lg" onClick={handleGuardar} loading={saving}>
         {editId ? 'Guardar cambios' : `Registrar venta${placaNorm ? ` — vincular a ${placaNorm}` : ''}`}
       </Button>
-
-      {profile?.tenant_id && (
-        <ConsultaRepuestos
-          open={showConsulta}
-          onClose={() => setShowConsulta(false)}
-          tenantId={profile.tenant_id}
-          onAdd={addItem}
-        />
-      )}
     </div>
   )
 }
