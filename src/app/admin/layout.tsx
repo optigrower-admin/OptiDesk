@@ -513,7 +513,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             )}
             <div className="min-w-0">
               <span className="font-bold text-gray-900 text-sm truncate block">{nombreNegocio || 'OptiDesk'}</span>
-              <span className="text-xs text-gray-400 font-medium">v1.4</span>
+              <span className="text-xs text-gray-400 font-medium">v1.5</span>
             </div>
           </div>
         </div>

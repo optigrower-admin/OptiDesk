@@ -72,6 +72,8 @@ export default function AdminOrdenesPage() {
   const [loadingCSV, setLoadingCSV] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
   const [manualesOpen, setManualesOpen] = useState(false)
+  const [vista, setVista] = useState<'tarjetas' | 'tabla'>('tarjetas')
+  const [costosProveedorPorOrden, setCostosProveedorPorOrden] = useState<Map<string, number>>(new Map())
   const cancelRef = useRef(false)
   const hasLoadedRef = useRef(false)
 
@@ -184,6 +186,31 @@ export default function AdminOrdenesPage() {
           }
         }
       }
+
+      // Costo proveedor por orden (Externo + Lavado), para la vista de tabla simplificada
+      const costosMap = new Map<string, number>()
+      if (allOrderIds.length > 0) {
+        const { data: itemsCosto } = await supabase
+          .from('items_orden')
+          .select('orden_id, costo, cantidad')
+          .eq('origen', 'externo')
+          .in('orden_id', allOrderIds)
+        if (!cancelRef.current && itemsCosto) {
+          for (const it of itemsCosto as { orden_id: string; costo: number; cantidad: number }[]) {
+            costosMap.set(it.orden_id, (costosMap.get(it.orden_id) ?? 0) + it.costo * it.cantidad)
+          }
+        }
+        const { data: lavadosCosto } = await supabase
+          .from('lava_moto_ordenes')
+          .select('orden_id, costo_unitario, cantidad')
+          .in('orden_id', allOrderIds)
+        if (!cancelRef.current && lavadosCosto) {
+          for (const lm of lavadosCosto as { orden_id: string; costo_unitario: number; cantidad: number }[]) {
+            costosMap.set(lm.orden_id, (costosMap.get(lm.orden_id) ?? 0) + lm.costo_unitario * lm.cantidad)
+          }
+        }
+      }
+      if (!cancelRef.current) setCostosProveedorPorOrden(costosMap)
 
       setGrupos((prev) => {
         const expandidoPorPlaca = new Map(prev.map((g) => [g.placa, g.expandido]))
@@ -325,6 +352,24 @@ export default function AdminOrdenesPage() {
           <p className="text-sm text-gray-500">{totalOrdenes} órdenes · {gruposFiltrados.length} motos</p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mr-1">
+            <button
+              onClick={() => setVista('tarjetas')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                vista === 'tarjetas' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Tarjetas
+            </button>
+            <button
+              onClick={() => setVista('tabla')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                vista === 'tabla' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Tabla
+            </button>
+          </div>
           <button
             onClick={() => setManualesOpen(true)}
             className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
@@ -530,6 +575,57 @@ export default function AdminOrdenesPage() {
           </svg>
           <p className="text-sm">Sin órdenes{busqueda ? ` para "${busqueda}"` : ''}</p>
         </div>
+      ) : vista === 'tabla' ? (
+        <div className="overflow-x-auto bg-white rounded-xl border border-gray-100">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-gray-500 uppercase border-b bg-gray-50">
+                <th className="text-left py-2.5 px-4 font-medium">Moto (Placa)</th>
+                <th className="text-left py-2.5 px-4 font-medium">Nombre</th>
+                <th className="text-left py-2.5 px-4 font-medium whitespace-nowrap">Fecha ingreso</th>
+                <th className="text-left py-2.5 px-4 font-medium whitespace-nowrap">Fecha finalización</th>
+                <th className="text-left py-2.5 px-4 font-medium">Estado</th>
+                <th className="text-right py-2.5 px-4 font-medium whitespace-nowrap">Costo proveedor</th>
+                <th className="text-right py-2.5 px-4 font-medium whitespace-nowrap">Total venta</th>
+                <th className="text-right py-2.5 px-4 font-medium whitespace-nowrap">Saldo pendiente</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gruposFiltrados.flatMap((g) => g.ordenes.filter(esServicio)).map((orden) => {
+                const saldoPend = orden.valor_total - (orden.valor_abono ?? 0)
+                const hayPendiente = orden.estado_pago !== 'pagado' && saldoPend > 0
+                return (
+                  <tr key={orden.id} className="border-b hover:bg-blue-50 transition-colors">
+                    <td className="py-2.5 px-4">
+                      <Link href={`/admin/ordenes/${orden.id}`} className="font-mono font-bold text-gray-900 hover:text-blue-700">
+                        {orden.placa}
+                      </Link>
+                    </td>
+                    <td className="py-2.5 px-4 text-gray-700">{orden.cliente}</td>
+                    <td className="py-2.5 px-4 text-gray-500 whitespace-nowrap">
+                      {new Date(orden.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="py-2.5 px-4 text-gray-500 whitespace-nowrap">
+                      {orden.fecha_finalizacion
+                        ? new Date(orden.fecha_finalizacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
+                        : '—'}
+                    </td>
+                    <td className="py-2.5 px-4"><OrderStatus estado={orden.estado} /></td>
+                    <td className="py-2.5 px-4 text-right text-gray-600 whitespace-nowrap">
+                      {formatCOP(costosProveedorPorOrden.get(orden.id) ?? 0)}
+                    </td>
+                    <td className="py-2.5 px-4 text-right font-semibold text-gray-900 whitespace-nowrap">
+                      {formatCOP(orden.valor_total)}
+                    </td>
+                    <td className={`py-2.5 px-4 text-right font-bold whitespace-nowrap ${hayPendiente ? 'text-red-600' : 'text-gray-400'}`}>
+                      {formatCOP(saldoPend > 0 ? saldoPend : 0)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="space-y-3">
           {gruposFiltrados.map((grupo) => {
@@ -659,6 +755,9 @@ export default function AdminOrdenesPage() {
                               <span className="text-green-600">Salida: {new Date(orden.fecha_finalizacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                             )}
                             <span className="font-semibold text-gray-600">Total: {formatCOP(orden.valor_total)}</span>
+                            {orden.estado_pago !== 'pagado' && (orden.valor_total - (orden.valor_abono ?? 0)) > 0 && (
+                              <span className="font-bold text-red-600">Saldo pendiente: {formatCOP(orden.valor_total - (orden.valor_abono ?? 0))}</span>
+                            )}
                             {!orden.telefono && orden.estado !== 'listo' && (
                               <span className="text-amber-500 font-medium">Sin teléfono</span>
                             )}

@@ -591,6 +591,7 @@ async function construirMovimientos(
 
   for (const it of (insumos ?? []) as unknown as { id: string; descripcion: string; precio_venta: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
     const ord = it.ordenes
+    const concepto = `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
     // Igual que con repuestos externos: si la orden es Servicio Técnico, este ingreso
     // ya está incluido en el pago total de la orden — no se cuenta aparte.
     if (ord?.tipo_orden === 'servicio') continue
@@ -599,7 +600,7 @@ async function construirMovimientos(
       rawId: it.id,
       fecha: it.created_at,
       categoria: 'ingreso_insumo',
-      concepto: `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
+      concepto,
       nombre: ord?.cliente ?? null,
       codigo: ord?.placa ?? null,
       monto: it.precio_venta,
