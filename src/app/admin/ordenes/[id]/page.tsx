@@ -146,6 +146,7 @@ interface ItemOrden {
   repuesto_uma_id: string | null
   estado_repuesto: 'pedido' | 'ok' | null
   metodo_pago_id: string | null
+  created_at: string
 }
 
 interface Medio {
@@ -314,6 +315,13 @@ export default function AdminOrdenDetallePage() {
   const [fechaInputValue, setFechaInputValue] = useState('')
   const [savingFecha, setSavingFecha] = useState(false)
   const [deletingOrden, setDeletingOrden] = useState(false)
+  // Edición de fecha de pagos e items (repuestos/mano de obra) — solo gerencia
+  const [editandoPagoFechaId, setEditandoPagoFechaId] = useState<string | null>(null)
+  const [pagoFechaInputValue, setPagoFechaInputValue] = useState('')
+  const [savingPagoFecha, setSavingPagoFecha] = useState(false)
+  const [editandoItemFechaId, setEditandoItemFechaId] = useState<string | null>(null)
+  const [itemFechaInputValue, setItemFechaInputValue] = useState('')
+  const [savingItemFecha, setSavingItemFecha] = useState(false)
   const esGerencia = profile?.rol === 'gerencia'
 
   const cargar = useCallback(async () => {
@@ -323,7 +331,7 @@ export default function AdminOrdenDetallePage() {
         .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
         .eq('id', ordenId).single(),
-      supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto, metodo_pago_id').eq('orden_id', ordenId),
+      supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto, metodo_pago_id, created_at').eq('orden_id', ordenId),
       supabase.from('medios').select('id, url, tipo, nombre_archivo, storage_location, drive_url, procesando').eq('orden_id', ordenId),
       supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', profile.tenant_id).eq('activo', true),
       supabase.from('categorias_servicio').select('id, nombre, subcategorias_servicio(id, nombre)').eq('tenant_id', profile.tenant_id).eq('activo', true).order('orden'),
@@ -1074,22 +1082,50 @@ export default function AdminOrdenDetallePage() {
   const iniciarEditarLavado = (lm: LavaMotoOrden) => { setLavadoQuick({ costo: String(lm.costo_unitario), valor: String(lm.precio_venta_unitario), metodo: lm.metodo_pago_id ?? '', editId: lm.id }); setMostrarLavado(true) }
   const cancelarEditarLavado = () => { setLavadoQuick({ costo: '10000', valor: '15000', metodo: '', editId: null }); setMostrarLavado(false) }
 
-  const accionesRepuesto = (onEditar: () => void, onEliminar: () => void) => (
-    <div className="flex gap-1 justify-end">
-      <button onClick={onEditar} className="text-gray-400 hover:text-blue-600 p-1">
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-        </svg>
-      </button>
-      {esGerencia && (
-        <button onClick={onEliminar} className="text-gray-400 hover:text-red-500 p-1">
+  const accionesRepuesto = (onEditar: () => void, onEliminar: () => void, itemFecha?: ItemOrden) => {
+    if (itemFecha && editandoItemFechaId === itemFecha.id) {
+      return (
+        <div className="flex items-center gap-1 justify-end">
+          <input
+            type="datetime-local"
+            value={itemFechaInputValue}
+            onChange={(e) => setItemFechaInputValue(e.target.value)}
+            className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 w-[148px]"
+            autoFocus
+          />
+          <button onClick={handleGuardarFechaItem} disabled={savingItemFecha} className="text-green-600 hover:text-green-800 p-0.5" title="Guardar">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          </button>
+          <button onClick={() => setEditandoItemFechaId(null)} disabled={savingItemFecha} className="text-gray-400 hover:text-red-500 p-0.5" title="Cancelar">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      )
+    }
+    return (
+      <div className="flex gap-1 justify-end">
+        <button onClick={onEditar} className="text-gray-400 hover:text-blue-600 p-1">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
         </button>
-      )}
-    </div>
-  )
+        {esGerencia && itemFecha && (
+          <button onClick={() => abrirEditarFechaItem(itemFecha)} className="text-gray-400 hover:text-purple-600 p-1" title="Editar fecha (gerencia)">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </button>
+        )}
+        {esGerencia && (
+          <button onClick={onEliminar} className="text-gray-400 hover:text-red-500 p-1">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        )}
+      </div>
+    )
+  }
 
   // Solo cuenta pagos positivos del cliente; los negativos son egresos (costos lava moto)
   const calcularEstadoPago = (pagos: PagoOrden[], valorTotal: number): EstadoPago => {
@@ -1192,6 +1228,66 @@ export default function AdminOrdenDetallePage() {
       usuario_id: profile?.id,
     })
     await cargar()
+  }
+
+  // ── Edición de fecha de un pago (exclusivo gerencia) ─────────────────────────
+  const abrirEditarFechaPago = (pago: PagoOrden) => {
+    setPagoFechaInputValue(isoToDatetimeLocal(pago.fecha))
+    setEditandoPagoFechaId(pago.id)
+  }
+
+  const handleGuardarFechaPago = async () => {
+    if (!orden || !editandoPagoFechaId || !pagoFechaInputValue) return
+    setSavingPagoFecha(true)
+    try {
+      const pago = pagosOrden.find((p) => p.id === editandoPagoFechaId)
+      const nuevaFechaISO = new Date(pagoFechaInputValue).toISOString()
+      await supabase.from('pagos_orden').update({ fecha: nuevaFechaISO }).eq('id', editandoPagoFechaId)
+      await registrarAuditoria(supabase, {
+        tenant_id: orden.tenant_id,
+        tabla: 'pagos_orden',
+        registro_id: editandoPagoFechaId,
+        tipo: 'edicion',
+        valor_anterior: { fecha: pago?.fecha },
+        valor_nuevo: { fecha: nuevaFechaISO },
+        descripcion: `Gerencia editó la fecha de un pago | orden #${orden.numero}`,
+        usuario_id: profile?.id,
+      })
+      setEditandoPagoFechaId(null)
+      await cargar()
+    } finally {
+      setSavingPagoFecha(false)
+    }
+  }
+
+  // ── Edición de fecha de un item (repuesto/mano de obra, exclusivo gerencia) ──
+  const abrirEditarFechaItem = (item: ItemOrden) => {
+    setItemFechaInputValue(isoToDatetimeLocal(item.created_at))
+    setEditandoItemFechaId(item.id)
+  }
+
+  const handleGuardarFechaItem = async () => {
+    if (!orden || !editandoItemFechaId || !itemFechaInputValue) return
+    setSavingItemFecha(true)
+    try {
+      const item = items.find((i) => i.id === editandoItemFechaId)
+      const nuevaFechaISO = new Date(itemFechaInputValue).toISOString()
+      await supabase.from('items_orden').update({ created_at: nuevaFechaISO }).eq('id', editandoItemFechaId)
+      await registrarAuditoria(supabase, {
+        tenant_id: orden.tenant_id,
+        tabla: 'items_orden',
+        registro_id: editandoItemFechaId,
+        tipo: 'edicion',
+        valor_anterior: { created_at: item?.created_at },
+        valor_nuevo: { created_at: nuevaFechaISO },
+        descripcion: `Gerencia editó la fecha de "${item?.descripcion ?? 'un ítem'}" | orden #${orden.numero}`,
+        usuario_id: profile?.id,
+      })
+      setEditandoItemFechaId(null)
+      await cargar()
+    } finally {
+      setSavingItemFecha(false)
+    }
   }
 
   const handleDeleteLavaMoto = async (id: string) => {
@@ -2372,7 +2468,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <td className="py-1 px-2 text-center text-gray-300">—</td>
                         <td className="py-1 px-2 text-center text-gray-300">—</td>
                         <td className="py-1 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(umaItem.precio_venta)}</td>
-                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarUma(umaItem), () => handleDeleteItem(umaItem))}</td>
+                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarUma(umaItem), () => handleDeleteItem(umaItem), umaItem)}</td>
                       </>
                     ) : (
                       <>
@@ -2427,7 +2523,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <td className="py-1 px-2 text-gray-500">{metodosPago.find((m) => m.id === extItem.metodo_pago_id)?.nombre ?? '—'}</td>
                         <td className="py-1 px-2 text-right text-gray-500 whitespace-nowrap">{formatCOP(extItem.costo)}</td>
                         <td className="py-1 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(extItem.precio_venta)}</td>
-                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarExt(extItem), () => handleDeleteItem(extItem))}</td>
+                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarExt(extItem), () => handleDeleteItem(extItem), extItem)}</td>
                       </>
                     ) : (
                       <>
@@ -2502,7 +2598,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <td className="py-1 px-2 text-center text-gray-300">—</td>
                         <td className="py-1 px-2 text-center text-gray-300">—</td>
                         <td className="py-1 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(insumoItem.precio_venta)}</td>
-                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarInsumo(insumoItem), () => handleDeleteItem(insumoItem))}</td>
+                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarInsumo(insumoItem), () => handleDeleteItem(insumoItem), insumoItem)}</td>
                       </>
                     ) : insumoQuick.editId ? (
                       <>
@@ -2588,7 +2684,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <td className="py-1 px-2 text-center text-gray-300">—</td>
                         <td className="py-1 px-2 text-center text-gray-300">—</td>
                         <td className="py-1 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(portaItem.precio_venta)}</td>
-                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarPorta(portaItem), () => handleDeleteItem(portaItem))}</td>
+                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarPorta(portaItem), () => handleDeleteItem(portaItem), portaItem)}</td>
                       </>
                     ) : portaQuick.editId ? (
                       <>
@@ -2849,6 +2945,27 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                             </div>
                           </td>
                         </tr>
+                      ) : editandoItemFechaId === item.id ? (
+                        <tr key={item.id} className="border-b bg-orange-50">
+                          <td className="py-2 px-3 text-gray-700 font-medium" colSpan={2}>{item.descripcion}</td>
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-1.5 justify-end">
+                              <input
+                                type="datetime-local"
+                                value={itemFechaInputValue}
+                                onChange={(e) => setItemFechaInputValue(e.target.value)}
+                                className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 w-[148px]"
+                                autoFocus
+                              />
+                              <button onClick={handleGuardarFechaItem} disabled={savingItemFecha} className="text-green-600 hover:text-green-800 p-0.5" title="Guardar">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                              </button>
+                              <button onClick={() => setEditandoItemFechaId(null)} disabled={savingItemFecha} className="text-gray-400 hover:text-red-500 p-0.5" title="Cancelar">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
                       ) : (
                         <tr key={item.id} className="border-b hover:bg-gray-50 group">
                           <td className="py-3 px-4 text-gray-800">{item.descripcion}</td>
@@ -2861,6 +2978,13 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
                               </button>
+                              {esGerencia && (
+                                <button onClick={() => abrirEditarFechaItem(item)} className="text-gray-400 hover:text-purple-600 p-1" title="Editar fecha (gerencia)">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                </button>
+                              )}
                               {esGerencia && (
                                 <button onClick={() => handleDeleteItem(item)} className="text-gray-400 hover:text-red-500 p-1">
                                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3131,9 +3255,34 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              {new Date(pago.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })} · {new Date(pago.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                            </p>
+                            {editandoPagoFechaId === pago.id ? (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <input
+                                  type="datetime-local"
+                                  value={pagoFechaInputValue}
+                                  onChange={(e) => setPagoFechaInputValue(e.target.value)}
+                                  className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 w-[148px]"
+                                  autoFocus
+                                />
+                                <button onClick={handleGuardarFechaPago} disabled={savingPagoFecha} className="text-green-600 hover:text-green-800 p-0.5" title="Guardar">
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                </button>
+                                <button onClick={() => setEditandoPagoFechaId(null)} disabled={savingPagoFecha} className="text-gray-400 hover:text-red-500 p-0.5" title="Cancelar">
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                                {new Date(pago.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })} · {new Date(pago.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                {esGerencia && (
+                                  <button onClick={() => abrirEditarFechaPago(pago)} className="text-gray-300 hover:text-purple-600 p-0.5" title="Editar fecha (gerencia)">
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                  </button>
+                                )}
+                              </p>
+                            )}
                             {pago.notas && <p className={`text-xs italic mt-0.5 ${esEgreso ? 'text-red-400' : 'text-gray-500'}`}>{pago.notas}</p>}
                           </div>
                           <button
