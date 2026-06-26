@@ -220,6 +220,7 @@ export default function AdminOrdenDetallePage() {
   const [guardandoInsumo, setGuardandoInsumo] = useState(false)
   const [guardandoPorta, setGuardandoPorta] = useState(false)
   const [guardandoLavado, setGuardandoLavado] = useState(false)
+  const [guardandoMo, setGuardandoMo] = useState(false)
 
   // Estado "listo para guardar" de cada fila de quick-add — solo estas se insertan al
   // presionar "Guardar cambios"; las incompletas se ignoran sin bloquear el guardado.
@@ -851,10 +852,14 @@ export default function AdminOrdenDetallePage() {
     repuesto_externo_id?: string; cantidad: number; costo: number; precio_venta: number;
     metodo_pago_id?: string | null;
   }) => {
-    const { data } = await supabase.from('items_orden').insert({
+    const { data, error } = await supabase.from('items_orden').insert({
       orden_id: ordenId,
       ...item,
     }).select('*').single()
+    if (error) {
+      alert(`No se pudo guardar "${item.descripcion}": ${error.message}`)
+      return
+    }
     if (data) {
       const itemId = (data as { id: string }).id
       const nuevoTotal = [...items, data].reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
@@ -918,7 +923,11 @@ export default function AdminOrdenDetallePage() {
   // el valor_total de la orden con el cambio ya aplicado.
   const actualizarItemRepuesto = async (id: string, cambios: Partial<{ descripcion: string; precio_venta: number; costo: number; metodo_pago_id: string | null }>) => {
     const itemAnterior = items.find((i) => i.id === id)
-    await supabase.from('items_orden').update(cambios).eq('id', id)
+    const { error } = await supabase.from('items_orden').update(cambios).eq('id', id)
+    if (error) {
+      alert(`No se pudo guardar el cambio: ${error.message}`)
+      return
+    }
     const nuevoTotal = items.map((i) => i.id === id ? { ...i, ...cambios } : i).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
     await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
     await registrarAuditoria(supabase, {
@@ -1034,7 +1043,7 @@ export default function AdminOrdenDetallePage() {
           usuario_id: profile?.id,
         })
       } else {
-        const { data: lmData } = await supabase.from('lava_moto_ordenes').insert({
+        const { data: lmData, error: lmError } = await supabase.from('lava_moto_ordenes').insert({
           orden_id: ordenId,
           tenant_id: orden!.tenant_id,
           cantidad: 1,
@@ -1044,6 +1053,10 @@ export default function AdminOrdenDetallePage() {
           pago_costo_id: null,
           registrado_por: profile?.id ?? null,
         }).select('id').single()
+        if (lmError) {
+          alert(`No se pudo guardar el lavado: ${lmError.message}`)
+          return
+        }
         if (lmData) {
           const nuevoTotalLM = [...lavaMotoOrdenes, { precio_venta_unitario: precioLav, cantidad: 1 }].reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
           const nuevoTotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + nuevoTotalLM
@@ -1064,6 +1077,44 @@ export default function AdminOrdenDetallePage() {
       await cargar()
     } finally {
       setGuardandoLavado(false)
+    }
+  }
+
+  const guardarFilaMo = async () => {
+    if (!moListo || guardandoMo) return
+    setGuardandoMo(true)
+    try {
+      const desc = moDescripcion.trim()
+      const precio = parseInt(moValor.replace(/\D/g, ''), 10)
+      const { data, error } = await supabase.from('items_orden').insert({
+        orden_id: ordenId,
+        descripcion: desc,
+        origen: 'mano_obra',
+        cantidad: 1,
+        costo: 0,
+        precio_venta: precio,
+      }).select('id').single()
+      if (error) {
+        alert(`No se pudo guardar la mano de obra "${desc}": ${error.message}`)
+        return
+      }
+      if (data) {
+        const nuevoTotal = [...items, { precio_venta: precio, cantidad: 1 }].reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+        await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+        await registrarAuditoria(supabase, {
+          tenant_id: orden!.tenant_id,
+          tabla: 'items_orden',
+          registro_id: (data as { id: string }).id,
+          tipo: 'movimiento',
+          descripcion: `Agregó mano de obra "${desc}" → $${precio.toLocaleString('es-CO')} | orden #${orden?.numero}`,
+          usuario_id: profile?.id,
+        })
+      }
+      setMoDescripcion('')
+      setMoValor('')
+      await cargar()
+    } finally {
+      setGuardandoMo(false)
     }
   }
 
@@ -1439,31 +1490,7 @@ export default function AdminOrdenDetallePage() {
       if (insumoListo) await guardarFilaInsumo()
       if (portaListo) await guardarFilaPorta()
       if (lavadoListo) await guardarFilaLavado()
-
-      let manoObraGuardada = false
-      if (moListo) {
-        const descMO = moDescripcion.trim()
-        const precioMO = parseInt(moValor.replace(/\D/g, ''), 10)
-        const { data: moData } = await supabase.from('items_orden').insert({
-          orden_id: ordenId,
-          descripcion: descMO,
-          origen: 'mano_obra',
-          cantidad: 1,
-          costo: 0,
-          precio_venta: precioMO,
-        }).select('id').single()
-        if (moData) {
-          await registrarAuditoria(supabase, {
-            tenant_id: orden!.tenant_id,
-            tabla: 'items_orden',
-            registro_id: (moData as { id: string }).id,
-            tipo: 'movimiento',
-            descripcion: `Agregó mano de obra "${descMO}" → $${precioMO.toLocaleString('es-CO')} | orden #${orden?.numero}`,
-            usuario_id: profile?.id,
-          })
-        }
-        manoObraGuardada = true
-      }
+      if (moListo) await guardarFilaMo()
 
       // El estado_pago/valor_total se recalculan incluyendo lo recién insertado/editado arriba
       const lmTotalGs = lavaMotoOrdenesParaTotal.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0) + draftLavadoTotal
@@ -1504,10 +1531,8 @@ export default function AdminOrdenDetallePage() {
         usuario_id: profile?.id,
       })
 
-      // Las filas de repuestos (UMA/Externo/Insumo/Porta/Lavado) ya limpiaron su propio
-      // borrador dentro de guardarFilaX(); solo falta la mano de obra, que sí sigue en draft.
-      if (manoObraGuardada) { setMoDescripcion(''); setMoValor('') }
-
+      // Las filas de repuestos y mano de obra ya limpiaron su propio borrador
+      // dentro de guardarFilaX() al perder el foco.
       try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
       setDirty(false)
       setSavedOk(true)
@@ -3001,13 +3026,15 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </table>
               )}
 
-              {/* Mano de obra — un solo borrador en pantalla, se guarda al presionar "Guardar cambios" */}
+              {/* Mano de obra — se guarda sola al salir del campo, igual que los repuestos */}
               <div className="px-5 py-4 flex gap-2 items-end border-t border-gray-50">
                 <div className="flex-1">
                   <label className="text-xs text-gray-500 mb-1 block">Descripción</label>
                   <input
                     value={moDescripcion}
                     onChange={(e) => setMoDescripcion(e.target.value)}
+                    onBlur={guardarFilaMo}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                     placeholder="Ej: Cambio de aceite, Revisión de frenos..."
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                   />
@@ -3018,12 +3045,21 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     type="text" inputMode="numeric"
                     value={moValor ? '$' + parseInt(moValor || '0', 10).toLocaleString('es-CO') : ''}
                     onChange={(e) => setMoValor(e.target.value.replace(/\D/g, ''))}
+                    onBlur={guardarFilaMo}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
                     placeholder="$0"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400"
                   />
                 </div>
                 <div className="pb-2.5 px-1 w-5 text-center">
-                  <span className={moListo ? 'text-amber-500' : 'text-green-500'}>{moListo ? '⚠' : '✓'}</span>
+                  {guardandoMo ? (
+                    <svg className="animate-spin w-3.5 h-3.5 text-orange-500 inline" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                  ) : (
+                    <span className={moListo ? 'text-amber-500' : 'text-green-500'}>{moListo ? '⚠' : '✓'}</span>
+                  )}
                 </div>
               </div>
 
