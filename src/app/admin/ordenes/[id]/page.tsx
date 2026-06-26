@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
+import { ConsultaRepuestos } from '@/components/ConsultaRepuestos'
 import { MediaGallery } from '@/components/MediaGallery'
 import { OrderStatus } from '@/components/OrderStatus'
 import { PaymentStatus } from '@/components/PaymentStatus'
@@ -204,42 +205,22 @@ export default function AdminOrdenDetallePage() {
   const [confirmando, setConfirmando] = useState(false)
   const [moDescripcion, setMoDescripcion] = useState('')
   const [moValor, setMoValor] = useState('')
-  // Quick-add de repuestos — Sección 1 simplificada (sin catálogo/códigos).
-  // Cada fila se guarda sola al salir del campo (blur) en cuanto queda completa —
-  // no espera al botón "Guardar cambios". Para modificar una fila ya guardada se usa el lápiz.
-  const [umaQuick, setUmaQuick] = useState<{ desc: string; valor: string; editId: string | null }>({ desc: '', valor: '', editId: null })
-  const [extQuick, setExtQuick] = useState<{ desc: string; costo: string; valor: string; metodo: string; editId: string | null }>({ desc: '', costo: '', valor: '', metodo: '', editId: null })
-  const [insumoQuick, setInsumoQuick] = useState<{ valor: string; editId: string | null }>({ valor: '10000', editId: null })
-  const [portaQuick, setPortaQuick] = useState<{ valor: string; editId: string | null }>({ valor: '25000', editId: null })
-  const [lavadoQuick, setLavadoQuick] = useState<{ costo: string; valor: string; metodo: string; editId: string | null }>({ costo: '10000', valor: '15000', metodo: '', editId: null })
-  const [mostrarInsumo, setMostrarInsumo] = useState(false)
-  const [mostrarPorta, setMostrarPorta] = useState(false)
-  const [mostrarLavado, setMostrarLavado] = useState(false)
-  const [guardandoUma, setGuardandoUma] = useState(false)
-  const [guardandoExt, setGuardandoExt] = useState(false)
-  const [guardandoInsumo, setGuardandoInsumo] = useState(false)
-  const [guardandoPorta, setGuardandoPorta] = useState(false)
-  const [guardandoLavado, setGuardandoLavado] = useState(false)
+  const [mostrarFormMo, setMostrarFormMo] = useState(false)
   const [guardandoMo, setGuardandoMo] = useState(false)
+  const moListo = !!moDescripcion.trim() && !!moValor
 
-  // Estado "listo para guardar" de cada fila de quick-add — solo estas se insertan al
-  // presionar "Guardar cambios"; las incompletas se ignoran sin bloquear el guardado.
-  const umaListo    = !!umaQuick.valor
-  const extListo    = !!extQuick.valor && !!extQuick.metodo
-  const insumoListo = mostrarInsumo && !!insumoQuick.valor
-  const portaListo  = mostrarPorta && !!portaQuick.valor
+  // Repuestos (UMA/Externo/Insumo/Porta) — se agregan con el botón "+ Agregar repuesto"
+  // (modal ConsultaRepuestos), quedan en una lista (varios por orden) y se guardan
+  // de inmediato, sin esperar a "Guardar cambios".
+  const [showAgregarRepuesto, setShowAgregarRepuesto] = useState(false)
+  const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; costo: string; precio: string; metodo_pago_id: string } | null>(null)
+
+  // Lavado de moto — sigue con guardado automático al perder el foco (sin cambios)
+  const [lavadoQuick, setLavadoQuick] = useState<{ costo: string; valor: string; metodo: string; editId: string | null }>({ costo: '10000', valor: '15000', metodo: '', editId: null })
+  const [mostrarLavado, setMostrarLavado] = useState(false)
+  const [guardandoLavado, setGuardandoLavado] = useState(false)
   const lavadoListo = mostrarLavado && !!lavadoQuick.valor && (!parseInt(lavadoQuick.costo.replace(/\D/g, '') || '0', 10) || !!lavadoQuick.metodo)
-  const moListo     = !!moDescripcion.trim() && !!moValor
-
-  const draftItems: { descripcion: string; origen: 'uma' | 'externo' | 'insumo'; cantidad: number; costo: number; precio_venta: number; metodo_pago_id?: string | null }[] = []
-  if (umaListo) draftItems.push({ descripcion: umaQuick.desc.trim() || 'Repuesto UMA', origen: 'uma', cantidad: 1, costo: 0, precio_venta: parseInt(umaQuick.valor.replace(/\D/g, ''), 10) })
-  if (extListo) draftItems.push({ descripcion: extQuick.desc.trim() || 'Repuesto externo', origen: 'externo', cantidad: 1, costo: parseInt(extQuick.costo.replace(/\D/g, '') || '0', 10), precio_venta: parseInt(extQuick.valor.replace(/\D/g, ''), 10), metodo_pago_id: extQuick.metodo })
-  if (insumoListo) draftItems.push({ descripcion: 'Insumos', origen: 'insumo', cantidad: 1, costo: 0, precio_venta: parseInt(insumoQuick.valor.replace(/\D/g, ''), 10) })
-  if (portaListo) draftItems.push({ descripcion: 'Porta Placas', origen: 'insumo', cantidad: 1, costo: 0, precio_venta: parseInt(portaQuick.valor.replace(/\D/g, ''), 10) })
-  const draftRepuestosTotal = draftItems.reduce((s, it) => s + it.precio_venta, 0)
   const draftLavadoTotal = lavadoListo ? (parseInt(lavadoQuick.valor.replace(/\D/g, '') || '0', 10)) : 0
-  const draftManoObraTotal = moListo ? (parseInt(moValor.replace(/\D/g, '') || '0', 10)) : 0
-  const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; precio: string } | null>(null)
   const [notas, setNotas] = useState('')
   const [savedOk, setSavedOk] = useState(false)
   const [numerosOrdenUMA, setNumerosOrdenUMA] = useState<string[]>([])
@@ -541,7 +522,7 @@ export default function AdminOrdenDetallePage() {
       telefono !== soloDigitos(orden.telefono ?? '') ||
       notas !== (orden.notas ?? '') ||
       JSON.stringify(numerosOrdenUMA) !== JSON.stringify(orden.numeros_orden_uma ?? []) ||
-      umaListo || extListo || insumoListo || portaListo || lavadoListo || moListo
+      lavadoListo || moListo
 
     if (hayCambios) {
       try {
@@ -554,7 +535,7 @@ export default function AdminOrdenDetallePage() {
       try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
       setDirty(false)
     }
-  }, [estado, motivoPendiente, fechaProgramada, duracionEstimada, telefono, notas, numerosOrdenUMA, orden, ordenId, umaListo, extListo, insumoListo, portaListo, lavadoListo, moListo])
+  }, [estado, motivoPendiente, fechaProgramada, duracionEstimada, telefono, notas, numerosOrdenUMA, orden, ordenId, lavadoListo, moListo])
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -893,31 +874,30 @@ export default function AdminOrdenDetallePage() {
     }
   }
 
+  // Guarda los cambios de la fila en edición (repuesto o mano de obra) — el costo y el
+  // método de pago solo aplican a Externo, pero da igual mandarlos en 0/null para los demás.
   const handleEditItem = async () => {
     if (!editingItem || !editingItem.descripcion.trim()) return
+    const itemActual = items.find((i) => i.id === editingItem.id)
     const precio = parseInt(editingItem.precio.replace(/\D/g, ''), 10) || 0
-    const itemAnterior = items.find((i) => i.id === editingItem.id)
-    await supabase.from('items_orden').update({
+    const costo = itemActual?.origen === 'externo' ? (parseInt(editingItem.costo.replace(/\D/g, ''), 10) || 0) : 0
+    await actualizarItemRepuesto(editingItem.id, {
       descripcion: editingItem.descripcion.trim(),
       precio_venta: precio,
-    }).eq('id', editingItem.id)
-    const nuevoTotal = items.map((i) =>
-      i.id === editingItem.id ? { ...i, precio_venta: precio, descripcion: editingItem.descripcion.trim() } : i
-    ).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-    await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
-    await registrarAuditoria(supabase, {
-      tenant_id: orden!.tenant_id,
-      tabla: 'items_orden',
-      registro_id: editingItem.id,
-      tipo: 'edicion',
-      valor_anterior: { descripcion: itemAnterior?.descripcion, precio_venta: itemAnterior?.precio_venta },
-      valor_nuevo: { descripcion: editingItem.descripcion.trim(), precio_venta: precio },
-      descripcion: `Editó ítem "${editingItem.descripcion.trim()}" | orden #${orden?.numero}`,
-      usuario_id: profile?.id,
+      costo,
+      metodo_pago_id: itemActual?.origen === 'externo' ? (editingItem.metodo_pago_id || null) : null,
     })
     setEditingItem(null)
     await cargar()
   }
+
+  const iniciarEditarItem = (item: ItemOrden) => setEditingItem({
+    id: item.id,
+    descripcion: item.descripcion,
+    costo: String(item.costo),
+    precio: String(item.precio_venta),
+    metodo_pago_id: item.metodo_pago_id ?? '',
+  })
 
   // Actualiza un ítem de repuesto ya guardado (UMA/Externo/Insumo/Porta) y recalcula
   // el valor_total de la orden con el cambio ya aplicado.
@@ -942,81 +922,8 @@ export default function AdminOrdenDetallePage() {
     })
   }
 
-  // Guarda (inserta o, si está en edición, actualiza) cada fila de la Sección 1 en
-  // cuanto queda completa — se llama on-blur desde los inputs, sin esperar "Guardar cambios".
-  const guardarFilaUma = async () => {
-    if (!umaListo || guardandoUma) return
-    setGuardandoUma(true)
-    try {
-      const precio = parseInt(umaQuick.valor.replace(/\D/g, ''), 10)
-      const desc = umaQuick.desc.trim() || 'Repuesto UMA'
-      if (umaQuick.editId) {
-        await actualizarItemRepuesto(umaQuick.editId, { descripcion: desc, precio_venta: precio })
-      } else {
-        await handleAddItem({ descripcion: desc, origen: 'uma', cantidad: 1, costo: 0, precio_venta: precio })
-      }
-      setUmaQuick({ desc: '', valor: '', editId: null })
-      await cargar()
-    } finally {
-      setGuardandoUma(false)
-    }
-  }
-
-  const guardarFilaExt = async () => {
-    if (!extListo || guardandoExt) return
-    setGuardandoExt(true)
-    try {
-      const costo = parseInt(extQuick.costo.replace(/\D/g, '') || '0', 10)
-      const precio = parseInt(extQuick.valor.replace(/\D/g, ''), 10)
-      const desc = extQuick.desc.trim() || 'Repuesto externo'
-      if (extQuick.editId) {
-        await actualizarItemRepuesto(extQuick.editId, { descripcion: desc, costo, precio_venta: precio, metodo_pago_id: extQuick.metodo || null })
-      } else {
-        await handleAddItem({ descripcion: desc, origen: 'externo', cantidad: 1, costo, precio_venta: precio, metodo_pago_id: extQuick.metodo })
-      }
-      setExtQuick({ desc: '', costo: '', valor: '', metodo: '', editId: null })
-      await cargar()
-    } finally {
-      setGuardandoExt(false)
-    }
-  }
-
-  const guardarFilaInsumo = async () => {
-    if (!insumoListo || guardandoInsumo) return
-    setGuardandoInsumo(true)
-    try {
-      const precio = parseInt(insumoQuick.valor.replace(/\D/g, ''), 10)
-      if (insumoQuick.editId) {
-        await actualizarItemRepuesto(insumoQuick.editId, { precio_venta: precio })
-      } else {
-        await handleAddItem({ descripcion: 'Insumos', origen: 'insumo', cantidad: 1, costo: 0, precio_venta: precio })
-      }
-      setInsumoQuick({ valor: '10000', editId: null })
-      setMostrarInsumo(false)
-      await cargar()
-    } finally {
-      setGuardandoInsumo(false)
-    }
-  }
-
-  const guardarFilaPorta = async () => {
-    if (!portaListo || guardandoPorta) return
-    setGuardandoPorta(true)
-    try {
-      const precio = parseInt(portaQuick.valor.replace(/\D/g, ''), 10)
-      if (portaQuick.editId) {
-        await actualizarItemRepuesto(portaQuick.editId, { precio_venta: precio })
-      } else {
-        await handleAddItem({ descripcion: 'Porta Placas', origen: 'insumo', cantidad: 1, costo: 0, precio_venta: precio })
-      }
-      setPortaQuick({ valor: '25000', editId: null })
-      setMostrarPorta(false)
-      await cargar()
-    } finally {
-      setGuardandoPorta(false)
-    }
-  }
-
+  // Lavado de moto: inserta o, si está en edición, actualiza — se llama on-blur
+  // desde los inputs, sin esperar "Guardar cambios".
   const guardarFilaLavado = async () => {
     if (!lavadoListo || guardandoLavado) return
     setGuardandoLavado(true)
@@ -1080,7 +987,8 @@ export default function AdminOrdenDetallePage() {
     }
   }
 
-  const guardarFilaMo = async () => {
+  // Mano de obra: se agrega con el botón "+ Agregar mano de obra" y queda en una lista.
+  const confirmarAgregarMo = async () => {
     if (!moListo || guardandoMo) return
     setGuardandoMo(true)
     try {
@@ -1112,31 +1020,21 @@ export default function AdminOrdenDetallePage() {
       }
       setMoDescripcion('')
       setMoValor('')
+      setMostrarFormMo(false)
       await cargar()
     } finally {
       setGuardandoMo(false)
     }
   }
 
-  const iniciarEditarUma = (item: ItemOrden) => setUmaQuick({ desc: item.descripcion, valor: String(item.precio_venta), editId: item.id })
-  const cancelarEditarUma = () => setUmaQuick({ desc: '', valor: '', editId: null })
-
-  const iniciarEditarExt = (item: ItemOrden) => setExtQuick({ desc: item.descripcion, costo: String(item.costo), valor: String(item.precio_venta), metodo: item.metodo_pago_id ?? '', editId: item.id })
-  const cancelarEditarExt = () => setExtQuick({ desc: '', costo: '', valor: '', metodo: '', editId: null })
-
-  const iniciarEditarInsumo = (item: ItemOrden) => { setInsumoQuick({ valor: String(item.precio_venta), editId: item.id }); setMostrarInsumo(true) }
-  const cancelarEditarInsumo = () => { setInsumoQuick({ valor: '10000', editId: null }); setMostrarInsumo(false) }
-
-  const iniciarEditarPorta = (item: ItemOrden) => { setPortaQuick({ valor: String(item.precio_venta), editId: item.id }); setMostrarPorta(true) }
-  const cancelarEditarPorta = () => { setPortaQuick({ valor: '25000', editId: null }); setMostrarPorta(false) }
-
   const iniciarEditarLavado = (lm: LavaMotoOrden) => { setLavadoQuick({ costo: String(lm.costo_unitario), valor: String(lm.precio_venta_unitario), metodo: lm.metodo_pago_id ?? '', editId: lm.id }); setMostrarLavado(true) }
   const cancelarEditarLavado = () => { setLavadoQuick({ costo: '10000', valor: '15000', metodo: '', editId: null }); setMostrarLavado(false) }
 
-  const accionesRepuesto = (onEditar: () => void, onEliminar: () => void, itemFecha?: ItemOrden) => {
-    if (itemFecha && editandoItemFechaId === itemFecha.id) {
+  // Celda de fecha (solo gerencia puede editarla) — reusada en la lista de repuestos y mano de obra.
+  const celdaFecha = (item: ItemOrden) => {
+    if (editandoItemFechaId === item.id) {
       return (
-        <div className="flex items-center gap-1 justify-end">
+        <div className="flex items-center gap-1">
           <input
             type="datetime-local"
             value={itemFechaInputValue}
@@ -1154,26 +1052,32 @@ export default function AdminOrdenDetallePage() {
       )
     }
     return (
+      <span className="flex items-center gap-1 whitespace-nowrap text-gray-400">
+        {new Date(item.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: '2-digit' })}
+        {esGerencia && (
+          <button onClick={() => abrirEditarFechaItem(item)} className="text-gray-300 hover:text-purple-600 p-0.5" title="Editar fecha (gerencia)">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </button>
+        )}
+      </span>
+    )
+  }
+
+  const accionesRepuesto = (onEditar: () => void, onEliminar: () => void) => {
+    return (
       <div className="flex gap-1 justify-end">
         <button onClick={onEditar} className="text-gray-400 hover:text-blue-600 p-1">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
           </svg>
         </button>
-        {esGerencia && itemFecha && (
-          <button onClick={() => abrirEditarFechaItem(itemFecha)} className="text-gray-400 hover:text-purple-600 p-1" title="Editar fecha (gerencia)">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </button>
-        )}
-        {esGerencia && (
-          <button onClick={onEliminar} className="text-gray-400 hover:text-red-500 p-1">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
-        )}
+        <button onClick={onEliminar} className="text-gray-400 hover:text-red-500 p-1">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
       </div>
     )
   }
@@ -1445,10 +1349,6 @@ export default function AdminOrdenDetallePage() {
       return
     }
 
-    // Si una fila está en edición, su valor guardado se excluye del total y se reemplaza
-    // por el borrador (que ya representa el valor nuevo) para no contar el mismo ítem dos veces.
-    const editIdsActivos = new Set([umaQuick.editId, extQuick.editId, insumoQuick.editId, portaQuick.editId].filter((v): v is string => !!v))
-    const itemsParaTotal = editIdsActivos.size > 0 ? items.filter((i) => !editIdsActivos.has(i.id)) : items
     const lavaMotoOrdenesParaTotal = lavadoQuick.editId ? lavaMotoOrdenes.filter((r) => r.id !== lavadoQuick.editId) : lavaMotoOrdenes
 
     // Bloquear "Finalizado" si hay repuestos con estado "pedido"
@@ -1460,10 +1360,10 @@ export default function AdminOrdenDetallePage() {
       return
     }
 
-    // Bloquear "Finalizado" si el pago no está completo (incluye lava moto + borradores por guardar)
+    // Bloquear "Finalizado" si el pago no está completo (incluye lava moto + borrador de lavado por guardar)
     const totalPagadoGuardar = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
     const lmTotalGuardar = lavaMotoOrdenesParaTotal.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0) + draftLavadoTotal
-    const valorTotalConLMGuardar = itemsParaTotal.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + draftRepuestosTotal + draftManoObraTotal + lmTotalGuardar
+    const valorTotalConLMGuardar = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotalGuardar
     if (estado === 'listo' && totalPagadoGuardar < valorTotalConLMGuardar) {
       const saldoFaltante = valorTotalConLMGuardar - totalPagadoGuardar
       alert(`No puedes finalizar la orden — falta por pagar ${formatCOP(saldoFaltante)}. Registra el pago completo antes de finalizar.`)
@@ -1481,20 +1381,14 @@ export default function AdminOrdenDetallePage() {
 
     setSaving(true)
     try {
-      // Red de seguridad: las filas de la Sección 1 normalmente ya se guardaron solas
-      // al perder el foco (ver guardarFilaUma/Ext/Insumo/Porta/Lavado), pero si alguna
-      // quedó completa sin haber disparado el blur (ej. pegar y dar clic directo en
-      // este botón), se guarda aquí también.
-      if (umaListo) await guardarFilaUma()
-      if (extListo) await guardarFilaExt()
-      if (insumoListo) await guardarFilaInsumo()
-      if (portaListo) await guardarFilaPorta()
+      // Red de seguridad del lavado de moto: normalmente ya se guardó solo al perder el
+      // foco, pero si quedó completo sin disparar el blur, se guarda aquí también.
+      // Repuestos y mano de obra ya se guardaron de inmediato al agregarlos.
       if (lavadoListo) await guardarFilaLavado()
-      if (moListo) await guardarFilaMo()
 
       // El estado_pago/valor_total se recalculan incluyendo lo recién insertado/editado arriba
       const lmTotalGs = lavaMotoOrdenesParaTotal.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0) + draftLavadoTotal
-      const totalItemsGs = itemsParaTotal.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + draftRepuestosTotal + draftManoObraTotal
+      const totalItemsGs = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
       const valorTotalGs = totalItemsGs + lmTotalGs
       const estadoPagoCalculado = calcularEstadoPago(pagosOrden, valorTotalGs)
       const totalPagado = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
@@ -1549,33 +1443,24 @@ export default function AdminOrdenDetallePage() {
 
   if (!orden) return <div className="p-8 text-center text-gray-500">Cargando...</div>
 
+  // Repuestos y mano de obra se guardan de inmediato al agregarlos (botón + modal/form),
+  // así que `items` siempre refleja lo último guardado — no hace falta llevar un borrador
+  // en pantalla para estos dos. Lavado de moto sigue con su propio borrador (sin cambios).
   const repuestosItems = items.filter((i) => i.origen !== 'mano_obra')
   const manoObraItems = items.filter((i) => i.origen === 'mano_obra')
-  // Una sola fila por tipo: UMA, Externo, Insumo y Porta Placas son singulares por orden.
-  const umaItem = repuestosItems.find((i) => i.origen === 'uma') ?? null
-  const extItem = repuestosItems.find((i) => i.origen === 'externo') ?? null
-  const insumoItem = repuestosItems.find((i) => i.origen === 'insumo' && i.descripcion !== 'Porta Placas') ?? null
-  const portaItem = repuestosItems.find((i) => i.origen === 'insumo' && i.descripcion === 'Porta Placas') ?? null
   const lavadoItem = lavaMotoOrdenes[0] ?? null
-  // Mientras una fila está en edición, su valor guardado se excluye del total y se
-  // reemplaza por el borrador en pantalla (que ya representa el valor nuevo).
-  const editIdsActivosLive = new Set([umaQuick.editId, extQuick.editId, insumoQuick.editId, portaQuick.editId].filter((v): v is string => !!v))
-  const repuestosItemsParaTotal = editIdsActivosLive.size > 0 ? repuestosItems.filter((i) => !editIdsActivosLive.has(i.id)) : repuestosItems
   const lavaMotoOrdenesParaTotalLive = lavadoQuick.editId ? lavaMotoOrdenes.filter((r) => r.id !== lavadoQuick.editId) : lavaMotoOrdenes
-  const totalRepuestos = repuestosItemsParaTotal.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+  const totalRepuestos = repuestosItems.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
   const totalManoObra = manoObraItems.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-  const totalCostoProveedor = repuestosItemsParaTotal.filter((i) => i.origen === 'externo').reduce((s, i) => s + i.costo * i.cantidad, 0)
+  const totalCostoProveedor = repuestosItems.filter((i) => i.origen === 'externo').reduce((s, i) => s + i.costo * i.cantidad, 0)
   const totalLavado = lavaMotoOrdenesParaTotalLive.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
   const totalCostoLavado = lavaMotoOrdenesParaTotalLive.reduce((s, r) => s + r.costo_unitario * r.cantidad, 0)
-  // Totales en vivo de Sección 1: lo ya guardado + lo que está en borrador sin guardar
-  const draftCostoProveedor = (extListo ? parseInt(extQuick.costo.replace(/\D/g, '') || '0', 10) : 0) + (lavadoListo ? parseInt(lavadoQuick.costo.replace(/\D/g, '') || '0', 10) : 0)
+  const draftCostoProveedor = lavadoListo ? parseInt(lavadoQuick.costo.replace(/\D/g, '') || '0', 10) : 0
   const totalCostoProveedorLive = totalCostoProveedor + totalCostoLavado + draftCostoProveedor
-  const totalVentaLive = totalRepuestos + totalLavado + draftRepuestosTotal + draftLavadoTotal
-  const hayBorradorRepuestos = draftRepuestosTotal + draftLavadoTotal > 0
-  // Repuestos + mano de obra en vivo: lo ya guardado + lo que está en borrador sin guardar,
-  // para que el TOTAL GENERAL se vaya actualizando mientras se ingresa, no solo al guardar.
-  const totalRepuestosLive = totalRepuestos + draftRepuestosTotal
-  const totalManoObraLive = totalManoObra + draftManoObraTotal
+  const totalVentaLive = totalRepuestos + totalLavado + draftLavadoTotal
+  const hayBorradorRepuestos = draftLavadoTotal > 0
+  const totalRepuestosLive = totalRepuestos
+  const totalManoObraLive = totalManoObra
   const totalLive = totalRepuestosLive + totalManoObraLive
   const total = totalRepuestos + totalManoObra
   const saldo = total - (parseFloat(valorAbono) || 0)
@@ -2470,13 +2355,114 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
 
             {abiertoRepuestos && (
             <div className="bg-white">
-              <p className="px-3 pt-2 pb-1 text-[11px] text-gray-400">Llena los datos de la fila — se guarda sola al salir del campo. Una vez guardada, la fila muestra el dato con sus botones de editar/eliminar.</p>
+              {/* Botón para agregar repuesto */}
+              <div className="p-3 border-b border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAgregarRepuesto(true)}
+                  className="w-full py-2.5 px-3 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 text-blue-600 hover:text-blue-800 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Agregar repuesto
+                </button>
+              </div>
+
+              {/* Lista de repuestos agregados (UMA / Externo / Insumo / Porta Placas) */}
               <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-[11px] text-gray-500 uppercase border-b bg-blue-50">
                     <th className="text-left py-1 px-2 font-medium">Origen</th>
-                    <th className="text-left py-1 px-2 font-medium">Descripción / Detalle</th>
+                    <th className="text-left py-1 px-2 font-medium">Descripción</th>
+                    <th className="text-left py-1 px-2 font-medium whitespace-nowrap">Método pago prov.</th>
+                    <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio proveedor</th>
+                    <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio venta</th>
+                    <th className="text-left py-1 px-2 font-medium whitespace-nowrap">Fecha</th>
+                    <th className="py-1 px-2 w-16" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {repuestosItems.length === 0 && (
+                    <tr><td colSpan={7} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
+                  )}
+                  {repuestosItems.map((item) => {
+                    const tipoLabel = item.origen === 'uma' ? 'UMA' : item.origen === 'externo' ? 'Externo' : item.descripcion === 'Porta Placas' ? 'Porta Placas' : 'Insumo'
+                    const tipoColor = item.origen === 'uma' ? 'blue' : item.origen === 'externo' ? 'amber' : 'purple'
+                    return editingItem?.id === item.id ? (
+                      <tr key={item.id} className="border-b bg-blue-50/40">
+                        <td className="py-1 px-2"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
+                        <td className="py-1 px-2">
+                          <input
+                            value={editingItem.descripcion}
+                            onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
+                            autoFocus
+                            className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1 px-2">
+                          {item.origen === 'externo' ? (
+                            <select
+                              value={editingItem.metodo_pago_id}
+                              onChange={(e) => setEditingItem({ ...editingItem, metodo_pago_id: e.target.value })}
+                              className="w-full px-1.5 py-1 border border-blue-300 rounded-lg text-xs focus:outline-none bg-white"
+                            >
+                              <option value="">—</option>
+                              {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                            </select>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="py-1 px-2">
+                          {item.origen === 'externo' ? (
+                            <input
+                              type="text" inputMode="numeric"
+                              value={editingItem.costo ? '$' + parseInt(editingItem.costo.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                              onChange={(e) => setEditingItem({ ...editingItem, costo: e.target.value.replace(/\D/g, '') })}
+                              className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
+                            />
+                          ) : <span className="text-gray-300 block text-center">—</span>}
+                        </td>
+                        <td className="py-1 px-2">
+                          <input
+                            type="text" inputMode="numeric"
+                            value={editingItem.precio ? '$' + parseInt(editingItem.precio.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                            onChange={(e) => setEditingItem({ ...editingItem, precio: e.target.value.replace(/\D/g, '') })}
+                            className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1 px-2 text-xs whitespace-nowrap">{celdaFecha(item)}</td>
+                        <td className="py-1 px-2">
+                          <div className="flex gap-1 justify-end">
+                            <button onClick={handleEditItem} className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-semibold">OK</button>
+                            <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={item.id} className="border-b hover:bg-gray-50">
+                        <td className="py-1.5 px-2"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
+                        <td className="py-1.5 px-2 text-gray-800 max-w-[200px] truncate" title={item.descripcion}>{item.descripcion}</td>
+                        <td className="py-1.5 px-2 text-gray-500">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
+                        <td className="py-1.5 px-2 text-right text-gray-500 whitespace-nowrap">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
+                        <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>
+                        <td className="py-1.5 px-2 text-xs whitespace-nowrap">{celdaFecha(item)}</td>
+                        <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item))}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              </div>
+
+              {/* Lavado de moto — sin cambios, guardado automático al perder el foco */}
+              {lavaMotoConfig?.activo && (
+              <div className="overflow-x-auto border-t border-gray-100">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[11px] text-gray-500 uppercase border-b bg-cyan-50">
+                    <th className="text-left py-1 px-2 font-medium">Origen</th>
+                    <th className="text-left py-1 px-2 font-medium">Descripción</th>
                     <th className="text-left py-1 px-2 font-medium whitespace-nowrap">Método pago prov.</th>
                     <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio proveedor</th>
                     <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio venta</th>
@@ -2484,308 +2470,6 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                   </tr>
                 </thead>
                 <tbody>
-                  {/* UMA */}
-                  <tr className="border-b">
-                    <td className="py-1 px-2"><Badge variant="blue">UMA</Badge></td>
-                    {umaItem && !umaQuick.editId ? (
-                      <>
-                        <td className="py-1 px-2 text-gray-800 max-w-[160px] truncate" title={umaItem.descripcion}>{umaItem.descripcion}</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(umaItem.precio_venta)}</td>
-                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarUma(umaItem), () => handleDeleteItem(umaItem), umaItem)}</td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="py-1 px-2">
-                          <input
-                            value={umaQuick.desc}
-                            onChange={(e) => setUmaQuick((q) => ({ ...q, desc: e.target.value }))}
-                            onBlur={guardarFilaUma}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            placeholder="Descripción (opcional)"
-                            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                          />
-                        </td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2">
-                          <input
-                            type="text" inputMode="numeric"
-                            value={umaQuick.valor ? '$' + parseInt(umaQuick.valor || '0', 10).toLocaleString('es-CO') : ''}
-                            onChange={(e) => setUmaQuick((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
-                            onBlur={guardarFilaUma}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            placeholder="$"
-                            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
-                          />
-                        </td>
-                        <td className="py-1 px-2">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {guardandoUma ? (
-                              <svg className="animate-spin w-3.5 h-3.5 text-blue-500" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                              </svg>
-                            ) : (
-                              <span className={umaListo ? 'text-amber-500' : 'text-green-500'}>{umaListo ? '⚠' : '✓'}</span>
-                            )}
-                            {umaQuick.editId && (
-                              <button type="button" onMouseDown={(e) => { e.preventDefault(); cancelarEditarUma() }} title="Cancelar edición" className="text-gray-400 hover:text-red-500 text-xs">✕</button>
-                            )}
-                          </div>
-                        </td>
-                      </>
-                    )}
-                  </tr>
-
-                  {/* Externo */}
-                  <tr className="border-b">
-                    <td className="py-1 px-2"><Badge variant="amber">Externo</Badge></td>
-                    {extItem && !extQuick.editId ? (
-                      <>
-                        <td className="py-1 px-2 text-gray-800 max-w-[160px] truncate" title={extItem.descripcion}>{extItem.descripcion}</td>
-                        <td className="py-1 px-2 text-gray-500">{metodosPago.find((m) => m.id === extItem.metodo_pago_id)?.nombre ?? '—'}</td>
-                        <td className="py-1 px-2 text-right text-gray-500 whitespace-nowrap">{formatCOP(extItem.costo)}</td>
-                        <td className="py-1 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(extItem.precio_venta)}</td>
-                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarExt(extItem), () => handleDeleteItem(extItem), extItem)}</td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="py-1 px-2">
-                          <input
-                            value={extQuick.desc}
-                            onChange={(e) => setExtQuick((q) => ({ ...q, desc: e.target.value }))}
-                            onBlur={guardarFilaExt}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            placeholder="Descripción (opcional)"
-                            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                          />
-                        </td>
-                        <td className="py-1 px-2">
-                          <select
-                            value={extQuick.metodo}
-                            onChange={(e) => setExtQuick((q) => ({ ...q, metodo: e.target.value }))}
-                            onBlur={guardarFilaExt}
-                            className="w-full px-1.5 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-                          >
-                            <option value="">—</option>
-                            {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                          </select>
-                        </td>
-                        <td className="py-1 px-2">
-                          <input
-                            type="text" inputMode="numeric"
-                            value={extQuick.costo ? '$' + parseInt(extQuick.costo || '0', 10).toLocaleString('es-CO') : ''}
-                            onChange={(e) => setExtQuick((q) => ({ ...q, costo: e.target.value.replace(/\D/g, '') }))}
-                            onBlur={guardarFilaExt}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            placeholder="$"
-                            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-amber-400"
-                          />
-                        </td>
-                        <td className="py-1 px-2">
-                          <input
-                            type="text" inputMode="numeric"
-                            value={extQuick.valor ? '$' + parseInt(extQuick.valor || '0', 10).toLocaleString('es-CO') : ''}
-                            onChange={(e) => setExtQuick((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
-                            onBlur={guardarFilaExt}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            placeholder="$"
-                            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-amber-400"
-                          />
-                        </td>
-                        <td className="py-1 px-2">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {guardandoExt ? (
-                              <svg className="animate-spin w-3.5 h-3.5 text-amber-500" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                              </svg>
-                            ) : (
-                              <span className={extListo ? 'text-amber-500' : 'text-green-500'}>{extListo ? '⚠' : '✓'}</span>
-                            )}
-                            {extQuick.editId && (
-                              <button type="button" onMouseDown={(e) => { e.preventDefault(); cancelarEditarExt() }} title="Cancelar edición" className="text-gray-400 hover:text-red-500 text-xs">✕</button>
-                            )}
-                          </div>
-                        </td>
-                      </>
-                    )}
-                  </tr>
-
-                  {/* Insumos */}
-                  <tr className={`border-b ${insumoQuick.editId || (mostrarInsumo && !insumoItem) ? 'bg-purple-50/40' : ''}`}>
-                    <td className="py-1 px-2"><Badge variant="purple">Insumo</Badge></td>
-                    {insumoItem && !insumoQuick.editId ? (
-                      <>
-                        <td className="py-1 px-2 text-gray-800">Insumos</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(insumoItem.precio_venta)}</td>
-                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarInsumo(insumoItem), () => handleDeleteItem(insumoItem), insumoItem)}</td>
-                      </>
-                    ) : insumoQuick.editId ? (
-                      <>
-                        <td className="py-1 px-2 text-gray-700 font-medium">Insumos</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2">
-                          <input
-                            type="text" inputMode="numeric"
-                            value={insumoQuick.valor ? '$' + parseInt(insumoQuick.valor || '0', 10).toLocaleString('es-CO') : ''}
-                            onChange={(e) => setInsumoQuick((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
-                            onBlur={guardarFilaInsumo}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            autoFocus
-                            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-purple-400"
-                          />
-                        </td>
-                        <td className="py-1 px-2">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {guardandoInsumo ? (
-                              <svg className="animate-spin w-3.5 h-3.5 text-purple-500" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                              </svg>
-                            ) : (
-                              <span className={insumoListo ? 'text-amber-500' : 'text-green-500'}>{insumoListo ? '⚠' : '✓'}</span>
-                            )}
-                            <button type="button" onMouseDown={(e) => { e.preventDefault(); cancelarEditarInsumo() }} title="Cancelar edición" className="text-gray-400 hover:text-red-500 text-xs">✕</button>
-                          </div>
-                        </td>
-                      </>
-                    ) : mostrarInsumo ? (
-                      <>
-                        <td className="py-1 px-2">
-                          <button type="button" onClick={() => setMostrarInsumo((v) => !v)} className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-purple-700">
-                            <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold flex-shrink-0">−</span>
-                            Insumos
-                          </button>
-                        </td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2">
-                          <input
-                            type="text" inputMode="numeric"
-                            value={insumoQuick.valor ? '$' + parseInt(insumoQuick.valor || '0', 10).toLocaleString('es-CO') : ''}
-                            onChange={(e) => setInsumoQuick((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
-                            onBlur={guardarFilaInsumo}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            autoFocus
-                            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-purple-400"
-                          />
-                        </td>
-                        <td className="py-1 px-2 text-center">
-                          {guardandoInsumo ? (
-                            <svg className="animate-spin w-3.5 h-3.5 text-purple-500 inline" viewBox="0 0 24 24" fill="none">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                            </svg>
-                          ) : (
-                            <span className={insumoListo ? 'text-amber-500' : 'text-green-500'}>{insumoListo ? '⚠' : '✓'}</span>
-                          )}
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="py-1 px-2">
-                          <button type="button" onClick={() => setMostrarInsumo((v) => !v)} className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-purple-700">
-                            <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold flex-shrink-0">+</span>
-                            Insumos
-                          </button>
-                        </td>
-                        <td colSpan={4} />
-                      </>
-                    )}
-                  </tr>
-
-                  {/* Porta placas */}
-                  <tr className={`border-b ${portaQuick.editId || (mostrarPorta && !portaItem) ? 'bg-purple-50/40' : ''}`}>
-                    <td className="py-1 px-2"><Badge variant="purple">Porta Placas</Badge></td>
-                    {portaItem && !portaQuick.editId ? (
-                      <>
-                        <td className="py-1 px-2 text-gray-800">Porta Placas</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(portaItem.precio_venta)}</td>
-                        <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarPorta(portaItem), () => handleDeleteItem(portaItem), portaItem)}</td>
-                      </>
-                    ) : portaQuick.editId ? (
-                      <>
-                        <td className="py-1 px-2 text-gray-700 font-medium">Porta Placas</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2">
-                          <input
-                            type="text" inputMode="numeric"
-                            value={portaQuick.valor ? '$' + parseInt(portaQuick.valor || '0', 10).toLocaleString('es-CO') : ''}
-                            onChange={(e) => setPortaQuick((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
-                            onBlur={guardarFilaPorta}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            autoFocus
-                            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-purple-400"
-                          />
-                        </td>
-                        <td className="py-1 px-2">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {guardandoPorta ? (
-                              <svg className="animate-spin w-3.5 h-3.5 text-purple-500" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                              </svg>
-                            ) : (
-                              <span className={portaListo ? 'text-amber-500' : 'text-green-500'}>{portaListo ? '⚠' : '✓'}</span>
-                            )}
-                            <button type="button" onMouseDown={(e) => { e.preventDefault(); cancelarEditarPorta() }} title="Cancelar edición" className="text-gray-400 hover:text-red-500 text-xs">✕</button>
-                          </div>
-                        </td>
-                      </>
-                    ) : mostrarPorta ? (
-                      <>
-                        <td className="py-1 px-2">
-                          <button type="button" onClick={() => setMostrarPorta((v) => !v)} className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-purple-700">
-                            <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold flex-shrink-0">−</span>
-                            Porta placas
-                          </button>
-                        </td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2 text-center text-gray-300">—</td>
-                        <td className="py-1 px-2">
-                          <input
-                            type="text" inputMode="numeric"
-                            value={portaQuick.valor ? '$' + parseInt(portaQuick.valor || '0', 10).toLocaleString('es-CO') : ''}
-                            onChange={(e) => setPortaQuick((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
-                            onBlur={guardarFilaPorta}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                            autoFocus
-                            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-purple-400"
-                          />
-                        </td>
-                        <td className="py-1 px-2 text-center">
-                          {guardandoPorta ? (
-                            <svg className="animate-spin w-3.5 h-3.5 text-purple-500 inline" viewBox="0 0 24 24" fill="none">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                            </svg>
-                          ) : (
-                            <span className={portaListo ? 'text-amber-500' : 'text-green-500'}>{portaListo ? '⚠' : '✓'}</span>
-                          )}
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="py-1 px-2">
-                          <button type="button" onClick={() => setMostrarPorta((v) => !v)} className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-purple-700">
-                            <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold flex-shrink-0">+</span>
-                            Porta placas
-                          </button>
-                        </td>
-                        <td colSpan={4} />
-                      </>
-                    )}
-                  </tr>
-
                   {/* Lavada de moto */}
                   {lavaMotoConfig?.activo && (
                     <tr className={`border-b ${lavadoQuick.editId || (mostrarLavado && !lavadoItem) ? 'bg-cyan-50/40' : ''}`}>
@@ -2912,6 +2596,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </tbody>
               </table>
               </div>
+              )}
+
               <div className={`px-5 py-3 border-t space-y-1 text-sm font-semibold ${hayBorradorRepuestos ? 'bg-amber-50' : 'bg-blue-50'}`}>
                 <div className="flex justify-between">
                   <span className={hayBorradorRepuestos ? 'text-amber-600' : 'text-gray-500'}>Total costo proveedor</span>
@@ -2926,6 +2612,18 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             )}
           </div>
 
+          {/* Modal "+ Agregar repuesto" */}
+          {profile?.tenant_id && (
+            <ConsultaRepuestos
+              open={showAgregarRepuesto}
+              onClose={() => setShowAgregarRepuesto(false)}
+              tenantId={profile.tenant_id}
+              onAdd={handleAddItem}
+              permitirInsumos
+              umaModoSimple
+            />
+          )}
+
           {/* ── MANO DE OBRA ── */}
           <div className="rounded-xl border-2 border-orange-100 overflow-hidden">
             {/* Header naranja */}
@@ -2934,12 +2632,72 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             </div>
 
             <div className="bg-white">
+              {/* Botón para agregar mano de obra */}
+              <div className="p-3 border-b border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setMostrarFormMo((v) => !v)}
+                  className="w-full py-2.5 px-3 border-2 border-dashed border-orange-300 hover:border-orange-500 hover:bg-orange-50 text-orange-600 hover:text-orange-800 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Agregar mano de obra
+                </button>
+              </div>
+
+              {/* Formulario para agregar */}
+              {mostrarFormMo && (
+                <div className="px-5 py-4 flex gap-2 items-end border-b border-gray-100 bg-orange-50/40">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 mb-1 block">Descripción</label>
+                    <input
+                      value={moDescripcion}
+                      onChange={(e) => setMoDescripcion(e.target.value)}
+                      placeholder="Ej: Cambio de aceite, Revisión de frenos..."
+                      autoFocus
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    />
+                  </div>
+                  <div className="w-36">
+                    <label className="text-xs text-gray-500 mb-1 block">Valor</label>
+                    <input
+                      type="text" inputMode="numeric"
+                      value={moValor ? '$' + parseInt(moValor || '0', 10).toLocaleString('es-CO') : ''}
+                      onChange={(e) => setMoValor(e.target.value.replace(/\D/g, ''))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') confirmarAgregarMo() }}
+                      placeholder="$0"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    />
+                  </div>
+                  <button
+                    onClick={confirmarAgregarMo}
+                    disabled={!moListo || guardandoMo}
+                    className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-300 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5"
+                  >
+                    {guardandoMo ? (
+                      <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                    ) : 'Agregar'}
+                  </button>
+                  <button
+                    onClick={() => { setMostrarFormMo(false); setMoDescripcion(''); setMoValor('') }}
+                    className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
+
               {manoObraItems.length > 0 && (
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs text-gray-500 uppercase border-b bg-orange-50">
                       <th className="text-left py-2 px-4 font-medium">Descripción</th>
                       <th className="text-right py-2 px-4 font-medium">Valor</th>
+                      <th className="text-left py-2 px-4 font-medium whitespace-nowrap">Fecha</th>
                       <th className="py-2 px-3 w-16" />
                     </tr>
                   </thead>
@@ -2963,6 +2721,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                               className="w-full px-2 py-1.5 border border-orange-400 rounded-lg text-sm font-mono text-right focus:outline-none"
                             />
                           </td>
+                          <td className="py-2 px-3 text-xs whitespace-nowrap">{celdaFecha(item)}</td>
                           <td className="py-2 px-3">
                             <div className="flex gap-1 justify-end">
                               <button onClick={handleEditItem} className="px-2 py-1 bg-orange-500 text-white rounded text-xs font-semibold">OK</button>
@@ -2970,53 +2729,24 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                             </div>
                           </td>
                         </tr>
-                      ) : editandoItemFechaId === item.id ? (
-                        <tr key={item.id} className="border-b bg-orange-50">
-                          <td className="py-2 px-3 text-gray-700 font-medium" colSpan={2}>{item.descripcion}</td>
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-1.5 justify-end">
-                              <input
-                                type="datetime-local"
-                                value={itemFechaInputValue}
-                                onChange={(e) => setItemFechaInputValue(e.target.value)}
-                                className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 w-[148px]"
-                                autoFocus
-                              />
-                              <button onClick={handleGuardarFechaItem} disabled={savingItemFecha} className="text-green-600 hover:text-green-800 p-0.5" title="Guardar">
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                              </button>
-                              <button onClick={() => setEditandoItemFechaId(null)} disabled={savingItemFecha} className="text-gray-400 hover:text-red-500 p-0.5" title="Cancelar">
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
                       ) : (
                         <tr key={item.id} className="border-b hover:bg-gray-50 group">
                           <td className="py-3 px-4 text-gray-800">{item.descripcion}</td>
                           <td className="py-3 px-4 text-right font-semibold">{formatCOP(item.precio_venta)}</td>
+                          <td className="py-3 px-4 text-xs whitespace-nowrap">{celdaFecha(item)}</td>
                           <td className="py-3 px-3">
                             <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => setEditingItem({ id: item.id, descripcion: item.descripcion, precio: String(item.precio_venta) })}
+                              <button onClick={() => iniciarEditarItem(item)}
                                 className="text-gray-400 hover:text-orange-500 p-1">
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
                               </button>
-                              {esGerencia && (
-                                <button onClick={() => abrirEditarFechaItem(item)} className="text-gray-400 hover:text-purple-600 p-1" title="Editar fecha (gerencia)">
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                  </svg>
-                                </button>
-                              )}
-                              {esGerencia && (
-                                <button onClick={() => handleDeleteItem(item)} className="text-gray-400 hover:text-red-500 p-1">
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                </button>
-                              )}
+                              <button onClick={() => handleDeleteItem(item)} className="text-gray-400 hover:text-red-500 p-1">
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -3026,46 +2756,9 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </table>
               )}
 
-              {/* Mano de obra — se guarda sola al salir del campo, igual que los repuestos */}
-              <div className="px-5 py-4 flex gap-2 items-end border-t border-gray-50">
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">Descripción</label>
-                  <input
-                    value={moDescripcion}
-                    onChange={(e) => setMoDescripcion(e.target.value)}
-                    onBlur={guardarFilaMo}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                    placeholder="Ej: Cambio de aceite, Revisión de frenos..."
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  />
-                </div>
-                <div className="w-36">
-                  <label className="text-xs text-gray-500 mb-1 block">Valor</label>
-                  <input
-                    type="text" inputMode="numeric"
-                    value={moValor ? '$' + parseInt(moValor || '0', 10).toLocaleString('es-CO') : ''}
-                    onChange={(e) => setMoValor(e.target.value.replace(/\D/g, ''))}
-                    onBlur={guardarFilaMo}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                    placeholder="$0"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  />
-                </div>
-                <div className="pb-2.5 px-1 w-5 text-center">
-                  {guardandoMo ? (
-                    <svg className="animate-spin w-3.5 h-3.5 text-orange-500 inline" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                  ) : (
-                    <span className={moListo ? 'text-amber-500' : 'text-green-500'}>{moListo ? '⚠' : '✓'}</span>
-                  )}
-                </div>
-              </div>
-
-            <div className={`px-5 py-3 border-t text-sm font-semibold flex justify-between ${draftManoObraTotal > 0 ? 'bg-amber-50' : 'bg-orange-50'}`}>
-              <span className={draftManoObraTotal > 0 ? 'text-amber-600' : 'text-orange-700'}>Subtotal mano de obra</span>
-              <span className={draftManoObraTotal > 0 ? 'text-amber-700' : 'text-orange-900'}>{formatCOP(totalManoObra + draftManoObraTotal)}</span>
+            <div className="px-5 py-3 border-t text-sm font-semibold flex justify-between bg-orange-50">
+              <span className="text-orange-700">Subtotal mano de obra</span>
+              <span className="text-orange-900">{formatCOP(totalManoObra)}</span>
             </div>
           </div>
           </div>
@@ -3218,13 +2911,12 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
           {(() => {
             const totalPagadoCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
             const servicioGuardado = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-            const servicioBorrador = draftRepuestosTotal + draftManoObraTotal
             const lmTotal = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-            // El "Total a pagar" incluye lo ya guardado MÁS lo que está en borrador en Sección 1/2 y
-            // Lavado — así el usuario ve de una vez cuánto debe cobrar, aunque aún no haya guardado.
+            // El "Total a pagar" incluye lo ya guardado MÁS lo que está en borrador de Lavado —
+            // así el usuario ve de una vez cuánto debe cobrar, aunque aún no haya guardado.
             const totalAPagarGuardado = servicioGuardado + lmTotal
-            const totalAPagar = totalAPagarGuardado + servicioBorrador + draftLavadoTotal
-            const hayBorradorPago = servicioBorrador + draftLavadoTotal > 0
+            const totalAPagar = totalAPagarGuardado + draftLavadoTotal
+            const hayBorradorPago = draftLavadoTotal > 0
             const saldoPendiente = totalAPagar - totalPagadoCliente
             const estadoPagoCalc = calcularEstadoPago(pagosOrden, totalAPagarGuardado)
             const totalPagado = totalPagadoCliente
@@ -3245,9 +2937,9 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
 
                 {/* Resumen — cálculo en vivo: incluye lo guardado y lo que está en borrador */}
                 <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
-                  <div className={`flex justify-between text-xs ${servicioBorrador > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
+                  <div className="flex justify-between text-xs text-gray-500">
                     <span>Servicio técnico</span>
-                    <span className={`font-semibold ${servicioBorrador > 0 ? 'text-amber-700' : 'text-gray-900'}`}>{formatCOP(servicioGuardado + servicioBorrador)}</span>
+                    <span className="font-semibold text-gray-900">{formatCOP(servicioGuardado)}</span>
                   </div>
                   {(lmTotal > 0 || draftLavadoTotal > 0) && (
                     <div className={`flex justify-between text-xs ${draftLavadoTotal > 0 ? 'text-amber-600' : 'text-cyan-600'}`}>

@@ -49,6 +49,9 @@ interface Props {
   tenantId: string
   onAdd: (item: ItemOrden) => void
   permitirInsumos?: boolean
+  /** Si true, la pestaña UMA muestra un campo manual (descripción + valor) en vez
+   * del buscador de catálogo — no enlaza repuesto_uma_id ni descuenta stock. */
+  umaModoSimple?: boolean
 }
 
 /* ─── Helpers ────────────────────────────────────── */
@@ -65,9 +68,13 @@ function fmtCOP(raw: string) {
 }
 
 /* ─── Componente ─────────────────────────────────── */
-export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsumos = false }: Props) {
+export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsumos = false, umaModoSimple = false }: Props) {
   const supabase = createClient()
   const [tab, setTab] = useState<'uma' | 'externo' | 'insumo' | 'porta_placas'>('uma')
+
+  /* ══ UMA — modo simple (sin catálogo) ══ */
+  const [umaSimpleDesc, setUmaSimpleDesc] = useState('')
+  const [umaSimpleValor, setUmaSimpleValor] = useState('')
 
   /* ══ MÉTODOS DE PAGO (para registrar con qué se paga al proveedor) ══ */
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
@@ -123,6 +130,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       setConfirmPrecioBajo(false)
       setInsumoValor('10000')
       setPortaPlacasValor('25000')
+      setUmaSimpleDesc(''); setUmaSimpleValor('')
     }
   }, [open])
 
@@ -202,6 +210,21 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       precio_venta: pVal,
     })
     setUmaSelId(null); onClose()
+  }
+
+  /* ── Agregar UMA en modo simple (sin catálogo, sin descontar stock) ── */
+  const confirmarUmaSimple = () => {
+    const valor = parseInt(umaSimpleValor.replace(/\D/g, ''), 10) || 0
+    if (!valor) return
+    onAdd({
+      descripcion: umaSimpleDesc.trim() || 'Repuesto UMA',
+      origen: 'uma',
+      cantidad: 1,
+      costo: 0,
+      precio_venta: valor,
+    })
+    setUmaSimpleDesc(''); setUmaSimpleValor('')
+    onClose()
   }
 
   /* ── Agregar insumo (valor rápido, sin proveedor ni costo) ── */
@@ -345,7 +368,35 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       </div>
 
       {/* ════════════════════ TAB UMA ════════════════════ */}
-      {tab === 'uma' && (
+      {tab === 'uma' && umaModoSimple && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-4 max-w-sm">
+          <div>
+            <h3 className="font-semibold text-blue-900">Agregar repuesto UMA</h3>
+            <p className="text-xs text-blue-600 mt-1">Campo manual — no descuenta del inventario.</p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-blue-700 block mb-1">Descripción (opcional)</label>
+            <input value={umaSimpleDesc} onChange={(e) => setUmaSimpleDesc(e.target.value)}
+              placeholder="Repuesto UMA" autoFocus
+              className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-blue-700 block mb-1">Valor</label>
+            <div className="flex items-center border border-blue-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-400 bg-white">
+              <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-2">$</span>
+              <input type="text" inputMode="numeric"
+                value={fmtCOP(umaSimpleValor)} onChange={(e) => setUmaSimpleValor(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="flex-1 px-2 py-2 text-sm font-mono text-right focus:outline-none" />
+            </div>
+          </div>
+          <button onClick={confirmarUmaSimple} disabled={!parseInt(umaSimpleValor.replace(/\D/g, ''), 10)}
+            className="w-full px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-sm font-semibold transition-colors">
+            + Agregar a la orden
+          </button>
+        </div>
+      )}
+      {tab === 'uma' && !umaModoSimple && (
         <div className="space-y-3">
 
           {/* Toggle Repuestos / Lubricantes */}
