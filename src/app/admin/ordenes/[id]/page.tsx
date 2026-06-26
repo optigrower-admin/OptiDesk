@@ -304,6 +304,9 @@ export default function AdminOrdenDetallePage() {
   const [editandoItemFechaId, setEditandoItemFechaId] = useState<string | null>(null)
   const [itemFechaInputValue, setItemFechaInputValue] = useState('')
   const [savingItemFecha, setSavingItemFecha] = useState(false)
+  const [editandoLavadoFechaId, setEditandoLavadoFechaId] = useState<string | null>(null)
+  const [lavadoFechaInputValue, setLavadoFechaInputValue] = useState('')
+  const [savingLavadoFecha, setSavingLavadoFecha] = useState(false)
   const esGerencia = profile?.rol === 'gerencia'
 
   const cargar = useCallback(async () => {
@@ -1030,22 +1033,31 @@ export default function AdminOrdenDetallePage() {
   const iniciarEditarLavado = (lm: LavaMotoOrden) => { setLavadoQuick({ costo: String(lm.costo_unitario), valor: String(lm.precio_venta_unitario), metodo: lm.metodo_pago_id ?? '', editId: lm.id }); setMostrarLavado(true) }
   const cancelarEditarLavado = () => { setLavadoQuick({ costo: '10000', valor: '15000', metodo: '', editId: null }); setMostrarLavado(false) }
 
-  // Celda de fecha (solo gerencia puede editarla) — reusada en la lista de repuestos y mano de obra.
-  const celdaFecha = (item: ItemOrden) => {
-    if (editandoItemFechaId === item.id) {
+  // Celda de fecha genérica (solo gerencia puede editarla) — reusada en repuestos, mano de obra y lavado.
+  const celdaFechaGenerica = (
+    fecha: string,
+    editing: boolean,
+    inputValue: string,
+    setInputValue: (v: string) => void,
+    onGuardar: () => void,
+    onCancelar: () => void,
+    onAbrir: () => void,
+    saving: boolean,
+  ) => {
+    if (editing) {
       return (
         <div className="flex items-center gap-1">
           <input
             type="datetime-local"
-            value={itemFechaInputValue}
-            onChange={(e) => setItemFechaInputValue(e.target.value)}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
             className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 w-[148px]"
             autoFocus
           />
-          <button onClick={handleGuardarFechaItem} disabled={savingItemFecha} className="text-green-600 hover:text-green-800 p-0.5" title="Guardar">
+          <button onClick={onGuardar} disabled={saving} className="text-green-600 hover:text-green-800 p-0.5" title="Guardar">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
           </button>
-          <button onClick={() => setEditandoItemFechaId(null)} disabled={savingItemFecha} className="text-gray-400 hover:text-red-500 p-0.5" title="Cancelar">
+          <button onClick={onCancelar} disabled={saving} className="text-gray-400 hover:text-red-500 p-0.5" title="Cancelar">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -1053,9 +1065,9 @@ export default function AdminOrdenDetallePage() {
     }
     return (
       <span className="flex items-center gap-1 whitespace-nowrap text-gray-400">
-        {new Date(item.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: '2-digit' })}
+        {new Date(fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: '2-digit' })}
         {esGerencia && (
-          <button onClick={() => abrirEditarFechaItem(item)} className="text-gray-300 hover:text-purple-600 p-0.5" title="Editar fecha (gerencia)">
+          <button onClick={onAbrir} className="text-gray-300 hover:text-purple-600 p-0.5" title="Editar fecha (gerencia)">
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
@@ -1065,19 +1077,46 @@ export default function AdminOrdenDetallePage() {
     )
   }
 
-  const accionesRepuesto = (onEditar: () => void, onEliminar: () => void) => {
+  const celdaFecha = (item: ItemOrden) => celdaFechaGenerica(
+    item.created_at,
+    editandoItemFechaId === item.id,
+    itemFechaInputValue,
+    setItemFechaInputValue,
+    handleGuardarFechaItem,
+    () => setEditandoItemFechaId(null),
+    () => abrirEditarFechaItem(item),
+    savingItemFecha,
+  )
+
+  const celdaFechaLavado = (lm: LavaMotoOrden) => celdaFechaGenerica(
+    lm.created_at,
+    editandoLavadoFechaId === lm.id,
+    lavadoFechaInputValue,
+    setLavadoFechaInputValue,
+    handleGuardarFechaLavado,
+    () => setEditandoLavadoFechaId(null),
+    () => abrirEditarFechaLavado(lm),
+    savingLavadoFecha,
+  )
+
+  // Fecha (si se pasa) + acciones editar/eliminar, agrupadas en una sola columna para que
+  // siempre queden visibles juntas, sin depender de hover ni de que la tabla no haga scroll.
+  const accionesRepuesto = (onEditar: () => void, onEliminar: () => void, fechaNode?: React.ReactNode) => {
     return (
-      <div className="flex gap-1 justify-end">
-        <button onClick={onEditar} className="text-gray-400 hover:text-blue-600 p-1">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-          </svg>
-        </button>
-        <button onClick={onEliminar} className="text-gray-400 hover:text-red-500 p-1">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </button>
+      <div className="flex items-center justify-end gap-2 flex-wrap">
+        {fechaNode}
+        <div className="flex gap-0.5">
+          <button onClick={onEditar} className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded p-1.5" title="Editar">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          <button onClick={onEliminar} className="text-gray-500 hover:text-red-600 hover:bg-red-50 rounded p-1.5" title="Eliminar">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
       </div>
     )
   }
@@ -1242,6 +1281,36 @@ export default function AdminOrdenDetallePage() {
       await cargar()
     } finally {
       setSavingItemFecha(false)
+    }
+  }
+
+  // ── Edición de fecha de un lavado de moto (exclusivo gerencia) ──
+  const abrirEditarFechaLavado = (lm: LavaMotoOrden) => {
+    setLavadoFechaInputValue(isoToDatetimeLocal(lm.created_at))
+    setEditandoLavadoFechaId(lm.id)
+  }
+
+  const handleGuardarFechaLavado = async () => {
+    if (!orden || !editandoLavadoFechaId || !lavadoFechaInputValue) return
+    setSavingLavadoFecha(true)
+    try {
+      const lm = lavaMotoOrdenes.find((r) => r.id === editandoLavadoFechaId)
+      const nuevaFechaISO = new Date(lavadoFechaInputValue).toISOString()
+      await supabase.from('lava_moto_ordenes').update({ created_at: nuevaFechaISO }).eq('id', editandoLavadoFechaId)
+      await registrarAuditoria(supabase, {
+        tenant_id: orden.tenant_id,
+        tabla: 'lava_moto_ordenes',
+        registro_id: editandoLavadoFechaId,
+        tipo: 'edicion',
+        valor_anterior: { created_at: lm?.created_at },
+        valor_nuevo: { created_at: nuevaFechaISO },
+        descripcion: `Gerencia editó la fecha del lavado de moto | orden #${orden.numero}`,
+        usuario_id: profile?.id,
+      })
+      setEditandoLavadoFechaId(null)
+      await cargar()
+    } finally {
+      setSavingLavadoFecha(false)
     }
   }
 
@@ -2379,13 +2448,12 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     <th className="text-left py-1 px-2 font-medium whitespace-nowrap">Método pago prov.</th>
                     <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio proveedor</th>
                     <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio venta</th>
-                    <th className="text-left py-1 px-2 font-medium whitespace-nowrap">Fecha</th>
-                    <th className="py-1 px-2 w-16" />
+                    <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Fecha / Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {repuestosItems.length === 0 && (
-                    <tr><td colSpan={7} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
+                    <tr><td colSpan={6} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
                   )}
                   {repuestosItems.map((item) => {
                     const tipoLabel = item.origen === 'uma' ? 'UMA' : item.origen === 'externo' ? 'Externo' : item.descripcion === 'Porta Placas' ? 'Porta Placas' : 'Insumo'
@@ -2431,11 +2499,13 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                             className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
                           />
                         </td>
-                        <td className="py-1 px-2 text-xs whitespace-nowrap">{celdaFecha(item)}</td>
                         <td className="py-1 px-2">
-                          <div className="flex gap-1 justify-end">
-                            <button onClick={handleEditItem} className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-semibold">OK</button>
-                            <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
+                          <div className="flex items-center justify-end gap-2 flex-wrap">
+                            {celdaFecha(item)}
+                            <div className="flex gap-1">
+                              <button onClick={handleEditItem} className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-semibold">OK</button>
+                              <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -2446,8 +2516,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <td className="py-1.5 px-2 text-gray-500">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
                         <td className="py-1.5 px-2 text-right text-gray-500 whitespace-nowrap">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
                         <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>
-                        <td className="py-1.5 px-2 text-xs whitespace-nowrap">{celdaFecha(item)}</td>
-                        <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item))}</td>
+                        <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
                       </tr>
                     )
                   })}
@@ -2466,7 +2535,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     <th className="text-left py-1 px-2 font-medium whitespace-nowrap">Método pago prov.</th>
                     <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio proveedor</th>
                     <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio venta</th>
-                    <th className="py-1 px-2 w-12" />
+                    <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Fecha / Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2480,7 +2549,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                           <td className="py-1 px-2 text-gray-500">{lavadoItem.metodos_pago?.nombre ?? '—'}</td>
                           <td className="py-1 px-2 text-right text-gray-500 whitespace-nowrap">{formatCOP(lavadoItem.costo_unitario)}</td>
                           <td className="py-1 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(lavadoItem.precio_venta_unitario)}</td>
-                          <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarLavado(lavadoItem), () => handleDeleteLavaMoto(lavadoItem.id))}</td>
+                          <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarLavado(lavadoItem), () => handleDeleteLavaMoto(lavadoItem.id), celdaFechaLavado(lavadoItem))}</td>
                         </>
                       ) : lavadoQuick.editId ? (
                         <>
@@ -2697,8 +2766,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     <tr className="text-xs text-gray-500 uppercase border-b bg-orange-50">
                       <th className="text-left py-2 px-4 font-medium">Descripción</th>
                       <th className="text-right py-2 px-4 font-medium">Valor</th>
-                      <th className="text-left py-2 px-4 font-medium whitespace-nowrap">Fecha</th>
-                      <th className="py-2 px-3 w-16" />
+                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap">Fecha / Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2721,34 +2789,21 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                               className="w-full px-2 py-1.5 border border-orange-400 rounded-lg text-sm font-mono text-right focus:outline-none"
                             />
                           </td>
-                          <td className="py-2 px-3 text-xs whitespace-nowrap">{celdaFecha(item)}</td>
                           <td className="py-2 px-3">
-                            <div className="flex gap-1 justify-end">
-                              <button onClick={handleEditItem} className="px-2 py-1 bg-orange-500 text-white rounded text-xs font-semibold">OK</button>
-                              <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
+                            <div className="flex items-center justify-end gap-2 flex-wrap">
+                              {celdaFecha(item)}
+                              <div className="flex gap-1">
+                                <button onClick={handleEditItem} className="px-2 py-1 bg-orange-500 text-white rounded text-xs font-semibold">OK</button>
+                                <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
+                              </div>
                             </div>
                           </td>
                         </tr>
                       ) : (
-                        <tr key={item.id} className="border-b hover:bg-gray-50 group">
+                        <tr key={item.id} className="border-b hover:bg-gray-50">
                           <td className="py-3 px-4 text-gray-800">{item.descripcion}</td>
                           <td className="py-3 px-4 text-right font-semibold">{formatCOP(item.precio_venta)}</td>
-                          <td className="py-3 px-4 text-xs whitespace-nowrap">{celdaFecha(item)}</td>
-                          <td className="py-3 px-3">
-                            <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => iniciarEditarItem(item)}
-                                className="text-gray-400 hover:text-orange-500 p-1">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                              <button onClick={() => handleDeleteItem(item)} className="text-gray-400 hover:text-red-500 p-1">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </div>
-                          </td>
+                          <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
                         </tr>
                       )
                     ))}
