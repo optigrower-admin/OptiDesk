@@ -50,7 +50,7 @@ export default function NuevaOrdenAdminPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [archivos, setArchivos] = useState<File[]>([])
   const [previews, setPreviews] = useState<{ url: string; tipo: 'imagen' | 'video' }[]>([])
-  const [tipoOrden, setTipoOrden] = useState<'servicio' | 'venta_repuestos'>('servicio')
+  const [tipoOrden] = useState<'servicio' | 'venta_repuestos'>('servicio')
   const [esProgramada, setEsProgramada] = useState(false)
   const [fechaProgramada, setFechaProgramada] = useState('')
   const [duracionEstimada, setDuracionEstimada] = useState('')
@@ -265,21 +265,6 @@ export default function NuevaOrdenAdminPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-
-        {/* Tipo de entrada */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-          <h2 className="font-semibold text-gray-900">Tipo de entrada</h2>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setTipoOrden('servicio')}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${tipoOrden === 'servicio' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-              🔧 Servicio técnico
-            </button>
-            <button type="button" onClick={() => setTipoOrden('venta_repuestos')}
-              className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${tipoOrden === 'venta_repuestos' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-              🛒 Venta de repuesto
-            </button>
-          </div>
-        </div>
 
         {/* ¿Cuándo se realiza el servicio? (solo servicio técnico) */}
         {tipoOrden === 'servicio' && (

@@ -9,7 +9,6 @@ import { MediaGallery } from '@/components/MediaGallery'
 import { OrderStatus } from '@/components/OrderStatus'
 import { PaymentStatus } from '@/components/PaymentStatus'
 import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
 import { formatCOP } from '@/lib/utils'
 import Link from 'next/link'
 import { registrarAuditoria } from '@/lib/audit'
@@ -181,15 +180,6 @@ interface LavaMotoOrden {
   metodos_pago: { nombre: string } | null
 }
 
-const ORDEN_DRAFT_KEY = (id: string) => `optiDesk_orden_draft_${id}`
-
-// Para evitar que un borrador local viejo "regrese" un estado más avanzado
-// ya guardado en la base de datos (ej: la orden ya quedó Pagada/Finalizada
-// en otra sesión, pero el borrador local todavía dice "en_proceso").
-const ESTADO_RANGO: Record<string, number> = {
-  programado: -1, falta_revision: 0, en_proceso: 1, pendiente: 1, pagado: 2, listo: 3,
-}
-
 export default function AdminOrdenDetallePage() {
   const params = useParams()
   const ordenId = String(params.id)
@@ -201,7 +191,6 @@ export default function AdminOrdenDetallePage() {
   const [items, setItems] = useState<ItemOrden[]>([])
   const [medios, setMedios] = useState<Medio[]>([])
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
-  const [saving, setSaving] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
   const [moDescripcion, setMoDescripcion] = useState('')
   const [moValor, setMoValor] = useState('')
@@ -248,25 +237,19 @@ export default function AdminOrdenDetallePage() {
   const [estado, setEstado] = useState<EstadoOrden>('en_proceso')
   const [estadoPago, setEstadoPago] = useState<EstadoPago>('pendiente')
   const [valorAbono, setValorAbono] = useState('')
-  const [metodoPagoId, setMetodoPagoId] = useState('')
   const [motivoPendiente, setMotivoPendiente] = useState('')
   const [fechaProgramada, setFechaProgramada] = useState('')
   const [duracionEstimada, setDuracionEstimada] = useState('')
   const [telefono, setTelefono] = useState('')
 
-  // Control de cambios sin guardar
-  const [dirty, setDirty] = useState(false)
-  const [showExitDialog, setShowExitDialog] = useState(false)
   // null = oculto; 'finalizar' = ya está Pagada, preguntar si pasar a Finalizada;
   // 'marcar_pagado' = el pago ya está completo pero el estado no es Pagado/Finalizado
   const [finalizeDialogModo, setFinalizeDialogModo] = useState<'finalizar' | 'marcar_pagado' | null>(null)
-  const [savingFromDialog, setSavingFromDialog] = useState(false)
   const [savingFinalize, setSavingFinalize] = useState(false)
   const [pendingNavBack, setPendingNavBack] = useState(false)
   const [pendingNavUrl, setPendingNavUrl] = useState<string | null>(null)
 
   // Refs para interceptar navegación sin crear listeners nuevos en cada render
-  const dirtyRef = useRef(false)
   const ordenEstadoRef = useRef<string | undefined>(undefined)
   const umaSinNumeroRef = useRef(false)
   const pagoCompletoSinMarcarRef = useRef(false)
@@ -340,12 +323,6 @@ export default function AdminOrdenDetallePage() {
           usuario_id: profile?.id,
         }).catch(() => {})
         ord = { ...ord, estado: 'en_proceso' }
-        // Actualizar draft para que no sobrescriba el estado auto-confirmado
-        try {
-          const dk = ORDEN_DRAFT_KEY(ordenId)
-          const ds = localStorage.getItem(dk)
-          if (ds) localStorage.setItem(dk, JSON.stringify({ ...JSON.parse(ds), estado: 'en_proceso' }))
-        } catch { /* ignore */ }
       }
       // Auto-pagado: solo desde en_proceso (no sobrescribir estados manuales como pendiente)
       if (ord.estado === 'en_proceso' && (ord.valor_total ?? 0) > 0 && pg) {
@@ -367,11 +344,6 @@ export default function AdminOrdenDetallePage() {
             usuario_id: profile?.id,
           }).catch(() => {})
           ord = { ...ord, estado: 'pagado' }
-          try {
-            const dk = ORDEN_DRAFT_KEY(ordenId)
-            const ds = localStorage.getItem(dk)
-            if (ds) localStorage.setItem(dk, JSON.stringify({ ...JSON.parse(ds), estado: 'pagado' }))
-          } catch { /* ignore */ }
         }
       }
       setOrden(ord)
@@ -390,40 +362,14 @@ export default function AdminOrdenDetallePage() {
 
       setEstadoPago(ord.estado_pago)
       setValorAbono(String(ord.valor_abono ?? 0))
-      setMetodoPagoId((ord.metodos_pago as { id: string } | null)?.id ?? '')
 
-      // Restaurar borrador de localStorage si existe (solo campos de estado/notas)
-      let draftAplicado = false
-      try {
-        const draft = localStorage.getItem(ORDEN_DRAFT_KEY(ordenId))
-        if (draft) {
-          const d = JSON.parse(draft)
-          const draftEstado = d.estado ?? ord.estado
-          const estadoFinal = (ESTADO_RANGO[draftEstado] ?? 0) < (ESTADO_RANGO[ord.estado] ?? 0) ? ord.estado : draftEstado
-          setEstado(estadoFinal)
-          if (estadoFinal !== draftEstado) {
-            try { localStorage.setItem(ORDEN_DRAFT_KEY(ordenId), JSON.stringify({ ...d, estado: estadoFinal })) } catch { /* ignore */ }
-          }
-          setMotivoPendiente(d.motivoPendiente ?? (ord.motivo_pendiente ?? ''))
-          setFechaProgramada(d.fechaProgramada ?? (ord.fecha_programada ? isoToDatetimeLocal(ord.fecha_programada) : ''))
-          setDuracionEstimada(d.duracionEstimada ?? (ord.duracion_estimada_horas != null ? String(ord.duracion_estimada_horas) : ''))
-          setTelefono(d.telefono ?? soloDigitos(ord.telefono ?? ''))
-          setNotas(d.notas ?? (ord.notas ?? ''))
-          setNumerosOrdenUMA(d.numerosOrdenUMA ?? (ord.numeros_orden_uma ?? []))
-          setDirty(true)
-          draftAplicado = true
-        }
-      } catch { /* borrador inválido */ }
-
-      if (!draftAplicado) {
-        setEstado(ord.estado)
-        setMotivoPendiente(ord.motivo_pendiente ?? '')
-        setFechaProgramada(ord.fecha_programada ? isoToDatetimeLocal(ord.fecha_programada) : '')
-        setDuracionEstimada(ord.duracion_estimada_horas != null ? String(ord.duracion_estimada_horas) : '')
-        setTelefono(soloDigitos(ord.telefono ?? ''))
-        setNotas(ord.notas ?? '')
-        setNumerosOrdenUMA(ord.numeros_orden_uma ?? [])
-      }
+      setEstado(ord.estado)
+      setMotivoPendiente(ord.motivo_pendiente ?? '')
+      setFechaProgramada(ord.fecha_programada ? isoToDatetimeLocal(ord.fecha_programada) : '')
+      setDuracionEstimada(ord.duracion_estimada_horas != null ? String(ord.duracion_estimada_horas) : '')
+      setTelefono(soloDigitos(ord.telefono ?? ''))
+      setNotas(ord.notas ?? '')
+      setNumerosOrdenUMA(ord.numeros_orden_uma ?? [])
     }
     setItems((i as unknown as ItemOrden[]) ?? [])
     setMedios((m as unknown as Medio[]) ?? [])
@@ -457,24 +403,12 @@ export default function AdminOrdenDetallePage() {
     })
   }, [profile?.tenant_id])
 
-  // Interceptar cierre/recarga del navegador cuando hay cambios sin guardar
-  useEffect(() => {
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (dirtyRef.current) { e.preventDefault(); e.returnValue = '' }
-    }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [])
-
-  // Interceptar botón atrás del dispositivo/navegador dentro del SPA
+  // Interceptar botón atrás del dispositivo/navegador dentro del SPA — si la orden
+  // ya quedó pagada/completa pero el estado no lo refleja, se pregunta antes de salir.
   useEffect(() => {
     const onPopState = () => {
       if (skipNextPopstate.current) { skipNextPopstate.current = false; return }
-      if (dirtyRef.current) {
-        window.history.pushState(null, '', window.location.href)
-        setPendingNavBack(true); setPendingNavUrl(null)
-        setShowExitDialog(true)
-      } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
+      if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         window.history.pushState(null, '', window.location.href)
         setPendingNavBack(true); setPendingNavUrl(null)
         setFinalizeDialogModo('finalizar')
@@ -488,7 +422,7 @@ export default function AdminOrdenDetallePage() {
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
-  // Interceptar clics en enlaces internos cuando hay cambios o la orden está pagada
+  // Interceptar clics en enlaces internos cuando la orden está pagada/completa sin marcar
   useEffect(() => {
     const onLinkClick = (e: MouseEvent) => {
       const anchor = (e.target as HTMLElement).closest('a')
@@ -496,11 +430,7 @@ export default function AdminOrdenDetallePage() {
       const href = anchor.getAttribute('href')
       if (!href || href.startsWith('#') || href.startsWith('http') || href.startsWith('//')) return
       if (href === window.location.pathname) return
-      if (dirtyRef.current) {
-        e.preventDefault(); e.stopPropagation()
-        setPendingNavUrl(href); setPendingNavBack(false)
-        setShowExitDialog(true)
-      } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
+      if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         e.preventDefault(); e.stopPropagation()
         setPendingNavUrl(href); setPendingNavBack(false)
         setFinalizeDialogModo('finalizar')
@@ -513,42 +443,6 @@ export default function AdminOrdenDetallePage() {
     document.addEventListener('click', onLinkClick, true)
     return () => document.removeEventListener('click', onLinkClick, true)
   }, [])
-
-  // Guardar borrador automáticamente cuando cambian los campos del sidebar
-  useEffect(() => {
-    if (!orden) return
-    const hayCambios =
-      estado !== orden.estado ||
-      motivoPendiente !== (orden.motivo_pendiente ?? '') ||
-      fechaProgramada !== (orden.fecha_programada ? isoToDatetimeLocal(orden.fecha_programada) : '') ||
-      duracionEstimada !== (orden.duracion_estimada_horas != null ? String(orden.duracion_estimada_horas) : '') ||
-      telefono !== soloDigitos(orden.telefono ?? '') ||
-      notas !== (orden.notas ?? '') ||
-      JSON.stringify(numerosOrdenUMA) !== JSON.stringify(orden.numeros_orden_uma ?? []) ||
-      lavadoListo || moListo
-
-    if (hayCambios) {
-      try {
-        localStorage.setItem(ORDEN_DRAFT_KEY(ordenId), JSON.stringify({
-          estado, motivoPendiente, fechaProgramada, duracionEstimada, telefono, notas, numerosOrdenUMA,
-        }))
-      } catch { /* ignore */ }
-      setDirty(true)
-    } else {
-      try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
-      setDirty(false)
-    }
-  }, [estado, motivoPendiente, fechaProgramada, duracionEstimada, telefono, notas, numerosOrdenUMA, orden, ordenId, lavadoListo, moListo])
-
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (!dirty) return
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [dirty])
 
   const cargarAudit = async () => {
     if (!orden) return
@@ -1184,13 +1078,8 @@ export default function AdminOrdenDetallePage() {
       setNuevoPagoNotas('')
       setNuevoPagoSigno('positivo')
       if (autoEstadoOrden && !ordUpdError) {
-        // Reflejar el estado pagado de inmediato y actualizar draft para que cargar() no lo pise
+        // Reflejar el estado pagado de inmediato mientras se recarga desde la BD
         setEstado('pagado' as EstadoOrden)
-        try {
-          const dk = ORDEN_DRAFT_KEY(ordenId)
-          const ds = localStorage.getItem(dk)
-          if (ds) localStorage.setItem(dk, JSON.stringify({ ...JSON.parse(ds), estado: 'pagado' }))
-        } catch { /* ignore */ }
       }
       await cargar()
     } finally {
@@ -1412,102 +1301,53 @@ export default function AdminOrdenDetallePage() {
     }
   }
 
-  const handleGuardar = async () => {
-    if (estado === 'programado' && !fechaProgramada) {
-      alert('Ingresa la fecha y hora de la programación.')
+  // Guarda de inmediato un cambio parcial de la orden (estado, teléfono, notas, etc.)
+  // — reemplaza al antiguo botón "Guardar cambios": cada campo se persiste solo.
+  const guardarCampoSidebar = async (cambios: Record<string, unknown>, descripcion: string) => {
+    if (!orden) return
+    const { error: updError } = await supabase.from('ordenes').update(cambios).eq('id', ordenId)
+    if (updError) {
+      alert(`No se pudo guardar: ${updError.message}`)
       return
     }
+    await registrarAuditoria(supabase, {
+      tenant_id: orden.tenant_id,
+      tabla: 'ordenes',
+      registro_id: ordenId,
+      tipo: 'edicion',
+      valor_nuevo: cambios,
+      descripcion,
+      usuario_id: profile?.id,
+    })
+    setSavedOk(true)
+    setTimeout(() => setSavedOk(false), 1500)
+    await cargar()
+  }
 
-    const lavaMotoOrdenesParaTotal = lavadoQuick.editId ? lavaMotoOrdenes.filter((r) => r.id !== lavadoQuick.editId) : lavaMotoOrdenes
-
-    // Bloquear "Finalizado" si hay repuestos con estado "pedido"
-    const repuestosPendientes = items.filter(
-      (i) => i.origen !== 'mano_obra' && i.estado_repuesto === 'pedido'
+  const cambiarEstado = async (nuevoEstado: EstadoOrden) => {
+    if (!orden) return
+    const esFinalizacion = nuevoEstado === 'listo' && orden.estado !== 'listo'
+    setEstado(nuevoEstado)
+    await guardarCampoSidebar(
+      { estado: nuevoEstado, ...(esFinalizacion ? { fecha_finalizacion: new Date().toISOString() } : {}) },
+      `Cambió el estado de la orden #${orden.numero} a "${nuevoEstado}"`,
     )
-    if (estado === 'listo' && repuestosPendientes.length > 0) {
-      alert(`No puedes finalizar la orden — hay ${repuestosPendientes.length} repuesto${repuestosPendientes.length !== 1 ? 's' : ''} marcado${repuestosPendientes.length !== 1 ? 's' : ''} como "Pedido" que aún no han llegado.`)
-      return
-    }
+  }
 
-    // Bloquear "Finalizado" si el pago no está completo (incluye lava moto + borrador de lavado por guardar)
-    const totalPagadoGuardar = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
-    const lmTotalGuardar = lavaMotoOrdenesParaTotal.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0) + draftLavadoTotal
-    const valorTotalConLMGuardar = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotalGuardar
-    if (estado === 'listo' && totalPagadoGuardar < valorTotalConLMGuardar) {
-      const saldoFaltante = valorTotalConLMGuardar - totalPagadoGuardar
-      alert(`No puedes finalizar la orden — falta por pagar ${formatCOP(saldoFaltante)}. Registra el pago completo antes de finalizar.`)
-      return
-    }
-
-    // Bloquear "Finalizado" en órdenes UMA sin número de orden UMA o "No aplica"
-    if (estado === 'listo') {
-      const esUMAGuardar = (orden?.categorias_servicio?.nombre ?? '').toLowerCase().includes('uma')
-      if (esUMAGuardar && numerosOrdenUMA.length === 0) {
-        alert('Para finalizar una orden UMA, agrega al menos un # de Orden UMA o selecciona "No aplica".')
-        return
+  const actualizarNumerosUMA = (updater: (prev: string[]) => string[]) => {
+    setNumerosOrdenUMA((prev) => {
+      const next = updater(prev)
+      if (orden) {
+        guardarCampoSidebar(
+          { numeros_orden_uma: next },
+          `Actualizó los # de Orden UMA de la orden #${orden.numero}`,
+        )
       }
-    }
-
-    setSaving(true)
-    try {
-      // Red de seguridad del lavado de moto: normalmente ya se guardó solo al perder el
-      // foco, pero si quedó completo sin disparar el blur, se guarda aquí también.
-      // Repuestos y mano de obra ya se guardaron de inmediato al agregarlos.
-      if (lavadoListo) await guardarFilaLavado()
-
-      // El estado_pago/valor_total se recalculan incluyendo lo recién insertado/editado arriba
-      const lmTotalGs = lavaMotoOrdenesParaTotal.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0) + draftLavadoTotal
-      const totalItemsGs = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-      const valorTotalGs = totalItemsGs + lmTotalGs
-      const estadoPagoCalculado = calcularEstadoPago(pagosOrden, valorTotalGs)
-      const totalPagado = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
-
-      const ahora = new Date().toISOString()
-      const esFinalizacion = estado === 'listo' && orden?.estado !== 'listo'
-
-      const { error: updError } = await supabase.from('ordenes').update({
-        estado,
-        estado_pago: estadoPagoCalculado,
-        valor_abono: totalPagado,
-        valor_total: valorTotalGs,
-        metodo_pago_id: metodoPagoId || null,
-        motivo_pendiente: estado === 'pendiente' ? motivoPendiente : null,
-        fecha_programada: fechaProgramada ? new Date(fechaProgramada).toISOString() : null,
-        duracion_estimada_horas: duracionEstimada ? parseFloat(duracionEstimada) : null,
-        telefono: telefono || null,
-        notas: notas.trim() || null,
-        numeros_orden_uma: numerosOrdenUMA,
-        ...(esFinalizacion ? { fecha_finalizacion: ahora } : {}),
-      }).eq('id', ordenId)
-
-      if (updError) {
-        alert(`No se pudo guardar: ${updError.message}`)
-        return
-      }
-
-      await registrarAuditoria(supabase, {
-        tenant_id: orden!.tenant_id,
-        tabla: 'ordenes',
-        registro_id: ordenId,
-        tipo: 'edicion',
-        descripcion: `Actualizó orden #${orden?.numero}: estado=${estado}, pago=${estadoPagoCalculado}`,
-        usuario_id: profile?.id,
-      })
-
-      // Las filas de repuestos y mano de obra ya limpiaron su propio borrador
-      // dentro de guardarFilaX() al perder el foco.
-      try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
-      setDirty(false)
-      setSavedOk(true)
-      setTimeout(() => setSavedOk(false), 3500)
-    } finally {
-      setSaving(false)
-      await cargar()
-    }
+      return next
+    })
   }
 
   // Mantener refs sincronizados con el estado actual (se ejecuta en cada render)
-  dirtyRef.current = dirty
   ordenEstadoRef.current = orden?.estado
 
   if (!orden) return <div className="p-8 text-center text-gray-500">Cargando...</div>
@@ -1544,7 +1384,7 @@ export default function AdminOrdenDetallePage() {
   // refleja eso — al salir de la página se le pregunta si quiere marcarla como Pagada.
   const totalPagadoClienteGlobal = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
   const totalAPagarGuardadoGlobal = total + totalLavado
-  pagoCompletoSinMarcarRef.current = !dirty && !['pagado', 'listo'].includes(orden.estado) &&
+  pagoCompletoSinMarcarRef.current = !['pagado', 'listo'].includes(orden.estado) &&
     totalAPagarGuardadoGlobal > 0 && totalPagadoClienteGlobal >= totalAPagarGuardadoGlobal
 
   const imprimirConIframe = (html: string) => {
@@ -1626,51 +1466,6 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
   return (
     <>
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      {/* Dialog cambios sin guardar */}
-      {showExitDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-base">Cambios sin guardar</h3>
-              <button onClick={() => setShowExitDialog(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <p className="text-sm text-gray-600">Tienes cambios pendientes en esta entrada. ¿Qué deseas hacer?</p>
-            <div className="space-y-2">
-              <button
-                onClick={async () => {
-                  setSavingFromDialog(true)
-                  await handleGuardar()
-                  setSavingFromDialog(false)
-                  setShowExitDialog(false)
-                  if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
-                  else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
-                }}
-                disabled={savingFromDialog}
-                className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-sm font-semibold transition-colors"
-              >
-                {savingFromDialog ? 'Guardando...' : 'Guardar cambios'}
-              </button>
-              <button
-                onClick={() => {
-                  try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
-                  setDirty(false)
-                  setShowExitDialog(false)
-                  if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
-                  else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
-                }}
-                className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
-              >
-                No guardar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Dialog finalizar orden / marcar como pagada */}
       {finalizeDialogModo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1705,8 +1500,6 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       setSavingFinalize(false)
                       if (finError) { alert(`No se pudo finalizar: ${finError.message}`); return }
                       setEstado('listo' as EstadoOrden)
-                      try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
-                      setDirty(false)
                       setFinalizeDialogModo(null)
                       if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
                       else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
@@ -1723,8 +1516,6 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       setSavingFinalize(false)
                       if (pagError) { alert(`No se pudo guardar: ${pagError.message}`); return }
                       setEstado('pagado' as EstadoOrden)
-                      try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
-                      setDirty(false)
                       setFinalizeDialogModo(null)
                       if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
                       else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
@@ -1744,8 +1535,6 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       setSavingFinalize(false)
                       if (pagError) { alert(`No se pudo guardar: ${pagError.message}`); return }
                       setEstado('pagado' as EstadoOrden)
-                      try { localStorage.removeItem(ORDEN_DRAFT_KEY(ordenId)) } catch { /* ignore */ }
-                      setDirty(false)
                       setFinalizeDialogModo(null)
                       if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
                       else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
@@ -1846,10 +1635,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
         <div className="flex items-center gap-4">
           <button
             onClick={() => {
-              if (dirty) {
-                setPendingNavBack(true); setPendingNavUrl(null)
-                setShowExitDialog(true)
-              } else if (orden.estado === 'pagado' && !(esUMA && numerosOrdenUMA.length === 0)) {
+              if (orden.estado === 'pagado' && !(esUMA && numerosOrdenUMA.length === 0)) {
                 setPendingNavBack(true); setPendingNavUrl(null)
                 setFinalizeDialogModo('finalizar')
               } else if (pagoCompletoSinMarcarRef.current) {
@@ -2524,8 +2310,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               </table>
               </div>
 
-              {/* Lavado de moto — sin cambios, guardado automático al perder el foco */}
-              {lavaMotoConfig?.activo && (
+              {/* Lavado de moto — sin cambios, guardado automático al perder el foco. No aplica a venta directa de repuestos. */}
+              {lavaMotoConfig?.activo && !esVenta && (
               <div className="overflow-x-auto border-t border-gray-100">
               <table className="w-full text-sm">
                 <thead>
@@ -2540,7 +2326,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </thead>
                 <tbody>
                   {/* Lavada de moto */}
-                  {lavaMotoConfig?.activo && (
+                  {lavaMotoConfig?.activo && !esVenta && (
                     <tr className={`border-b ${lavadoQuick.editId || (mostrarLavado && !lavadoItem) ? 'bg-cyan-50/40' : ''}`}>
                       <td className="py-1 px-2"><Badge variant="teal">Lavado</Badge></td>
                       {lavadoItem && !lavadoQuick.editId ? (
@@ -2693,7 +2479,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             />
           )}
 
-          {/* ── MANO DE OBRA ── */}
+          {/* ── MANO DE OBRA — no aplica a venta directa de repuestos ── */}
+          {!esVenta && (
           <div className="rounded-xl border-2 border-orange-100 overflow-hidden">
             {/* Header naranja */}
             <div className="bg-orange-500 px-5 py-3.5">
@@ -2817,6 +2604,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             </div>
           </div>
           </div>
+          )}
 
           {/* ── TOTAL GENERAL ── */}
           <div className="bg-gray-900 rounded-xl px-5 py-4 space-y-1.5">
@@ -2824,10 +2612,12 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               <span>Repuestos</span>
               <span>{formatCOP(totalRepuestosLive)}</span>
             </div>
+            {!esVenta && (
             <div className="flex justify-between text-sm text-gray-300">
               <span>Mano de obra</span>
               <span>{formatCOP(totalManoObraLive)}</span>
             </div>
+            )}
             <div className="flex justify-between font-bold text-white text-base pt-1 border-t border-gray-700">
               <span>Total</span>
               <span>{formatCOP(totalLive)}</span>
@@ -2852,6 +2642,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               inputMode="numeric"
               value={formatTelefono(telefono)}
               onChange={(e) => setTelefono(soloDigitos(e.target.value))}
+              onBlur={() => guardarCampoSidebar(
+                { telefono: telefono || null },
+                `Actualizó el teléfono de la orden #${orden.numero}`,
+              )}
               onCopy={(e) => { e.preventDefault(); navigator.clipboard.writeText(telefono) }}
               placeholder="(310) 000-0000"
               maxLength={14}
@@ -2884,7 +2678,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     <div className="flex items-center gap-1.5 bg-gray-100 border border-gray-300 rounded-lg px-3 py-1.5">
                       <span className="text-sm font-medium text-gray-700">No aplica</span>
                       <button
-                        onClick={() => setNumerosOrdenUMA((prev) => prev.filter((n) => n !== 'N/A'))}
+                        onClick={() => actualizarNumerosUMA((prev) => prev.filter((n) => n !== 'N/A'))}
                         className="text-gray-400 hover:text-red-500 transition-colors"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2902,7 +2696,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       <div key={idx} className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-1.5">
                         <span className="font-mono text-sm font-semibold text-blue-800">{num}</span>
                         <button
-                          onClick={() => setNumerosOrdenUMA((prev) => prev.filter((n) => n !== num))}
+                          onClick={() => actualizarNumerosUMA((prev) => prev.filter((n) => n !== num))}
                           className="text-blue-300 hover:text-red-500 transition-colors ml-2"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2926,7 +2720,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && nuevoNumOrden.trim()) {
                             const num = nuevoNumOrden.trim()
-                            if (!numerosOrdenUMA.includes(num)) setNumerosOrdenUMA((prev) => [...prev, num])
+                            if (!numerosOrdenUMA.includes(num)) actualizarNumerosUMA((prev) => [...prev, num])
                             setNuevoNumOrden('')
                           }
                         }}
@@ -2937,7 +2731,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         onClick={() => {
                           const num = nuevoNumOrden.trim()
                           if (!num || numerosOrdenUMA.includes(num)) return
-                          setNumerosOrdenUMA((prev) => [...prev, num])
+                          actualizarNumerosUMA((prev) => [...prev, num])
                           setNuevoNumOrden('')
                         }}
                         disabled={!nuevoNumOrden.trim()}
@@ -2947,7 +2741,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       </button>
                     </div>
                     <button
-                      onClick={() => setNumerosOrdenUMA((prev) => [...prev.filter((n) => n !== 'N/A'), 'N/A'])}
+                      onClick={() => actualizarNumerosUMA((prev) => [...prev.filter((n) => n !== 'N/A'), 'N/A'])}
                       className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors"
                     >
                       No aplica
@@ -3155,6 +2949,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             <textarea
               value={notas}
               onChange={(e) => setNotas(e.target.value)}
+              onBlur={() => guardarCampoSidebar(
+                { notas: notas.trim() || null },
+                `Actualizó las notas internas de la orden #${orden.numero}`,
+              )}
               placeholder="Observaciones, recordatorios, detalles adicionales..."
               rows={3}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -3171,7 +2969,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 { value: 'pendiente', label: 'Pendiente' },
                 { value: 'pagado', label: 'Pagado' },
                 { value: 'listo', label: 'Finalizado' },
-              ] as { value: EstadoOrden; label: string }[]).map((s) => {
+              ] as { value: EstadoOrden; label: string }[]).filter((s) => !esVenta || s.value !== 'programado').map((s) => {
                 const tieneRepPendientes = s.value === 'listo' &&
                   items.some((i) => i.origen !== 'mano_obra' && i.estado_repuesto === 'pedido')
                 const totalPagadoOrden = pagosOrden.filter((p) => p.monto > 0).reduce((sum, p) => sum + p.monto, 0)
@@ -3195,7 +2993,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     key={s.value}
                     onClick={() => {
                       if (bloqueado) { alert(titleMsg ?? 'No se puede cambiar a este estado todavía.'); return }
-                      setEstado(s.value)
+                      cambiarEstado(s.value)
                     }}
                     title={titleMsg}
                     className={`w-full py-2 px-3 rounded-lg text-sm font-medium text-left transition-colors ${
@@ -3230,6 +3028,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     type="datetime-local"
                     value={fechaProgramada}
                     onChange={(e) => setFechaProgramada(e.target.value)}
+                    onBlur={() => guardarCampoSidebar(
+                      { fecha_programada: fechaProgramada ? new Date(fechaProgramada).toISOString() : null },
+                      `Actualizó la fecha programada de la orden #${orden.numero}`,
+                    )}
                     className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm"
                   />
                 </div>
@@ -3241,6 +3043,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     min="0"
                     value={duracionEstimada}
                     onChange={(e) => setDuracionEstimada(e.target.value)}
+                    onBlur={() => guardarCampoSidebar(
+                      { duracion_estimada_horas: duracionEstimada ? parseFloat(duracionEstimada) : null },
+                      `Actualizó la duración estimada de la orden #${orden.numero}`,
+                    )}
                     placeholder="Ej: 1.5"
                     className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm"
                   />
@@ -3251,27 +3057,20 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               <input
                 value={motivoPendiente}
                 onChange={(e) => setMotivoPendiente(e.target.value)}
+                onBlur={() => guardarCampoSidebar(
+                  { motivo_pendiente: motivoPendiente.trim() || null },
+                  `Actualizó el motivo pendiente de la orden #${orden.numero}`,
+                )}
                 placeholder="Motivo pendiente *"
                 className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm"
               />
             )}
-          </div>
-
-          {/* Botón guardar */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
-            {dirty && !savedOk && (
-              <p className="text-xs text-amber-600 text-center font-medium">Hay cambios sin guardar</p>
-            )}
-            <Button className="w-full" onClick={handleGuardar} loading={saving}>
-              Guardar cambios
-            </Button>
-
             {savedOk && (
-              <div className="flex items-center gap-2 px-3 py-2.5 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 font-medium">
-                <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 font-medium">
+                <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                Datos guardados correctamente
+                Guardado
               </div>
             )}
           </div>

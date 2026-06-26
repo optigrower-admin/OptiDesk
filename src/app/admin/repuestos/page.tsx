@@ -6,18 +6,11 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
 import { Badge } from '@/components/ui/Badge'
-import { registrarAuditoria } from '@/lib/audit'
 import { ImportadorExcel } from '@/components/ImportadorExcel'
 import { importarVentaRepuestos, previsualizarVentaRepuestos } from '@/lib/bulkImport'
 
 type Tab = 'catalogo' | 'ventas'
 type FiltroOrigen = 'todos' | 'uma' | 'terceros'
-
-function estadoPagoDeTotales(abono: number, total: number): 'pagado' | 'abono' | 'pendiente' {
-  if (total <= 0 || abono <= 0) return 'pendiente'
-  if (abono >= total) return 'pagado'
-  return 'abono'
-}
 
 // ─── CATÁLOGO ────────────────────────────────────────────────
 interface ItemCatalogo {
@@ -197,36 +190,6 @@ export default function AdminRepuestosPage() {
   }, [tab, cargarCatalogo, cargarVentas])
 
   const limpiarBuscadoresCatalogo = () => { setBusquedaRef(''); setBusquedaNombre(''); setBusquedaModelo('') }
-
-  const handleDeleteItem = async (item: ItemVenta) => {
-    if (item.ordenes?.tipo_orden !== 'venta_repuestos') return
-    if (!confirm(`¿Eliminar "${item.descripcion}"?`)) return
-    await supabase.from('items_orden').delete().eq('id', item.id)
-    if (item.ordenes) {
-      const ordenIdDel = item.ordenes.id
-      const [{ data: rest }, { data: ordenActual }] = await Promise.all([
-        supabase.from('items_orden').select('precio_venta, cantidad').eq('orden_id', ordenIdDel),
-        supabase.from('ordenes').select('valor_abono').eq('id', ordenIdDel).single(),
-      ])
-      const newTotal = ((rest as { precio_venta: number; cantidad: number }[]) ?? []).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-      // Nunca dejar el abono guardado por encima del nuevo total — si se borran
-      // todos los ítems, el abono debe quedar en 0 (si no, Caja sigue mostrando
-      // un ingreso fantasma por una venta que ya no tiene nada que vender).
-      const newAbono = Math.min((ordenActual as { valor_abono: number } | null)?.valor_abono ?? 0, newTotal)
-      const newEstadoPago = estadoPagoDeTotales(newAbono, newTotal)
-      await supabase.from('ordenes').update({ valor_total: newTotal, valor_abono: newAbono, estado_pago: newEstadoPago }).eq('id', ordenIdDel)
-    }
-    await registrarAuditoria(supabase, {
-      tenant_id: profile?.tenant_id ?? '',
-      tabla: 'items_orden',
-      registro_id: item.id,
-      tipo: 'eliminacion',
-      valor_anterior: { descripcion: item.descripcion, precio_venta: item.precio_venta, cantidad: item.cantidad },
-      descripcion: `Eliminó ítem "${item.descripcion}" de venta directa #${item.ordenes?.numero}`,
-      usuario_id: profile?.id,
-    })
-    await cargarVentas()
-  }
 
   const openAudit = async (item: ItemVenta) => {
     if (!item.ordenes) return
@@ -643,19 +606,12 @@ export default function AdminRepuestosPage() {
                             </button>
                             {esVentaDirecta && item.ordenes && (
                               <Link href={`/admin/repuestos/nueva-venta?id=${item.ordenes.id}`}
-                                className="text-gray-400 hover:text-amber-600 p-1.5 rounded hover:bg-amber-50" title="Editar"
+                                className="text-gray-400 hover:text-amber-600 p-1.5 rounded hover:bg-amber-50" title="Editar / eliminar (en la venta)"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
                               </Link>
-                            )}
-                            {esVentaDirecta && (
-                              <button onClick={() => handleDeleteItem(item)} className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50" title="Eliminar">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
                             )}
                           </div>
                         </td>

@@ -1,30 +1,18 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { ConsultaRepuestos } from '@/components/ConsultaRepuestos'
 import { ClienteMotoPanel } from '@/components/ClienteMotoPanel'
 import { formatCOP, normalizarPlaca } from '@/lib/utils'
 import { upsertMotoCliente } from '@/lib/clienteMoto'
 import { registrarSalida, registrarDevolucion } from '@/lib/movimientos'
 import { registrarAuditoria } from '@/lib/audit'
 import type { ClienteMotoPanelResult } from '@/components/ClienteMotoPanel'
-
-interface ItemVenta {
-  id?: string
-  descripcion: string
-  origen: 'uma' | 'externo' | 'insumo'
-  repuesto_uma_id?: string
-  repuesto_externo_id?: string
-  cantidad: number
-  costo: number
-  precio_venta: number
-  metodo_pago_id?: string | null
-}
 
 function soloDigitos(v: string) { return v.replace(/\D/g, '') }
 
@@ -33,6 +21,12 @@ function formatCelular(digits: string): string {
   if (d.length <= 3) return d
   if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+}
+
+function isoToDatetimeLocal(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 interface OrdenPlaca {
@@ -44,52 +38,98 @@ interface OrdenPlaca {
   valor_total: number
 }
 
+interface ItemOrden {
+  id: string
+  descripcion: string
+  origen: 'uma' | 'externo' | 'insumo'
+  cantidad: number
+  costo: number
+  precio_venta: number
+  repuesto_uma_id: string | null
+  repuesto_externo_id: string | null
+  metodo_pago_id: string | null
+  created_at: string
+}
+
+interface PagoOrden {
+  id: string
+  monto: number
+  metodo_pago_id: string | null
+  fecha: string
+  notas: string | null
+  metodos_pago: { nombre: string } | null
+}
+
+interface OrdenVenta {
+  id: string
+  numero: number
+  cliente: string
+  cedula: string | null
+  celular: string | null
+  placa: string | null
+  tenant_id: string
+  moto_id: string | null
+  cliente_id: string | null
+}
+
+type EstadoPago = 'pagado' | 'abono' | 'pendiente'
+
 const DRAFT_KEY = 'optiDesk_venta_directa_draft'
-const PANEL_INIT: ClienteMotoPanelResult = { motoId: null, clienteId: null, motoExtras: { marca: '', modelo: '', año: '', color: '' }, isKnownMoto: false }
+const PANEL_INIT: ClienteMotoPanelResult = { motoId: null, clienteId: null, motoExtras: { marca: '', modelo: '', año: '', color: '', kilometraje: '' }, isKnownMoto: false }
 
 function NuevaVentaContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const editId = searchParams.get('id')
+  const ordenId = searchParams.get('id')
   const { profile } = useAuth()
   const supabase = createClient()
+  const esGerencia = profile?.rol === 'gerencia'
 
+  // ─── Datos del cliente (creación y edición comparten estos campos) ───────
   const [cliente, setCliente] = useState('')
   const [cedula, setCedula] = useState('')
   const [celular, setCelular] = useState('')
   const [placa, setPlaca] = useState('')
   const [panelResult, setPanelResult] = useState<ClienteMotoPanelResult>(PANEL_INIT)
 
-  // Historial de la placa
+  // ─── Solo modo creación: historial de placa + borrador ───────────────────
   const [historialPlaca, setHistorialPlaca] = useState<OrdenPlaca[]>([])
   const [loadingHistorial, setLoadingHistorial] = useState(false)
-
-  const [originalItems, setOriginalItems] = useState<ItemVenta[]>([])
-  // Repuestos — una fila UMA y una fila Externo, igual de simple que en Servicio Técnico:
-  // sin catálogo ni botón de agregar, solo descripción (opcional, con valor predeterminado).
-  const UMA_DESC_DEFAULT = 'Repuesto UMA'
-  const EXT_DESC_DEFAULT = 'Repuesto externo'
-  const [umaSlot, setUmaSlot] = useState<{ id?: string; desc: string; valor: string }>({ desc: UMA_DESC_DEFAULT, valor: '' })
-  const [extSlot, setExtSlot] = useState<{ id?: string; desc: string; costo: string; valor: string; metodo: string }>({ desc: EXT_DESC_DEFAULT, costo: '', valor: '', metodo: '' })
-  // true mientras se está escribiendo/editando la fila; al perder el foco se "asienta" en
-  // vista de solo lectura con lápiz/papelera, igual que en Servicio Técnico.
-  const [umaEditando, setUmaEditando] = useState(false)
-  const [extEditando, setExtEditando] = useState(false)
-
-  const [pagado, setPagado] = useState(true)
-  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
-  const [metodoPagoId, setMetodoPagoId] = useState('')
-
-  const [saving, setSaving] = useState(false)
+  const [creando, setCreando] = useState(false)
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
-  const [loadingEdit, setLoadingEdit] = useState(!!editId)
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const placaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // ─── Modo edición: la venta ya existe ─────────────────────────────────────
+  const [orden, setOrden] = useState<OrdenVenta | null>(null)
+  const [loadingOrden, setLoadingOrden] = useState(!!ordenId)
+  const [items, setItems] = useState<ItemOrden[]>([])
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [pagosOrden, setPagosOrden] = useState<PagoOrden[]>([])
+  const [savedOk, setSavedOk] = useState(false)
+
+  // Repuestos
+  const [showAgregarRepuesto, setShowAgregarRepuesto] = useState(false)
+  const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; costo: string; precio: string; metodo_pago_id: string } | null>(null)
+  const [editandoItemFechaId, setEditandoItemFechaId] = useState<string | null>(null)
+  const [itemFechaInputValue, setItemFechaInputValue] = useState('')
+  const [savingItemFecha, setSavingItemFecha] = useState(false)
+
+  // Pagos
+  const [nuevoPagoMonto, setNuevoPagoMonto] = useState('')
+  const [nuevoPagoMetodo, setNuevoPagoMetodo] = useState('')
+  const [nuevoPagoNotas, setNuevoPagoNotas] = useState('')
+  const [nuevoPagoSigno, setNuevoPagoSigno] = useState<'positivo' | 'negativo'>('positivo')
+  const [savingPago, setSavingPago] = useState(false)
+  const [pagoError, setPagoError] = useState('')
+  const [editandoPagoFechaId, setEditandoPagoFechaId] = useState<string | null>(null)
+  const [pagoFechaInputValue, setPagoFechaInputValue] = useState('')
+  const [savingPagoFecha, setSavingPagoFecha] = useState(false)
+
   // ─── Borrador (solo en modo creación) ───────────────────
   useEffect(() => {
-    if (editId) return
+    if (ordenId) return
     try {
       const saved = localStorage.getItem(DRAFT_KEY)
       if (saved) {
@@ -100,10 +140,10 @@ function NuevaVentaContent() {
         if (d.placa) setPlaca(d.placa)
       }
     } catch { /* borrador inválido */ }
-  }, [editId])
+  }, [ordenId])
 
   useEffect(() => {
-    if (editId) return
+    if (ordenId) return
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ cliente, cedula, celular, placa }))
@@ -111,40 +151,34 @@ function NuevaVentaContent() {
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [editId, cliente, cedula, celular, placa])
+  }, [ordenId, cliente, cedula, celular, placa])
 
   // ─── Cargar venta existente (modo edición) ──────────────
-  useEffect(() => {
-    if (!editId) return
-    let activo = true
-    ;(async () => {
-      const [{ data: orden }, { data: itemsData }] = await Promise.all([
-        supabase.from('ordenes').select('cliente, cedula, celular, placa, estado_pago, metodo_pago_id, moto_id, cliente_id').eq('id', editId).single(),
-        supabase.from('items_orden').select('id, descripcion, origen, repuesto_uma_id, repuesto_externo_id, cantidad, costo, precio_venta, metodo_pago_id').eq('orden_id', editId),
-      ])
-      if (!activo) return
-      if (orden) {
-        const o = orden as { cliente: string; cedula: string | null; celular: string | null; placa: string | null; estado_pago: string | null; metodo_pago_id: string | null; moto_id: string | null; cliente_id: string | null }
-        setCliente(o.cliente ?? '')
-        setCedula(o.cedula ?? '')
-        setCelular(o.celular ?? '')
-        setPlaca(o.placa ?? '')
-        setPagado(o.estado_pago !== 'pendiente')
-        setMetodoPagoId(o.metodo_pago_id ?? '')
-        setPanelResult({ motoId: o.moto_id, clienteId: o.cliente_id, motoExtras: { marca: '', modelo: '', año: '', color: '' }, isKnownMoto: !!o.moto_id })
-      }
-      const loadedItems = ((itemsData as ItemVenta[]) ?? []).filter((i) => i.origen === 'uma' || i.origen === 'externo')
-      setOriginalItems(loadedItems)
-      const umaIt = loadedItems.find((i) => i.origen === 'uma')
-      const extIt = loadedItems.find((i) => i.origen === 'externo')
-      if (umaIt) setUmaSlot({ id: umaIt.id, desc: umaIt.descripcion, valor: String(umaIt.precio_venta) })
-      if (extIt) setExtSlot({ id: extIt.id, desc: extIt.descripcion, costo: String(extIt.costo), valor: String(extIt.precio_venta), metodo: extIt.metodo_pago_id ?? '' })
-      setLoadingEdit(false)
-    })()
-    return () => { activo = false }
-  }, [editId])
+  const cargar = useCallback(async () => {
+    if (!ordenId || !profile?.tenant_id) return
+    const [{ data: o }, { data: i }, { data: mp }, { data: pg }] = await Promise.all([
+      supabase.from('ordenes').select('id, numero, cliente, cedula, celular, placa, tenant_id, moto_id, cliente_id').eq('id', ordenId).single(),
+      supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, repuesto_uma_id, repuesto_externo_id, metodo_pago_id, created_at').eq('orden_id', ordenId).neq('origen', 'mano_obra'),
+      supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', profile.tenant_id).eq('activo', true),
+      supabase.from('pagos_orden').select('id, monto, metodo_pago_id, fecha, notas, metodos_pago(nombre)').eq('orden_id', ordenId).order('fecha', { ascending: true }),
+    ])
+    if (o) {
+      const ord = o as unknown as OrdenVenta
+      setOrden(ord)
+      setCliente(ord.cliente)
+      setCedula(ord.cedula ?? '')
+      setCelular(ord.celular ?? '')
+      setPlaca(ord.placa ?? '')
+    }
+    setItems((i as unknown as ItemOrden[]) ?? [])
+    setMetodosPago((mp as unknown as { id: string; nombre: string }[]) ?? [])
+    setPagosOrden((pg as unknown as PagoOrden[]) ?? [])
+    setLoadingOrden(false)
+  }, [ordenId, profile?.tenant_id])
 
-  // ─── Historial de placa ──────────────────────────────────
+  useEffect(() => { if (ordenId) cargar() }, [ordenId, cargar])
+
+  // ─── Historial de placa (solo modo creación) ──────────────────────────────
   const buscarHistorialPlaca = useCallback(async (placaNorm: string) => {
     if (!profile?.tenant_id || !placaNorm) {
       setHistorialPlaca([])
@@ -162,65 +196,26 @@ function NuevaVentaContent() {
     setLoadingHistorial(false)
   }, [profile?.tenant_id])
 
-  // Debounce la búsqueda de placa
   useEffect(() => {
+    if (ordenId) return
     if (placaTimer.current) clearTimeout(placaTimer.current)
     const norm = normalizarPlaca(placa)
     if (!norm) { setHistorialPlaca([]); return }
     placaTimer.current = setTimeout(() => buscarHistorialPlaca(norm), 600)
     return () => { if (placaTimer.current) clearTimeout(placaTimer.current) }
-  }, [placa, buscarHistorialPlaca])
+  }, [ordenId, placa, buscarHistorialPlaca])
 
-  useEffect(() => {
-    if (!profile?.tenant_id) return
-    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', profile.tenant_id).eq('activo', true)
-      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
-  }, [profile?.tenant_id])
-
-  const umaListo = !!umaSlot.valor
-  const extListo = !!extSlot.valor && !!extSlot.metodo
-  const items: ItemVenta[] = []
-  if (umaListo) {
-    items.push({
-      id: umaSlot.id,
-      descripcion: umaSlot.desc.trim() || 'Repuesto UMA',
-      origen: 'uma',
-      cantidad: 1,
-      costo: 0,
-      precio_venta: parseInt(umaSlot.valor.replace(/\D/g, ''), 10),
-    })
-  }
-  if (extListo) {
-    items.push({
-      id: extSlot.id,
-      descripcion: extSlot.desc.trim() || 'Repuesto externo',
-      origen: 'externo',
-      cantidad: 1,
-      costo: parseInt(extSlot.costo.replace(/\D/g, '') || '0', 10),
-      precio_venta: parseInt(extSlot.valor.replace(/\D/g, ''), 10),
-      metodo_pago_id: extSlot.metodo,
-    })
-  }
-
-  const handleGuardar = async () => {
-    const faltantes: string[] = []
-    if (!cliente.trim()) faltantes.push('nombre del cliente')
-    if (items.length === 0) faltantes.push('al menos un repuesto')
-    if (pagado && !metodoPagoId) faltantes.push('método de pago')
-    if (faltantes.length > 0) {
-      setError(`Faltan datos obligatorios: ${faltantes.join(', ')}.`)
+  // ─── Crear la venta (modo creación) ──────────────
+  const handleCrear = async () => {
+    if (!cliente.trim()) {
+      setError('Ingresa el nombre del cliente.')
       return
     }
     if (!profile?.tenant_id) return
     setError('')
-    setSaving(true)
+    setCreando(true)
     try {
-      const total = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-      const estadoPago = pagado ? 'pagado' : 'pendiente'
-      const valorAbonoNum = pagado ? total : 0
       const placaNorm = placa ? normalizarPlaca(placa) : null
-
-      // Registrar moto y cliente si hay datos suficientes
       const { motoId, clienteId } = await upsertMotoCliente({
         supabase, tenantId: profile.tenant_id,
         placa: placaNorm, clienteNombre: cliente,
@@ -229,93 +224,7 @@ function NuevaVentaContent() {
         motoExtras: panelResult.motoExtras,
       })
 
-      if (editId) {
-        // ─── Modo edición: reconciliar ítems primero, y solo si todo sale bien
-        // actualizar el total/abono de la orden — así un insert de ítems fallido
-        // nunca deja la orden con un abono que no corresponde a ningún ítem real.
-        const removidos = originalItems.filter((orig) => !items.some((i) => i.id === orig.id))
-        const agregados = items.filter((i) => !i.id)
-
-        if (removidos.length > 0) {
-          await supabase.from('items_orden').delete().in('id', removidos.map((i) => i.id as string))
-          await Promise.all(
-            removidos.map((item) =>
-              registrarDevolucion(supabase, {
-                tenantId: profile.tenant_id,
-                repuesto_uma_id: item.repuesto_uma_id ?? null,
-                repuesto_externo_id: item.repuesto_externo_id ?? null,
-                cantidad: item.cantidad,
-                costo_unitario: item.costo,
-                precio_unitario: item.precio_venta,
-                orden_id: editId,
-                registrado_por: profile.id,
-              })
-            )
-          )
-        }
-
-        if (agregados.length > 0) {
-          const { error: insErr } = await supabase.from('items_orden').insert(
-            agregados.map((item) => ({
-              orden_id: editId,
-              descripcion: item.descripcion,
-              origen: item.origen,
-              repuesto_uma_id: item.repuesto_uma_id ?? null,
-              repuesto_externo_id: item.repuesto_externo_id ?? null,
-              cantidad: item.cantidad,
-              costo: item.costo,
-              precio_venta: item.precio_venta,
-              metodo_pago_id: item.metodo_pago_id ?? null,
-            }))
-          )
-          if (insErr) throw insErr
-          await Promise.all(
-            agregados.map((item) =>
-              registrarSalida(supabase, 'venta_directa', {
-                tenantId: profile.tenant_id,
-                repuesto_uma_id: item.repuesto_uma_id ?? null,
-                repuesto_externo_id: item.repuesto_externo_id ?? null,
-                cantidad: item.cantidad,
-                costo_unitario: item.costo,
-                precio_unitario: item.precio_venta,
-                orden_id: editId,
-                registrado_por: profile.id,
-              })
-            )
-          )
-        }
-
-        // El total/abono se guarda solo después de que los ítems ya quedaron
-        // reconciliados con éxito en items_orden.
-        const { error: updErr } = await supabase.from('ordenes').update({
-          placa: placaNorm || null,
-          cliente,
-          cedula: cedula || null,
-          celular: celular || null,
-          estado_pago: estadoPago,
-          valor_total: total,
-          valor_abono: valorAbonoNum,
-          metodo_pago_id: metodoPagoId || null,
-          moto_id: motoId,
-          cliente_id: clienteId,
-        }).eq('id', editId)
-        if (updErr) throw updErr
-
-        await registrarAuditoria(supabase, {
-          tenant_id: profile.tenant_id,
-          tabla: 'ordenes',
-          registro_id: editId,
-          tipo: 'edicion',
-          valor_nuevo: { cliente, total, cantidad_items: items.length },
-          descripcion: `Editó venta directa de "${cliente}" — ${items.length} ítem${items.length !== 1 ? 's' : ''}, ${formatCOP(total)}`,
-          usuario_id: profile.id,
-        })
-
-        router.push('/admin/repuestos')
-        return
-      }
-
-      const { data: orden, error: ordenErr } = await supabase
+      const { data: nuevaOrden, error: ordenErr } = await supabase
         .from('ordenes')
         .insert({
           tenant_id: profile.tenant_id,
@@ -323,12 +232,12 @@ function NuevaVentaContent() {
           cliente,
           cedula: cedula || null,
           celular: celular || null,
+          telefono: celular || null,
           tipo_orden: 'venta_repuestos',
-          estado: 'listo',
-          estado_pago: estadoPago,
-          valor_total: total,
-          valor_abono: valorAbonoNum,
-          metodo_pago_id: metodoPagoId || null,
+          estado: 'en_proceso',
+          estado_pago: 'pendiente',
+          valor_total: 0,
+          valor_abono: 0,
           numero: 0,
           moto_id: motoId,
           cliente_id: clienteId,
@@ -336,59 +245,21 @@ function NuevaVentaContent() {
         .select('id')
         .single()
 
-      if (ordenErr || !orden) throw ordenErr ?? new Error('No se pudo crear la venta')
-      const ordenData = orden as { id: string }
-
-      const { error: itemsErr } = await supabase.from('items_orden').insert(
-        items.map((item) => ({
-          orden_id: ordenData.id,
-          descripcion: item.descripcion,
-          origen: item.origen,
-          repuesto_uma_id: item.repuesto_uma_id ?? null,
-          repuesto_externo_id: item.repuesto_externo_id ?? null,
-          cantidad: item.cantidad,
-          costo: item.costo,
-          precio_venta: item.precio_venta,
-          metodo_pago_id: item.metodo_pago_id ?? null,
-        }))
-      )
-      if (itemsErr) {
-        // Si los ítems no se guardaron, la orden no puede quedar registrando un
-        // total/abono que no corresponde a ningún ítem real (la "venta fantasma"
-        // que aparece en Caja sin nada que la respalde). Se revierte la orden y
-        // se avisa para que el usuario reintente — no queda ningún dato a medias.
-        await supabase.from('ordenes').delete().eq('id', ordenData.id)
-        throw itemsErr
-      }
-
-      // Registrar salidas en inventario y decrementar stock UMA
-      await Promise.all(
-        items.map((item) =>
-          registrarSalida(supabase, 'venta_directa', {
-            tenantId: profile.tenant_id,
-            repuesto_uma_id: item.repuesto_uma_id ?? null,
-            repuesto_externo_id: item.repuesto_externo_id ?? null,
-            cantidad: item.cantidad,
-            costo_unitario: item.costo,
-            precio_unitario: item.precio_venta,
-            orden_id: ordenData.id,
-            registrado_por: profile.id,
-          })
-        )
-      )
+      if (ordenErr || !nuevaOrden) throw ordenErr ?? new Error('No se pudo crear la venta')
+      const ordenData = nuevaOrden as { id: string }
 
       await registrarAuditoria(supabase, {
         tenant_id: profile.tenant_id,
         tabla: 'ordenes',
         registro_id: ordenData.id,
         tipo: 'movimiento',
-        valor_nuevo: { cliente, total, cantidad_items: items.length },
-        descripcion: `Registró venta directa a "${cliente}" — ${items.length} ítem${items.length !== 1 ? 's' : ''}, ${formatCOP(total)}`,
+        valor_nuevo: { cliente },
+        descripcion: `Inició una venta directa a "${cliente}"`,
         usuario_id: profile.id,
       })
 
       localStorage.removeItem(DRAFT_KEY)
-      router.push('/admin/repuestos')
+      router.replace(`/admin/repuestos/nueva-venta?id=${ordenData.id}`)
     } catch (err: unknown) {
       const mensaje =
         err instanceof Error
@@ -398,11 +269,372 @@ function NuevaVentaContent() {
           : 'Error al guardar'
       setError(mensaje)
     } finally {
-      setSaving(false)
+      setCreando(false)
     }
   }
 
-  const total = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+  // ─── Datos del cliente — autoguardado por campo (modo edición) ───────────
+  const guardarCampoCliente = async (campo: 'cliente' | 'cedula' | 'celular' | 'placa', valor: string) => {
+    if (!orden || !ordenId) return
+    const cambios: Record<string, unknown> = {}
+    if (campo === 'placa') cambios.placa = valor ? normalizarPlaca(valor) : null
+    else cambios[campo] = valor || null
+    const { error: updError } = await supabase.from('ordenes').update(cambios).eq('id', ordenId)
+    if (updError) {
+      alert(`No se pudo guardar: ${updError.message}`)
+      return
+    }
+    await registrarAuditoria(supabase, {
+      tenant_id: orden.tenant_id,
+      tabla: 'ordenes',
+      registro_id: ordenId,
+      tipo: 'edicion',
+      valor_nuevo: cambios,
+      descripcion: `Actualizó ${campo} de la venta directa #${orden.numero}`,
+      usuario_id: profile?.id,
+    })
+    setSavedOk(true)
+    setTimeout(() => setSavedOk(false), 1500)
+  }
+
+  // ─── Repuestos ────────────────────────────────────────────
+  const handleAddItem = async (item: {
+    descripcion: string; origen: 'uma' | 'externo' | 'insumo'; repuesto_uma_id?: string;
+    repuesto_externo_id?: string; cantidad: number; costo: number; precio_venta: number;
+    metodo_pago_id?: string | null;
+  }) => {
+    if (!ordenId || !orden) return
+    const { data, error: insError } = await supabase.from('items_orden').insert({
+      orden_id: ordenId,
+      ...item,
+    }).select('*').single()
+    if (insError) {
+      alert(`No se pudo guardar "${item.descripcion}": ${insError.message}`)
+      return
+    }
+    if (data) {
+      const itemId = (data as { id: string }).id
+      const nuevoTotal = [...items, data as unknown as ItemOrden].reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+      await Promise.all([
+        supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId),
+        registrarSalida(supabase, 'venta_directa', {
+          tenantId: orden.tenant_id,
+          repuesto_uma_id: item.repuesto_uma_id ?? null,
+          repuesto_externo_id: item.repuesto_externo_id ?? null,
+          cantidad: item.cantidad,
+          costo_unitario: item.costo,
+          precio_unitario: item.precio_venta,
+          orden_id: ordenId,
+          item_orden_id: itemId,
+          registrado_por: profile?.id,
+        }),
+        registrarAuditoria(supabase, {
+          tenant_id: orden.tenant_id,
+          tabla: 'items_orden',
+          registro_id: itemId,
+          tipo: 'movimiento',
+          descripcion: `Agregó repuesto "${item.descripcion}" (×${item.cantidad}) → $${(item.precio_venta * item.cantidad).toLocaleString('es-CO')} | venta directa #${orden.numero}`,
+          usuario_id: profile?.id,
+        }),
+      ])
+      await cargar()
+    }
+  }
+
+  const handleDeleteItem = async (item: ItemOrden) => {
+    if (!ordenId || !orden) return
+    if (!confirm(`¿Eliminar "${item.descripcion}"?`)) return
+    await supabase.from('items_orden').delete().eq('id', item.id)
+    const nuevoTotal = items.filter((i) => i.id !== item.id).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+    await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+    await registrarDevolucion(supabase, {
+      tenantId: orden.tenant_id,
+      repuesto_uma_id: item.repuesto_uma_id ?? undefined,
+      cantidad: item.cantidad,
+      costo_unitario: item.costo,
+      precio_unitario: item.precio_venta,
+      orden_id: ordenId,
+      item_orden_id: item.id,
+      registrado_por: profile?.id,
+    })
+    await registrarAuditoria(supabase, {
+      tenant_id: orden.tenant_id,
+      tabla: 'items_orden',
+      registro_id: item.id,
+      tipo: 'eliminacion',
+      valor_anterior: item as unknown as Record<string, unknown>,
+      descripcion: `Eliminó ítem "${item.descripcion}" de venta directa #${orden.numero}`,
+      usuario_id: profile?.id,
+    })
+    await cargar()
+  }
+
+  const iniciarEditarItem = (item: ItemOrden) => setEditingItem({
+    id: item.id,
+    descripcion: item.descripcion,
+    costo: String(item.costo),
+    precio: String(item.precio_venta),
+    metodo_pago_id: item.metodo_pago_id ?? '',
+  })
+
+  const actualizarItemRepuesto = async (id: string, cambios: Partial<{ descripcion: string; precio_venta: number; costo: number; metodo_pago_id: string | null }>) => {
+    if (!orden) return
+    const itemAnterior = items.find((i) => i.id === id)
+    const { error: updError } = await supabase.from('items_orden').update(cambios).eq('id', id)
+    if (updError) {
+      alert(`No se pudo guardar el cambio: ${updError.message}`)
+      return
+    }
+    const nuevoTotal = items.map((i) => i.id === id ? { ...i, ...cambios } : i).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+    await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId as string)
+    await registrarAuditoria(supabase, {
+      tenant_id: orden.tenant_id,
+      tabla: 'items_orden',
+      registro_id: id,
+      tipo: 'edicion',
+      valor_anterior: itemAnterior ? { descripcion: itemAnterior.descripcion, precio_venta: itemAnterior.precio_venta, costo: itemAnterior.costo, metodo_pago_id: itemAnterior.metodo_pago_id } : undefined,
+      valor_nuevo: cambios,
+      descripcion: `Editó repuesto "${cambios.descripcion ?? itemAnterior?.descripcion}" | venta directa #${orden.numero}`,
+      usuario_id: profile?.id,
+    })
+  }
+
+  const handleEditItem = async () => {
+    if (!editingItem || !editingItem.descripcion.trim()) return
+    const itemActual = items.find((i) => i.id === editingItem.id)
+    const precio = parseInt(editingItem.precio.replace(/\D/g, ''), 10) || 0
+    const costo = itemActual?.origen === 'externo' ? (parseInt(editingItem.costo.replace(/\D/g, ''), 10) || 0) : 0
+    await actualizarItemRepuesto(editingItem.id, {
+      descripcion: editingItem.descripcion.trim(),
+      precio_venta: precio,
+      costo,
+      metodo_pago_id: itemActual?.origen === 'externo' ? (editingItem.metodo_pago_id || null) : null,
+    })
+    setEditingItem(null)
+    await cargar()
+  }
+
+  const abrirEditarFechaItem = (item: ItemOrden) => {
+    setItemFechaInputValue(isoToDatetimeLocal(item.created_at))
+    setEditandoItemFechaId(item.id)
+  }
+
+  const handleGuardarFechaItem = async () => {
+    if (!orden || !editandoItemFechaId || !itemFechaInputValue) return
+    setSavingItemFecha(true)
+    try {
+      const item = items.find((i) => i.id === editandoItemFechaId)
+      const nuevaFechaISO = new Date(itemFechaInputValue).toISOString()
+      await supabase.from('items_orden').update({ created_at: nuevaFechaISO }).eq('id', editandoItemFechaId)
+      await registrarAuditoria(supabase, {
+        tenant_id: orden.tenant_id,
+        tabla: 'items_orden',
+        registro_id: editandoItemFechaId,
+        tipo: 'edicion',
+        valor_anterior: { created_at: item?.created_at },
+        valor_nuevo: { created_at: nuevaFechaISO },
+        descripcion: `Gerencia editó la fecha de un repuesto | venta directa #${orden.numero}`,
+        usuario_id: profile?.id,
+      })
+      setEditandoItemFechaId(null)
+      await cargar()
+    } finally {
+      setSavingItemFecha(false)
+    }
+  }
+
+  // Celda de fecha genérica (solo gerencia puede editarla)
+  const celdaFechaGenerica = (
+    fecha: string,
+    editing: boolean,
+    inputValue: string,
+    setInputValue: (v: string) => void,
+    onGuardar: () => void,
+    onCancelar: () => void,
+    onAbrir: () => void,
+    saving: boolean,
+  ) => {
+    if (editing) {
+      return (
+        <div className="flex items-center gap-1">
+          <input
+            type="datetime-local"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 w-[148px]"
+            autoFocus
+          />
+          <button onClick={onGuardar} disabled={saving} className="text-green-600 hover:text-green-800 p-0.5" title="Guardar">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          </button>
+          <button onClick={onCancelar} disabled={saving} className="text-gray-400 hover:text-red-500 p-0.5" title="Cancelar">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      )
+    }
+    return (
+      <span className="flex items-center gap-1 whitespace-nowrap text-gray-400">
+        {new Date(fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: '2-digit' })}
+        {esGerencia && (
+          <button onClick={onAbrir} className="text-gray-300 hover:text-purple-600 p-0.5" title="Editar fecha (gerencia)">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </button>
+        )}
+      </span>
+    )
+  }
+
+  const celdaFecha = (item: ItemOrden) => celdaFechaGenerica(
+    item.created_at,
+    editandoItemFechaId === item.id,
+    itemFechaInputValue,
+    setItemFechaInputValue,
+    handleGuardarFechaItem,
+    () => setEditandoItemFechaId(null),
+    () => abrirEditarFechaItem(item),
+    savingItemFecha,
+  )
+
+  const accionesRepuesto = (onEditar: () => void, onEliminar: () => void, fechaNode?: React.ReactNode) => {
+    return (
+      <div className="flex items-center justify-end gap-2 flex-wrap">
+        {fechaNode}
+        <div className="flex gap-0.5">
+          <button onClick={onEditar} className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded p-1.5" title="Editar">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          <button onClick={onEliminar} className="text-gray-500 hover:text-red-600 hover:bg-red-50 rounded p-1.5" title="Eliminar">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Pagos ────────────────────────────────────────────
+  const calcularEstadoPago = (pagos: PagoOrden[], valorTotal: number): EstadoPago => {
+    const totalCliente = pagos.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+    if (totalCliente <= 0) return 'pendiente'
+    if (totalCliente >= valorTotal) return 'pagado'
+    return 'abono'
+  }
+
+  const handleAddPago = async () => {
+    if (!orden || !ordenId) return
+    const montoBase = parseInt(nuevoPagoMonto.replace(/\D/g, ''), 10)
+    if (!montoBase) return
+    if (!nuevoPagoMetodo) { setPagoError('Selecciona un método de pago.'); return }
+    const monto = nuevoPagoSigno === 'negativo' ? -montoBase : montoBase
+    setSavingPago(true)
+    setPagoError('')
+    try {
+      const { data: pagoData, error: pagoInsertError } = await supabase.from('pagos_orden').insert({
+        orden_id: ordenId,
+        tenant_id: orden.tenant_id,
+        monto,
+        metodo_pago_id: nuevoPagoMetodo,
+        notas: nuevoPagoNotas.trim() || null,
+        registrado_por: profile?.id ?? null,
+      }).select('id').single()
+      if (pagoInsertError) {
+        setPagoError(`Error: ${pagoInsertError.message}`)
+        return
+      }
+      const nuevosPagos = [...pagosOrden, { id: '', monto, metodo_pago_id: nuevoPagoMetodo || null, fecha: new Date().toISOString(), notas: nuevoPagoNotas || null, metodos_pago: null }]
+      const totalItemsPago = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+      const nuevoEstadoPago = calcularEstadoPago(nuevosPagos, totalItemsPago)
+      const totalPagado = nuevosPagos.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+      const { error: ordUpdError } = await supabase.from('ordenes').update({
+        estado_pago: nuevoEstadoPago,
+        valor_abono: totalPagado,
+        valor_total: totalItemsPago,
+        metodo_pago_id: nuevoPagoMetodo || null,
+        ...(nuevoEstadoPago === 'pagado' ? { estado: 'pagado' } : {}),
+      }).eq('id', ordenId)
+      if (ordUpdError) {
+        setPagoError(`Pago registrado, pero falló al actualizar la orden: ${ordUpdError.message}`)
+      }
+      if (pagoData) {
+        await registrarAuditoria(supabase, {
+          tenant_id: orden.tenant_id,
+          tabla: 'pagos_orden',
+          registro_id: (pagoData as { id: string }).id,
+          tipo: 'movimiento',
+          descripcion: `${monto < 0 ? 'Registró descuento/egreso' : 'Registró pago'} ${formatCOP(Math.abs(monto))} | venta directa #${orden.numero}`,
+          usuario_id: profile?.id,
+        })
+      }
+      setNuevoPagoMonto('')
+      setNuevoPagoMetodo('')
+      setNuevoPagoNotas('')
+      setNuevoPagoSigno('positivo')
+      await cargar()
+    } finally {
+      setSavingPago(false)
+    }
+  }
+
+  const handleDeletePago = async (pagoId: string) => {
+    if (!confirm('¿Eliminar este pago?') || !orden) return
+    const pagoEliminado = pagosOrden.find((p) => p.id === pagoId)
+    await supabase.from('pagos_orden').delete().eq('id', pagoId)
+    const pagosRestantes = pagosOrden.filter((p) => p.id !== pagoId)
+    const totalItems = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+    const nuevoEstadoPago = calcularEstadoPago(pagosRestantes, totalItems)
+    const totalPagado = pagosRestantes.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+    await supabase.from('ordenes').update({
+      estado_pago: nuevoEstadoPago,
+      valor_abono: totalPagado,
+      valor_total: totalItems,
+    }).eq('id', orden.id)
+    await registrarAuditoria(supabase, {
+      tenant_id: orden.tenant_id,
+      tabla: 'pagos_orden',
+      registro_id: pagoId,
+      tipo: 'eliminacion',
+      valor_anterior: pagoEliminado ? { monto: pagoEliminado.monto, metodo_pago_id: pagoEliminado.metodo_pago_id } : undefined,
+      descripcion: `Eliminó pago de $${(pagoEliminado?.monto ?? 0).toLocaleString('es-CO')} | venta directa #${orden.numero}`,
+      usuario_id: profile?.id,
+    })
+    await cargar()
+  }
+
+  const abrirEditarFechaPago = (pago: PagoOrden) => {
+    setPagoFechaInputValue(isoToDatetimeLocal(pago.fecha))
+    setEditandoPagoFechaId(pago.id)
+  }
+
+  const handleGuardarFechaPago = async () => {
+    if (!orden || !editandoPagoFechaId || !pagoFechaInputValue) return
+    setSavingPagoFecha(true)
+    try {
+      const pago = pagosOrden.find((p) => p.id === editandoPagoFechaId)
+      const nuevaFechaISO = new Date(pagoFechaInputValue).toISOString()
+      await supabase.from('pagos_orden').update({ fecha: nuevaFechaISO }).eq('id', editandoPagoFechaId)
+      await registrarAuditoria(supabase, {
+        tenant_id: orden.tenant_id,
+        tabla: 'pagos_orden',
+        registro_id: editandoPagoFechaId,
+        tipo: 'edicion',
+        valor_anterior: { fecha: pago?.fecha },
+        valor_nuevo: { fecha: nuevaFechaISO },
+        descripcion: `Gerencia editó la fecha de un pago | venta directa #${orden.numero}`,
+        usuario_id: profile?.id,
+      })
+      setEditandoPagoFechaId(null)
+      await cargar()
+    } finally {
+      setSavingPagoFecha(false)
+    }
+  }
+
   const placaNorm = placa ? normalizarPlaca(placa) : ''
   const ordenActiva = historialPlaca.find((o) => ['programado', 'falta_revision', 'en_proceso', 'pendiente'].includes(o.estado))
 
@@ -418,380 +650,524 @@ function NuevaVentaContent() {
     falta_revision: 'Falta revisión', en_proceso: 'En proceso', pendiente: 'Pendiente', listo: 'Cerrada',
   }
 
-  if (loadingEdit) {
-    return (
-      <div className="p-6 max-w-2xl mx-auto space-y-5">
-        <div className="h-6 bg-gray-100 rounded w-1/3 animate-pulse" />
-        <div className="h-40 bg-gray-100 rounded-xl animate-pulse" />
-        <div className="h-40 bg-gray-100 rounded-xl animate-pulse" />
-      </div>
-    )
-  }
+  const totalVenta = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+  const totalCostoProveedor = items.filter((i) => i.origen === 'externo').reduce((s, i) => s + i.costo * i.cantidad, 0)
+  const totalPagadoCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+  const saldoPendiente = totalVenta - totalPagadoCliente
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-5">
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-600">
+        <button onClick={() => router.push('/admin/repuestos')} className="text-gray-400 hover:text-gray-600">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 className="text-xl font-bold text-gray-900">{editId ? 'Editar venta directa' : 'Nueva venta directa'}</h1>
-        {draftSaved && <span className="text-xs text-green-600 ml-auto">Borrador guardado</span>}
+        <h1 className="text-xl font-bold text-gray-900">
+          {orden ? `Venta directa #${orden.numero}` : 'Nueva venta directa'}
+        </h1>
+        {!ordenId && draftSaved && <span className="text-xs text-green-600 ml-auto">Borrador guardado</span>}
+        {ordenId && savedOk && <span className="text-xs text-green-600 ml-auto">Guardado</span>}
       </div>
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
       )}
 
-      {/* Datos del cliente */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-        <h2 className="font-semibold text-gray-900">Datos del cliente</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
-            <input
-              value={cliente}
-              onChange={(e) => setCliente(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              placeholder="Nombre del cliente"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Cédula</label>
-            <input
-              value={cedula}
-              onChange={(e) => setCedula(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              placeholder="Número de cédula"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Celular</label>
-            <input
-              type="tel"
-              inputMode="numeric"
-              value={formatCelular(celular)}
-              onChange={(e) => setCelular(soloDigitos(e.target.value))}
-              onCopy={(e) => { e.preventDefault(); navigator.clipboard.writeText(celular) }}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono tracking-wide"
-              placeholder="(310) 000-0000"
-              maxLength={14}
-            />
-          </div>
-
-          {/* ─── Placa con vinculación ─── */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Placa
-              <span className="ml-1 text-gray-400 font-normal">(opcional)</span>
-            </label>
-            <input
-              value={placa}
-              onChange={(e) => setPlaca(e.target.value.toUpperCase().replace(/\s+/g, ''))}
-              className={`w-full px-3 py-2 border rounded-lg text-sm font-mono uppercase transition-colors ${
-                placaNorm && historialPlaca.length > 0
-                  ? 'border-blue-400 bg-blue-50'
-                  : 'border-gray-200'
-              }`}
-              placeholder="ABC123"
-              maxLength={10}
-            />
-          </div>
-        </div>
-
-        {/* Panel inteligente moto + cliente */}
-        {profile?.tenant_id && (
-          <ClienteMotoPanel
-            tenantId={profile.tenant_id}
-            placa={placa}
-            cedula={cedula}
-            onAutoFill={({ nombre, celular: cel }) => {
-              if (nombre && !cliente) setCliente(nombre)
-              if (cel && !celular) setCelular(soloDigitos(cel))
-            }}
-            onResult={setPanelResult}
-          />
-        )}
-
-        {/* Panel de historial de placa */}
-        {placaNorm && (
-          <div className={`rounded-xl p-4 space-y-2 border ${
-            historialPlaca.length > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
-          }`}>
-            {loadingHistorial ? (
-              <p className="text-xs text-gray-500">Buscando historial de la placa...</p>
-            ) : historialPlaca.length === 0 ? (
-              <div className="flex items-start gap-2">
-                <svg className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-xs text-gray-500">
-                  Placa <span className="font-mono font-bold">{placaNorm}</span> sin historial previo en este taller. Esta venta iniciará su registro.
-                </p>
+      {!ordenId ? (
+        <>
+          {/* Datos del cliente (modo creación) */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+            <h2 className="font-semibold text-gray-900">Datos del cliente</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
+                <input
+                  value={cliente}
+                  onChange={(e) => setCliente(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  placeholder="Nombre del cliente"
+                />
               </div>
-            ) : (
-              <>
-                <div className="flex items-start gap-2">
-                  <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                  </svg>
-                  <p className="text-xs text-blue-800 font-medium">
-                    Esta venta quedará vinculada al historial de la moto <span className="font-mono">{placaNorm}</span>.
-                    Se verá junto a sus servicios técnicos en Servicio Técnico y en Repuestos.
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Cédula</label>
+                <input
+                  value={cedula}
+                  onChange={(e) => setCedula(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  placeholder="Número de cédula"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Celular</label>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={formatCelular(celular)}
+                  onChange={(e) => setCelular(soloDigitos(e.target.value))}
+                  onCopy={(e) => { e.preventDefault(); navigator.clipboard.writeText(celular) }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono tracking-wide"
+                  placeholder="(310) 000-0000"
+                  maxLength={14}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Placa
+                  <span className="ml-1 text-gray-400 font-normal">(opcional)</span>
+                </label>
+                <input
+                  value={placa}
+                  onChange={(e) => setPlaca(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm font-mono uppercase transition-colors ${
+                    placaNorm && historialPlaca.length > 0 ? 'border-blue-400 bg-blue-50' : 'border-gray-200'
+                  }`}
+                  placeholder="ABC123"
+                  maxLength={10}
+                />
+              </div>
+            </div>
+
+            {profile?.tenant_id && (
+              <ClienteMotoPanel
+                tenantId={profile.tenant_id}
+                placa={placa}
+                cedula={cedula}
+                onAutoFill={({ nombre, celular: cel }) => {
+                  if (nombre && !cliente) setCliente(nombre)
+                  if (cel && !celular) setCelular(soloDigitos(cel))
+                }}
+                onResult={setPanelResult}
+              />
+            )}
+
+            {placaNorm && (
+              <div className={`rounded-xl p-4 space-y-2 border ${
+                historialPlaca.length > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+              }`}>
+                {loadingHistorial ? (
+                  <p className="text-xs text-gray-500">Buscando historial de la placa...</p>
+                ) : historialPlaca.length === 0 ? (
+                  <p className="text-xs text-gray-500">
+                    Placa <span className="font-mono font-bold">{placaNorm}</span> sin historial previo en este taller. Esta venta iniciará su registro.
                   </p>
+                ) : (
+                  <>
+                    <p className="text-xs text-blue-800 font-medium">
+                      Esta venta quedará vinculada al historial de la moto <span className="font-mono">{placaNorm}</span>.
+                    </p>
+                    {ordenActiva && (
+                      <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-xs text-amber-800 font-medium mb-1">⚠ Esta moto tiene un servicio técnico activo</p>
+                        <a href={`/admin/ordenes/${ordenActiva.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 underline">
+                          Ir a la orden #{ordenActiva.numero} →
+                        </a>
+                      </div>
+                    )}
+                    <div className="mt-2 space-y-1">
+                      {historialPlaca.slice(0, 5).map((o) => (
+                        <a
+                          key={o.id}
+                          href={o.tipo_orden === 'venta_repuestos' ? `/admin/repuestos/nueva-venta?id=${o.id}` : `/admin/ordenes/${o.id}`}
+                          className="flex items-center justify-between py-1.5 px-2 bg-white rounded-lg hover:bg-blue-50 transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${o.tipo_orden === 'venta_repuestos' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {o.tipo_orden === 'venta_repuestos' ? 'Venta' : 'ST'}
+                            </span>
+                            <span className="text-xs text-gray-600">#{o.numero}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${estadoColor[o.estado] ?? 'bg-gray-100 text-gray-600'}`}>
+                              {estadoLabel[o.estado] ?? o.estado}
+                            </span>
+                            <span className="text-xs font-semibold text-gray-700">{formatCOP(o.valor_total)}</span>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <Button className="w-full" size="lg" onClick={handleCrear} loading={creando}>
+            {`Crear venta${placaNorm ? ` — vincular a ${placaNorm}` : ''}`}
+          </Button>
+        </>
+      ) : loadingOrden ? (
+        <div className="space-y-5">
+          <div className="h-6 bg-gray-100 rounded w-1/3 animate-pulse" />
+          <div className="h-40 bg-gray-100 rounded-xl animate-pulse" />
+        </div>
+      ) : !orden ? (
+        <p className="text-center text-gray-500 py-10">No se encontró esta venta.</p>
+      ) : (
+        <>
+          {/* Datos del cliente (modo edición — autoguardado por campo) */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+            <h2 className="font-semibold text-gray-900">Datos del cliente</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+                <input
+                  value={cliente}
+                  onChange={(e) => setCliente(e.target.value)}
+                  onBlur={() => guardarCampoCliente('cliente', cliente.trim())}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Cédula</label>
+                <input
+                  value={cedula}
+                  onChange={(e) => setCedula(e.target.value)}
+                  onBlur={() => guardarCampoCliente('cedula', cedula.trim())}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Celular</label>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={formatCelular(celular)}
+                  onChange={(e) => setCelular(soloDigitos(e.target.value))}
+                  onBlur={() => guardarCampoCliente('celular', celular)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono tracking-wide"
+                  maxLength={14}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Placa</label>
+                <input
+                  value={placa}
+                  onChange={(e) => setPlaca(e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                  onBlur={() => guardarCampoCliente('placa', placa)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono uppercase"
+                  maxLength={10}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Columna izquierda — Repuestos + Total */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="rounded-xl border-2 border-blue-100 overflow-hidden">
+                <div className="bg-blue-600 px-5 py-3.5">
+                  <h2 className="text-white font-bold text-base">Agregar repuestos</h2>
+                </div>
+                <div className="bg-white">
+                  <div className="p-3 border-b border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowAgregarRepuesto(true)}
+                      className="w-full py-2.5 px-3 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 text-blue-600 hover:text-blue-800 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Agregar repuesto
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-[11px] text-gray-500 uppercase border-b bg-blue-50">
+                          <th className="text-left py-1 px-2 font-medium">Origen</th>
+                          <th className="text-left py-1 px-2 font-medium">Descripción</th>
+                          <th className="text-left py-1 px-2 font-medium whitespace-nowrap">Método pago prov.</th>
+                          <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio proveedor</th>
+                          <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio venta</th>
+                          <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Fecha / Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.length === 0 && (
+                          <tr><td colSpan={6} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
+                        )}
+                        {items.map((item) => {
+                          const tipoLabel = item.origen === 'uma' ? 'UMA' : item.origen === 'externo' ? 'Externo' : item.descripcion === 'Porta Placas' ? 'Porta Placas' : 'Insumo'
+                          const tipoColor = item.origen === 'uma' ? 'blue' : item.origen === 'externo' ? 'amber' : 'purple'
+                          return editingItem?.id === item.id ? (
+                            <tr key={item.id} className="border-b bg-blue-50/40">
+                              <td className="py-1 px-2"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
+                              <td className="py-1 px-2">
+                                <input
+                                  value={editingItem.descripcion}
+                                  onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
+                                  autoFocus
+                                  className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
+                                />
+                              </td>
+                              <td className="py-1 px-2">
+                                {item.origen === 'externo' ? (
+                                  <select
+                                    value={editingItem.metodo_pago_id}
+                                    onChange={(e) => setEditingItem({ ...editingItem, metodo_pago_id: e.target.value })}
+                                    className="w-full px-1.5 py-1 border border-blue-300 rounded-lg text-xs focus:outline-none bg-white"
+                                  >
+                                    <option value="">—</option>
+                                    {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                                  </select>
+                                ) : <span className="text-gray-300">—</span>}
+                              </td>
+                              <td className="py-1 px-2">
+                                {item.origen === 'externo' ? (
+                                  <input
+                                    type="text" inputMode="numeric"
+                                    value={editingItem.costo ? '$' + parseInt(editingItem.costo.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                                    onChange={(e) => setEditingItem({ ...editingItem, costo: e.target.value.replace(/\D/g, '') })}
+                                    className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
+                                  />
+                                ) : <span className="text-gray-300 block text-center">—</span>}
+                              </td>
+                              <td className="py-1 px-2">
+                                <input
+                                  type="text" inputMode="numeric"
+                                  value={editingItem.precio ? '$' + parseInt(editingItem.precio.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                                  onChange={(e) => setEditingItem({ ...editingItem, precio: e.target.value.replace(/\D/g, '') })}
+                                  className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
+                                />
+                              </td>
+                              <td className="py-1 px-2">
+                                <div className="flex items-center justify-end gap-2 flex-wrap">
+                                  {celdaFecha(item)}
+                                  <div className="flex gap-1">
+                                    <button onClick={handleEditItem} className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-semibold">OK</button>
+                                    <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                            <tr key={item.id} className="border-b hover:bg-gray-50">
+                              <td className="py-1.5 px-2"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
+                              <td className="py-1.5 px-2 text-gray-800 max-w-[200px] truncate" title={item.descripcion}>{item.descripcion}</td>
+                              <td className="py-1.5 px-2 text-gray-500">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
+                              <td className="py-1.5 px-2 text-right text-gray-500 whitespace-nowrap">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
+                              <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>
+                              <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="px-5 py-3 border-t space-y-1 text-sm font-semibold bg-blue-50">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Total costo proveedor</span>
+                      <span className="text-gray-900">{formatCOP(totalCostoProveedor)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-blue-700">Total precio venta cliente</span>
+                      <span className="text-blue-900">{formatCOP(totalVenta)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1 border-t border-blue-100">
+                      {saldoPendiente > 0 ? (
+                        <>
+                          <span className="text-red-600">Saldo pendiente</span>
+                          <span className="text-red-600">{formatCOP(saldoPendiente)}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span />
+                          <Badge variant="green">Pagado</Badge>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {profile?.tenant_id && (
+                <ConsultaRepuestos
+                  open={showAgregarRepuesto}
+                  onClose={() => setShowAgregarRepuesto(false)}
+                  tenantId={profile.tenant_id}
+                  onAdd={handleAddItem}
+                  permitirInsumos
+                  umaModoSimple
+                />
+              )}
+
+              {/* TOTAL */}
+              <div className="bg-gray-900 rounded-xl px-5 py-4 space-y-1.5">
+                <div className="flex justify-between font-bold text-white text-base">
+                  <span>Total</span>
+                  <span>{formatCOP(totalVenta)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Columna derecha — Pagos y egresos */}
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900">Pagos</h2>
+                  {saldoPendiente > 0 ? (
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full border bg-red-100 text-red-700 border-red-200">
+                      Saldo pendiente
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full border bg-green-100 text-green-700 border-green-200">
+                      Pagado
+                    </span>
+                  )}
                 </div>
 
-                {/* Orden activa — alerta */}
-                {ordenActiva && (
-                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                    <p className="text-xs text-amber-800 font-medium mb-1">
-                      ⚠ Esta moto tiene un servicio técnico activo
-                    </p>
-                    <p className="text-xs text-amber-700 mb-2">
-                      ¿Quieres agregar estos repuestos directamente a la orden #{ordenActiva.numero} en lugar de crear una venta separada?
-                    </p>
-                    <Link
-                      href={`/admin/ordenes/${ordenActiva.id}`}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-900 underline"
-                    >
-                      Ir a la orden #{ordenActiva.numero} →
-                    </Link>
+                <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Total a pagar</span>
+                    <span className="font-semibold text-gray-900">{formatCOP(totalVenta)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Total pagado</span>
+                    <span className="font-semibold text-green-700">{formatCOP(totalPagadoCliente)}</span>
+                  </div>
+                  {saldoPendiente > 0 && (
+                    <div className="flex justify-between text-xs font-semibold border-t border-gray-200 pt-1.5">
+                      <span className="text-red-600">Saldo pendiente</span>
+                      <span className="text-red-600">{formatCOP(saldoPendiente)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {pagosOrden.length > 0 && (
+                  <div className="space-y-1.5">
+                    {pagosOrden.map((pago) => {
+                      const esEgreso = pago.monto < 0
+                      return (
+                        <div key={pago.id} className={`flex items-center justify-between p-2.5 rounded-lg border group ${esEgreso ? 'bg-red-50 border-red-100' : 'bg-green-50 border-green-100'}`}>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {!esEgreso && <span className="text-xs font-semibold text-gray-500">#{pagosOrden.filter(p => p.monto > 0).indexOf(pago) + 1}</span>}
+                              {esEgreso && <span className="text-xs font-semibold text-red-400">Egreso</span>}
+                              <span className={`text-sm font-bold ${esEgreso ? 'text-red-700' : 'text-green-800'}`}>
+                                {esEgreso ? '− ' : ''}{formatCOP(Math.abs(pago.monto))}
+                              </span>
+                              {pago.metodos_pago && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${esEgreso ? 'bg-white border border-red-200 text-red-600' : 'bg-white border border-green-200 text-green-700'}`}>
+                                  {(pago.metodos_pago as { nombre: string }).nombre}
+                                </span>
+                              )}
+                            </div>
+                            {editandoPagoFechaId === pago.id ? (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <input
+                                  type="datetime-local"
+                                  value={pagoFechaInputValue}
+                                  onChange={(e) => setPagoFechaInputValue(e.target.value)}
+                                  className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 w-[148px]"
+                                  autoFocus
+                                />
+                                <button onClick={handleGuardarFechaPago} disabled={savingPagoFecha} className="text-green-600 hover:text-green-800 p-0.5" title="Guardar">
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                </button>
+                                <button onClick={() => setEditandoPagoFechaId(null)} disabled={savingPagoFecha} className="text-gray-400 hover:text-red-500 p-0.5" title="Cancelar">
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                                {new Date(pago.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })} · {new Date(pago.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                {esGerencia && (
+                                  <button onClick={() => abrirEditarFechaPago(pago)} className="text-gray-300 hover:text-purple-600 p-0.5" title="Editar fecha (gerencia)">
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                  </button>
+                                )}
+                              </p>
+                            )}
+                            {pago.notas && <p className={`text-xs italic mt-0.5 ${esEgreso ? 'text-red-400' : 'text-gray-500'}`}>{pago.notas}</p>}
+                          </div>
+                          <button
+                            onClick={() => handleDeletePago(pago.id)}
+                            className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1 flex-shrink-0"
+                            title="Eliminar movimiento"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
 
-                {/* Historial resumido */}
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs text-blue-700 font-medium">Historial de {placaNorm}:</p>
-                  {historialPlaca.slice(0, 5).map((o) => (
-                    <Link
-                      key={o.id}
-                      href={o.tipo_orden === 'venta_repuestos' ? `/admin/repuestos` : `/admin/ordenes/${o.id}`}
-                      className="flex items-center justify-between py-1.5 px-2 bg-white rounded-lg hover:bg-blue-50 transition-colors"
+                <div className="space-y-2 border-t border-gray-100 pt-3">
+                  <p className="text-xs font-medium text-gray-600">Registrar movimiento</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNuevoPagoSigno('positivo')}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                        nuevoPagoSigno === 'positivo' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-500 border-gray-200'
+                      }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${o.tipo_orden === 'venta_repuestos' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                          {o.tipo_orden === 'venta_repuestos' ? 'Venta' : 'ST'}
-                        </span>
-                        <span className="text-xs text-gray-600">#{o.numero}</span>
-                        <span className="text-xs text-gray-400">
-                          {new Date(o.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: '2-digit' })}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${estadoColor[o.estado] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {estadoLabel[o.estado] ?? o.estado}
-                        </span>
-                        <span className="text-xs font-semibold text-gray-700">{formatCOP(o.valor_total)}</span>
-                      </div>
-                    </Link>
-                  ))}
-                  {historialPlaca.length > 5 && (
-                    <p className="text-xs text-blue-600 text-center pt-1">+{historialPlaca.length - 5} más en el historial</p>
+                      + Pago
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNuevoPagoSigno('negativo')}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                        nuevoPagoSigno === 'negativo' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-500 border-gray-200'
+                      }`}
+                    >
+                      − Descuento / Egreso
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={nuevoPagoMonto ? '$' + parseInt(nuevoPagoMonto.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                    onChange={(e) => setNuevoPagoMonto(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Monto ($)"
+                    className={`w-full px-3 py-2 border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 ${
+                      nuevoPagoSigno === 'negativo' ? 'focus:ring-red-400' : 'focus:ring-green-400'
+                    }`}
+                  />
+                  <select
+                    value={nuevoPagoMetodo}
+                    onChange={(e) => setNuevoPagoMetodo(e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-lg text-sm ${!nuevoPagoMetodo ? 'border-gray-300 text-gray-400' : 'border-gray-200 text-gray-900'}`}
+                  >
+                    <option value="">Método de pago *</option>
+                    {metodosPago.map((m) => (
+                      <option key={m.id} value={m.id}>{m.nombre}</option>
+                    ))}
+                  </select>
+                  <input
+                    value={nuevoPagoNotas}
+                    onChange={(e) => setNuevoPagoNotas(e.target.value)}
+                    placeholder="Notas (opcional)"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  />
+                  <button
+                    onClick={handleAddPago}
+                    disabled={savingPago || !nuevoPagoMonto || !nuevoPagoMetodo}
+                    className={`w-full py-2 px-3 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors ${
+                      nuevoPagoSigno === 'negativo' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+                    }`}
+                  >
+                    {savingPago ? 'Registrando...' : nuevoPagoSigno === 'negativo' ? '− Registrar descuento/egreso' : '+ Registrar pago'}
+                  </button>
+                  {pagoError && (
+                    <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{pagoError}</p>
                   )}
                 </div>
-              </>
-            )}
+              </div>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Items */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-        <h2 className="font-semibold text-gray-900">Repuestos</h2>
-        <div>
-          <table className="w-full table-fixed text-sm">
-            <thead>
-              <tr className="text-[11px] text-gray-500 uppercase border-b">
-                <th className="text-left py-1 px-1 font-medium w-[13%]">Origen</th>
-                <th className="text-left py-1 px-1 font-medium w-[27%]">Descripción</th>
-                <th className="text-left py-1 px-1 font-medium w-[20%]">Método</th>
-                <th className="text-right py-1 px-1 font-medium w-[17%]">Costo prov.</th>
-                <th className="text-right py-1 px-1 font-medium w-[17%]">Venta</th>
-                <th className="py-1 px-1 w-[6%]" />
-              </tr>
-            </thead>
-            <tbody>
-              {/* UMA */}
-              <tr className="border-b">
-                <td className="py-1 px-1"><Badge variant="blue">UMA</Badge></td>
-                {umaListo && !umaEditando ? (
-                  <>
-                    <td className={`py-1 px-1 truncate ${umaSlot.desc.trim() === UMA_DESC_DEFAULT ? 'text-gray-400' : 'text-gray-800'}`}>{umaSlot.desc.trim() || UMA_DESC_DEFAULT}</td>
-                    <td className="py-1 px-1 text-center text-gray-300">—</td>
-                    <td className="py-1 px-1 text-center text-gray-300">—</td>
-                    <td className="py-1 px-1 text-right font-semibold truncate">{formatCOP(parseInt(umaSlot.valor.replace(/\D/g, '') || '0', 10))}</td>
-                    <td className="py-1 px-1">
-                      <div className="flex gap-0.5 justify-end">
-                        <button onClick={() => setUmaEditando(true)} className="text-gray-400 hover:text-blue-600 p-0.5">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button onClick={() => { setUmaSlot({ desc: UMA_DESC_DEFAULT, valor: '' }); setUmaEditando(false) }} className="text-gray-400 hover:text-red-500 p-0.5">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td className="py-1 px-1">
-                      <input
-                        value={umaSlot.desc}
-                        onChange={(e) => setUmaSlot((q) => ({ ...q, desc: e.target.value }))}
-                        onFocus={(e) => e.target.select()}
-                        onBlur={() => setUmaEditando(false)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                        className={`w-full px-1.5 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${umaSlot.desc === UMA_DESC_DEFAULT ? 'text-gray-400' : 'text-gray-900'}`}
-                      />
-                    </td>
-                    <td className="py-1 px-1 text-center text-gray-300">—</td>
-                    <td className="py-1 px-1 text-center text-gray-300">—</td>
-                    <td className="py-1 px-1">
-                      <input
-                        type="text" inputMode="numeric"
-                        value={umaSlot.valor ? '$' + parseInt(umaSlot.valor || '0', 10).toLocaleString('es-CO') : ''}
-                        onChange={(e) => setUmaSlot((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
-                        onBlur={() => setUmaEditando(false)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                        placeholder="$"
-                        className="w-full px-1.5 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      />
-                    </td>
-                    <td className="py-1 px-1" />
-                  </>
-                )}
-              </tr>
-
-              {/* Externo */}
-              <tr className="border-b">
-                <td className="py-1 px-1"><Badge variant="amber">Externo</Badge></td>
-                {extListo && !extEditando ? (
-                  <>
-                    <td className={`py-1 px-1 truncate ${extSlot.desc.trim() === EXT_DESC_DEFAULT ? 'text-gray-400' : 'text-gray-800'}`}>{extSlot.desc.trim() || EXT_DESC_DEFAULT}</td>
-                    <td className="py-1 px-1 text-gray-500 truncate">{metodosPago.find((m) => m.id === extSlot.metodo)?.nombre ?? '—'}</td>
-                    <td className="py-1 px-1 text-right text-gray-500 truncate">{formatCOP(parseInt(extSlot.costo.replace(/\D/g, '') || '0', 10))}</td>
-                    <td className="py-1 px-1 text-right font-semibold truncate">{formatCOP(parseInt(extSlot.valor.replace(/\D/g, '') || '0', 10))}</td>
-                    <td className="py-1 px-1">
-                      <div className="flex gap-0.5 justify-end">
-                        <button onClick={() => setExtEditando(true)} className="text-gray-400 hover:text-blue-600 p-0.5">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button onClick={() => { setExtSlot({ desc: EXT_DESC_DEFAULT, costo: '', valor: '', metodo: '' }); setExtEditando(false) }} className="text-gray-400 hover:text-red-500 p-0.5">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td className="py-1 px-1">
-                      <input
-                        value={extSlot.desc}
-                        onChange={(e) => setExtSlot((q) => ({ ...q, desc: e.target.value }))}
-                        onFocus={(e) => e.target.select()}
-                        onBlur={() => setExtEditando(false)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                        className={`w-full px-1.5 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 ${extSlot.desc === EXT_DESC_DEFAULT ? 'text-gray-400' : 'text-gray-900'}`}
-                      />
-                    </td>
-                    <td className="py-1 px-1">
-                      <select
-                        value={extSlot.metodo}
-                        onChange={(e) => setExtSlot((q) => ({ ...q, metodo: e.target.value }))}
-                        onBlur={() => setExtEditando(false)}
-                        className="w-full px-1 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-                      >
-                        <option value="">—</option>
-                        {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                      </select>
-                    </td>
-                    <td className="py-1 px-1">
-                      <input
-                        type="text" inputMode="numeric"
-                        value={extSlot.costo ? '$' + parseInt(extSlot.costo || '0', 10).toLocaleString('es-CO') : ''}
-                        onChange={(e) => setExtSlot((q) => ({ ...q, costo: e.target.value.replace(/\D/g, '') }))}
-                        onBlur={() => setExtEditando(false)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                        placeholder="$"
-                        className="w-full px-1.5 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      />
-                    </td>
-                    <td className="py-1 px-1">
-                      <input
-                        type="text" inputMode="numeric"
-                        value={extSlot.valor ? '$' + parseInt(extSlot.valor || '0', 10).toLocaleString('es-CO') : ''}
-                        onChange={(e) => setExtSlot((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
-                        onBlur={() => setExtEditando(false)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                        placeholder="$"
-                        className="w-full px-1.5 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      />
-                    </td>
-                    <td className="py-1 px-1" />
-                  </>
-                )}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Pago */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-        <h2 className="font-semibold text-gray-900">Pago</h2>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setPagado(true)}
-            className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors border-2 ${
-              pagado ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200 hover:border-green-300'
-            }`}
-          >
-            ✓ Se realizó el pago
-          </button>
-          <button
-            type="button"
-            onClick={() => setPagado(false)}
-            className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold transition-colors border-2 ${
-              !pagado ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-600 border-gray-200 hover:border-red-300'
-            }`}
-          >
-            Queda pendiente
-          </button>
-        </div>
-        {pagado && (
-          <select
-            value={metodoPagoId}
-            onChange={(e) => setMetodoPagoId(e.target.value)}
-            className={`w-full px-3 py-2 border rounded-lg text-sm ${!metodoPagoId ? 'border-amber-300 bg-amber-50' : 'border-gray-200'}`}
-          >
-            <option value="">Seleccionar método de pago *</option>
-            {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-          </select>
-        )}
-        {!pagado && (
-          <p className="text-xs text-red-500 font-medium">Esta venta quedará registrada como pago pendiente.</p>
-        )}
-      </div>
-
-      {/* Total */}
-      <div className="bg-gray-50 rounded-xl p-4 flex items-center justify-between">
-        <span className="text-sm text-gray-600">{items.length} ítem{items.length !== 1 ? 's' : ''}</span>
-        <span className="text-xl font-bold text-gray-900">{formatCOP(total)}</span>
-      </div>
-
-      <Button className="w-full" size="lg" onClick={handleGuardar} loading={saving}>
-        {editId ? 'Guardar cambios' : `Registrar venta${placaNorm ? ` — vincular a ${placaNorm}` : ''}`}
-      </Button>
+        </>
+      )}
     </div>
   )
 }
