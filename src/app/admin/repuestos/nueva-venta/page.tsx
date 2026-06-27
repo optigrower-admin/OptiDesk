@@ -83,7 +83,7 @@ function NuevaVentaContent() {
   const ordenId = searchParams.get('id')
   const { profile } = useAuth()
   const supabase = createClient()
-  const esGerencia = profile?.rol === 'gerencia'
+  const esGerencia = profile?.rol === 'gerencia' || profile?.rol === 'dueno' || profile?.rol === 'control_total'
 
   // ─── Datos del cliente (creación y edición comparten estos campos) ───────
   const [cliente, setCliente] = useState('')
