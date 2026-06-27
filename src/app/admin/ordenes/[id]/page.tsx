@@ -204,12 +204,12 @@ export default function AdminOrdenDetallePage() {
   const [showAgregarRepuesto, setShowAgregarRepuesto] = useState(false)
   const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; costo: string; precio: string; metodo_pago_id: string } | null>(null)
 
-  // Lavado de moto — sigue con guardado automático al perder el foco (sin cambios)
-  const [lavadoQuick, setLavadoQuick] = useState<{ costo: string; valor: string; metodo: string; editId: string | null }>({ costo: '10000', valor: '15000', metodo: '', editId: null })
+  // Lavado de moto — botón "+ Agregar lavado" en la tarjeta de Pagos, con envío explícito
+  // (igual a Mano de obra), no autoguardado al perder el foco.
+  const [lavadoQuick, setLavadoQuick] = useState<{ cantidad: string; costo: string; valor: string; metodo: string; editId: string | null }>({ cantidad: '1', costo: '10000', valor: '15000', metodo: '', editId: null })
   const [mostrarLavado, setMostrarLavado] = useState(false)
   const [guardandoLavado, setGuardandoLavado] = useState(false)
-  const lavadoListo = mostrarLavado && !!lavadoQuick.valor && (!parseInt(lavadoQuick.costo.replace(/\D/g, '') || '0', 10) || !!lavadoQuick.metodo)
-  const draftLavadoTotal = lavadoListo ? (parseInt(lavadoQuick.valor.replace(/\D/g, '') || '0', 10)) : 0
+  const lavadoFormListo = !!lavadoQuick.valor && (parseInt(lavadoQuick.cantidad || '0', 10) > 0) && (!parseInt(lavadoQuick.costo.replace(/\D/g, '') || '0', 10) || !!lavadoQuick.metodo)
   const [notas, setNotas] = useState('')
   const [savedOk, setSavedOk] = useState(false)
   const [numerosOrdenUMA, setNumerosOrdenUMA] = useState<string[]>([])
@@ -819,64 +819,85 @@ export default function AdminOrdenDetallePage() {
     })
   }
 
-  // Lavado de moto: inserta o, si está en edición, actualiza — se llama on-blur
-  // desde los inputs, sin esperar "Guardar cambios".
-  const guardarFilaLavado = async () => {
-    if (!lavadoListo || guardandoLavado) return
+  const lavadoDefaults = () => ({
+    cantidad: '1',
+    costo: String(lavaMotoConfig?.costo ?? 10000),
+    valor: String(lavaMotoConfig?.precio_venta ?? 15000),
+    metodo: '',
+    editId: null as string | null,
+  })
+
+  // Lavado de moto: se agrega con el botón "+ Agregar lavado" (en la tarjeta de Pagos) y
+  // queda en una lista — envío explícito, igual a Mano de obra y Repuestos.
+  const confirmarAgregarLavado = async () => {
+    if (!lavadoFormListo || guardandoLavado) return
     setGuardandoLavado(true)
     try {
+      const cantidadLav = parseInt(lavadoQuick.cantidad || '0', 10) || 1
       const costoLav = parseInt(lavadoQuick.costo.replace(/\D/g, '') || '0', 10)
       const precioLav = parseInt(lavadoQuick.valor.replace(/\D/g, ''), 10) || 0
-      if (lavadoQuick.editId) {
-        const id = lavadoQuick.editId
-        const lmAnterior = lavaMotoOrdenes.find((r) => r.id === id)
-        await supabase.from('lava_moto_ordenes').update({
-          costo_unitario: costoLav, precio_venta_unitario: precioLav, metodo_pago_id: lavadoQuick.metodo || null,
-        }).eq('id', id)
-        const nuevoTotalLM = lavaMotoOrdenes.map((r) => r.id === id ? { ...r, costo_unitario: costoLav, precio_venta_unitario: precioLav } : r).reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+      const { data: lmData, error: lmError } = await supabase.from('lava_moto_ordenes').insert({
+        orden_id: ordenId,
+        tenant_id: orden!.tenant_id,
+        cantidad: cantidadLav,
+        costo_unitario: costoLav,
+        precio_venta_unitario: precioLav,
+        metodo_pago_id: lavadoQuick.metodo || null,
+        pago_costo_id: null,
+        registrado_por: profile?.id ?? null,
+      }).select('id').single()
+      if (lmError) {
+        alert(`No se pudo guardar el lavado: ${lmError.message}`)
+        return
+      }
+      if (lmData) {
+        const nuevoTotalLM = [...lavaMotoOrdenes, { precio_venta_unitario: precioLav, cantidad: cantidadLav }].reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
         const nuevoTotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + nuevoTotalLM
         await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
         await registrarAuditoria(supabase, {
           tenant_id: orden!.tenant_id,
           tabla: 'lava_moto_ordenes',
-          registro_id: id,
-          tipo: 'edicion',
-          valor_anterior: { costo_unitario: lmAnterior?.costo_unitario, precio_venta_unitario: lmAnterior?.precio_venta_unitario },
-          valor_nuevo: { costo_unitario: costoLav, precio_venta_unitario: precioLav },
-          descripcion: `Editó servicio de lavado | orden #${orden?.numero}`,
+          registro_id: (lmData as { id: string }).id,
+          tipo: 'movimiento',
+          valor_nuevo: { cantidad: cantidadLav, precio_venta_unitario: precioLav },
+          descripcion: `Agregó servicio de lavado ×${cantidadLav} ($${precioLav.toLocaleString('es-CO')} c/u) | orden #${orden?.numero}`,
           usuario_id: profile?.id,
         })
-      } else {
-        const { data: lmData, error: lmError } = await supabase.from('lava_moto_ordenes').insert({
-          orden_id: ordenId,
-          tenant_id: orden!.tenant_id,
-          cantidad: 1,
-          costo_unitario: costoLav,
-          precio_venta_unitario: precioLav,
-          metodo_pago_id: lavadoQuick.metodo || null,
-          pago_costo_id: null,
-          registrado_por: profile?.id ?? null,
-        }).select('id').single()
-        if (lmError) {
-          alert(`No se pudo guardar el lavado: ${lmError.message}`)
-          return
-        }
-        if (lmData) {
-          const nuevoTotalLM = [...lavaMotoOrdenes, { precio_venta_unitario: precioLav, cantidad: 1 }].reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-          const nuevoTotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + nuevoTotalLM
-          await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
-          await registrarAuditoria(supabase, {
-            tenant_id: orden!.tenant_id,
-            tabla: 'lava_moto_ordenes',
-            registro_id: (lmData as { id: string }).id,
-            tipo: 'movimiento',
-            valor_nuevo: { cantidad: 1, precio_venta_unitario: precioLav },
-            descripcion: `Agregó servicio de lavado ×1 ($${precioLav.toLocaleString('es-CO')}) | orden #${orden?.numero}`,
-            usuario_id: profile?.id,
-          })
-        }
       }
-      setLavadoQuick({ costo: '10000', valor: '15000', metodo: '', editId: null })
+      setLavadoQuick(lavadoDefaults())
+      setMostrarLavado(false)
+      await cargar()
+    } finally {
+      setGuardandoLavado(false)
+    }
+  }
+
+  const confirmarEditarLavado = async () => {
+    if (!lavadoFormListo || guardandoLavado || !lavadoQuick.editId) return
+    setGuardandoLavado(true)
+    try {
+      const id = lavadoQuick.editId
+      const cantidadLav = parseInt(lavadoQuick.cantidad || '0', 10) || 1
+      const costoLav = parseInt(lavadoQuick.costo.replace(/\D/g, '') || '0', 10)
+      const precioLav = parseInt(lavadoQuick.valor.replace(/\D/g, ''), 10) || 0
+      const lmAnterior = lavaMotoOrdenes.find((r) => r.id === id)
+      await supabase.from('lava_moto_ordenes').update({
+        cantidad: cantidadLav, costo_unitario: costoLav, precio_venta_unitario: precioLav, metodo_pago_id: lavadoQuick.metodo || null,
+      }).eq('id', id)
+      const nuevoTotalLM = lavaMotoOrdenes.map((r) => r.id === id ? { ...r, cantidad: cantidadLav, costo_unitario: costoLav, precio_venta_unitario: precioLav } : r).reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+      const nuevoTotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + nuevoTotalLM
+      await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+      await registrarAuditoria(supabase, {
+        tenant_id: orden!.tenant_id,
+        tabla: 'lava_moto_ordenes',
+        registro_id: id,
+        tipo: 'edicion',
+        valor_anterior: { cantidad: lmAnterior?.cantidad, costo_unitario: lmAnterior?.costo_unitario, precio_venta_unitario: lmAnterior?.precio_venta_unitario },
+        valor_nuevo: { cantidad: cantidadLav, costo_unitario: costoLav, precio_venta_unitario: precioLav },
+        descripcion: `Editó servicio de lavado | orden #${orden?.numero}`,
+        usuario_id: profile?.id,
+      })
+      setLavadoQuick(lavadoDefaults())
       setMostrarLavado(false)
       await cargar()
     } finally {
@@ -924,8 +945,70 @@ export default function AdminOrdenDetallePage() {
     }
   }
 
-  const iniciarEditarLavado = (lm: LavaMotoOrden) => { setLavadoQuick({ costo: String(lm.costo_unitario), valor: String(lm.precio_venta_unitario), metodo: lm.metodo_pago_id ?? '', editId: lm.id }); setMostrarLavado(true) }
-  const cancelarEditarLavado = () => { setLavadoQuick({ costo: '10000', valor: '15000', metodo: '', editId: null }); setMostrarLavado(false) }
+  const iniciarEditarLavado = (lm: LavaMotoOrden) => { setLavadoQuick({ cantidad: String(lm.cantidad), costo: String(lm.costo_unitario), valor: String(lm.precio_venta_unitario), metodo: lm.metodo_pago_id ?? '', editId: lm.id }); setMostrarLavado(true) }
+  const cancelarEditarLavado = () => { setLavadoQuick(lavadoDefaults()); setMostrarLavado(false) }
+  const toggleAgregarLavado = () => {
+    if (mostrarLavado) { setMostrarLavado(false); return }
+    setLavadoQuick(lavadoDefaults())
+    setMostrarLavado(true)
+  }
+
+  // Formulario de Cantidad/Método/Precio proveedor/Precio venta para agregar o editar un
+  // lavado — reusado tanto en el botón "+ Agregar lavado" como en "Editar".
+  const formularioLavado = (onSubmit: () => void, submitLabel: string, onCancel: () => void) => (
+    <div className="p-2.5 rounded-lg border border-cyan-200 bg-cyan-50/40 space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[11px] text-gray-500 mb-0.5 block">Cantidad</label>
+          <input
+            type="text" inputMode="numeric"
+            value={lavadoQuick.cantidad}
+            onChange={(e) => setLavadoQuick((q) => ({ ...q, cantidad: e.target.value.replace(/\D/g, '') }))}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-cyan-400"
+          />
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-500 mb-0.5 block">Método pago prov.</label>
+          <select
+            value={lavadoQuick.metodo}
+            onChange={(e) => setLavadoQuick((q) => ({ ...q, metodo: e.target.value }))}
+            className="w-full px-1.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400 bg-white"
+          >
+            <option value="">—</option>
+            {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-500 mb-0.5 block">Precio proveedor</label>
+          <input
+            type="text" inputMode="numeric"
+            value={lavadoQuick.costo ? '$' + parseInt(lavadoQuick.costo || '0', 10).toLocaleString('es-CO') : ''}
+            onChange={(e) => setLavadoQuick((q) => ({ ...q, costo: e.target.value.replace(/\D/g, '') }))}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-cyan-400"
+          />
+        </div>
+        <div>
+          <label className="text-[11px] text-gray-500 mb-0.5 block">Precio venta</label>
+          <input
+            type="text" inputMode="numeric"
+            value={lavadoQuick.valor ? '$' + parseInt(lavadoQuick.valor || '0', 10).toLocaleString('es-CO') : ''}
+            onChange={(e) => setLavadoQuick((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-cyan-400"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={onSubmit}
+          disabled={!lavadoFormListo || guardandoLavado}
+          className="flex-1 py-1.5 bg-cyan-600 hover:bg-cyan-700 disabled:bg-cyan-300 text-white rounded-lg text-xs font-semibold"
+        >
+          {guardandoLavado ? 'Guardando...' : submitLabel}
+        </button>
+        <button onClick={onCancel} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancelar</button>
+      </div>
+    </div>
+  )
 
   // Celda de fecha genérica (solo gerencia puede editarla) — reusada en repuestos, mano de obra y lavado.
   const celdaFechaGenerica = (
@@ -1352,22 +1435,17 @@ export default function AdminOrdenDetallePage() {
 
   if (!orden) return <div className="p-8 text-center text-gray-500">Cargando...</div>
 
-  // Repuestos y mano de obra se guardan de inmediato al agregarlos (botón + modal/form),
-  // así que `items` siempre refleja lo último guardado — no hace falta llevar un borrador
-  // en pantalla para estos dos. Lavado de moto sigue con su propio borrador (sin cambios).
+  // Repuestos, mano de obra y lavado se guardan de inmediato al agregarlos (botón +
+  // modal/form), así que estos arreglos siempre reflejan lo último guardado.
   const repuestosItems = items.filter((i) => i.origen !== 'mano_obra')
   const manoObraItems = items.filter((i) => i.origen === 'mano_obra')
-  const lavadoItem = lavaMotoOrdenes[0] ?? null
-  const lavaMotoOrdenesParaTotalLive = lavadoQuick.editId ? lavaMotoOrdenes.filter((r) => r.id !== lavadoQuick.editId) : lavaMotoOrdenes
   const totalRepuestos = repuestosItems.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
   const totalManoObra = manoObraItems.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
   const totalCostoProveedor = repuestosItems.filter((i) => i.origen === 'externo').reduce((s, i) => s + i.costo * i.cantidad, 0)
-  const totalLavado = lavaMotoOrdenesParaTotalLive.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-  const totalCostoLavado = lavaMotoOrdenesParaTotalLive.reduce((s, r) => s + r.costo_unitario * r.cantidad, 0)
-  const draftCostoProveedor = lavadoListo ? parseInt(lavadoQuick.costo.replace(/\D/g, '') || '0', 10) : 0
-  const totalCostoProveedorLive = totalCostoProveedor + totalCostoLavado + draftCostoProveedor
-  const totalVentaLive = totalRepuestos + totalLavado + draftLavadoTotal
-  const hayBorradorRepuestos = draftLavadoTotal > 0
+  const totalLavado = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+  const totalCostoLavado = lavaMotoOrdenes.reduce((s, r) => s + r.costo_unitario * r.cantidad, 0)
+  const totalCostoProveedorLive = totalCostoProveedor + totalCostoLavado
+  const totalVentaLive = totalRepuestos + totalLavado
   const totalRepuestosLive = totalRepuestos
   const totalManoObraLive = totalManoObra
   const totalLive = totalRepuestosLive + totalManoObraLive
@@ -2186,6 +2264,70 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             )}
           </div>
 
+          {/* ── LAVADO DE MOTO — no aplica a venta directa de repuestos ── */}
+          {!esVenta && (
+          <div className="rounded-xl border-2 border-cyan-100 overflow-hidden">
+            <div className="bg-cyan-600 px-5 py-3.5">
+              <h2 className="text-white font-bold text-base">Agregar lavado de moto</h2>
+            </div>
+            <div className="bg-white">
+              <div className="p-3 border-b border-gray-100">
+                <button
+                  type="button"
+                  onClick={toggleAgregarLavado}
+                  className="w-full py-2.5 px-3 border-2 border-dashed border-cyan-300 hover:border-cyan-500 hover:bg-cyan-50 text-cyan-600 hover:text-cyan-800 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Agregar lavado
+                </button>
+              </div>
+
+              {mostrarLavado && !lavadoQuick.editId && (
+                <div className="px-5 py-4 border-b border-gray-100 bg-cyan-50/40">
+                  {formularioLavado(confirmarAgregarLavado, 'Agregar', () => setMostrarLavado(false))}
+                </div>
+              )}
+
+              {lavaMotoOrdenes.length > 0 && (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-gray-500 uppercase border-b bg-cyan-50">
+                      <th className="text-left py-2 px-4 font-medium">Origen</th>
+                      <th className="text-left py-2 px-4 font-medium">Descripción</th>
+                      <th className="text-left py-2 px-4 font-medium whitespace-nowrap">Método pago prov.</th>
+                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap">Precio proveedor</th>
+                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap">Precio venta</th>
+                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap">Fecha / Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lavaMotoOrdenes.map((lm) => (
+                      lavadoQuick.editId === lm.id ? (
+                        <tr key={lm.id} className="border-b bg-cyan-50/40">
+                          <td colSpan={6} className="py-3 px-4">
+                            {formularioLavado(confirmarEditarLavado, 'Guardar', cancelarEditarLavado)}
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={lm.id} className="border-b hover:bg-gray-50">
+                          <td className="py-2 px-4"><Badge variant="teal">Lavado</Badge></td>
+                          <td className="py-2 px-4 text-gray-800">Lavado de moto{lm.cantidad > 1 ? ` ×${lm.cantidad}` : ''}</td>
+                          <td className="py-2 px-4 text-gray-500">{lm.metodos_pago?.nombre ?? '—'}</td>
+                          <td className="py-2 px-4 text-right text-gray-500 whitespace-nowrap">{formatCOP(lm.costo_unitario * lm.cantidad)}</td>
+                          <td className="py-2 px-4 text-right font-semibold whitespace-nowrap">{formatCOP(lm.precio_venta_unitario * lm.cantidad)}</td>
+                          <td className="py-2 px-4">{accionesRepuesto(() => iniciarEditarLavado(lm), () => handleDeleteLavaMoto(lm.id), celdaFechaLavado(lm))}</td>
+                        </tr>
+                      )
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+          )}
+
           {/* ── REPUESTOS ── */}
           <div className="rounded-xl border-2 border-blue-100 overflow-hidden">
             {/* Header azul */}
@@ -2310,157 +2452,14 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               </table>
               </div>
 
-              {/* Lavado de moto — sin cambios, guardado automático al perder el foco. No aplica a venta directa de repuestos. */}
-              {lavaMotoConfig?.activo && !esVenta && (
-              <div className="overflow-x-auto border-t border-gray-100">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-[11px] text-gray-500 uppercase border-b bg-cyan-50">
-                    <th className="text-left py-1 px-2 font-medium">Origen</th>
-                    <th className="text-left py-1 px-2 font-medium">Descripción</th>
-                    <th className="text-left py-1 px-2 font-medium whitespace-nowrap">Método pago prov.</th>
-                    <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio proveedor</th>
-                    <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio venta</th>
-                    <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Fecha / Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Lavada de moto */}
-                  {lavaMotoConfig?.activo && !esVenta && (
-                    <tr className={`border-b ${lavadoQuick.editId || (mostrarLavado && !lavadoItem) ? 'bg-cyan-50/40' : ''}`}>
-                      <td className="py-1 px-2"><Badge variant="teal">Lavado</Badge></td>
-                      {lavadoItem && !lavadoQuick.editId ? (
-                        <>
-                          <td className="py-1 px-2 text-gray-800">Lavada de moto</td>
-                          <td className="py-1 px-2 text-gray-500">{lavadoItem.metodos_pago?.nombre ?? '—'}</td>
-                          <td className="py-1 px-2 text-right text-gray-500 whitespace-nowrap">{formatCOP(lavadoItem.costo_unitario)}</td>
-                          <td className="py-1 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(lavadoItem.precio_venta_unitario)}</td>
-                          <td className="py-1 px-2">{accionesRepuesto(() => iniciarEditarLavado(lavadoItem), () => handleDeleteLavaMoto(lavadoItem.id), celdaFechaLavado(lavadoItem))}</td>
-                        </>
-                      ) : lavadoQuick.editId ? (
-                        <>
-                          <td className="py-1 px-2 text-gray-700 font-medium">Lavada de moto</td>
-                          <td className="py-1 px-2">
-                            <select
-                              value={lavadoQuick.metodo}
-                              onChange={(e) => setLavadoQuick((q) => ({ ...q, metodo: e.target.value }))}
-                              onBlur={guardarFilaLavado}
-                              className="w-full px-1.5 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400 bg-white"
-                            >
-                              <option value="">—</option>
-                              {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                            </select>
-                          </td>
-                          <td className="py-1 px-2">
-                            <input
-                              type="text" inputMode="numeric"
-                              value={lavadoQuick.costo ? '$' + parseInt(lavadoQuick.costo || '0', 10).toLocaleString('es-CO') : ''}
-                              onChange={(e) => setLavadoQuick((q) => ({ ...q, costo: e.target.value.replace(/\D/g, '') }))}
-                              onBlur={guardarFilaLavado}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                              className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-cyan-400"
-                            />
-                          </td>
-                          <td className="py-1 px-2">
-                            <input
-                              type="text" inputMode="numeric"
-                              value={lavadoQuick.valor ? '$' + parseInt(lavadoQuick.valor || '0', 10).toLocaleString('es-CO') : ''}
-                              onChange={(e) => setLavadoQuick((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
-                              onBlur={guardarFilaLavado}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                              className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-cyan-400"
-                            />
-                          </td>
-                          <td className="py-1 px-2">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {guardandoLavado ? (
-                                <svg className="animate-spin w-3.5 h-3.5 text-cyan-500" viewBox="0 0 24 24" fill="none">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                                </svg>
-                              ) : (
-                                <span className={lavadoListo ? 'text-amber-500' : 'text-green-500'}>{lavadoListo ? '⚠' : '✓'}</span>
-                              )}
-                              <button type="button" onMouseDown={(e) => { e.preventDefault(); cancelarEditarLavado() }} title="Cancelar edición" className="text-gray-400 hover:text-red-500 text-xs">✕</button>
-                            </div>
-                          </td>
-                        </>
-                      ) : mostrarLavado ? (
-                        <>
-                          <td className="py-1 px-2">
-                            <button type="button" onClick={() => setMostrarLavado((v) => !v)} className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-cyan-700">
-                              <span className="w-5 h-5 rounded-full bg-cyan-100 text-cyan-700 flex items-center justify-center text-xs font-bold flex-shrink-0">−</span>
-                              Lavado de moto
-                            </button>
-                          </td>
-                          <td className="py-1 px-2">
-                            <select
-                              value={lavadoQuick.metodo}
-                              onChange={(e) => setLavadoQuick((q) => ({ ...q, metodo: e.target.value }))}
-                              onBlur={guardarFilaLavado}
-                              className="w-full px-1.5 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-cyan-400 bg-white"
-                            >
-                              <option value="">—</option>
-                              {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                            </select>
-                          </td>
-                          <td className="py-1 px-2">
-                            <input
-                              type="text" inputMode="numeric"
-                              value={lavadoQuick.costo ? '$' + parseInt(lavadoQuick.costo || '0', 10).toLocaleString('es-CO') : ''}
-                              onChange={(e) => setLavadoQuick((q) => ({ ...q, costo: e.target.value.replace(/\D/g, '') }))}
-                              onBlur={guardarFilaLavado}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                              className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-cyan-400"
-                            />
-                          </td>
-                          <td className="py-1 px-2">
-                            <input
-                              type="text" inputMode="numeric"
-                              value={lavadoQuick.valor ? '$' + parseInt(lavadoQuick.valor || '0', 10).toLocaleString('es-CO') : ''}
-                              onChange={(e) => setLavadoQuick((q) => ({ ...q, valor: e.target.value.replace(/\D/g, '') }))}
-                              onBlur={guardarFilaLavado}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-                              className="w-full px-2 py-1 border border-gray-200 rounded-lg text-sm font-mono text-right focus:outline-none focus:ring-2 focus:ring-cyan-400"
-                            />
-                          </td>
-                          <td className="py-1 px-2 text-center">
-                            {guardandoLavado ? (
-                              <svg className="animate-spin w-3.5 h-3.5 text-cyan-500 inline" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                              </svg>
-                            ) : (
-                              <span className={lavadoListo ? 'text-amber-500' : 'text-green-500'}>{lavadoListo ? '⚠' : '✓'}</span>
-                            )}
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="py-1 px-2">
-                            <button type="button" onClick={() => setMostrarLavado((v) => !v)} className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-cyan-700">
-                              <span className="w-5 h-5 rounded-full bg-cyan-100 text-cyan-700 flex items-center justify-center text-xs font-bold flex-shrink-0">+</span>
-                              Lavado de moto
-                            </button>
-                          </td>
-                          <td colSpan={4} />
-                        </>
-                      )}
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              </div>
-              )}
-
-              <div className={`px-5 py-3 border-t space-y-1 text-sm font-semibold ${hayBorradorRepuestos ? 'bg-amber-50' : 'bg-blue-50'}`}>
+              <div className="px-5 py-3 border-t space-y-1 text-sm font-semibold bg-blue-50">
                 <div className="flex justify-between">
-                  <span className={hayBorradorRepuestos ? 'text-amber-600' : 'text-gray-500'}>Total costo proveedor</span>
-                  <span className={hayBorradorRepuestos ? 'text-amber-700' : 'text-gray-900'}>{formatCOP(totalCostoProveedorLive)}</span>
+                  <span className="text-gray-500">Total costo proveedor</span>
+                  <span className="text-gray-900">{formatCOP(totalCostoProveedorLive)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className={hayBorradorRepuestos ? 'text-amber-600' : 'text-blue-700'}>Total precio venta cliente</span>
-                  <span className={hayBorradorRepuestos ? 'text-amber-700' : 'text-blue-900'}>{formatCOP(totalVentaLive)}</span>
+                  <span className="text-blue-700">Total precio venta cliente</span>
+                  <span className="text-blue-900">{formatCOP(totalVentaLive)}</span>
                 </div>
               </div>
             </div>
@@ -2761,13 +2760,9 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             const totalPagadoCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
             const servicioGuardado = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
             const lmTotal = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-            // El "Total a pagar" incluye lo ya guardado MÁS lo que está en borrador de Lavado —
-            // así el usuario ve de una vez cuánto debe cobrar, aunque aún no haya guardado.
-            const totalAPagarGuardado = servicioGuardado + lmTotal
-            const totalAPagar = totalAPagarGuardado + draftLavadoTotal
-            const hayBorradorPago = draftLavadoTotal > 0
+            const totalAPagar = servicioGuardado + lmTotal
             const saldoPendiente = totalAPagar - totalPagadoCliente
-            const estadoPagoCalc = calcularEstadoPago(pagosOrden, totalAPagarGuardado)
+            const estadoPagoCalc = calcularEstadoPago(pagosOrden, totalAPagar)
             const totalPagado = totalPagadoCliente
             const estadoColor = estadoPagoCalc === 'pagado' ? 'bg-green-100 text-green-700 border-green-200'
               : estadoPagoCalc === 'abono' ? 'bg-amber-100 text-amber-700 border-amber-200'
@@ -2784,19 +2779,19 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                   </span>
                 </div>
 
-                {/* Resumen — cálculo en vivo: incluye lo guardado y lo que está en borrador */}
+                {/* Resumen */}
                 <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Servicio técnico</span>
                     <span className="font-semibold text-gray-900">{formatCOP(servicioGuardado)}</span>
                   </div>
-                  {(lmTotal > 0 || draftLavadoTotal > 0) && (
-                    <div className={`flex justify-between text-xs ${draftLavadoTotal > 0 ? 'text-amber-600' : 'text-cyan-600'}`}>
-                      <span>Lava Moto ({lavaMotoOrdenes.reduce((s, r) => s + r.cantidad, 0) + (draftLavadoTotal > 0 ? 1 : 0)} und.)</span>
-                      <span className={`font-semibold ${draftLavadoTotal > 0 ? 'text-amber-700' : ''}`}>+ {formatCOP(lmTotal + draftLavadoTotal)}</span>
+                  {lmTotal > 0 && (
+                    <div className="flex justify-between text-xs text-cyan-600">
+                      <span>Lava Moto ({lavaMotoOrdenes.reduce((s, r) => s + r.cantidad, 0)} und.)</span>
+                      <span className="font-semibold">+ {formatCOP(lmTotal)}</span>
                     </div>
                   )}
-                  <div className={`flex justify-between text-xs font-semibold border-t border-gray-200 pt-1.5 ${hayBorradorPago ? 'text-amber-700' : 'text-gray-700'}`}>
+                  <div className="flex justify-between text-xs font-semibold border-t border-gray-200 pt-1.5 text-gray-700">
                     <span>Total a pagar</span>
                     <span>{formatCOP(totalAPagar)}</span>
                   </div>

@@ -134,6 +134,10 @@ export default function RecepcionPage() {
 
   const subcategorias = categorias.find((c) => c.id === categoriaId)?.subcategorias_servicio ?? []
   const esGarantia = subcategorias.some((s) => subcategoriaIds.includes(s.id) && s.nombre.toLowerCase().includes('garant'))
+  // La categoría se filtra según UMA/Terceros para que "Tipo de ingreso" se
+  // responda una sola vez (toggle + categoría juntos) — igual que en el PC.
+  const categoriasUma = categorias.filter((c) => c.nombre.toLowerCase().includes('uma'))
+  const categoriasTerceros = categorias.filter((c) => !c.nombre.toLowerCase().includes('uma'))
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -168,7 +172,11 @@ export default function RecepcionPage() {
     e.preventDefault()
     if (!profile?.tenant_id || !profile.id) return
     if (!tipoServicio) {
-      setError('Selecciona el tipo de servicio: UMA o Terceros.')
+      setError('Selecciona el tipo de ingreso: UMA o Terceros.')
+      return
+    }
+    if (categorias.length > 0 && !categoriaId) {
+      setError('Selecciona la categoría del tipo de ingreso.')
       return
     }
     setError('')
@@ -320,8 +328,8 @@ export default function RecepcionPage() {
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de servicio *</label>
+        <div className={`rounded-xl border p-3 space-y-3 ${(!tipoServicio || (categorias.length > 0 && !categoriaId)) ? 'border-red-300 ring-2 ring-red-100' : 'border-gray-200'}`}>
+          <label className="block text-sm font-medium text-gray-700">Tipo de ingreso *</label>
           <div className="flex gap-2">
             {([
               { value: 'terceros', label: 'Terceros / Independiente' },
@@ -330,17 +338,35 @@ export default function RecepcionPage() {
               <button
                 type="button"
                 key={t.value}
-                onClick={() => setTipoServicio(t.value)}
+                onClick={() => { setTipoServicio(t.value); setCategoriaId(''); setSubcategoriaIds([]) }}
                 className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
                   tipoServicio === t.value
                     ? t.value === 'uma' ? 'bg-purple-700 text-white' : 'bg-amber-500 text-white'
-                    : !tipoServicio ? 'bg-red-50 text-gray-700 border border-red-200 hover:bg-gray-100' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 {t.label}
               </button>
             ))}
           </div>
+          {tipoServicio && (tipoServicio === 'uma' ? categoriasUma : categoriasTerceros).length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {(tipoServicio === 'uma' ? categoriasUma : categoriasTerceros).map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => { setCategoriaId(categoriaId === c.id ? '' : c.id); setSubcategoriaIds([]) }}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
+                    categoriaId === c.id
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300'
+                  }`}
+                >
+                  {c.nombre}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Panel inteligente de moto */}
@@ -383,29 +409,6 @@ export default function RecepcionPage() {
             placeholder="(310) 000-0000"
           />
         </div>
-
-        {/* Selección rápida de tipo de ingreso */}
-        {categorias.length > 0 && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de ingreso</label>
-            <div className="flex flex-wrap gap-2">
-              {categorias.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => { setCategoriaId(categoriaId === c.id ? '' : c.id); setSubcategoriaIds([]) }}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
-                    categoriaId === c.id
-                      ? 'border-blue-600 bg-blue-600 text-white'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300'
-                  }`}
-                >
-                  {c.nombre}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
         {subcategorias.length > 0 && (
           <div>
