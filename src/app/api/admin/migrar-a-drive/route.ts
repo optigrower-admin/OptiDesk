@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { downloadFromR2 } from '@/lib/r2'
 import { uploadToDrive, getOrCreateDriveSubfolder } from '@/lib/drive'
 import { convertirAMp4 } from '@/lib/video'
@@ -96,16 +97,20 @@ export async function POST() {
         tenant.google_refresh_token,
       )
 
-      // Actualizar medios: guardar el file ID en url (para CDN inline)
-      // y el webViewLink en drive_url (para descargar/abrir en Drive).
-      // La copia original en R2 se conserva.
-      await supabase.from('medios').update({
+      // Actualizar medios usando service role para evitar restricciones RLS.
+      // Guarda el file ID de Drive en url (para CDN inline) y el webViewLink
+      // en drive_url (para descargar/abrir en Drive).
+      const admin = createAdminClient()
+      const { error: updateErr, count: updateCount } = await admin.from('medios').update({
         url: driveFileId,
         storage_location: 'drive',
         drive_url: webViewLink,
         nombre_archivo: nombreArchivo,
         tamano_bytes: buffer.length,
       }).eq('id', medio.id)
+
+      if (updateErr) throw new Error(`DB update: ${updateErr.message}`)
+      if ((updateCount ?? 0) === 0) throw new Error('DB update: no se actualizó ningún registro (posible problema de permisos)')
 
       procesados.push(medio.id)
     } catch (e: unknown) {
@@ -117,19 +122,15 @@ export async function POST() {
     }
   }
 
-  // Contar cuántos quedan aún en R2
-  const { count: restantes } = await supabase
-    .from('medios')
-    .select('id', { count: 'exact', head: true })
-    .eq('tenant_id', perfil.tenant_id)
-    .eq('storage_location', 'r2')
-
-  // Total ya migrados a Drive
-  const { count: enDrive } = await supabase
-    .from('medios')
-    .select('id', { count: 'exact', head: true })
-    .eq('tenant_id', perfil.tenant_id)
-    .eq('storage_location', 'drive')
+  // Usar service role para los conteos — la RLS puede filtrar filas y dar
+  // números incorrectos al cliente autenticado normal.
+  const adminCount = createAdminClient()
+  const [{ count: restantes }, { count: enDrive }] = await Promise.all([
+    adminCount.from('medios').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', perfil.tenant_id).eq('storage_location', 'r2'),
+    adminCount.from('medios').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', perfil.tenant_id).eq('storage_location', 'drive'),
+  ])
 
   return NextResponse.json({
     procesados: procesados.length,
@@ -149,10 +150,11 @@ export async function GET() {
     .from('usuarios').select('tenant_id').eq('id', user.id).single()
   if (!perfil) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
+  const admin = createAdminClient()
   const [{ count: enR2 }, { count: enDrive }] = await Promise.all([
-    supabase.from('medios').select('id', { count: 'exact', head: true })
+    admin.from('medios').select('id', { count: 'exact', head: true })
       .eq('tenant_id', perfil.tenant_id).eq('storage_location', 'r2'),
-    supabase.from('medios').select('id', { count: 'exact', head: true })
+    admin.from('medios').select('id', { count: 'exact', head: true })
       .eq('tenant_id', perfil.tenant_id).eq('storage_location', 'drive'),
   ])
 
