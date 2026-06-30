@@ -1,6 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
@@ -44,7 +45,9 @@ function TrashBtn({ onClick }: { onClick: () => void }) {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-export default function ConfigServicioPage() {
+function ConfigServicioContent() {
+  const searchParams = useSearchParams()
+
   const supabase = createClient()
   const { profile } = useAuth()
 
@@ -96,6 +99,14 @@ export default function ConfigServicioPage() {
   const [savingLavaMoto, setSavingLavaMoto] = useState(false)
   const [lavaMotoMsg, setLavaMotoMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
+  /* ── Estado Google Drive ── */
+  const [driveConectado, setDriveConectado] = useState(false)
+  const [driveFolderInput, setDriveFolderInput] = useState('')
+  const [driveFolderGuardado, setDriveFolderGuardado] = useState<string | null>(null)
+  const [savingDriveFolder, setSavingDriveFolder] = useState(false)
+  const [disconnectingDrive, setDisconnectingDrive] = useState(false)
+  const [driveMsg, setDriveMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
   /* ── Estado migración de videos antiguos a mp4 ── */
   const [migrando, setMigrando] = useState(false)
   const [migProcesados, setMigProcesados] = useState(0)
@@ -131,8 +142,15 @@ export default function ConfigServicioPage() {
 
   useEffect(() => {
     if (!profile?.tenant_id) return
-    supabase.from('tenants').select('logo_url').eq('id', profile.tenant_id).single()
-      .then(({ data }) => setLogoUrl(data?.logo_url ?? null))
+    supabase.from('tenants')
+      .select('logo_url, google_refresh_token, drive_folder_id')
+      .eq('id', profile.tenant_id).single()
+      .then(({ data }) => {
+        setLogoUrl(data?.logo_url ?? null)
+        setDriveConectado(!!data?.google_refresh_token)
+        setDriveFolderGuardado(data?.drive_folder_id ?? null)
+        setDriveFolderInput(data?.drive_folder_id ?? '')
+      })
   }, [profile?.tenant_id])
 
   const subirLogo = async (file: File) => {
@@ -461,6 +479,41 @@ export default function ConfigServicioPage() {
       setUploadResultManuales({ ok: false, msg: e instanceof Error ? e.message : 'Error al cargar el archivo.' })
     } finally {
       setUploadingManuales(false)
+    }
+  }
+
+  const guardarDriveFolder = async () => {
+    if (!profile?.tenant_id) return
+    setSavingDriveFolder(true)
+    setDriveMsg(null)
+    try {
+      const raw = driveFolderInput.trim()
+      const folderId = raw.includes('/')
+        ? (raw.split('/folders/')[1]?.split('?')[0] ?? raw)
+        : raw
+      await supabase.from('tenants').update({ drive_folder_id: folderId || null }).eq('id', profile.tenant_id)
+      setDriveFolderGuardado(folderId || null)
+      setDriveFolderInput(folderId)
+      setDriveMsg({ ok: true, text: 'Carpeta guardada correctamente.' })
+    } catch {
+      setDriveMsg({ ok: false, text: 'No se pudo guardar la carpeta.' })
+    } finally {
+      setSavingDriveFolder(false)
+    }
+  }
+
+  const desconectarDrive = async () => {
+    if (!profile?.tenant_id || !confirm('¿Desconectar Google Drive? Las fotos nuevas volverán a guardarse en R2.')) return
+    setDisconnectingDrive(true)
+    setDriveMsg(null)
+    try {
+      await fetch('/api/drive/disconnect', { method: 'POST' })
+      setDriveConectado(false)
+      setDriveMsg({ ok: true, text: 'Google Drive desconectado.' })
+    } catch {
+      setDriveMsg({ ok: false, text: 'No se pudo desconectar.' })
+    } finally {
+      setDisconnectingDrive(false)
     }
   }
 
@@ -1172,6 +1225,131 @@ export default function ConfigServicioPage() {
         </div>
       )}
 
+      {/* ─── Google Drive ──────────────────────────────────── */}
+      {(() => {
+        const driveOk = searchParams.get('drive_ok')
+        const driveError = searchParams.get('drive_error')
+        const driveListoParaUsarse = driveConectado && !!driveFolderGuardado
+        return (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Almacenamiento en Google Drive</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Las fotos de las órdenes se guardarán en carpetas por placa dentro de tu Drive.
+                  Los videos siguen en R2.
+                </p>
+              </div>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                driveListoParaUsarse
+                  ? 'bg-green-100 text-green-700 border-green-200'
+                  : driveConectado
+                  ? 'bg-amber-100 text-amber-700 border-amber-200'
+                  : 'bg-gray-100 text-gray-500 border-gray-200'
+              }`}>
+                {driveListoParaUsarse ? '✓ Activo' : driveConectado ? 'Falta carpeta' : 'Sin conectar'}
+              </span>
+            </div>
+
+            {(driveOk || driveError) && (
+              <div className={`flex items-start gap-2 px-4 py-3 rounded-lg text-sm border ${
+                driveOk ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'
+              }`}>
+                <span className="flex-shrink-0 mt-0.5">{driveOk ? '✓' : '✗'}</span>
+                <span>{driveOk ? 'Google Drive conectado correctamente.' : `Error al conectar: ${driveError}`}</span>
+              </div>
+            )}
+
+            {driveMsg && (
+              <div className={`flex items-start gap-2 px-4 py-3 rounded-lg text-sm border ${
+                driveMsg.ok ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'
+              }`}>
+                <span className="flex-shrink-0 mt-0.5">{driveMsg.ok ? '✓' : '✗'}</span>
+                <span>{driveMsg.text}</span>
+              </div>
+            )}
+
+            {/* Paso 1: Conectar cuenta */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700">
+                Paso 1 — Conectar cuenta de Google
+              </p>
+              {driveConectado ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-green-700 flex items-center gap-1.5">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Cuenta de Google conectada
+                  </span>
+                  <button
+                    onClick={desconectarDrive}
+                    disabled={disconnectingDrive}
+                    className="text-xs text-red-500 hover:text-red-700 underline disabled:opacity-50"
+                  >
+                    {disconnectingDrive ? 'Desconectando...' : 'Desconectar'}
+                  </button>
+                </div>
+              ) : (
+                <a
+                  href={`/api/drive/connect`}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-sm font-medium text-gray-700 transition-colors shadow-sm"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  Conectar con Google Drive
+                </a>
+              )}
+            </div>
+
+            {/* Paso 2: Carpeta de Drive */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700">
+                Paso 2 — Pegar el link de la carpeta de Drive
+              </p>
+              <p className="text-xs text-gray-500">
+                Crea una carpeta en tu Drive (ej. &quot;Fotos OptiDesk&quot;) → ábrela → copia la URL completa del navegador y pégala aquí. El sistema creará sub-carpetas automáticas por placa dentro de ella.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  value={driveFolderInput}
+                  onChange={(e) => setDriveFolderInput(e.target.value)}
+                  placeholder="https://drive.google.com/drive/folders/1ABC... o solo el ID"
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                <button
+                  onClick={guardarDriveFolder}
+                  disabled={savingDriveFolder || !driveFolderInput.trim()}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-sm font-semibold transition-colors whitespace-nowrap"
+                >
+                  {savingDriveFolder ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+              {driveFolderGuardado && (
+                <p className="text-xs text-green-700 flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4" />
+                  </svg>
+                  Carpeta configurada: <span className="font-mono">{driveFolderGuardado}</span>
+                </p>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
     </div>
+  )
+}
+
+export default function ConfigServicioPage() {
+  return (
+    <Suspense>
+      <ConfigServicioContent />
+    </Suspense>
   )
 }

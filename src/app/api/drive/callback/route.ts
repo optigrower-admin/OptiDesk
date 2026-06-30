@@ -9,12 +9,14 @@ export async function GET(req: NextRequest) {
   const error    = req.nextUrl.searchParams.get('error')
 
   // El state contiene "tenantId|origin"
-  const [tenantId, origin] = stateRaw.split('|')
+  const [tenantId, origin, redirectTo] = stateRaw.split('|')
   const base = origin || req.nextUrl.origin
-  const storageUrl = `${base}/control_total/storage`
+  const returnUrl = redirectTo === 'control_total'
+    ? `${base}/control_total/storage`
+    : `${base}/admin/config-servicio`
 
   if (error || !code || !tenantId) {
-    return NextResponse.redirect(`${storageUrl}?drive_error=${encodeURIComponent(error ?? 'oauth_cancelled')}`)
+    return NextResponse.redirect(`${returnUrl}?drive_error=${encodeURIComponent(error ?? 'oauth_cancelled')}`)
   }
 
   const supabase = createClient()
@@ -35,7 +37,7 @@ export async function GET(req: NextRequest) {
     if (!tokens.refresh_token) {
       // Si Google no devuelve refresh_token es porque ya se había autorizado antes
       // y no se usó prompt=consent. Redirigir con aviso.
-      return NextResponse.redirect(`${storageUrl}?drive_error=no_refresh_token`)
+      return NextResponse.redirect(`${returnUrl}?drive_error=no_refresh_token`)
     }
 
     // Guardar el refresh token en la tabla tenants
@@ -58,9 +60,9 @@ export async function GET(req: NextRequest) {
         .eq('id', tenantId)
     }
 
-    return NextResponse.redirect(`${storageUrl}?drive_ok=1`)
+    return NextResponse.redirect(`${returnUrl}?drive_ok=1`)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido'
-    return NextResponse.redirect(`${storageUrl}?drive_error=${encodeURIComponent(msg)}`)
+    return NextResponse.redirect(`${returnUrl}?drive_error=${encodeURIComponent(msg)}`)
   }
 }

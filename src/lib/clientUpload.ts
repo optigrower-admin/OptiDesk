@@ -27,7 +27,25 @@ export async function subirArchivoOrden(params: {
     const err = await presignRes.json().catch(() => ({}))
     throw new Error(err.error ?? 'Error al preparar la subida')
   }
-  const { url, key, nombreArchivo, contentType } = await presignRes.json()
+  const presignData = await presignRes.json()
+
+  // Si el tenant tiene Drive configurado para imágenes → subir directamente a Drive
+  if (presignData.mode === 'drive') {
+    onProgress?.(10)
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('orden_id', ordenId)
+    fd.append('tipo', tipo)
+    const driveRes = await fetch('/api/upload/drive', { method: 'POST', body: fd })
+    if (!driveRes.ok) {
+      const err = await driveRes.json().catch(() => ({}))
+      throw new Error(err.error ?? 'Error al subir la foto a Google Drive')
+    }
+    onProgress?.(100)
+    return await driveRes.json() as MedioRegistrado
+  }
+
+  const { url, key, nombreArchivo, contentType } = presignData
 
   if (file.size === 0) {
     throw new Error('El archivo parece vacío (0 bytes). Puede que esté en la nube sin descargarse. Descárgalo primero e intenta de nuevo.')

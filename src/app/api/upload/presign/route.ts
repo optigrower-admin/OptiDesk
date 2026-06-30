@@ -20,6 +20,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 })
   }
 
+  // Si el tenant tiene Drive configurado y es una imagen → subir a Drive
+  if (tipo === 'imagen') {
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select('google_refresh_token, drive_folder_id')
+      .eq('id', perfil.tenant_id)
+      .single()
+    if (tenant?.google_refresh_token && tenant.drive_folder_id) {
+      return NextResponse.json({ mode: 'drive' })
+    }
+  }
+
   const { data: orden } = await supabase.from('ordenes')
     .select('placa, numero').eq('id', orden_id).single()
 
