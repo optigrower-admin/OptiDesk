@@ -526,7 +526,7 @@ function ConfigServicioContent() {
   }
 
   const cargarConteosDrive = async () => {
-    const res = await fetch('/api/admin/migrar-a-drive')
+    const res = await fetch(`/api/admin/migrar-a-drive?tenant_id=${profile?.tenant_id ?? ''}`)
     if (res.ok) {
       const json = await res.json()
       setMigDriveR2(json.enR2 ?? 0)
@@ -541,7 +541,7 @@ function ConfigServicioContent() {
     setMigDriveProcesados(0)
     let restantes = migDriveR2 ?? 1
     while (restantes > 0) {
-      const res = await fetch('/api/admin/migrar-a-drive', { method: 'POST' })
+      const res = await fetch(`/api/admin/migrar-a-drive?tenant_id=${profile?.tenant_id ?? ''}`, { method: 'POST' })
       if (!res.ok) break
       const json = await res.json()
       setMigDriveProcesados((p) => p + (json.procesados ?? 0))

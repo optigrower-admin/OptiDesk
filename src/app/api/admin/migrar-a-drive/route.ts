@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { downloadFromR2 } from '@/lib/r2'
@@ -21,7 +21,7 @@ const LOTE = 3  // archivos por llamada (Vercel puede tardar con videos grandes)
  * El archivo en R2 se mantiene como copia de seguridad; el registro
  * en medios apunta a Drive (storage_location = 'drive').
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -32,10 +32,15 @@ export async function POST() {
     return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
   }
 
+  // El tenant_id viene del perfil del usuario. Para el rol control_total
+  // (que no tiene tenant propio) se acepta un tenant_id explícito del query param.
+  const tenantId = perfil.tenant_id ?? req.nextUrl.searchParams.get('tenant_id')
+  if (!tenantId) return NextResponse.json({ error: 'Falta tenant_id' }, { status: 400 })
+
   const { data: tenant } = await supabase
     .from('tenants')
     .select('google_refresh_token, drive_folder_id')
-    .eq('id', perfil.tenant_id)
+    .eq('id', tenantId)
     .single()
 
   if (!tenant?.google_refresh_token) {
@@ -53,7 +58,7 @@ export async function POST() {
   const { data: candidatos } = await supabase
     .from('medios')
     .select('id, url, nombre_archivo, tipo, tamano_bytes, ordenes(placa, numero)')
-    .eq('tenant_id', perfil.tenant_id)
+    .eq('tenant_id', tenantId)
     .eq('storage_location', 'r2')
     .limit(LOTE)
 
@@ -127,9 +132,9 @@ export async function POST() {
   const adminCount = createAdminClient()
   const [{ count: restantes }, { count: enDrive }] = await Promise.all([
     adminCount.from('medios').select('id', { count: 'exact', head: true })
-      .eq('tenant_id', perfil.tenant_id).eq('storage_location', 'r2'),
+      .eq('tenant_id', tenantId).eq('storage_location', 'r2'),
     adminCount.from('medios').select('id', { count: 'exact', head: true })
-      .eq('tenant_id', perfil.tenant_id).eq('storage_location', 'drive'),
+      .eq('tenant_id', tenantId).eq('storage_location', 'drive'),
   ])
 
   return NextResponse.json({
@@ -141,7 +146,7 @@ export async function POST() {
 }
 
 /** GET: solo devuelve los conteos sin procesar nada. */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -150,12 +155,15 @@ export async function GET() {
     .from('usuarios').select('tenant_id').eq('id', user.id).single()
   if (!perfil) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
+  const tenantId = perfil.tenant_id ?? req.nextUrl.searchParams.get('tenant_id')
+  if (!tenantId) return NextResponse.json({ enR2: 0, enDrive: 0 })
+
   const admin = createAdminClient()
   const [{ count: enR2 }, { count: enDrive }] = await Promise.all([
     admin.from('medios').select('id', { count: 'exact', head: true })
-      .eq('tenant_id', perfil.tenant_id).eq('storage_location', 'r2'),
+      .eq('tenant_id', tenantId).eq('storage_location', 'r2'),
     admin.from('medios').select('id', { count: 'exact', head: true })
-      .eq('tenant_id', perfil.tenant_id).eq('storage_location', 'drive'),
+      .eq('tenant_id', tenantId).eq('storage_location', 'drive'),
   ])
 
   return NextResponse.json({ enR2: enR2 ?? 0, enDrive: enDrive ?? 0 })
