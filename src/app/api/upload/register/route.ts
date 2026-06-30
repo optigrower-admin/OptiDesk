@@ -45,17 +45,22 @@ export async function POST(req: NextRequest) {
   }
 
   // Este registro viene de una subida directa a R2 (presign), que no pasa por
-  // /api/upload — así que los videos llegan aquí en el formato original del
-  // celular (mov, 3gpp, webm, etc.). Se convierten a mp4 real (H.264/AAC) aquí
-  // mismo antes de guardar el registro, para que TODOS los videos de Servicio
-  // Técnico salgan siempre reproducibles en cualquier dispositivo.
-  if (tipo === 'video' && !key.toLowerCase().endsWith('.mp4')) {
+  // Todos los videos se procesan aquí: se convierten a H.264/AAC y se
+  // comprimen para garantizar que el resultado pese menos de 10 MB.
+  // Se omiten solo los .mp4 que ya pesan menos de 10 MB (sin re-codificar
+  // para no degradar calidad innecesariamente).
+  const LIMITE_VIDEO_BYTES = 10 * 1024 * 1024
+  const esMP4 = key.toLowerCase().endsWith('.mp4')
+  const debeConvertir = tipo === 'video' && (!esMP4 || (tamano_bytes ?? 0) > LIMITE_VIDEO_BYTES)
+
+  if (debeConvertir) {
     try {
       const extOriginal = (key.split('.').pop() ?? 'mp4').toLowerCase()
-      console.log(`[upload/register] Convirtiendo ${key} (${tamano_bytes ?? '?'} bytes original)`)
+      const razon = !esMP4 ? 'formato no mp4' : `${((tamano_bytes ?? 0) / 1024 / 1024).toFixed(1)} MB > 10 MB`
+      console.log(`[upload/register] Procesando ${key} (${razon})`)
 
       const original = await conTimeout(downloadFromR2(key), TIMEOUT_PASO_MS, 'descarga de R2')
-      const convertido = Buffer.from(await conTimeout(convertirAMp4(original, extOriginal), TIMEOUT_PASO_MS, 'conversión ffmpeg'))
+      const convertido = Buffer.from(await conTimeout(convertirAMp4(original, extOriginal), TIMEOUT_PASO_MS, 'compresión ffmpeg'))
 
       const nuevaKey = key.replace(/\.[^./]+$/, '.mp4')
       const nuevoNombre = nombre_archivo.replace(/\.[^./]+$/, '.mp4')
@@ -66,9 +71,9 @@ export async function POST(req: NextRequest) {
       key = nuevaKey
       nombre_archivo = nuevoNombre
       tamano_bytes = convertido.length
-      console.log(`[upload/register] Conversión OK: ${key} (${tamano_bytes} bytes)`)
+      console.log(`[upload/register] OK: ${key} → ${(tamano_bytes / 1024 / 1024).toFixed(1)} MB`)
     } catch (e) {
-      console.error('[upload/register] Error convirtiendo video a mp4, se conserva el original:', e)
+      console.error('[upload/register] Error procesando video, se conserva el original:', e)
     }
   }
 
