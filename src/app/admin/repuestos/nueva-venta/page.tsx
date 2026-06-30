@@ -108,6 +108,7 @@ function NuevaVentaContent() {
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
   const [pagosOrden, setPagosOrden] = useState<PagoOrden[]>([])
   const [savedOk, setSavedOk] = useState(false)
+  const [deletingOrden, setDeletingOrden] = useState(false)
 
   // Repuestos
   const [showAgregarRepuesto, setShowAgregarRepuesto] = useState(false)
@@ -295,6 +296,42 @@ function NuevaVentaContent() {
     })
     setSavedOk(true)
     setTimeout(() => setSavedOk(false), 1500)
+  }
+
+  const handleDeleteOrden = async () => {
+    if (!orden || !esGerencia) return
+    if (!confirm(`¿Eliminar la venta directa #${orden.numero} de ${orden.cliente}? Esto borrará sus repuestos y pagos. Esta acción no se puede deshacer.`)) return
+    setDeletingOrden(true)
+    try {
+      // Devolver al inventario los repuestos UMA
+      for (const item of items) {
+        if (!item.repuesto_uma_id) continue
+        await registrarDevolucion(supabase, {
+          tenantId: orden.tenant_id,
+          repuesto_uma_id: item.repuesto_uma_id,
+          cantidad: item.cantidad,
+          costo_unitario: item.costo,
+          precio_unitario: item.precio_venta,
+          orden_id: ordenId as string,
+          item_orden_id: item.id,
+          registrado_por: profile?.id,
+        })
+      }
+      await registrarAuditoria(supabase, {
+        tenant_id: orden.tenant_id,
+        tabla: 'ordenes',
+        registro_id: ordenId as string,
+        tipo: 'eliminacion',
+        valor_anterior: orden as unknown as Record<string, unknown>,
+        descripcion: `Gerencia eliminó la venta directa #${orden.numero} de ${orden.cliente}`,
+        usuario_id: profile?.id,
+      })
+      // La cascada de DB se encarga de items_orden y pagos_orden
+      await supabase.from('ordenes').delete().eq('id', ordenId as string)
+      router.push('/admin/repuestos')
+    } finally {
+      setDeletingOrden(false)
+    }
   }
 
   // ─── Repuestos ────────────────────────────────────────────
@@ -671,6 +708,18 @@ function NuevaVentaContent() {
         </h1>
         {!ordenId && draftSaved && <span className="text-xs text-green-600 ml-auto">Borrador guardado</span>}
         {ordenId && savedOk && <span className="text-xs text-green-600 ml-auto">Guardado</span>}
+        {ordenId && orden && esGerencia && (
+          <button
+            onClick={handleDeleteOrden}
+            disabled={deletingOrden}
+            className="ml-auto p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+            title="Eliminar esta venta directa (solo gerencia)"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {error && (
