@@ -106,6 +106,7 @@ function ConfigServicioContent() {
   const [savingDriveFolder, setSavingDriveFolder] = useState(false)
   const [disconnectingDrive, setDisconnectingDrive] = useState(false)
   const [driveMsg, setDriveMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [driveParaNuevas, setDriveParaNuevas] = useState(true)
   /* migración R2 → Drive */
   const [migDrive, setMigDrive] = useState(false)
   const [migDriveR2, setMigDriveR2] = useState<number | null>(null)
@@ -149,13 +150,14 @@ function ConfigServicioContent() {
   useEffect(() => {
     if (!profile?.tenant_id) return
     supabase.from('tenants')
-      .select('logo_url, google_refresh_token, drive_folder_id')
+      .select('logo_url, google_refresh_token, drive_folder_id, drive_para_nuevas')
       .eq('id', profile.tenant_id).single()
       .then(({ data }) => {
         setLogoUrl(data?.logo_url ?? null)
         setDriveConectado(!!data?.google_refresh_token)
         setDriveFolderGuardado(data?.drive_folder_id ?? null)
         setDriveFolderInput(data?.drive_folder_id ?? '')
+        setDriveParaNuevas(data?.drive_para_nuevas !== false)
       })
   }, [profile?.tenant_id])
 
@@ -1373,6 +1375,27 @@ function ConfigServicioContent() {
                 </p>
               )}
             </div>
+
+            {/* Toggle: activar/desactivar Drive para fotos nuevas */}
+            {driveListoParaUsarse && (
+              <div className="flex items-center justify-between py-3 border-t border-gray-100">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Guardar nuevas fotos en Drive</p>
+                  <p className="text-xs text-gray-500">Las fotos de las órdenes irán a Drive en vez de R2.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const next = !driveParaNuevas
+                    setDriveParaNuevas(next)
+                    await supabase.from('tenants').update({ drive_para_nuevas: next }).eq('id', profile!.tenant_id)
+                  }}
+                  className={`w-12 h-6 rounded-full transition-colors flex-shrink-0 ${driveParaNuevas ? 'bg-blue-600' : 'bg-gray-300'}`}
+                >
+                  <span className={`block w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${driveParaNuevas ? 'translate-x-6' : ''}`} />
+                </button>
+              </div>
+            )}
 
             {/* Paso 3: Migrar fotos y videos viejos de R2 a Drive */}
             {driveListoParaUsarse && (

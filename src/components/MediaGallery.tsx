@@ -95,8 +95,14 @@ export function MediaGallery({ medios, onDelete }: {
   const [viewing, setViewing] = useState<Medio | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Medio | null>(null)
 
+  // Para Drive, `medio.url` guarda el File ID de Google.
+  // Las imágenes usan el CDN directo de Google (funciona como <img src>).
+  // Los videos usan el player embebible de Drive (solo sirve en <iframe>).
   const getMediaUrl = (medio: Medio) => {
-    if (medio.storage_location === 'drive') return medio.drive_url ?? '#'
+    if (medio.storage_location === 'drive') {
+      if (medio.tipo === 'imagen') return `https://lh3.googleusercontent.com/d/${medio.url}`
+      return `https://drive.google.com/file/d/${medio.url}/preview`
+    }
     return `/api/media/${medio.id}`
   }
 
@@ -135,6 +141,17 @@ export function MediaGallery({ medios, onDelete }: {
                     (e.target as HTMLImageElement).src = '/icons/icon-192.png'
                   }}
                 />
+              ) : medio.storage_location === 'drive' ? (
+                // Los videos de Drive no se pueden mostrar como <video src>
+                // porque Drive no sirve el stream con los headers CORS correctos.
+                // Mostramos un placeholder con icono de play.
+                <div className="relative w-full h-full bg-gray-900 flex items-center justify-center">
+                  <div className="rounded-full p-2.5 bg-black/60">
+                    <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </div>
+                </div>
               ) : (
                 <VideoThumb src={getMediaUrl(medio)} />
               )}
@@ -228,6 +245,15 @@ export function MediaGallery({ medios, onDelete }: {
               src={getMediaUrl(viewing)}
               alt={viewing.nombre_archivo ?? 'Imagen'}
               className="max-w-full max-h-[85vh] rounded-lg object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : viewing.storage_location === 'drive' ? (
+            // Videos de Drive: usar el player embebible de Google
+            <iframe
+              src={getMediaUrl(viewing)}
+              className="w-full max-w-3xl rounded-lg"
+              style={{ height: '60vh' }}
+              allow="autoplay"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (

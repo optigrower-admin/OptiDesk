@@ -88,7 +88,7 @@ export async function POST() {
       )
 
       // Subir a Drive
-      const { webViewLink } = await uploadToDrive(
+      const { id: driveFileId, webViewLink } = await uploadToDrive(
         nombreArchivo,
         mimeType,
         buffer,
@@ -96,8 +96,11 @@ export async function POST() {
         tenant.google_refresh_token,
       )
 
-      // Actualizar medios: apuntar a Drive (se conserva la copia en R2)
+      // Actualizar medios: guardar el file ID en url (para CDN inline)
+      // y el webViewLink en drive_url (para descargar/abrir en Drive).
+      // La copia original en R2 se conserva.
       await supabase.from('medios').update({
+        url: driveFileId,
         storage_location: 'drive',
         drive_url: webViewLink,
         nombre_archivo: nombreArchivo,

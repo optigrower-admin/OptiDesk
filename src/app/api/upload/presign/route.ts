@@ -20,14 +20,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 })
   }
 
-  // Si el tenant tiene Drive configurado y es una imagen → subir a Drive
+  // Si el tenant tiene Drive activo y configurado, las imágenes van a Drive
   if (tipo === 'imagen') {
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('google_refresh_token, drive_folder_id')
+      .select('google_refresh_token, drive_folder_id, drive_para_nuevas')
       .eq('id', perfil.tenant_id)
       .single()
-    if (tenant?.google_refresh_token && tenant.drive_folder_id) {
+    const driveActivo = tenant?.drive_para_nuevas !== false  // null/true → activo
+    if (driveActivo && tenant?.google_refresh_token && tenant.drive_folder_id) {
       return NextResponse.json({ mode: 'drive' })
     }
   }
