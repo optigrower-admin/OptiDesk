@@ -531,6 +531,10 @@ function ConfigServicioContent() {
       const json = await res.json()
       setMigDriveR2(json.enR2 ?? 0)
       setMigDriveEnDrive(json.enDrive ?? 0)
+      setDriveMsg(null)
+    } else {
+      const texto = await res.text().catch(() => '')
+      setDriveMsg({ ok: false, text: `No se pudo consultar (HTTP ${res.status}): ${texto}` })
     }
   }
 
@@ -542,7 +546,11 @@ function ConfigServicioContent() {
     let restantes = migDriveR2 ?? 1
     while (restantes > 0) {
       const res = await fetch(`/api/admin/migrar-a-drive?tenant_id=${profile?.tenant_id ?? ''}`, { method: 'POST' })
-      if (!res.ok) break
+      if (!res.ok) {
+        const texto = await res.text().catch(() => '')
+        setDriveMsg({ ok: false, text: `Error (HTTP ${res.status}): ${texto}` })
+        break
+      }
       const json = await res.json()
       setMigDriveProcesados((p) => p + (json.procesados ?? 0))
       setMigDriveEnDrive(json.enDrive ?? 0)
