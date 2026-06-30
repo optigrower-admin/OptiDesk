@@ -106,6 +106,12 @@ function ConfigServicioContent() {
   const [savingDriveFolder, setSavingDriveFolder] = useState(false)
   const [disconnectingDrive, setDisconnectingDrive] = useState(false)
   const [driveMsg, setDriveMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  /* migración R2 → Drive */
+  const [migDrive, setMigDrive] = useState(false)
+  const [migDriveR2, setMigDriveR2] = useState<number | null>(null)
+  const [migDriveEnDrive, setMigDriveEnDrive] = useState(0)
+  const [migDriveProcesados, setMigDriveProcesados] = useState(0)
+  const [migDriveErrores, setMigDriveErrores] = useState<{ id: string; nombre: string; error: string }[]>([])
 
   /* ── Estado migración de videos antiguos a mp4 ── */
   const [migrando, setMigrando] = useState(false)
@@ -515,6 +521,35 @@ function ConfigServicioContent() {
     } finally {
       setDisconnectingDrive(false)
     }
+  }
+
+  const cargarConteosDrive = async () => {
+    const res = await fetch('/api/admin/migrar-a-drive')
+    if (res.ok) {
+      const json = await res.json()
+      setMigDriveR2(json.enR2 ?? 0)
+      setMigDriveEnDrive(json.enDrive ?? 0)
+    }
+  }
+
+  const migrarADrive = async () => {
+    if (migDrive) return
+    setMigDrive(true)
+    setMigDriveErrores([])
+    setMigDriveProcesados(0)
+    let restantes = migDriveR2 ?? 1
+    while (restantes > 0) {
+      const res = await fetch('/api/admin/migrar-a-drive', { method: 'POST' })
+      if (!res.ok) break
+      const json = await res.json()
+      setMigDriveProcesados((p) => p + (json.procesados ?? 0))
+      setMigDriveEnDrive(json.enDrive ?? 0)
+      setMigDriveR2(json.restantes ?? 0)
+      if (json.errores?.length) setMigDriveErrores((e) => [...e, ...json.errores])
+      restantes = json.restantes ?? 0
+      if (json.procesados === 0 && restantes > 0) break  // atascado
+    }
+    setMigDrive(false)
   }
 
   if (loading) return <div className="p-6 text-gray-400">Cargando...</div>
@@ -1338,6 +1373,87 @@ function ConfigServicioContent() {
                 </p>
               )}
             </div>
+
+            {/* Paso 3: Migrar fotos y videos viejos de R2 a Drive */}
+            {driveListoParaUsarse && (
+              <div className="space-y-3 border-t border-gray-100 pt-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Paso 3 — Mover fotos y videos anteriores a Drive</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Mueve todo lo que ya estaba guardado en R2 a tu carpeta de Drive, organizado por placa.
+                    Los videos se comprimen automáticamente a menos de 10 MB. Los archivos en R2 se conservan como copia de seguridad.
+                  </p>
+                </div>
+
+                {migDriveR2 === null ? (
+                  <button
+                    onClick={cargarConteosDrive}
+                    className="text-sm text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Ver cuántos archivos hay en R2
+                  </button>
+                ) : (
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+                    <div className="flex justify-between text-gray-600">
+                      <span>Pendientes en R2</span>
+                      <span className="font-semibold text-amber-700">{migDriveR2}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600">
+                      <span>Ya en Drive</span>
+                      <span className="font-semibold text-green-700">{migDriveEnDrive}</span>
+                    </div>
+                    {migDriveProcesados > 0 && (
+                      <div className="flex justify-between text-gray-600">
+                        <span>Movidos en esta sesión</span>
+                        <span className="font-semibold">{migDriveProcesados}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {migDriveR2 !== null && migDriveR2 > 0 && (
+                  <button
+                    onClick={migrarADrive}
+                    disabled={migDrive}
+                    className="flex items-center gap-2 px-5 py-3 bg-blue-700 hover:bg-blue-800 disabled:bg-blue-300 text-white rounded-xl text-sm font-semibold transition-colors"
+                  >
+                    {migDrive ? (
+                      <>
+                        <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Migrando... ({migDriveProcesados} listos, {migDriveR2} pendientes)
+                      </>
+                    ) : (
+                      `Mover ${migDriveR2} archivo${migDriveR2 !== 1 ? 's' : ''} a Drive`
+                    )}
+                  </button>
+                )}
+
+                {migDriveR2 !== null && migDriveR2 === 0 && !migDrive && (
+                  <p className="text-sm text-green-700 flex items-center gap-1.5">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Todo migrado a Drive ({migDriveEnDrive} archivo{migDriveEnDrive !== 1 ? 's' : ''}).
+                  </p>
+                )}
+
+                {migDriveErrores.length > 0 && (
+                  <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 space-y-0.5">
+                    <p className="font-semibold">{migDriveErrores.length} error(es) — se continuó con el resto:</p>
+                    {migDriveErrores.slice(0, 5).map((e, i) => (
+                      <p key={i}>{e.nombre}: {e.error}</p>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-400">
+                  Puede tardar varios minutos si hay muchos archivos o videos grandes. No cierres la página mientras dice &quot;Migrando...&quot;.
+                </p>
+              </div>
+            )}
           </div>
         )
       })()}
