@@ -166,5 +166,11 @@ export async function GET(req: NextRequest) {
       .eq('tenant_id', tenantId).eq('storage_location', 'drive'),
   ])
 
-  return NextResponse.json({ enR2: enR2 ?? 0, enDrive: enDrive ?? 0 })
+  return NextResponse.json({
+    enR2: enR2 ?? 0,
+    enDrive: enDrive ?? 0,
+    _debugTenantId: tenantId,
+    _debugPerfilTenantId: perfil.tenant_id,
+    _debugQueryParam: req.nextUrl.searchParams.get('tenant_id'),
+  })
 }

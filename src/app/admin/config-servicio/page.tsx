@@ -531,7 +531,10 @@ function ConfigServicioContent() {
       const json = await res.json()
       setMigDriveR2(json.enR2 ?? 0)
       setMigDriveEnDrive(json.enDrive ?? 0)
-      setDriveMsg(null)
+      setDriveMsg({
+        ok: true,
+        text: `Debug: tenantId usado=${json._debugTenantId} | perfil.tenant_id=${json._debugPerfilTenantId} | query param=${json._debugQueryParam}`,
+      })
     } else {
       const texto = await res.text().catch(() => '')
       setDriveMsg({ ok: false, text: `No se pudo consultar (HTTP ${res.status}): ${texto}` })
