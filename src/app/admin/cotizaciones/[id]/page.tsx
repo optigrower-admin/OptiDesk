@@ -111,5 +111,8 @@ export type OpcionCotizacion = {
   foto_promo_uri?: string
   precio: number
   costo_documentos: number
-  mostrar_precio: boolean
+  costo_prenda: number
+  mostrar_precio: boolean    // legacy, usar mostrar_contado/mostrar_pignorada
+  mostrar_contado?: boolean
+  mostrar_pignorada?: boolean
 }

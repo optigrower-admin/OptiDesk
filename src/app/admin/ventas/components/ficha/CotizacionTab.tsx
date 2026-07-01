@@ -46,7 +46,8 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
   const [historial, setHistorial]           = useState<Cotizacion[]>([])
   const [motosInteres, setMotosInteres]     = useState<string[]>([])   // IDs de motos de interés del cliente
   const [selected, setSelected]             = useState<string[]>([])
-  const [mostrarPrecios, setMostrarPrecios] = useState<Record<string, boolean>>({})
+  const [mostrarContado, setMostrarContado]       = useState(true)
+  const [mostrarPignorada, setMostrarPignorada]   = useState(false)
   const [vigencia, setVigencia]             = useState(30)
   const [notas, setNotas]                   = useState('')
   const [nombre, setNombre]                 = useState(clienteNombre ?? '')
@@ -148,7 +149,10 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
           foto_promo_key:   m.fotos.find(f => f.tipo === 'promocional')?.r2_key ?? null,
           precio:           m.precio,
           costo_documentos: m.costo_documentos,
-          mostrar_precio:   mostrarPrecios[id] ?? false,
+          costo_prenda:     m.costo_prenda,
+          mostrar_precio:   mostrarContado,
+          mostrar_contado:  mostrarContado,
+          mostrar_pignorada: mostrarPignorada,
         }
       })
 
@@ -263,14 +267,28 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
                       )}
                     </div>
 
-                    {/* Toggle precio en cotización */}
+                    {/* Opciones de precio cuando está seleccionada */}
                     {sel && (
-                      <label className="flex items-center gap-1.5 mt-2 cursor-pointer" onClick={e => e.stopPropagation()}>
-                        <input type="checkbox" checked={mostrarPrecios[m.id] ?? false}
-                          onChange={e => setMostrarPrecios(p => ({ ...p, [m.id]: e.target.checked }))}
-                          className="rounded border-gray-300 text-blue-600" />
-                        <span className="text-xs text-gray-600">Mostrar precio en la cotización</span>
-                      </label>
+                      <div className="mt-2 space-y-1.5 bg-blue-50 rounded-lg p-2" onClick={e => e.stopPropagation()}>
+                        <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">¿Mostrar precio?</p>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={mostrarContado}
+                            onChange={e => setMostrarContado(e.target.checked)}
+                            className="rounded border-gray-300 text-blue-600" />
+                          <span className="text-xs text-gray-700">Precio de contado con papeles</span>
+                          <span className="text-xs text-emerald-700 font-semibold ml-auto">{formatCOP(m.precio + m.costo_documentos)}</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={mostrarPignorada}
+                            onChange={e => setMostrarPignorada(e.target.checked)}
+                            className="rounded border-gray-300 text-blue-600" />
+                          <span className="text-xs text-gray-700">Precio pignorada (crédito)</span>
+                          <span className="text-xs text-blue-700 font-semibold ml-auto">{formatCOP(m.precio + m.costo_documentos + m.costo_prenda)}</span>
+                        </label>
+                        {!mostrarContado && !mostrarPignorada && (
+                          <p className="text-[9px] text-amber-600 italic">Sin precio seleccionado → saldrá línea en blanco</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
