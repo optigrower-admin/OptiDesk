@@ -79,7 +79,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
     <>
       <style>{`
         /* @page fuera de @media print también para máxima compatibilidad */
-        @page { margin: 0; size: letter portrait; }
+        @page { margin: 0; size: A4 portrait; }
         @media print {
           body { margin: 0 !important; background: white !important; }
           .no-print { display: none !important; }
@@ -89,11 +89,11 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
             print-color-adjust: exact !important;
             color-adjust: exact !important;
           }
-          /* Escalar al 88 % para una sola hoja */
+          /* Escalar al 85 % para una sola hoja A4 */
           .cot-scale {
-            transform: scale(0.88);
+            transform: scale(0.85);
             transform-origin: top left;
-            width: 113.64%;
+            width: 117.65%;
           }
         }
         body { margin: 0; background: #e5e7eb; }
@@ -239,23 +239,45 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 </div>
               )}
 
-              {/* FOTOS FRENTE + LADO */}
-              {op && (fotoLado || fotoFrente) && (
-                <div style={{ display: 'grid', gridTemplateColumns: fotoFrente && fotoFrente !== fotoLado ? '3fr 1.6fr' : '1fr', gap: 10, marginBottom: 14 }}>
-                  {/* Foto lateral/principal */}
-                  <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 12, padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 140, position: 'relative' }}>
-                    {fotoLado && <img src={fotoLado} alt={op.referencia} style={{ maxHeight: 135, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 6px 16px rgba(0,52,180,0.15))' }} />}
-                    <div style={{ position: 'absolute', bottom: 6, left: 10, fontSize: 7.5, color: '#94a3b8', fontWeight: 600 }}>Vista lateral</div>
+              {/* LAS 3 FOTOS DEL PRODUCTO */}
+              {op && (fotoPromo || fotoLado || fotoFrente) && (() => {
+                const fotosDisponibles = [
+                  fotoPromo  && { src: fotoPromo,  label: 'Foto promo' },
+                  fotoLado   && { src: fotoLado,   label: 'Vista lateral' },
+                  fotoFrente && { src: fotoFrente, label: 'Vista frontal' },
+                ].filter(Boolean) as { src: string; label: string }[]
+
+                if (fotosDisponibles.length === 0) return null
+
+                // Si solo hay una, la mostramos grande
+                if (fotosDisponibles.length === 1) return (
+                  <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 12, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 140, marginBottom: 14, position: 'relative' }}>
+                    <img src={fotosDisponibles[0].src} alt={op.referencia} style={{ maxHeight: 130, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 6px 16px rgba(0,52,180,0.15))' }} />
+                    <div style={{ position: 'absolute', bottom: 6, left: 10, fontSize: 7.5, color: '#94a3b8', fontWeight: 600 }}>{fotosDisponibles[0].label}</div>
                   </div>
-                  {/* Foto frente */}
-                  {fotoFrente && fotoFrente !== fotoLado && (
-                    <div style={{ background: '#f8faff', borderRadius: 12, padding: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', gap: 5 }}>
-                      <img src={fotoFrente} alt="frente" style={{ maxHeight: 120, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 8px rgba(0,52,180,0.12))' }} />
-                      <div style={{ fontSize: 7.5, color: '#94a3b8', fontWeight: 600 }}>Vista frontal</div>
+                )
+
+                // Si hay 2-3 fotos: primera grande (2/3) + resto en columna (1/3)
+                const [principal, ...secundarias] = fotosDisponibles
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, marginBottom: 14 }}>
+                    {/* Foto principal */}
+                    <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 12, padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 140, position: 'relative' }}>
+                      <img src={principal.src} alt={op.referencia} style={{ maxHeight: 130, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 6px 16px rgba(0,52,180,0.15))' }} />
+                      <div style={{ position: 'absolute', bottom: 6, left: 10, fontSize: 7.5, color: '#94a3b8', fontWeight: 600 }}>{principal.label}</div>
                     </div>
-                  )}
-                </div>
-              )}
+                    {/* Fotos secundarias apiladas */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {secundarias.map(f => (
+                        <div key={f.label} style={{ background: '#f8faff', borderRadius: 10, padding: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', flex: 1, gap: 4 }}>
+                          <img src={f.src} alt={f.label} style={{ maxHeight: secundarias.length > 1 ? 60 : 110, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 3px 6px rgba(0,52,180,0.1))' }} />
+                          <div style={{ fontSize: 7, color: '#94a3b8', fontWeight: 600 }}>{f.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* ESPECIFICACIONES TÉCNICAS */}
               {specsCheck.length > 0 && (
@@ -272,7 +294,16 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                     ))}
                   </div>
                   {op?.colores && (
-                    <div style={{ marginTop: 8, fontSize: 9, color: '#64748b' }}>🎨 Colores disponibles: <strong style={{ color: '#334155' }}>{op.colores}</strong></div>
+                    <div style={{ marginTop: 10, background: '#fdf4ff', borderRadius: 8, padding: '8px 12px', border: '1.5px solid #e9d5ff' }}>
+                      <div style={{ fontSize: 8.5, fontWeight: 800, color: '#7e22ce', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>🎨 Colores disponibles</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {op.colores.split(/[,;\/]/).map(c => c.trim()).filter(Boolean).map(color => (
+                          <span key={color} style={{ background: '#ede9fe', border: '1.5px solid #c4b5fd', borderRadius: 20, padding: '3px 10px', fontSize: 9, fontWeight: 700, color: '#5b21b6' }}>
+                            {color}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -368,13 +399,19 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 </div>
               )}
 
-              {/* OBSERVACIONES */}
-              {cotizacion.notas && (
-                <div style={{ border: '1px dashed #94a3b8', borderRadius: 8, padding: '8px 12px' }}>
-                  <div style={{ fontSize: 8.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>📝 Observaciones</div>
-                  <div style={{ fontSize: 9, color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{cotizacion.notas}</div>
-                </div>
-              )}
+              {/* OBSERVACIONES — siempre visible, con placeholder si vacío */}
+              <div style={{ background: '#fffbeb', borderRadius: 10, padding: '10px 14px', border: '1.5px solid #fde68a' }}>
+                <div style={{ fontSize: 8.5, fontWeight: 800, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 }}>📝 Notas adicionales</div>
+                {cotizacion.notas ? (
+                  <div style={{ fontSize: 9, color: '#78350f', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{cotizacion.notas}</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {['', '', ''].map((_, i) => (
+                      <div key={i} style={{ borderBottom: '1px solid #fcd34d', height: 16 }} />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* ─── COLUMNA DERECHA (SIDEBAR) ──────────────────────────── */}

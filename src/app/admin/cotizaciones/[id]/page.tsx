@@ -49,13 +49,20 @@ export default async function CotizacionPage({ params }: { params: { id: string 
   const { data: tenantBase } = await admin
     .from('tenants').select('nombre, logo_url').eq('id', tid).single()
 
-  // Columnas de cotización (agregadas en migration_v61 — pueden no existir)
+  // Columnas de contacto (migration_v61). Cargamos en dos queries separadas
+  // para que el fallo de las columnas de redes (migration_v62) no oculte el contacto base.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let tenantExtra: Record<string, any> = {}
-  const { data: te } = await admin.from('tenants')
-    .select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok')
+  const { data: te1 } = await admin.from('tenants')
+    .select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp')
     .eq('id', tid).single()
-  if (te) tenantExtra = te
+  if (te1) tenantExtra = { ...tenantExtra, ...te1 }
+
+  // Redes sociales (migration_v62 — pueden no existir aún)
+  const { data: te2 } = await admin.from('tenants')
+    .select('cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok')
+    .eq('id', tid).single()
+  if (te2) tenantExtra = { ...tenantExtra, ...te2 }
 
   // Fotos de opciones → data URIs (para que queden embebidas en el PDF)
   const opcionesConFotos = await Promise.all(

@@ -677,8 +677,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       )}
 
-      {/* Top bar móvil — solo visible debajo de md, no afecta la vista de escritorio */}
-      <div className="md:hidden flex-shrink-0 bg-white border-b border-gray-200 flex items-center justify-between px-3 py-2.5">
+      {/* Top bar móvil — oculto en impresión para no contaminar PDF de cotizaciones */}
+      <div className="md:hidden print:hidden flex-shrink-0 bg-white border-b border-gray-200 flex items-center justify-between px-3 py-2.5">
         <button
           onClick={() => setMobileNavOpen(true)}
           className="p-1.5 -ml-1.5 text-gray-600 hover:bg-gray-100 rounded-lg relative"
@@ -717,7 +717,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       )}
 
       <div className="flex flex-1 min-h-0">
-      <aside className="hidden md:flex w-48 bg-white border-r border-gray-200 flex-col flex-shrink-0">
+      <aside className="hidden md:flex print:hidden w-48 bg-white border-r border-gray-200 flex-col flex-shrink-0">
         {sidebarContent}
       </aside>
 
