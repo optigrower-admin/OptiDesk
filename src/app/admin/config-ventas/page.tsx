@@ -36,6 +36,7 @@ interface CotizacionInfo {
   email: string
   web: string
   whatsapp: string
+  recargoTarjeta: number
 }
 
 interface TipoRecordatorio { id: string; tipo: string; activo: boolean; dias_umbral: number }
@@ -124,15 +125,20 @@ function FotoSlot({ motoId, tipo, label, hint, rKey, onUploaded }: {
 }
 
 /* ─── Tarjeta expandible por moto ───────────────────── */
-function MotoCard({ m, onSave, onToggle }: {
+function MotoCard({ m, recargoTarjeta, onSave, onToggle }: {
   m: MotoCat
+  recargoTarjeta: number
   onSave: (id: string, campos: Partial<MotoCat>) => void
   onToggle: (id: string, activa: boolean) => void
 }) {
-  const [open, setOpen]       = useState(false)
-  const [local, setLocal]     = useState(m)
-  const [saving, setSaving]   = useState(false)
-  const [fotos, setFotos]     = useState(m.fotos)
+  const [open, setOpen]     = useState(false)
+  const [local, setLocal]   = useState(m)
+  const [saving, setSaving] = useState(false)
+  const [fotos, setFotos]   = useState(m.fotos)
+
+  const conPapeles  = local.precio + local.costo_documentos
+  const conPrenda   = conPapeles + local.costo_prenda
+  const conTarjeta  = Math.round(conPapeles * (1 + recargoTarjeta / 100))
 
   function campo(k: keyof MotoCat) {
     return (
@@ -155,20 +161,42 @@ function MotoCard({ m, onSave, onToggle }: {
   }
 
   return (
-    <div className={`rounded-xl border transition-all ${m.activa ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
-      {/* Cabecera */}
-      <div className="flex items-center gap-3 px-4 py-3">
-        <button onClick={() => setOpen(o => !o)} className="flex-1 text-left flex items-center gap-2">
-          <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
-          <span className="font-semibold text-sm text-gray-900">{m.referencia}</span>
-          {fotos.length > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold">{fotos.length} foto{fotos.length > 1 ? 's' : ''}</span>}
-          {m.cilindraje && <span className="text-xs text-gray-400">{m.cilindraje}</span>}
-        </button>
-        <span className="text-xs text-emerald-700 font-semibold">{formatCOP(m.precio + m.costo_documentos)}</span>
-        <ToggleSwitch activo={m.activa} onChange={() => onToggle(m.id, m.activa)} />
+    <div className={`rounded-xl border transition-all ${m.activa ? 'border-gray-200' : 'border-gray-100 opacity-50'}`}>
+
+      {/* ── CABECERA — siempre visible ── */}
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-3 mb-2">
+          <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 flex-1 text-left min-w-0">
+            <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+            <span className="font-bold text-sm text-gray-900 truncate">{m.referencia}</span>
+            {fotos.length > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">{fotos.length} foto{fotos.length > 1 ? 's' : ''}</span>}
+            {m.cilindraje && <span className="text-xs text-gray-400 flex-shrink-0">{m.cilindraje}</span>}
+          </button>
+          <ToggleSwitch activo={m.activa} onChange={() => onToggle(m.id, m.activa)} />
+        </div>
+
+        {/* 4 variantes de precio — siempre visibles */}
+        <div className="grid grid-cols-4 gap-2">
+          <div className="bg-gray-50 rounded-lg px-2.5 py-2">
+            <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Sin papeles</div>
+            <div className="text-sm font-bold text-gray-800 mt-0.5">{formatCOP(local.precio)}</div>
+          </div>
+          <div className="bg-emerald-50 rounded-lg px-2.5 py-2">
+            <div className="text-[10px] text-emerald-600 font-medium uppercase tracking-wide">Con papeles</div>
+            <div className="text-sm font-bold text-emerald-700 mt-0.5">{formatCOP(conPapeles)}</div>
+          </div>
+          <div className="bg-blue-50 rounded-lg px-2.5 py-2">
+            <div className="text-[10px] text-blue-500 font-medium uppercase tracking-wide">Pignorada</div>
+            <div className="text-sm font-bold text-blue-700 mt-0.5">{formatCOP(conPrenda)}</div>
+          </div>
+          <div className="bg-amber-50 rounded-lg px-2.5 py-2">
+            <div className="text-[10px] text-amber-600 font-medium uppercase tracking-wide">Tarjeta (+{recargoTarjeta}%)</div>
+            <div className="text-sm font-bold text-amber-700 mt-0.5">{formatCOP(conTarjeta)}</div>
+          </div>
+        </div>
       </div>
 
-      {/* Expandido */}
+      {/* ── EXPANDIDO ── */}
       {open && (
         <div className="border-t border-gray-100 px-4 py-4 space-y-5">
 
@@ -188,31 +216,42 @@ function MotoCard({ m, onSave, onToggle }: {
             </div>
           </div>
 
-          {/* Precios */}
+          {/* Precios editables */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Precios</p>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Precio base</label>
-                <input type="number" value={local.precio} onChange={e => setLocal(p => ({ ...p, precio: parseFloat(e.target.value) || 0 }))}
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Precios base</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="sm:col-span-1">
+                <label className="text-xs font-medium text-gray-600 block mb-1">Precio sin papeles</label>
+                <input type="number" value={local.precio}
+                  onChange={e => setLocal(p => ({ ...p, precio: parseFloat(e.target.value) || 0 }))}
                   className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="text-[10px] text-gray-400 mt-0.5">Solo la moto, sin trámites</p>
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-1">Documentos (SOAT + matrícula)</label>
-                <input type="number" value={local.costo_documentos} onChange={e => setLocal(p => ({ ...p, costo_documentos: parseFloat(e.target.value) || 0 }))}
+                <label className="text-xs font-medium text-gray-600 block mb-1">Costo papeles (SOAT + matrícula)</label>
+                <input type="number" value={local.costo_documentos}
+                  onChange={e => setLocal(p => ({ ...p, costo_documentos: parseFloat(e.target.value) || 0 }))}
                   className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="text-[10px] text-gray-400 mt-0.5">Se suma al precio base</p>
               </div>
               <div>
-                <label className="text-xs text-gray-500 block mb-1">Costo prenda (crédito)</label>
-                <input type="number" value={local.costo_prenda} onChange={e => setLocal(p => ({ ...p, costo_prenda: parseFloat(e.target.value) || 0 }))}
+                <label className="text-xs font-medium text-gray-600 block mb-1">Costo pignoración (crédito)</label>
+                <input type="number" value={local.costo_prenda}
+                  onChange={e => setLocal(p => ({ ...p, costo_prenda: parseFloat(e.target.value) || 0 }))}
                   className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <p className="text-[10px] text-gray-400 mt-0.5">Aplica en crédito con prenda</p>
+              </div>
+              <div className="bg-amber-50 rounded-lg px-3 py-2 flex flex-col justify-center">
+                <div className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">Con tarjeta (+{recargoTarjeta}%)</div>
+                <div className="text-base font-bold text-amber-700 mt-1">{formatCOP(conTarjeta)}</div>
+                <div className="text-[10px] text-amber-500 mt-0.5">Calculado automático</div>
               </div>
             </div>
           </div>
 
-          {/* Info para cotización */}
+          {/* Specs */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Información para cotización</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ficha técnica y cotización</p>
             <div className="space-y-2">
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Tagline de venta</label>
@@ -223,7 +262,7 @@ function MotoCard({ m, onSave, onToggle }: {
                 <div><label className="text-xs text-gray-500 block mb-1">Potencia</label>{campo('potencia')}</div>
                 <div><label className="text-xs text-gray-500 block mb-1">Sistema de frenos</label>{campo('frenos')}</div>
                 <div><label className="text-xs text-gray-500 block mb-1">Combustible</label>{campo('combustible')}</div>
-                <div><label className="text-xs text-gray-500 block mb-1">Rendimiento (km/l)</label>{campo('rendimiento')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">Rendimiento</label>{campo('rendimiento')}</div>
                 <div><label className="text-xs text-gray-500 block mb-1">Velocidad máx.</label>{campo('velocidad_max')}</div>
                 <div><label className="text-xs text-gray-500 block mb-1">Garantía</label>{campo('garantia')}</div>
                 <div><label className="text-xs text-gray-500 block mb-1">Característica especial</label>{campo('caracteristica')}</div>
@@ -256,7 +295,7 @@ export default function ConfigVentasPage() {
   const [tipos, setTipos]                 = useState<TipoRecordatorio[]>([])
   const [plantillas, setPlantillas]       = useState<Plantilla[]>([])
   const [nuevaPlantilla, setNuevaPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '' })
-  const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '' })
+  const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '', recargoTarjeta: 5 })
   const [savingCotInfo, setSavingCotInfo] = useState(false)
   const [cotInfoOk, setCotInfoOk]         = useState(false)
   const [loading, setLoading]             = useState(true)
@@ -270,7 +309,7 @@ export default function ConfigVentasPage() {
         .eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('tipos_recordatorio_automatico').select('id, tipo, activo, dias_umbral').eq('tenant_id', profile.tenant_id),
       supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, activa').eq('tenant_id', profile.tenant_id),
-      supabase.from('tenants').select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp').eq('id', profile.tenant_id).single(),
+      supabase.from('tenants').select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, recargo_tarjeta_porcentaje').eq('id', profile.tenant_id).single(),
     ])
     setEntidades((ent ?? []) as Entidad[])
     setMotos((mot ?? []).map(m => ({
@@ -290,13 +329,14 @@ export default function ConfigVentasPage() {
     setTipos((tip ?? []) as TipoRecordatorio[])
     setPlantillas((plant ?? []) as Plantilla[])
     if (ten) setCotInfo({
-      tagline:   ten.cotizacion_tagline   ?? '',
-      direccion: ten.cotizacion_direccion ?? '',
-      telefono1: ten.cotizacion_telefono1 ?? '',
-      telefono2: ten.cotizacion_telefono2 ?? '',
-      email:     ten.cotizacion_email     ?? '',
-      web:       ten.cotizacion_web       ?? '',
-      whatsapp:  ten.cotizacion_whatsapp  ?? '',
+      tagline:        ten.cotizacion_tagline          ?? '',
+      direccion:      ten.cotizacion_direccion        ?? '',
+      telefono1:      ten.cotizacion_telefono1        ?? '',
+      telefono2:      ten.cotizacion_telefono2        ?? '',
+      email:          ten.cotizacion_email            ?? '',
+      web:            ten.cotizacion_web              ?? '',
+      whatsapp:       ten.cotizacion_whatsapp         ?? '',
+      recargoTarjeta: ten.recargo_tarjeta_porcentaje  ?? 5,
     })
     setLoading(false)
   }, [profile?.tenant_id])
@@ -373,13 +413,14 @@ export default function ConfigVentasPage() {
     if (!profile?.tenant_id) return
     setSavingCotInfo(true)
     await supabase.from('tenants').update({
-      cotizacion_tagline:   cotInfo.tagline,
-      cotizacion_direccion: cotInfo.direccion,
-      cotizacion_telefono1: cotInfo.telefono1,
-      cotizacion_telefono2: cotInfo.telefono2,
-      cotizacion_email:     cotInfo.email,
-      cotizacion_web:       cotInfo.web,
-      cotizacion_whatsapp:  cotInfo.whatsapp,
+      cotizacion_tagline:          cotInfo.tagline,
+      cotizacion_direccion:        cotInfo.direccion,
+      cotizacion_telefono1:        cotInfo.telefono1,
+      cotizacion_telefono2:        cotInfo.telefono2,
+      cotizacion_email:            cotInfo.email,
+      cotizacion_web:              cotInfo.web,
+      cotizacion_whatsapp:         cotInfo.whatsapp,
+      recargo_tarjeta_porcentaje:  cotInfo.recargoTarjeta,
     }).eq('id', profile.tenant_id)
     setSavingCotInfo(false)
     setCotInfoOk(true)
@@ -416,14 +457,21 @@ export default function ConfigVentasPage() {
 
       {/* ── Catálogo de motos ── */}
       <section className="bg-white rounded-xl border border-gray-200 p-5">
-        <div className="flex items-start justify-between mb-1">
+        <div className="flex items-start justify-between gap-3 mb-1">
           <h2 className="text-base font-bold text-gray-900">Catálogo de motos</h2>
-          <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Haz clic en una moto para editarla</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold hidden sm:block">Haz clic para editar</span>
+            <a href="/admin/lista-precios" target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-700 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+              Lista de precios
+            </a>
+          </div>
         </div>
-        <p className="text-xs text-gray-400 mb-4">Configura precios, especificaciones técnicas y fotos para las cotizaciones</p>
+        <p className="text-xs text-gray-400 mb-4">Configura precios, ficha técnica y fotos — las 4 variantes de precio se calculan automáticamente</p>
         <div className="space-y-2">
           {motos.map(m => (
-            <MotoCard key={m.id} m={m} onSave={guardarMoto} onToggle={toggleMoto} />
+            <MotoCard key={m.id} m={m} recargoTarjeta={cotInfo.recargoTarjeta} onSave={guardarMoto} onToggle={toggleMoto} />
           ))}
           {motos.length === 0 && (
             <p className="text-sm text-gray-400">
@@ -479,12 +527,24 @@ export default function ConfigVentasPage() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-500 block mb-1">WhatsApp (con código de país, sin +)</label>
-            <input value={cotInfo.whatsapp} onChange={e => setCotInfo(p => ({ ...p, whatsapp: e.target.value }))}
-              placeholder="573001234567"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <p className="text-[11px] text-gray-400 mt-1">Ej: 573001234567 (57 = Colombia). Este número se usa para el botón de WhatsApp en la cotización.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">WhatsApp (con código de país, sin +)</label>
+              <input value={cotInfo.whatsapp} onChange={e => setCotInfo(p => ({ ...p, whatsapp: e.target.value }))}
+                placeholder="573001234567"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <p className="text-[11px] text-gray-400 mt-1">Ej: 573001234567 (57 = Colombia).</p>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Recargo pago con tarjeta (%)</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={20} step={0.5} value={cotInfo.recargoTarjeta}
+                  onChange={e => setCotInfo(p => ({ ...p, recargoTarjeta: parseFloat(e.target.value) || 0 }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <span className="text-sm text-gray-500 font-semibold">%</span>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">Se aplica sobre precio con papeles. Ej: 5 = +5%</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={guardarCotInfo} disabled={savingCotInfo}

@@ -36,8 +36,9 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cotizacion_telefono1 text;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cotizacion_telefono2 text;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cotizacion_email     text;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cotizacion_web       text;
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cotizacion_whatsapp  text;
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cotizacion_contador  int DEFAULT 0;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cotizacion_whatsapp          text;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cotizacion_contador          int     DEFAULT 0;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS recargo_tarjeta_porcentaje  numeric DEFAULT 5;
 
 -- 4. Tabla de cotizaciones generadas
 CREATE TABLE IF NOT EXISTS cotizaciones (
