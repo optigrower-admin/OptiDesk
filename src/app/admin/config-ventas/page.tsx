@@ -1,12 +1,43 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/ventas/pipeline'
 
+/* ─── Tipos ─────────────────────────────────────────── */
 interface Entidad { id: string; nombre: string; activa: boolean }
-interface MotoCat { id: string; referencia: string; precio: number; costo_documentos: number; costo_prenda: number; activa: boolean }
+
+interface MotoCat {
+  id: string
+  referencia: string
+  precio: number
+  costo_documentos: number
+  costo_prenda: number
+  activa: boolean
+  tagline_venta: string
+  cilindraje: string
+  potencia: string
+  frenos: string
+  combustible: string
+  rendimiento: string
+  velocidad_max: string
+  garantia: string
+  colores: string
+  caracteristica: string
+  fotos: { tipo: string; r2_key: string }[]
+}
+
+interface CotizacionInfo {
+  tagline: string
+  direccion: string
+  telefono1: string
+  telefono2: string
+  email: string
+  web: string
+  whatsapp: string
+}
+
 interface TipoRecordatorio { id: string; tipo: string; activo: boolean; dias_umbral: number }
 interface Plantilla { id: string; nombre: string; asunto: string; cuerpo_html: string; activa: boolean }
 
@@ -16,6 +47,12 @@ const TIPO_LABEL: Record<string, string> = {
   cliente_sin_movimiento: 'Cliente sin movimiento',
 }
 
+const FOTO_TIPOS = [
+  { tipo: 'frente',      label: 'Frente',       hint: 'Foto frontal, fondo transparente (PNG)' },
+  { tipo: 'lado',        label: 'Lado',          hint: 'Foto lateral, fondo transparente (PNG)' },
+  { tipo: 'promocional', label: 'Promocional',   hint: 'Foto en carretera o estudio' },
+] as const
+
 function ToggleSwitch({ activo, onChange }: { activo: boolean; onChange: () => void }) {
   return (
     <button onClick={onChange} className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${activo ? 'bg-green-500' : 'bg-gray-300'}`}>
@@ -24,36 +61,248 @@ function ToggleSwitch({ activo, onChange }: { activo: boolean; onChange: () => v
   )
 }
 
+/* ─── Componente de foto individual ─────────────────── */
+function FotoSlot({ motoId, tipo, label, hint, rKey, onUploaded }: {
+  motoId: string; tipo: string; label: string; hint: string
+  rKey?: string; onUploaded: (key: string) => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState(rKey ? `/api/catalogo-fotos/view?key=${rKey}` : '')
+
+  async function handleFile(file: File) {
+    setUploading(true)
+    try {
+      const presignRes = await fetch('/api/catalogo-fotos/presign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moto_catalogo_id: motoId, tipo, content_type: file.type }),
+      })
+      const { url, key } = await presignRes.json()
+      await fetch(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+      await fetch('/api/catalogo-fotos/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moto_catalogo_id: motoId, tipo, r2_key: key }),
+      })
+      setPreviewUrl(URL.createObjectURL(file))
+      onUploaded(key)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <div
+        onClick={() => !uploading && fileRef.current?.click()}
+        className={`relative w-24 h-24 rounded-xl border-2 border-dashed cursor-pointer transition-all flex items-center justify-center overflow-hidden
+          ${previewUrl ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'}`}
+      >
+        {previewUrl ? (
+          <img src={previewUrl} alt={label} className="w-full h-full object-contain p-1" onError={() => setPreviewUrl('')} />
+        ) : (
+          <div className="text-center">
+            {uploading
+              ? <svg className="w-6 h-6 animate-spin text-blue-500 mx-auto" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              : <svg className="w-6 h-6 text-gray-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            }
+          </div>
+        )}
+        {previewUrl && !uploading && (
+          <div className="absolute inset-0 bg-black/0 hover:bg-black/30 transition-colors flex items-center justify-center">
+            <span className="text-white text-xs font-semibold opacity-0 hover:opacity-100 transition-opacity">Cambiar</span>
+          </div>
+        )}
+      </div>
+      <span className="text-xs font-semibold text-gray-600">{label}</span>
+      <span className="text-[10px] text-gray-400 text-center leading-tight" style={{ maxWidth: 96 }}>{hint}</span>
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+        onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+    </div>
+  )
+}
+
+/* ─── Tarjeta expandible por moto ───────────────────── */
+function MotoCard({ m, onSave, onToggle }: {
+  m: MotoCat
+  onSave: (id: string, campos: Partial<MotoCat>) => void
+  onToggle: (id: string, activa: boolean) => void
+}) {
+  const [open, setOpen]       = useState(false)
+  const [local, setLocal]     = useState(m)
+  const [saving, setSaving]   = useState(false)
+  const [fotos, setFotos]     = useState(m.fotos)
+
+  function campo(k: keyof MotoCat) {
+    return (
+      <input value={String(local[k] ?? '')} onChange={e => setLocal(p => ({ ...p, [k]: e.target.value }))}
+        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+    )
+  }
+
+  async function guardar() {
+    setSaving(true)
+    await onSave(m.id, {
+      precio: local.precio, costo_documentos: local.costo_documentos, costo_prenda: local.costo_prenda,
+      tagline_venta: local.tagline_venta, cilindraje: local.cilindraje, potencia: local.potencia,
+      frenos: local.frenos, combustible: local.combustible, rendimiento: local.rendimiento,
+      velocidad_max: local.velocidad_max, garantia: local.garantia, colores: local.colores,
+      caracteristica: local.caracteristica,
+    })
+    setSaving(false)
+  }
+
+  return (
+    <div className={`rounded-xl border transition-all ${m.activa ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+      {/* Cabecera */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button onClick={() => setOpen(o => !o)} className="flex-1 text-left flex items-center gap-2">
+          <svg className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+          <span className="font-semibold text-sm text-gray-900">{m.referencia}</span>
+          {fotos.length > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold">{fotos.length} foto{fotos.length > 1 ? 's' : ''}</span>}
+          {m.cilindraje && <span className="text-xs text-gray-400">{m.cilindraje}</span>}
+        </button>
+        <span className="text-xs text-emerald-700 font-semibold">{formatCOP(m.precio + m.costo_documentos)}</span>
+        <ToggleSwitch activo={m.activa} onChange={() => onToggle(m.id, m.activa)} />
+      </div>
+
+      {/* Expandido */}
+      {open && (
+        <div className="border-t border-gray-100 px-4 py-4 space-y-5">
+
+          {/* Fotos */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Fotos de la moto</p>
+            <div className="flex gap-6 flex-wrap">
+              {FOTO_TIPOS.map(ft => (
+                <FotoSlot key={ft.tipo} motoId={m.id} tipo={ft.tipo} label={ft.label} hint={ft.hint}
+                  rKey={fotos.find(f => f.tipo === ft.tipo)?.r2_key}
+                  onUploaded={key => setFotos(prev => {
+                    const next = prev.filter(f => f.tipo !== ft.tipo)
+                    return [...next, { tipo: ft.tipo, r2_key: key }]
+                  })}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Precios */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Precios</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Precio base</label>
+                <input type="number" value={local.precio} onChange={e => setLocal(p => ({ ...p, precio: parseFloat(e.target.value) || 0 }))}
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Documentos (SOAT + matrícula)</label>
+                <input type="number" value={local.costo_documentos} onChange={e => setLocal(p => ({ ...p, costo_documentos: parseFloat(e.target.value) || 0 }))}
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Costo prenda (crédito)</label>
+                <input type="number" value={local.costo_prenda} onChange={e => setLocal(p => ({ ...p, costo_prenda: parseFloat(e.target.value) || 0 }))}
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+          </div>
+
+          {/* Info para cotización */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Información para cotización</p>
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Tagline de venta</label>
+                {campo('tagline_venta')}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="text-xs text-gray-500 block mb-1">Cilindraje</label>{campo('cilindraje')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">Potencia</label>{campo('potencia')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">Sistema de frenos</label>{campo('frenos')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">Combustible</label>{campo('combustible')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">Rendimiento (km/l)</label>{campo('rendimiento')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">Velocidad máx.</label>{campo('velocidad_max')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">Garantía</label>{campo('garantia')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">Característica especial</label>{campo('caracteristica')}</div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Colores disponibles</label>
+                {campo('colores')}
+              </div>
+            </div>
+          </div>
+
+          <button onClick={guardar} disabled={saving}
+            className="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
+            {saving ? 'Guardando...' : '✓ Guardar cambios'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════ */
 export default function ConfigVentasPage() {
   const { profile } = useAuth()
   const supabase = createClient()
 
-  const [entidades, setEntidades]     = useState<Entidad[]>([])
-  const [nuevaEntidad, setNuevaEntidad] = useState('')
-  const [motos, setMotos]             = useState<MotoCat[]>([])
-  const [tipos, setTipos]             = useState<TipoRecordatorio[]>([])
-  const [plantillas, setPlantillas]   = useState<Plantilla[]>([])
+  const [entidades, setEntidades]         = useState<Entidad[]>([])
+  const [nuevaEntidad, setNuevaEntidad]   = useState('')
+  const [motos, setMotos]                 = useState<MotoCat[]>([])
+  const [tipos, setTipos]                 = useState<TipoRecordatorio[]>([])
+  const [plantillas, setPlantillas]       = useState<Plantilla[]>([])
   const [nuevaPlantilla, setNuevaPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '' })
-  const [loading, setLoading]         = useState(true)
+  const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '' })
+  const [savingCotInfo, setSavingCotInfo] = useState(false)
+  const [cotInfoOk, setCotInfoOk]         = useState(false)
+  const [loading, setLoading]             = useState(true)
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
-    const [{ data: ent }, { data: mot }, { data: tip }, { data: plant }] = await Promise.all([
+    const [{ data: ent }, { data: mot }, { data: tip }, { data: plant }, { data: ten }] = await Promise.all([
       supabase.from('entidades_financieras').select('id, nombre, activa').eq('tenant_id', profile.tenant_id).order('orden'),
-      supabase.from('motos_catalogo').select('id, referencia, precio, costo_documentos, costo_prenda, activa').eq('tenant_id', profile.tenant_id).order('orden'),
+      supabase.from('motos_catalogo')
+        .select('id, referencia, precio, costo_documentos, costo_prenda, activa, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, motos_catalogo_fotos(tipo, r2_key)')
+        .eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('tipos_recordatorio_automatico').select('id, tipo, activo, dias_umbral').eq('tenant_id', profile.tenant_id),
       supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, activa').eq('tenant_id', profile.tenant_id),
+      supabase.from('tenants').select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp').eq('id', profile.tenant_id).single(),
     ])
     setEntidades((ent ?? []) as Entidad[])
-    setMotos((mot ?? []) as MotoCat[])
+    setMotos((mot ?? []).map(m => ({
+      ...m,
+      tagline_venta: m.tagline_venta ?? '',
+      cilindraje: m.cilindraje ?? '',
+      potencia: m.potencia ?? '',
+      frenos: m.frenos ?? '',
+      combustible: m.combustible ?? '',
+      rendimiento: m.rendimiento ?? '',
+      velocidad_max: m.velocidad_max ?? '',
+      garantia: m.garantia ?? '',
+      colores: m.colores ?? '',
+      caracteristica: m.caracteristica ?? '',
+      fotos: (m.motos_catalogo_fotos as { tipo: string; r2_key: string }[]) ?? [],
+    })) as MotoCat[])
     setTipos((tip ?? []) as TipoRecordatorio[])
     setPlantillas((plant ?? []) as Plantilla[])
+    if (ten) setCotInfo({
+      tagline:   ten.cotizacion_tagline   ?? '',
+      direccion: ten.cotizacion_direccion ?? '',
+      telefono1: ten.cotizacion_telefono1 ?? '',
+      telefono2: ten.cotizacion_telefono2 ?? '',
+      email:     ten.cotizacion_email     ?? '',
+      web:       ten.cotizacion_web       ?? '',
+      whatsapp:  ten.cotizacion_whatsapp  ?? '',
+    })
     setLoading(false)
   }, [profile?.tenant_id])
 
   useEffect(() => { cargar() }, [cargar])
 
-  // Garantiza que existan filas para los 3 tipos automáticos (con activo=true por defecto)
   useEffect(() => {
     if (!profile?.tenant_id || loading) return
     const faltantes = (Object.keys(TIPO_LABEL) as (keyof typeof TIPO_LABEL)[]).filter(t => !tipos.some(x => x.tipo === t))
@@ -64,6 +313,7 @@ export default function ConfigVentasPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.tenant_id, loading])
 
+  /* ── Entidades ── */
   async function agregarEntidad() {
     if (!nuevaEntidad.trim() || !profile?.tenant_id) return
     await supabase.from('entidades_financieras').insert({ tenant_id: profile.tenant_id, nombre: nuevaEntidad.trim() })
@@ -80,16 +330,17 @@ export default function ConfigVentasPage() {
     cargar()
   }
 
-  async function actualizarMoto(id: string, campo: 'precio' | 'costo_documentos' | 'costo_prenda', valor: string) {
-    const num = parseFloat(valor) || 0
-    await supabase.from('motos_catalogo').update({ [campo]: num }).eq('id', id)
-    setMotos(p => p.map(m => m.id === id ? { ...m, [campo]: num } : m))
+  /* ── Motos ── */
+  async function guardarMoto(id: string, cambios: Partial<MotoCat>) {
+    await supabase.from('motos_catalogo').update(cambios).eq('id', id)
+    setMotos(p => p.map(m => m.id === id ? { ...m, ...cambios } : m))
   }
   async function toggleMoto(id: string, activa: boolean) {
     await supabase.from('motos_catalogo').update({ activa: !activa }).eq('id', id)
     setMotos(p => p.map(m => m.id === id ? { ...m, activa: !activa } : m))
   }
 
+  /* ── Recordatorios ── */
   async function toggleTipo(id: string, activo: boolean) {
     await supabase.from('tipos_recordatorio_automatico').update({ activo: !activo }).eq('id', id)
     setTipos(p => p.map(t => t.id === id ? { ...t, activo: !activo } : t))
@@ -100,6 +351,7 @@ export default function ConfigVentasPage() {
     setTipos(p => p.map(t => t.id === id ? { ...t, dias_umbral: num } : t))
   }
 
+  /* ── Plantillas ── */
   async function crearPlantilla() {
     if (!nuevaPlantilla.nombre.trim() || !nuevaPlantilla.asunto.trim() || !nuevaPlantilla.cuerpo_html.trim() || !profile?.tenant_id) return
     await supabase.from('plantillas_correo').insert({ tenant_id: profile.tenant_id, ...nuevaPlantilla, created_by: profile.id })
@@ -116,6 +368,24 @@ export default function ConfigVentasPage() {
     cargar()
   }
 
+  /* ── Info cotización ── */
+  async function guardarCotInfo() {
+    if (!profile?.tenant_id) return
+    setSavingCotInfo(true)
+    await supabase.from('tenants').update({
+      cotizacion_tagline:   cotInfo.tagline,
+      cotizacion_direccion: cotInfo.direccion,
+      cotizacion_telefono1: cotInfo.telefono1,
+      cotizacion_telefono2: cotInfo.telefono2,
+      cotizacion_email:     cotInfo.email,
+      cotizacion_web:       cotInfo.web,
+      cotizacion_whatsapp:  cotInfo.whatsapp,
+    }).eq('id', profile.tenant_id)
+    setSavingCotInfo(false)
+    setCotInfoOk(true)
+    setTimeout(() => setCotInfoOk(false), 2500)
+  }
+
   if (loading) return <div className="p-6 text-sm text-gray-400">Cargando...</div>
 
   return (
@@ -125,7 +395,7 @@ export default function ConfigVentasPage() {
         <p className="text-sm text-gray-500">Catálogos y reglas de Seguimiento Ventas (solo Gerencia)</p>
       </div>
 
-      {/* Entidades financieras */}
+      {/* ── Entidades financieras ── */}
       <section className="bg-white rounded-xl border border-gray-200 p-5">
         <h2 className="text-base font-bold text-gray-900 mb-3">Entidades financieras</h2>
         <div className="space-y-2 mb-3">
@@ -144,42 +414,89 @@ export default function ConfigVentasPage() {
         </div>
       </section>
 
-      {/* Catálogo de motos */}
+      {/* ── Catálogo de motos ── */}
       <section className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-base font-bold text-gray-900 mb-1">Catálogo de motos</h2>
-        <p className="text-xs text-gray-400 mb-3">Precio base, documentos (SOAT + matrícula + impuestos) y costo con prenda</p>
-        <div className="space-y-2 overflow-x-auto">
+        <div className="flex items-start justify-between mb-1">
+          <h2 className="text-base font-bold text-gray-900">Catálogo de motos</h2>
+          <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">Haz clic en una moto para editarla</span>
+        </div>
+        <p className="text-xs text-gray-400 mb-4">Configura precios, especificaciones técnicas y fotos para las cotizaciones</p>
+        <div className="space-y-2">
           {motos.map(m => (
-            <div key={m.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${!m.activa ? 'opacity-60' : 'border-gray-200'}`}>
-              <span className="flex-1 text-sm font-medium text-gray-800 min-w-[160px]">{m.referencia}</span>
-              <div>
-                <label className="text-xs text-gray-400 block">Precio</label>
-                <input type="number" defaultValue={m.precio} onBlur={e => actualizarMoto(m.id, 'precio', e.target.value)}
-                  className="w-28 border border-gray-200 rounded px-1.5 py-1 text-xs" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block">Documentos</label>
-                <input type="number" defaultValue={m.costo_documentos} onBlur={e => actualizarMoto(m.id, 'costo_documentos', e.target.value)}
-                  className="w-24 border border-gray-200 rounded px-1.5 py-1 text-xs" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block">Prenda</label>
-                <input type="number" defaultValue={m.costo_prenda} onBlur={e => actualizarMoto(m.id, 'costo_prenda', e.target.value)}
-                  className="w-24 border border-gray-200 rounded px-1.5 py-1 text-xs" />
-              </div>
-              <span className="text-xs text-emerald-700 font-semibold min-w-[90px]">{formatCOP(m.precio + m.costo_documentos)}</span>
-              <ToggleSwitch activo={m.activa} onChange={() => toggleMoto(m.id, m.activa)} />
-            </div>
+            <MotoCard key={m.id} m={m} onSave={guardarMoto} onToggle={toggleMoto} />
           ))}
           {motos.length === 0 && (
             <p className="text-sm text-gray-400">
-              Sin motos en el catálogo. Corre <code className="bg-gray-100 px-1 rounded">seed_motos_catalogo.sql</code> en Supabase para cargar la lista inicial.
+              Sin motos en el catálogo. Corre <code className="bg-gray-100 px-1 rounded">seed_motos_catalogo.sql</code> en Supabase.
             </p>
           )}
         </div>
       </section>
 
-      {/* Tipos de recordatorio automático */}
+      {/* ── Datos del concesionario para cotizaciones ── */}
+      <section className="bg-white rounded-xl border border-blue-100 p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xl">📄</span>
+          <h2 className="text-base font-bold text-gray-900">Datos del concesionario para cotizaciones</h2>
+        </div>
+        <p className="text-xs text-gray-400 mb-4">Esta información aparece en el encabezado, contacto y pie de cada cotización generada</p>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Eslogan / Tagline</label>
+            <input value={cotInfo.tagline} onChange={e => setCotInfo(p => ({ ...p, tagline: e.target.value }))}
+              placeholder="ej: Tu ruta, nuestra pasión."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Dirección</label>
+            <input value={cotInfo.direccion} onChange={e => setCotInfo(p => ({ ...p, direccion: e.target.value }))}
+              placeholder="ej: Carretera Panamericana Km 38, Coatepec, Veracruz"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Teléfono 1</label>
+              <input value={cotInfo.telefono1} onChange={e => setCotInfo(p => ({ ...p, telefono1: e.target.value }))}
+                placeholder="+57 300 000 0000"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Teléfono 2 (opcional)</label>
+              <input value={cotInfo.telefono2} onChange={e => setCotInfo(p => ({ ...p, telefono2: e.target.value }))}
+                placeholder="+57 310 000 0000"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Correo electrónico</label>
+              <input value={cotInfo.email} onChange={e => setCotInfo(p => ({ ...p, email: e.target.value }))}
+                placeholder="ventas@miconcesionario.com"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Sitio web</label>
+              <input value={cotInfo.web} onChange={e => setCotInfo(p => ({ ...p, web: e.target.value }))}
+                placeholder="www.miconcesionario.com"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">WhatsApp (con código de país, sin +)</label>
+            <input value={cotInfo.whatsapp} onChange={e => setCotInfo(p => ({ ...p, whatsapp: e.target.value }))}
+              placeholder="573001234567"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <p className="text-[11px] text-gray-400 mt-1">Ej: 573001234567 (57 = Colombia). Este número se usa para el botón de WhatsApp en la cotización.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={guardarCotInfo} disabled={savingCotInfo}
+              className="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
+              {savingCotInfo ? 'Guardando...' : 'Guardar información'}
+            </button>
+            {cotInfoOk && <span className="text-sm text-green-600 font-medium">✓ Guardado</span>}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Recordatorios automáticos ── */}
       <section className="bg-white rounded-xl border border-gray-200 p-5">
         <h2 className="text-base font-bold text-gray-900 mb-1">Recordatorios automáticos</h2>
         <p className="text-xs text-gray-400 mb-3">Se generan solos para clientes en Seguimiento Ventas que cumplan la condición</p>
@@ -199,10 +516,10 @@ export default function ConfigVentasPage() {
         </div>
       </section>
 
-      {/* Plantillas de correo */}
+      {/* ── Plantillas de correo ── */}
       <section className="bg-white rounded-xl border border-gray-200 p-5">
         <h2 className="text-base font-bold text-gray-900 mb-1">Plantillas de correo</h2>
-        <p className="text-xs text-gray-400 mb-3">Cualquier rol puede usarlas para enviar correo a un cliente. Variable disponible: {'{{nombre_cliente}}'}</p>
+        <p className="text-xs text-gray-400 mb-3">Variable disponible: {'{{nombre_cliente}}'}</p>
         <div className="space-y-2 mb-3">
           {plantillas.map(p => (
             <div key={p.id} className={`rounded-lg border px-3 py-2 ${!p.activa ? 'opacity-60' : 'border-gray-200'}`}>
@@ -222,7 +539,7 @@ export default function ConfigVentasPage() {
           <input value={nuevaPlantilla.asunto} onChange={e => setNuevaPlantilla(p => ({ ...p, asunto: e.target.value }))} placeholder="Asunto del correo"
             className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           <textarea value={nuevaPlantilla.cuerpo_html} onChange={e => setNuevaPlantilla(p => ({ ...p, cuerpo_html: e.target.value }))}
-            placeholder="Cuerpo del correo (HTML simple). ej: Hola {{nombre_cliente}}, ..." rows={4}
+            placeholder="Cuerpo del correo (HTML). ej: Hola {{nombre_cliente}}, ..." rows={4}
             className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           <button onClick={crearPlantilla} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">
             + Crear plantilla

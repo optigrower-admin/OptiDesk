@@ -15,6 +15,7 @@ import PasosTab from './ficha/PasosTab'
 import RecordatoriosTab from './ficha/RecordatoriosTab'
 import HistorialTab from './ficha/HistorialTab'
 import VisibilidadTab from './ficha/VisibilidadTab'
+import CotizacionTab from './ficha/CotizacionTab'
 
 const CANAL_ICON: Record<string, string> = {
   whatsapp: '📱', messenger: '💬', instagram: '📸', manual: '✍️',
@@ -61,12 +62,13 @@ const ROL_LABEL: Record<string, string> = {
   admin: 'Admin', superadmin: 'SuperAdmin', mecanico: 'Mecánico', gerencia: 'Gerencia', control_total: 'Control total',
 }
 
-type TabDerecha = 'resumen' | 'datos' | 'motos' | 'pago' | 'archivos' | 'comentarios' | 'pasos' | 'recordatorios' | 'historial' | 'visibilidad'
+type TabDerecha = 'resumen' | 'datos' | 'motos' | 'cotizacion' | 'pago' | 'archivos' | 'comentarios' | 'pasos' | 'recordatorios' | 'historial' | 'visibilidad'
 
 const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'resumen',       label: 'Resumen',       icon: '📋' },
   { id: 'datos',         label: 'Datos',         icon: '🪪' },
   { id: 'motos',         label: 'Motos',         icon: '🏍️' },
+  { id: 'cotizacion',    label: 'Cotización',    icon: '📄' },
   { id: 'pago',          label: 'Pago',          icon: '💳' },
   { id: 'archivos',      label: 'Archivos',      icon: '📎' },
   { id: 'comentarios',   label: 'Comentarios',   icon: '💬' },
@@ -458,8 +460,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
                 </div>
               )}
 
-              {tabDer === 'datos'         && <DatosClienteTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
-              {tabDer === 'motos'         && <MotosInteresTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
+              {tabDer === 'datos'      && <DatosClienteTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
+              {tabDer === 'motos'      && <MotosInteresTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
+              {tabDer === 'cotizacion' && <CotizacionTab clienteId={lead.id} tenantId={tenantId} clienteNombre={lead.cliente?.nombre ?? ''} clienteCelular={lead.cliente?.celular ?? ''} />}
               {tabDer === 'pago'          && <PagoTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'archivos'      && <ArchivosTab clienteId={lead.id} />}
               {tabDer === 'comentarios'   && <ComentariosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
