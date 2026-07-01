@@ -125,11 +125,12 @@ function FotoSlot({ motoId, tipo, label, hint, rKey, onUploaded }: {
 }
 
 /* ─── Tarjeta expandible por moto ───────────────────── */
-function MotoCard({ m, recargoTarjeta, onSave, onToggle }: {
+function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
   m: MotoCat
   recargoTarjeta: number
-  onSave: (id: string, campos: Partial<MotoCat>) => void
+  onSave:   (id: string, campos: Partial<MotoCat>) => void
   onToggle: (id: string, activa: boolean) => void
+  onDelete: (id: string, referencia: string) => void
 }) {
   const [open, setOpen]     = useState(false)
   const [local, setLocal]   = useState(m)
@@ -284,14 +285,27 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle }: {
             </div>
           </div>
 
-          <button onClick={guardar} disabled={saving}
-            className="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
-            {saving ? 'Guardando...' : '✓ Guardar cambios'}
-          </button>
+          <div className="flex items-center gap-3 pt-1 border-t border-gray-100">
+            <button onClick={guardar} disabled={saving}
+              className="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
+              {saving ? 'Guardando...' : '✓ Guardar cambios'}
+            </button>
+            <button onClick={() => onDelete(m.id, m.referencia)}
+              className="px-3 py-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors">
+              🗑 Eliminar moto
+            </button>
+          </div>
         </div>
       )}
     </div>
   )
+}
+
+/* ─── Valores vacíos para nueva moto ─── */
+const NUEVA_MOTO_VACIA: Omit<MotoCat, 'id' | 'activa' | 'fotos'> = {
+  referencia: '', precio: 0, costo_documentos: 0, costo_prenda: 0,
+  tagline_venta: '', cilindraje: '', potencia: '', frenos: '', combustible: '',
+  rendimiento: '', velocidad_max: '', garantia: '', colores: '', caracteristica: '',
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -309,6 +323,9 @@ export default function ConfigVentasPage() {
   const [savingCotInfo, setSavingCotInfo] = useState(false)
   const [cotInfoOk, setCotInfoOk]         = useState(false)
   const [loading, setLoading]             = useState(true)
+  const [showNuevaMoto, setShowNuevaMoto] = useState(false)
+  const [nuevaMoto, setNuevaMoto]         = useState<typeof NUEVA_MOTO_VACIA>(NUEVA_MOTO_VACIA)
+  const [creandoMoto, setCreandoMoto]     = useState(false)
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
@@ -423,6 +440,40 @@ export default function ConfigVentasPage() {
     await supabase.from('motos_catalogo').update({ activa: !activa }).eq('id', id)
     setMotos(p => p.map(m => m.id === id ? { ...m, activa: !activa } : m))
   }
+  async function eliminarMoto(id: string, referencia: string) {
+    if (!confirm(`¿Eliminar "${referencia}" del catálogo? Se borrarán también sus fotos. Esta acción no se puede deshacer.`)) return
+    await supabase.from('motos_catalogo').delete().eq('id', id)
+    setMotos(p => p.filter(m => m.id !== id))
+  }
+  async function crearMoto() {
+    if (!nuevaMoto.referencia.trim() || !profile?.tenant_id) return
+    setCreandoMoto(true)
+    const orden = (motos[motos.length - 1]?.['orden' as keyof MotoCat] as number ?? motos.length) + 1
+    const { data, error } = await supabase.from('motos_catalogo').insert({
+      tenant_id:        profile.tenant_id,
+      referencia:       nuevaMoto.referencia.trim(),
+      precio:           nuevaMoto.precio,
+      costo_documentos: nuevaMoto.costo_documentos,
+      costo_prenda:     nuevaMoto.costo_prenda,
+      tagline_venta:    nuevaMoto.tagline_venta   || null,
+      cilindraje:       nuevaMoto.cilindraje      || null,
+      potencia:         nuevaMoto.potencia        || null,
+      frenos:           nuevaMoto.frenos          || null,
+      combustible:      nuevaMoto.combustible     || null,
+      rendimiento:      nuevaMoto.rendimiento     || null,
+      velocidad_max:    nuevaMoto.velocidad_max   || null,
+      garantia:         nuevaMoto.garantia        || null,
+      colores:          nuevaMoto.colores         || null,
+      caracteristica:   nuevaMoto.caracteristica  || null,
+      activa:           true,
+      orden,
+    }).select('id').single()
+    setCreandoMoto(false)
+    if (error || !data) { alert('No se pudo crear la moto: ' + error?.message); return }
+    setMotos(p => [...p, { ...nuevaMoto, id: data.id, activa: true, fotos: [] }])
+    setNuevaMoto(NUEVA_MOTO_VACIA)
+    setShowNuevaMoto(false)
+  }
 
   /* ── Recordatorios ── */
   async function toggleTipo(id: string, activo: boolean) {
@@ -512,17 +563,108 @@ export default function ConfigVentasPage() {
             </a>
           </div>
         </div>
-        <p className="text-xs text-gray-400 mb-4">Configura precios, ficha técnica y fotos — las 4 variantes de precio se calculan automáticamente</p>
-        <div className="space-y-2">
+        <p className="text-xs text-gray-400 mb-4">Agrega, edita o elimina motos. Las 5 variantes de precio se calculan automáticamente.</p>
+
+        <div className="space-y-2 mb-3">
           {motos.map(m => (
-            <MotoCard key={m.id} m={m} recargoTarjeta={cotInfo.recargoTarjeta} onSave={guardarMoto} onToggle={toggleMoto} />
+            <MotoCard key={m.id} m={m} recargoTarjeta={cotInfo.recargoTarjeta}
+              onSave={guardarMoto} onToggle={toggleMoto} onDelete={eliminarMoto} />
           ))}
-          {motos.length === 0 && (
-            <p className="text-sm text-gray-400">
-              Sin motos en el catálogo. Corre <code className="bg-gray-100 px-1 rounded">seed_motos_catalogo.sql</code> en Supabase.
-            </p>
+          {motos.length === 0 && !showNuevaMoto && (
+            <p className="text-sm text-gray-400 text-center py-4">Sin motos en el catálogo. ¡Agrega la primera!</p>
           )}
         </div>
+
+        {/* ── Formulario nueva moto ── */}
+        {showNuevaMoto ? (
+          <div className="border-2 border-blue-200 rounded-xl p-4 bg-blue-50 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-blue-800">Nueva moto</span>
+              <button onClick={() => { setShowNuevaMoto(false); setNuevaMoto(NUEVA_MOTO_VACIA) }}
+                className="text-gray-400 hover:text-gray-700 text-sm">✕ Cancelar</button>
+            </div>
+
+            {/* Nombre */}
+            <div>
+              <label className="text-xs font-semibold text-gray-600 block mb-1">Nombre / Referencia *</label>
+              <input value={nuevaMoto.referencia} onChange={e => setNuevaMoto(p => ({ ...p, referencia: e.target.value }))}
+                placeholder="ej: PULSAR NS 200 FI ABS UG2"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+            </div>
+
+            {/* Precios */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Precios</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Precio sin papeles</label>
+                  <input type="number" value={nuevaMoto.precio || ''}
+                    onChange={e => setNuevaMoto(p => ({ ...p, precio: parseFloat(e.target.value) || 0 }))}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Costo papeles (SOAT + mat.)</label>
+                  <input type="number" value={nuevaMoto.costo_documentos || ''}
+                    onChange={e => setNuevaMoto(p => ({ ...p, costo_documentos: parseFloat(e.target.value) || 0 }))}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Costo pignoración (crédito)</label>
+                  <input type="number" value={nuevaMoto.costo_prenda || ''}
+                    onChange={e => setNuevaMoto(p => ({ ...p, costo_prenda: parseFloat(e.target.value) || 0 }))}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+            </div>
+
+            {/* Ficha técnica */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ficha técnica (opcional)</p>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  ['tagline_venta',  'Tagline de venta',       'ej: La deportiva ideal para tu aventura'],
+                  ['cilindraje',     'Cilindraje',             'ej: 199.5 cc'],
+                  ['potencia',       'Potencia',               'ej: 24.5 HP'],
+                  ['frenos',         'Sistema de frenos',      'ej: ABS Doble Canal'],
+                  ['combustible',    'Sistema combustible',    'ej: Inyección FI'],
+                  ['rendimiento',    'Rendimiento',            'ej: 45 km/l'],
+                  ['velocidad_max',  'Velocidad máx.',         'ej: 140 km/h'],
+                  ['garantia',       'Garantía',               'ej: 2 años / 20,000 km'],
+                  ['caracteristica', 'Característica especial','ej: Smart Key, Puerto USB'],
+                ] as [keyof typeof NUEVA_MOTO_VACIA, string, string][]).map(([k, label, ph]) => (
+                  <div key={k} className={k === 'tagline_venta' || k === 'colores' ? 'col-span-2' : ''}>
+                    <label className="text-xs text-gray-500 block mb-1">{label}</label>
+                    <input value={nuevaMoto[k] as string}
+                      onChange={e => setNuevaMoto(p => ({ ...p, [k]: e.target.value }))}
+                      placeholder={ph}
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                ))}
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-500 block mb-1">Colores disponibles</label>
+                  <input value={nuevaMoto.colores}
+                    onChange={e => setNuevaMoto(p => ({ ...p, colores: e.target.value }))}
+                    placeholder="ej: Azul Perla, Negro Carbón, Rojo Fuego"
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <button onClick={crearMoto} disabled={creandoMoto || !nuevaMoto.referencia.trim()}
+                className="px-5 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-bold transition-colors">
+                {creandoMoto ? 'Creando...' : '+ Agregar al catálogo'}
+              </button>
+              <span className="text-xs text-gray-400">Después podrás subir las fotos desde la tarjeta</span>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowNuevaMoto(true)}
+            className="w-full py-3 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 text-blue-600 hover:text-blue-800 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
+            Agregar nueva moto
+          </button>
+        )}
       </section>
 
       {/* ── Datos del concesionario para cotizaciones ── */}
