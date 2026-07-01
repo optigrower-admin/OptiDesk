@@ -53,7 +53,7 @@ export default async function CotizacionPage({ params }: { params: { id: string 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let tenantExtra: Record<string, any> = {}
   const { data: te } = await admin.from('tenants')
-    .select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp')
+    .select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok')
     .eq('id', tid).single()
   if (te) tenantExtra = te
 
@@ -85,6 +85,9 @@ export default async function CotizacionPage({ params }: { params: { id: string 
         email:     tenantExtra.cotizacion_email       ?? '',
         web:       tenantExtra.cotizacion_web         ?? '',
         whatsapp:  tenantExtra.cotizacion_whatsapp    ?? '',
+        instagram: tenantExtra.cotizacion_instagram   ?? '',
+        facebook:  tenantExtra.cotizacion_facebook    ?? '',
+        tiktok:    tenantExtra.cotizacion_tiktok      ?? '',
       }}
     />
   )

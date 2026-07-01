@@ -36,6 +36,9 @@ interface CotizacionInfo {
   email: string
   web: string
   whatsapp: string
+  instagram: string
+  facebook: string
+  tiktok: string
   recargoTarjeta: number
 }
 
@@ -319,7 +322,7 @@ export default function ConfigVentasPage() {
   const [tipos, setTipos]                 = useState<TipoRecordatorio[]>([])
   const [plantillas, setPlantillas]       = useState<Plantilla[]>([])
   const [nuevaPlantilla, setNuevaPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '' })
-  const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '', recargoTarjeta: 5 })
+  const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '', instagram: '', facebook: '', tiktok: '', recargoTarjeta: 5 })
   const [savingCotInfo, setSavingCotInfo] = useState(false)
   const [cotInfoOk, setCotInfoOk]         = useState(false)
   const [loading, setLoading]             = useState(true)
@@ -334,7 +337,7 @@ export default function ConfigVentasPage() {
       supabase.from('entidades_financieras').select('id, nombre, activa').eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('tipos_recordatorio_automatico').select('id, tipo, activo, dias_umbral').eq('tenant_id', profile.tenant_id),
       supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, activa').eq('tenant_id', profile.tenant_id),
-      supabase.from('tenants').select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, recargo_tarjeta_porcentaje').eq('id', profile.tenant_id).single(),
+      supabase.from('tenants').select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok, recargo_tarjeta_porcentaje').eq('id', profile.tenant_id).single(),
     ])
 
     // Cargamos motos en dos pasos para que un fallo en las columnas nuevas
@@ -396,8 +399,11 @@ export default function ConfigVentasPage() {
       telefono2:      ten.cotizacion_telefono2        ?? '',
       email:          ten.cotizacion_email            ?? '',
       web:            ten.cotizacion_web              ?? '',
-      whatsapp:       ten.cotizacion_whatsapp         ?? '',
-      recargoTarjeta: ten.recargo_tarjeta_porcentaje  ?? 5,
+      whatsapp:       ten.cotizacion_whatsapp          ?? '',
+      instagram:      ten.cotizacion_instagram         ?? '',
+      facebook:       ten.cotizacion_facebook          ?? '',
+      tiktok:         ten.cotizacion_tiktok            ?? '',
+      recargoTarjeta: ten.recargo_tarjeta_porcentaje   ?? 5,
     })
     setLoading(false)
   }, [profile?.tenant_id])
@@ -514,8 +520,11 @@ export default function ConfigVentasPage() {
       cotizacion_telefono2:        cotInfo.telefono2,
       cotizacion_email:            cotInfo.email,
       cotizacion_web:              cotInfo.web,
-      cotizacion_whatsapp:         cotInfo.whatsapp,
-      recargo_tarjeta_porcentaje:  cotInfo.recargoTarjeta,
+      cotizacion_whatsapp:          cotInfo.whatsapp,
+      cotizacion_instagram:         cotInfo.instagram,
+      cotizacion_facebook:          cotInfo.facebook,
+      cotizacion_tiktok:            cotInfo.tiktok,
+      recargo_tarjeta_porcentaje:   cotInfo.recargoTarjeta,
     }).eq('id', profile.tenant_id)
     setSavingCotInfo(false)
     setCotInfoOk(true)
@@ -732,6 +741,31 @@ export default function ConfigVentasPage() {
               <p className="text-[11px] text-gray-400 mt-1">Se aplica sobre precio con papeles. Ej: 5 = +5%</p>
             </div>
           </div>
+          {/* Redes sociales */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Redes sociales (aparecen en la cotización)</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">📸 Instagram</label>
+                <input value={cotInfo.instagram} onChange={e => setCotInfo(p => ({ ...p, instagram: e.target.value }))}
+                  placeholder="@motospace38"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">👥 Facebook (fan page)</label>
+                <input value={cotInfo.facebook} onChange={e => setCotInfo(p => ({ ...p, facebook: e.target.value }))}
+                  placeholder="/motospace38"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">🎵 TikTok</label>
+                <input value={cotInfo.tiktok} onChange={e => setCotInfo(p => ({ ...p, tiktok: e.target.value }))}
+                  placeholder="@motospace38"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3">
             <button onClick={guardarCotInfo} disabled={savingCotInfo}
               className="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
