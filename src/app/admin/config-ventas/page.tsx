@@ -302,29 +302,63 @@ export default function ConfigVentasPage() {
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
-    const [{ data: ent }, { data: mot }, { data: tip }, { data: plant }, { data: ten }] = await Promise.all([
+
+    const [{ data: ent }, { data: tip }, { data: plant }, { data: ten }] = await Promise.all([
       supabase.from('entidades_financieras').select('id, nombre, activa').eq('tenant_id', profile.tenant_id).order('orden'),
-      supabase.from('motos_catalogo')
-        .select('id, referencia, precio, costo_documentos, costo_prenda, activa, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, motos_catalogo_fotos(tipo, r2_key)')
-        .eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('tipos_recordatorio_automatico').select('id, tipo, activo, dias_umbral').eq('tenant_id', profile.tenant_id),
       supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, activa').eq('tenant_id', profile.tenant_id),
       supabase.from('tenants').select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, recargo_tarjeta_porcentaje').eq('id', profile.tenant_id).single(),
     ])
+
+    // Cargamos motos en dos pasos para que un fallo en las columnas nuevas
+    // (si la migration_v61 no se corrió aún) no oculte las motos existentes.
+    const { data: motBase, error: motErr } = await supabase
+      .from('motos_catalogo')
+      .select('id, referencia, precio, costo_documentos, costo_prenda, activa, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica')
+      .eq('tenant_id', profile.tenant_id).order('orden')
+
+    // Si la query de columnas nuevas falla (columnas no existen aún), intentamos solo las originales
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mot: any[] = motBase ?? []
+    if (motErr || mot.length === 0) {
+      const { data: motFallback } = await supabase
+        .from('motos_catalogo')
+        .select('id, referencia, precio, costo_documentos, costo_prenda, activa')
+        .eq('tenant_id', profile.tenant_id).order('orden')
+      if (motFallback && mot.length === 0) mot.push(...motFallback)
+    }
+
+    // Fotos en query separada — si la tabla no existe aún, simplemente queda vacío
+    const { data: fotosAll } = await supabase
+      .from('motos_catalogo_fotos')
+      .select('moto_catalogo_id, tipo, r2_key')
+      .in('moto_catalogo_id', (mot ?? []).map(m => m.id))
+
+    const fotosPorMoto: Record<string, { tipo: string; r2_key: string }[]> = {}
+    for (const f of fotosAll ?? []) {
+      if (!fotosPorMoto[f.moto_catalogo_id]) fotosPorMoto[f.moto_catalogo_id] = []
+      fotosPorMoto[f.moto_catalogo_id].push({ tipo: f.tipo, r2_key: f.r2_key })
+    }
+
     setEntidades((ent ?? []) as Entidad[])
     setMotos((mot ?? []).map(m => ({
-      ...m,
-      tagline_venta: m.tagline_venta ?? '',
-      cilindraje: m.cilindraje ?? '',
-      potencia: m.potencia ?? '',
-      frenos: m.frenos ?? '',
-      combustible: m.combustible ?? '',
-      rendimiento: m.rendimiento ?? '',
-      velocidad_max: m.velocidad_max ?? '',
-      garantia: m.garantia ?? '',
-      colores: m.colores ?? '',
-      caracteristica: m.caracteristica ?? '',
-      fotos: (m.motos_catalogo_fotos as { tipo: string; r2_key: string }[]) ?? [],
+      id:            m.id,
+      referencia:    m.referencia,
+      precio:        m.precio ?? 0,
+      costo_documentos: m.costo_documentos ?? 0,
+      costo_prenda:  m.costo_prenda ?? 0,
+      activa:        m.activa ?? true,
+      tagline_venta: (m as never as Record<string,string>).tagline_venta ?? '',
+      cilindraje:    (m as never as Record<string,string>).cilindraje    ?? '',
+      potencia:      (m as never as Record<string,string>).potencia      ?? '',
+      frenos:        (m as never as Record<string,string>).frenos        ?? '',
+      combustible:   (m as never as Record<string,string>).combustible   ?? '',
+      rendimiento:   (m as never as Record<string,string>).rendimiento   ?? '',
+      velocidad_max: (m as never as Record<string,string>).velocidad_max ?? '',
+      garantia:      (m as never as Record<string,string>).garantia      ?? '',
+      colores:       (m as never as Record<string,string>).colores       ?? '',
+      caracteristica:(m as never as Record<string,string>).caracteristica ?? '',
+      fotos:         fotosPorMoto[m.id] ?? [],
     })) as MotoCat[])
     setTipos((tip ?? []) as TipoRecordatorio[])
     setPlantillas((plant ?? []) as Plantilla[])
