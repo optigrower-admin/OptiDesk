@@ -91,6 +91,24 @@ function formatAbonoDisplay(raw: string): string {
   return '$' + num.toLocaleString('es-CO')
 }
 
+function PriceInput({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
+  const [focused, setFocused] = useState(false)
+  const displayValue = focused
+    ? value
+    : value ? '$' + parseInt(value || '0', 10).toLocaleString('es-CO') : ''
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={displayValue}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
+      className={className}
+    />
+  )
+}
+
 type EstadoOrden = 'programado' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
 type EstadoPago = 'pagado' | 'abono' | 'pendiente'
 
@@ -2415,19 +2433,17 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         </td>
                         <td className="py-1 px-2 hidden sm:table-cell">
                           {item.origen === 'externo' ? (
-                            <input
-                              type="text" inputMode="numeric"
+                            <PriceInput
                               value={editingItem.costo}
-                              onChange={(e) => setEditingItem({ ...editingItem, costo: e.target.value.replace(/\D/g, '') })}
+                              onChange={(v) => setEditingItem({ ...editingItem, costo: v })}
                               className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
                             />
                           ) : <span className="text-gray-300 block text-center">—</span>}
                         </td>
                         <td className="py-1 px-2">
-                          <input
-                            type="text" inputMode="numeric"
+                          <PriceInput
                             value={editingItem.precio}
-                            onChange={(e) => setEditingItem({ ...editingItem, precio: e.target.value.replace(/\D/g, '') })}
+                            onChange={(v) => setEditingItem({ ...editingItem, precio: v })}
                             className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
                           />
                         </td>
@@ -2568,10 +2584,9 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                             />
                           </td>
                           <td className="py-2 px-3">
-                            <input
-                              type="text" inputMode="numeric"
+                            <PriceInput
                               value={editingItem.precio}
-                              onChange={(e) => setEditingItem({ ...editingItem, precio: e.target.value.replace(/\D/g, '') })}
+                              onChange={(v) => setEditingItem({ ...editingItem, precio: v })}
                               className="w-full px-2 py-1.5 border border-orange-400 rounded-lg text-sm font-mono text-right focus:outline-none"
                             />
                           </td>
