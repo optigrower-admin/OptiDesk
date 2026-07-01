@@ -167,12 +167,19 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
           opciones, notas: notas || null, vigencia_dias: vigencia,
         }),
       })
-      const { id } = await res.json()
-      window.open(`/admin/cotizaciones/${id}`, '_blank')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(err.error ?? `Error ${res.status} al crear la cotización`)
+      }
+      const json = await res.json() as { id?: string }
+      if (!json.id) throw new Error('La API no devolvió un ID de cotización')
+      window.open(`/admin/cotizaciones/${json.id}`, '_blank')
       setStep('lista')
       setSelected([])
       setNotas('')
       cargar()
+    } catch (e) {
+      alert('No se pudo generar la cotización: ' + (e instanceof Error ? e.message : 'Error desconocido'))
     } finally {
       setGenerating(false)
     }

@@ -13,16 +13,13 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { cliente_id, cliente_nombre, cliente_celular, cliente_email, opciones, notas, vigencia_dias } = body
 
-  // Incrementar contador del tenant y obtener el número de cotización
   const admin = createAdminClient()
-  const { data: tenant } = await admin
-    .from('tenants')
-    .select('cotizacion_contador')
-    .eq('id', perfil.tenant_id)
-    .single()
 
-  const nuevoNumero = (tenant?.cotizacion_contador ?? 0) + 1
-  await admin.from('tenants').update({ cotizacion_contador: nuevoNumero }).eq('id', perfil.tenant_id)
+  // Número correlativo: COUNT de cotizaciones existentes del tenant (no depende de columnas nuevas)
+  const { count } = await admin.from('cotizaciones')
+    .select('*', { count: 'exact', head: true })
+    .eq('tenant_id', perfil.tenant_id)
+  const nuevoNumero = (count ?? 0) + 1
 
   const { data: cotizacion, error } = await admin.from('cotizaciones').insert({
     tenant_id: perfil.tenant_id,
@@ -38,7 +35,10 @@ export async function POST(req: NextRequest) {
     created_by: user.id,
   }).select('id').single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    console.error('[POST /api/cotizaciones] insert error:', JSON.stringify(error))
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
   return NextResponse.json({ id: cotizacion.id, numero: nuevoNumero })
 }
 
