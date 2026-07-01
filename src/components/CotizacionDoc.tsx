@@ -21,13 +21,37 @@ interface Cotizacion {
 }
 interface Props { cotizacion: Cotizacion; tenant: TenantInfo }
 
-// Íconos SVG inline para no depender de librerías externas
-function IconCheck() {
+function IconCheck({ color = '#0052B4' }: { color?: string }) {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="12" fill="#0052B4"/>
-      <path d="M7 12.5l3.5 3.5 6.5-7" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="12" fill={color} />
+      <path d="M7 12.5l3.5 3.5 6.5-7" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  )
+}
+
+/* Foto difuminada como fondo — usamos <img> (no background-image CSS)
+   para compatibilidad con impresión/PDF en todos los navegadores */
+function BlurredBg({ src, opacity = 0.22 }: { src: string; opacity?: number }) {
+  if (!src) return null
+  return (
+    <img
+      src={src}
+      alt=""
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        inset: -20,
+        width: 'calc(100% + 40px)',
+        height: 'calc(100% + 40px)',
+        objectFit: 'cover',
+        objectPosition: 'center',
+        filter: 'blur(14px) saturate(0.8)',
+        opacity,
+        zIndex: 0,
+        pointerEvents: 'none',
+      }}
+    />
   )
 }
 
@@ -35,36 +59,41 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
   const whatsappNum  = tenant.whatsapp?.replace(/\D/g, '') ?? ''
   const whatsappLink = whatsappNum ? `https://wa.me/${whatsappNum}` : '#'
 
-  const portada = cotizacion.opciones[0]?.foto_promo_uri
-    || cotizacion.opciones[0]?.foto_lado_uri
-    || cotizacion.opciones[0]?.foto_frente_uri
-    || ''
+  const op          = cotizacion.opciones[0]
+  const fotoPromo   = op?.foto_promo_uri   || ''
+  const fotoLado    = op?.foto_lado_uri    || op?.foto_promo_uri || op?.foto_frente_uri || ''
+  const fotoFrente  = op?.foto_frente_uri  || ''
+  // Fondo difuminado: promo si existe, si no la lateral
+  const fotoBg      = fotoPromo || fotoLado
 
-  const razones = [
-    { icon: '🛡️', title: 'GARANTÍA REAL',            desc: 'Respaldo total en todas nuestras unidades.' },
-    { icon: '🔧', title: 'SERVICIO ESPECIALIZADO',    desc: 'Taller certificado y refacciones originales.' },
-    { icon: '🚚', title: 'ENTREGA A CONVENIR',        desc: 'Llevamos tu unidad hasta donde la necesites.' },
-    { icon: '💳', title: 'FACILIDADES DE PAGO',       desc: 'Opciones de financiamiento a tu medida.' },
-    { icon: '🎓', title: 'ASESORÍA PERSONALIZADA',    desc: 'Te ayudamos a elegir la mejor opción para ti.' },
-  ]
+  // Cálculos de precio
+  const precioBase  = op?.precio ?? 0
+  const papeles     = op?.costo_documentos ?? 0
+  const conPapeles  = precioBase + papeles
+  const iva         = Math.round(precioBase * 0.19)
+  const totalConIva = conPapeles + iva
+  const mostrar     = op?.mostrar_precio ?? false
 
-  const specs = (op: OpcionCotizacion) => [
+  function precioO(n: number) { return mostrar ? cop(n) : null }
+
+  const specsLista = op ? [
     op.cilindraje    && `Motor ${op.cilindraje}`,
-    op.potencia      && `${op.potencia}`,
+    op.potencia      && op.potencia,
     op.frenos        && op.frenos,
     op.combustible   && op.combustible,
+    op.rendimiento   && op.rendimiento,
+    op.velocidad_max && `Vel. máx. ${op.velocidad_max}`,
     op.garantia      && op.garantia,
     op.caracteristica && op.caracteristica,
-  ].filter(Boolean) as string[]
+  ].filter(Boolean) as string[] : []
 
-  const S: Record<string, React.CSSProperties> = {
-    page:        { width: '210mm', background: '#fff', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 11, color: '#1a1a2e' },
-    sectionTitle:{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 },
-    label:       { fontSize: 9.5, fontWeight: 700, color: '#0052B4', textTransform: 'uppercase' as const, letterSpacing: 1 },
-    fieldRow:    { display: 'flex', gap: 6, marginBottom: 7, alignItems: 'flex-end' },
-    fieldLabel:  { fontSize: 9.5, color: '#444', minWidth: 72, flexShrink: 0 },
-    fieldLine:   { flex: 1, borderBottom: '1px solid #b0b8cc', paddingBottom: 1, fontSize: 9.5, color: '#1a1a2e', fontWeight: 500 },
-  }
+  const razones = [
+    { icon: '🛡️', title: 'Garantía real',             desc: 'Respaldo total en todas nuestras unidades.' },
+    { icon: '🔧', title: 'Servicio especializado',     desc: 'Taller certificado, refacciones originales.' },
+    { icon: '🚚', title: 'Entrega a convenir',         desc: 'Llevamos tu unidad hasta donde la necesites.' },
+    { icon: '💳', title: 'Facilidades de pago',        desc: 'Financiamiento con las mejores entidades.' },
+    { icon: '🎓', title: 'Asesoría personalizada',     desc: 'Te acompañamos en todo el proceso.' },
+  ]
 
   return (
     <>
@@ -73,7 +102,6 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
           @page { margin: 0; size: A4 portrait; }
           body { margin: 0 !important; background: white !important; }
           .no-print { display: none !important; }
-          .cot-page { box-shadow: none !important; }
         }
         body { margin: 0; background: #e5e7eb; }
         * { box-sizing: border-box; }
@@ -101,380 +129,287 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
       {/* DOCUMENTO */}
       <div className="no-print:mt-16 min-h-screen flex justify-center py-8 px-4 print:p-0 print:mt-0" style={{ background: '#e5e7eb' }}>
-        <div className="cot-page" style={{ ...S.page, boxShadow: '0 8px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ width: '210mm', background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif" }}>
 
-          {/* ══ ENCABEZADO ══════════════════════════════════════════════ */}
-          <div style={{ display: 'grid', gridTemplateColumns: '55% 45%', minHeight: 120, overflow: 'hidden', position: 'relative', background: '#fff' }}>
+          {/* ══ ENCABEZADO con foto difuminada de fondo ══ */}
+          <div style={{ position: 'relative', overflow: 'hidden', background: '#0035a0' }}>
+            <BlurredBg src={fotoBg} opacity={0.28} />
+            {/* Capa de color encima del blur */}
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(0,26,94,0.90) 0%, rgba(0,52,160,0.80) 50%, rgba(0,82,204,0.75) 100%)', zIndex: 1 }} />
 
-            {/* Izquierda: Logo + tagline + geometric accent */}
-            <div style={{ padding: '22px 24px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', zIndex: 2 }}>
-              {tenant.logo_uri
-                ? <img src={tenant.logo_uri} alt={tenant.nombre} style={{ height: 60, objectFit: 'contain', objectPosition: 'left', marginBottom: 6 }} />
-                : <div style={{ fontSize: 28, fontWeight: 900, color: '#0052B4', letterSpacing: -1, textTransform: 'uppercase' }}>{tenant.nombre}</div>
-              }
-              {tenant.tagline && (
-                <div style={{ fontSize: 8.5, color: '#5a6a8a', letterSpacing: 2.5, textTransform: 'uppercase', fontWeight: 600, marginTop: 2 }}>
-                  {tenant.tagline}
+            {/* Contenido del header */}
+            <div style={{ position: 'relative', zIndex: 2, padding: '24px 28px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+              <div>
+                {tenant.logo_uri
+                  ? <img src={tenant.logo_uri} alt={tenant.nombre} style={{ height: 58, objectFit: 'contain', filter: 'brightness(0) invert(1)', marginBottom: 12, display: 'block' }} />
+                  : <div style={{ color: '#fff', fontSize: 24, fontWeight: 900, textTransform: 'uppercase', marginBottom: 12 }}>{tenant.nombre}</div>
+                }
+                <div style={{ color: '#fff', fontSize: 52, fontWeight: 900, letterSpacing: -2, lineHeight: 0.9, textTransform: 'uppercase', textShadow: '0 2px 16px rgba(0,0,0,0.5)' }}>
+                  COTIZACIÓN
                 </div>
-              )}
-            </div>
-
-            {/* Derecha: Foto con clip diagonal */}
-            <div style={{ position: 'relative', overflow: 'hidden' }}>
-              {/* Forma azul de fondo */}
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, #0035a0, #0052B4, #0066cc)', clipPath: 'polygon(18% 0%, 100% 0%, 100% 100%, 0% 100%)' }} />
-              {/* Foto encima */}
-              {portada && (
-                <div style={{ position: 'absolute', inset: 0, clipPath: 'polygon(22% 0%, 100% 0%, 100% 100%, 4% 100%)' }}>
-                  <img src={portada} alt="moto" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }} />
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,52,160,0.35) 0%, transparent 60%)' }} />
+                <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 8, fontStyle: 'italic' }}>
+                  Tu próxima <strong style={{ color: '#90d4f7', fontStyle: 'normal' }}>aventura</strong> comienza aquí
                 </div>
-              )}
-              {/* Accent decorativo */}
-              <div style={{ position: 'absolute', bottom: 0, left: 0, width: '30%', height: '100%', background: 'linear-gradient(135deg, #0052B4, transparent)', clipPath: 'polygon(0 0, 100% 100%, 0 100%)', opacity: 0.3 }} />
+                {tenant.tagline && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, letterSpacing: 2.5, textTransform: 'uppercase', marginTop: 5 }}>{tenant.tagline}</div>}
+              </div>
+
+              {/* Tarjeta número */}
+              <div style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 14, padding: '14px 18px', minWidth: 168, border: '1px solid rgba(255,255,255,0.25)', flexShrink: 0 }}>
+                <div style={{ color: '#fff', fontWeight: 900, fontSize: 20, letterSpacing: -0.5, marginBottom: 10 }}>COT.</div>
+                <div style={{ background: '#1a56db', color: '#fff', borderRadius: 6, padding: '3px 10px', fontSize: 15, fontWeight: 900, display: 'inline-block', marginBottom: 10, letterSpacing: 0.5 }}>
+                  MS-{pad(cotizacion.numero)}
+                </div>
+                {[
+                  ['📅', 'Fecha', formatFecha(cotizacion.fecha_generacion)],
+                  ['⏰', 'Vigencia', `${cotizacion.vigencia_dias} días`],
+                ].map(([icon, label, val]) => (
+                  <div key={label} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8 }}>
+                    <span style={{ fontSize: 13 }}>{icon}</span>
+                    <div>
+                      <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 1 }}>{label}</div>
+                      <div style={{ color: '#fff', fontSize: 10, fontWeight: 600 }}>{val}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Barra contacto */}
-          <div style={{ background: '#f4f6fb', borderTop: '1px solid #dde3f0', borderBottom: '2px solid #0052B4', display: 'flex', gap: 0 }}>
+          <div style={{ background: '#001a5e', display: 'flex', flexWrap: 'wrap', borderBottom: '3px solid #0052B4' }}>
             {[
               { icon: '📍', text: tenant.direccion },
               { icon: '📞', text: [tenant.telefono1, tenant.telefono2].filter(Boolean).join(' / ') },
               { icon: '✉️', text: tenant.email },
               { icon: '🌐', text: tenant.web },
             ].filter(c => c.text).map(c => (
-              <div key={c.text} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRight: '1px solid #dde3f0', flex: '1 1 0' }}>
-                <span style={{ fontSize: 12, flexShrink: 0 }}>{c.icon}</span>
-                <span style={{ fontSize: 9, color: '#444', lineHeight: 1.3 }}>{c.text}</span>
+              <div key={c.text} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRight: '1px solid rgba(255,255,255,0.1)', flex: '1 1 auto' }}>
+                <span style={{ fontSize: 11, flexShrink: 0 }}>{c.icon}</span>
+                <span style={{ fontSize: 8.5, color: 'rgba(255,255,255,0.8)', lineHeight: 1.3 }}>{c.text}</span>
               </div>
             ))}
           </div>
 
-          {/* ══ CUERPO PRINCIPAL: 2 columnas ══════════════════════════ */}
-          <div style={{ display: 'grid', gridTemplateColumns: '62% 38%', minHeight: 680, alignItems: 'start' }}>
+          {/* ══ CUERPO: 2 columnas ══ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '62% 38%', alignItems: 'start' }}>
 
-            {/* ─── COLUMNA IZQUIERDA ──────────────────────────────── */}
+            {/* ─── COLUMNA IZQUIERDA ─── */}
             <div style={{ padding: '18px 20px 16px', borderRight: '1px solid #e8edf5' }}>
 
               {/* DATOS DEL CLIENTE */}
               <div style={{ marginBottom: 18 }}>
-                <div style={S.sectionTitle}>
-                  <svg width="16" height="16" fill="#0052B4" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
-                  <span style={S.label}>Datos del cliente</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+                  <svg width="15" height="15" fill="#0052B4" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+                  <span style={{ fontSize: 9.5, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 1 }}>Datos del cliente</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 14px' }}>
                   {[
                     ['Empresa / Nombre', cotizacion.cliente_nombre],
                     ['Contacto', ''],
                     ['Teléfono', cotizacion.cliente_celular],
-                    ['Correo electrónico', cotizacion.cliente_email],
+                    ['Correo', cotizacion.cliente_email],
                     ['Dirección', ''],
                     ['Ciudad / Estado', ''],
                   ].map(([label, val]) => (
-                    <div key={label} style={S.fieldRow}>
-                      <span style={S.fieldLabel}>{label}:</span>
-                      <span style={S.fieldLine}>{val ?? ''}</span>
+                    <div key={label} style={{ display: 'flex', gap: 6, marginBottom: 7, alignItems: 'flex-end' }}>
+                      <span style={{ fontSize: 9, color: '#555', minWidth: 60, flexShrink: 0 }}>{label}:</span>
+                      <span style={{ flex: 1, borderBottom: '1px solid #b8c4d8', paddingBottom: 1, fontSize: 9, color: val ? '#1a1a2e' : 'transparent', fontWeight: val ? 600 : 400 }}>{val ?? ' '}</span>
                     </div>
                   ))}
                 </div>
-
-                {/* Texto cursiva decorativo */}
-                <div style={{ marginTop: 10, padding: '8px 12px', borderLeft: '3px solid #0052B4', background: '#f0f5ff', borderRadius: '0 8px 8px 0' }}>
-                  <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 12, color: '#0052B4', lineHeight: 1.5 }}>
-                    Cuéntanos lo que necesitas<br />
-                    <strong>y te ayudamos a elegir la mejor opción.</strong>
+                <div style={{ marginTop: 8, padding: '7px 12px', borderLeft: '3px solid #0052B4', background: '#f0f5ff', borderRadius: '0 8px 8px 0' }}>
+                  <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 11, color: '#0052B4', lineHeight: 1.5 }}>
+                    Cuéntanos lo que necesitas <strong>y te ayudamos a elegir la mejor opción.</strong>
                   </div>
                 </div>
               </div>
 
-              {/* OPCIONES DISPONIBLES */}
-              <div style={{ marginBottom: 16 }}>
-                <div style={S.sectionTitle}>
-                  <span style={{ fontSize: 16 }}>🏍️</span>
-                  <span style={S.label}>Opciones disponibles</span>
-                </div>
-                <div style={{ fontSize: 9, color: '#666', marginBottom: 10, fontStyle: 'italic' }}>
-                  Elige la opción que mejor se adapte a tus necesidades.
-                </div>
+              {/* LA MOTO */}
+              {op && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+                    <span style={{ fontSize: 15 }}>🏍️</span>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 1 }}>Tu moto seleccionada</span>
+                  </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(cotizacion.opciones.length, 3)}, 1fr)`, gap: 10 }}>
-                  {cotizacion.opciones.slice(0, 3).map((op, idx) => {
-                    const foto = op.foto_promo_uri || op.foto_lado_uri || op.foto_frente_uri
-                    const sp   = specs(op)
-                    return (
-                      <div key={op.moto_catalogo_id} style={{ border: '1.5px solid #dde3f0', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+                  {/* Nombre de la moto */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontWeight: 900, fontSize: 18, color: '#001a5e', lineHeight: 1.1 }}>{op.referencia}</div>
+                    {op.tagline_venta && <div style={{ fontSize: 9.5, color: '#64748b', fontStyle: 'italic', marginTop: 3 }}>{op.tagline_venta}</div>}
+                  </div>
 
-                        {/* Número badge */}
-                        <div style={{ padding: '8px 10px 4px', display: 'flex', justifyContent: 'center' }}>
-                          <div style={{ background: '#0052B4', color: '#fff', width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900 }}>
-                            {idx + 1}
-                          </div>
+                  {/* Fotos: lado (grande) + frente (pequeña) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: fotoFrente && fotoFrente !== fotoLado ? '3fr 1.4fr' : '1fr', gap: 8, marginBottom: 14 }}>
+                    {/* Foto lateral — principal */}
+                    <div style={{ background: '#f0f5ff', borderRadius: 12, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 150, position: 'relative', overflow: 'hidden' }}>
+                      {/* Blur sutil de la foto de fondo (ambientación) */}
+                      {fotoLado && <BlurredBg src={fotoLado} opacity={0.08} />}
+                      {fotoLado
+                        ? <img src={fotoLado} alt={op.referencia} style={{ maxHeight: 140, maxWidth: '100%', objectFit: 'contain', position: 'relative', zIndex: 1 }} />
+                        : <span style={{ fontSize: 50 }}>🏍️</span>
+                      }
+                      <div style={{ position: 'absolute', bottom: 6, left: 8, fontSize: 8, color: '#94a3b8', fontWeight: 600, zIndex: 2 }}>Vista lateral</div>
+                    </div>
+
+                    {/* Foto de frente */}
+                    {fotoFrente && fotoFrente !== fotoLado && (
+                      <div style={{ background: '#f8faff', borderRadius: 12, padding: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, border: '1px solid #e2e8f0' }}>
+                        <img src={fotoFrente} alt={`${op.referencia} frente`} style={{ maxHeight: 130, maxWidth: '100%', objectFit: 'contain' }} />
+                        <div style={{ fontSize: 8, color: '#94a3b8', fontWeight: 600 }}>Vista frontal</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Specs + Precio en 2 columnas */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+
+                    {/* Especificaciones */}
+                    <div>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, paddingBottom: 4, borderBottom: '1.5px solid #dde3f0' }}>Especificaciones</div>
+                      {specsLista.map(s => (
+                        <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                          <IconCheck />
+                          <span style={{ fontSize: 9.5, color: '#334155' }}>{s}</span>
                         </div>
+                      ))}
+                      {op.colores && (
+                        <div style={{ marginTop: 8, fontSize: 9, color: '#64748b' }}>🎨 Colores: <strong>{op.colores}</strong></div>
+                      )}
+                    </div>
 
-                        {/* Foto */}
-                        <div style={{ height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px', background: '#f8fafc' }}>
-                          {foto
-                            ? <img src={foto} alt={op.referencia} style={{ maxHeight: 95, maxWidth: '100%', objectFit: 'contain' }} />
-                            : <span style={{ fontSize: 36 }}>🏍️</span>
-                          }
-                        </div>
-
-                        {/* Nombre */}
-                        <div style={{ padding: '8px 10px 4px', borderTop: '1px solid #eef0f6' }}>
-                          <div style={{ fontWeight: 800, fontSize: 11, color: '#001a5e', lineHeight: 1.2 }}>{op.referencia}</div>
-                          {op.tagline_venta && (
-                            <div style={{ fontSize: 8.5, color: '#64748b', marginTop: 2, fontStyle: 'italic' }}>{op.tagline_venta}</div>
-                          )}
-                        </div>
-
-                        {/* Specs con checkmarks */}
-                        <div style={{ padding: '4px 10px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {sp.slice(0, 5).map(s => (
-                            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                              <IconCheck />
-                              <span style={{ fontSize: 9, color: '#334155' }}>{s}</span>
-                            </div>
-                          ))}
-                          {op.colores && (
-                            <div style={{ fontSize: 8.5, color: '#64748b', marginTop: 2 }}>🎨 {op.colores}</div>
-                          )}
-                        </div>
-
-                        {/* Precio */}
-                        <div style={{ background: '#f0f5ff', borderTop: '1.5px solid #dde3f0', padding: '8px 10px' }}>
-                          <div style={{ fontSize: 8.5, fontWeight: 700, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Precio unitario</div>
-                          {op.mostrar_precio ? (
-                            <div style={{ fontSize: 14, fontWeight: 900, color: '#001a5e' }}>{cop(op.precio + op.costo_documentos)}</div>
+                    {/* Desglose de precio */}
+                    <div style={{ background: '#f0f5ff', borderRadius: 10, padding: 12, border: '1.5px solid #c7d9f8' }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, paddingBottom: 4, borderBottom: '1.5px solid #c7d9f8' }}>
+                        Desglose de precio
+                      </div>
+                      {[
+                        { label: 'Sin papeles',            val: precioBase,  highlight: false, main: false },
+                        { label: 'Documentos (SOAT+mat.)', val: papeles,     highlight: false, main: false },
+                        { label: 'Con papeles',            val: conPapeles,  highlight: true,  main: false },
+                        { label: `IVA (19%)`,              val: iva,         highlight: false, main: false },
+                        { label: 'TOTAL CON IVA',          val: totalConIva, highlight: false, main: true  },
+                      ].map(({ label, val, highlight, main }) => (
+                        <div key={label} style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: main ? '7px 8px' : '4px 4px',
+                          marginBottom: main ? 0 : 3,
+                          background: main ? '#0052B4' : highlight ? 'rgba(0,82,180,0.08)' : 'transparent',
+                          borderRadius: main || highlight ? 6 : 0,
+                          borderBottom: !main && !highlight ? '1px dashed #c7d9f8' : 'none',
+                        }}>
+                          <span style={{ fontSize: main ? 9.5 : 9, fontWeight: main ? 800 : highlight ? 700 : 500, color: main ? '#fff' : highlight ? '#0035a0' : '#475569', textTransform: main ? 'uppercase' as const : 'none' as const }}>
+                            {label}
+                          </span>
+                          {mostrar ? (
+                            <span style={{ fontSize: main ? 11 : 9.5, fontWeight: main ? 900 : highlight ? 800 : 600, color: main ? '#fff' : highlight ? '#001a5e' : '#334155' }}>
+                              {cop(val)}
+                            </span>
                           ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: '#1a1a2e' }}>$</span>
-                              <div style={{ flex: 1, borderBottom: '1.5px solid #334155', height: 16 }} />
-                              <span style={{ fontSize: 9, color: '#64748b', fontWeight: 600 }}>COP</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <span style={{ fontSize: 9.5, fontWeight: 700, color: main ? '#fff' : '#334155' }}>$</span>
+                              <div style={{ width: 52, borderBottom: `1.5px solid ${main ? 'rgba(255,255,255,0.5)' : '#8ba4cc'}`, height: 14 }} />
                             </div>
                           )}
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* 4ª opción en layout especial si existe */}
-                {cotizacion.opciones[3] && (() => {
-                  const op   = cotizacion.opciones[3]
-                  const foto = op.foto_promo_uri || op.foto_lado_uri || op.foto_frente_uri
-                  const sp   = specs(op)
-                  return (
-                    <div style={{ marginTop: 12, border: '1.5px solid #86efac', borderRadius: 10, overflow: 'hidden', background: '#f0fdf4' }}>
-                      <div style={{ background: '#16a34a', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 14 }}>🚗</span>
-                        <span style={{ color: '#fff', fontWeight: 800, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 1 }}>Opción adicional</span>
-                        <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 20, padding: '2px 10px', border: '1px solid rgba(255,255,255,0.4)', marginLeft: 'auto' }}>
-                          <span style={{ color: '#fff', fontSize: 8.5, fontWeight: 700 }}>OPCIÓN 4</span>
-                        </div>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 1fr', gap: 10, padding: 12, alignItems: 'start' }}>
-                        <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {foto ? <img src={foto} alt={op.referencia} style={{ maxHeight: 78, maxWidth: '100%', objectFit: 'contain' }} /> : <span style={{ fontSize: 36 }}>🏍️</span>}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: 11, color: '#14532d', marginBottom: 6 }}>{op.referencia}</div>
-                          {sp.slice(0, 4).map(s => (
-                            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#16a34a"/><path d="M7 12.5l3.5 3.5 6.5-7" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                              <span style={{ fontSize: 9, color: '#166534' }}>{s}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
-                          {op.tagline_venta && (
-                            <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 10.5, color: '#166534', lineHeight: 1.4, marginBottom: 8 }}>{op.tagline_venta}</div>
-                          )}
-                          <div style={{ background: '#dcfce7', borderRadius: 6, padding: '6px 10px', border: '1px solid #86efac' }}>
-                            <div style={{ fontSize: 8.5, fontWeight: 700, color: '#166534', textTransform: 'uppercase', marginBottom: 3 }}>Precio unitario</div>
-                            {op.mostrar_precio ? (
-                              <div style={{ fontSize: 13, fontWeight: 900, color: '#14532d' }}>{cop(op.precio + op.costo_documentos)}</div>
-                            ) : (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ fontSize: 11, fontWeight: 700 }}>$</span>
-                                <div style={{ flex: 1, borderBottom: '1.5px solid #166534', height: 14 }} />
-                                <span style={{ fontSize: 9, color: '#166534', fontWeight: 600 }}>COP</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                  )
-                })()}
-              </div>
+                  </div>
 
-              {/* OBSERVACIONES + TOTALES */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 4 }}>
-                <div>
-                  <div style={{ ...S.sectionTitle, marginBottom: 6 }}>
-                    <span style={{ fontSize: 14 }}>💬</span>
-                    <span style={S.label}>Observaciones</span>
-                  </div>
-                  <div style={{ border: '1px solid #dde3f0', borderRadius: 8, padding: 10, minHeight: 70, fontSize: 9.5, color: '#334155', background: '#fafbfc', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                    {cotizacion.notas || ''}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ ...S.sectionTitle, marginBottom: 6 }}>
-                    <span style={S.label}>Resumen</span>
-                  </div>
-                  {([
-                    ['Subtotal', '', false],
-                    ['IVA (19%)', '', false],
-                    ['TOTAL', '', true],
-                  ] as [string, string, boolean][]).map(([label, val, bold]) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: bold ? '7px 10px' : '5px 10px', background: bold ? '#0052B4' : '#f4f6fb', marginBottom: 3, borderRadius: 6 }}>
-                      <span style={{ fontSize: 9.5, fontWeight: bold ? 800 : 600, color: bold ? '#fff' : '#334155', textTransform: 'uppercase' as const }}>{label}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ fontSize: 9.5, fontWeight: bold ? 800 : 600, color: bold ? '#fff' : '#334155' }}>$</span>
-                        <div style={{ width: 60, borderBottom: `1.5px solid ${bold ? 'rgba(255,255,255,0.5)' : '#334155'}`, height: 14 }} />
-                        <span style={{ fontSize: 8.5, color: bold ? 'rgba(255,255,255,0.8)' : '#64748b' }}>COP</span>
-                      </div>
+                  {/* Observaciones */}
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Observaciones</div>
+                    <div style={{ border: '1px solid #dde3f0', borderRadius: 8, padding: '8px 12px', minHeight: 52, fontSize: 9.5, color: '#334155', background: '#fafbfc', lineHeight: 1.5 }}>
+                      {cotizacion.notas || ''}
                     </div>
-                  ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* ─── COLUMNA DERECHA (SIDEBAR) ──────────────────────── */}
-            <div style={{ padding: '18px 16px', background: '#f8faff', display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-              {/* Tarjeta cotización */}
-              <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 12, padding: '14px 16px' }}>
-                <div style={{ color: '#0052B4', fontWeight: 900, fontSize: 22, letterSpacing: -0.5, textTransform: 'uppercase', lineHeight: 1, marginBottom: 10 }}>COTIZACIÓN</div>
-                {[
-                  ['No.', `MS-${pad(cotizacion.numero)}`],
-                  ['Fecha', formatFecha(cotizacion.fecha_generacion)],
-                  ['Vigencia', `${cotizacion.vigencia_dias} días naturales`],
-                ].map(([k, v]) => (
-                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, paddingBottom: 6, borderBottom: '1px solid #eef0f6' }}>
-                    <span style={{ fontSize: 9.5, color: '#64748b', fontWeight: 600, textTransform: 'uppercase' as const }}>{k}</span>
-                    <span style={{ fontSize: k === 'No.' ? 13 : 9.5, fontWeight: 800, color: '#001a5e', background: k === 'No.' ? '#eff6ff' : 'transparent', padding: k === 'No.' ? '2px 8px' : 0, borderRadius: 4 }}>{v}</span>
-                  </div>
-                ))}
-              </div>
+            {/* ─── COLUMNA DERECHA (SIDEBAR) ─── */}
+            <div style={{ padding: '18px 14px', background: '#f8faff', display: 'flex', flexDirection: 'column', gap: 12, minHeight: '100%' }}>
 
               {/* Por qué elegirnos */}
-              <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 12, padding: '14px 16px' }}>
-                <div style={{ fontWeight: 800, fontSize: 10.5, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, borderBottom: '2px solid #0052B4', paddingBottom: 6 }}>
-                  Por qué elegirnos
+              <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 12, padding: '14px 14px', flex: 'none' }}>
+                <div style={{ fontWeight: 800, fontSize: 10, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10, borderBottom: '2px solid #0052B4', paddingBottom: 5 }}>
+                  ¿Por qué elegirnos?
                 </div>
                 {razones.map(({ icon, title, desc }) => (
-                  <div key={title} style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'flex-start' }}>
-                    <div style={{ background: '#eff6ff', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, border: '1px solid #bfdbfe' }}>{icon}</div>
+                  <div key={title} style={{ display: 'flex', gap: 9, marginBottom: 9, alignItems: 'flex-start' }}>
+                    <div style={{ background: '#eff6ff', borderRadius: 7, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0, border: '1px solid #bfdbfe' }}>{icon}</div>
                     <div>
-                      <div style={{ fontWeight: 800, fontSize: 9.5, color: '#001a5e', textTransform: 'uppercase', letterSpacing: 0.3 }}>{title}</div>
-                      <div style={{ fontSize: 9, color: '#475569', marginTop: 1, lineHeight: 1.4 }}>{desc}</div>
+                      <div style={{ fontWeight: 800, fontSize: 9, color: '#001a5e', textTransform: 'uppercase', letterSpacing: 0.3 }}>{title}</div>
+                      <div style={{ fontSize: 8.5, color: '#475569', marginTop: 1.5, lineHeight: 1.4 }}>{desc}</div>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* ¿Listo para continuar? */}
-              <div style={{ background: '#0052B4', borderRadius: 12, padding: '14px 16px' }}>
-                <div style={{ fontWeight: 900, fontSize: 12, color: '#fff', marginBottom: 3 }}>¿LISTO PARA CONTINUAR?</div>
-                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.75)', marginBottom: 12 }}>Estamos listos para ayudarte.</div>
+              {/* CTA ¿Listo para continuar? */}
+              <div style={{ background: '#0052B4', borderRadius: 12, padding: '14px 14px', flex: 'none' }}>
+                <div style={{ fontWeight: 900, fontSize: 11.5, color: '#fff', marginBottom: 3 }}>¿LISTO PARA CONTINUAR?</div>
+                <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,0.7)', marginBottom: 12 }}>Estamos listos para ayudarte.</div>
                 {[
-                  { icon: '📱', label: 'WhatsApp',  val: tenant.whatsapp  },
-                  { icon: '☎️', label: 'Llámanos',  val: tenant.telefono1 },
+                  { icon: '📱', label: 'WhatsApp',   val: tenant.whatsapp  },
+                  { icon: '☎️', label: 'Llámanos',   val: tenant.telefono1 },
                   { icon: '✉️', label: 'Escríbenos', val: tenant.email    },
                   { icon: '📍', label: 'Visítanos',  val: tenant.direccion },
                 ].filter(c => c.val).map(c => (
                   <div key={c.label} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: 14, flexShrink: 0 }}>{c.icon}</span>
+                    <span style={{ fontSize: 13, flexShrink: 0 }}>{c.icon}</span>
                     <div>
-                      <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', letterSpacing: 1 }}>{c.label}</div>
-                      <div style={{ fontSize: 9.5, color: '#fff', fontWeight: 700, lineHeight: 1.3 }}>{c.val}</div>
+                      <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: 1 }}>{c.label}</div>
+                      <div style={{ fontSize: 9, color: '#fff', fontWeight: 700, lineHeight: 1.4 }}>{c.val}</div>
                     </div>
                   </div>
                 ))}
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', marginTop: 12, paddingTop: 10, fontFamily: 'Georgia, serif', fontStyle: 'italic', color: 'rgba(255,255,255,0.9)', fontSize: 13, lineHeight: 1.4, textAlign: 'center' }}>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', marginTop: 10, paddingTop: 10, fontFamily: 'Georgia, serif', fontStyle: 'italic', color: 'rgba(255,255,255,0.9)', fontSize: 12, lineHeight: 1.5, textAlign: 'center' }}>
                   ¡Más que motos,<br /><strong>creamos experiencias!</strong>
                 </div>
               </div>
 
-            </div>
-          </div>
-
-          {/* ══ PRE-FOOTER ══════════════════════════════════════════════ */}
-          <div style={{ background: '#f4f6fb', borderTop: '2px solid #dde3f0', padding: '14px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
-            {/* ¡Aparta tu unidad! */}
-            <div>
-              <div style={{ fontWeight: 900, fontSize: 12, color: '#0052B4', textTransform: 'uppercase', marginBottom: 4 }}>¡Aparta tu unidad ahora!</div>
-              <div style={{ fontSize: 8.5, color: '#475569', lineHeight: 1.4 }}>Precios y disponibilidad sujetos a cambio sin previo aviso.</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                <span style={{ fontSize: 14 }}>⏰</span>
-                <span style={{ fontSize: 8.5, fontWeight: 700, color: '#334155' }}>Cotización válida por {cotizacion.vigencia_dias} días naturales</span>
-              </div>
-            </div>
-            {/* Badges */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 16 }}>
-              {[
-                { icon: '🛡️', title: 'GARANTÍA', sub: '12 MESES*' },
-                { icon: '⭐', title: 'CALIDAD', sub: 'GARANTIZADA' },
-                { icon: '👍', title: 'MILES DE', sub: 'CLIENTES FELICES' },
-              ].map(b => (
-                <div key={b.title} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 22, marginBottom: 3 }}>{b.icon}</div>
-                  <div style={{ fontSize: 8, fontWeight: 800, color: '#0052B4', lineHeight: 1.2 }}>{b.title}</div>
-                  <div style={{ fontSize: 7.5, color: '#475569', fontWeight: 600 }}>{b.sub}</div>
-                </div>
-              ))}
-            </div>
-            {/* Mini testimonial */}
-            <div style={{ background: '#fff', borderRadius: 8, padding: '10px 12px', border: '1px solid #dde3f0' }}>
-              <div style={{ fontSize: 18, color: '#0052B4', fontFamily: 'Georgia, serif', lineHeight: 1, marginBottom: 4 }}>&ldquo;</div>
-              <div style={{ fontSize: 8.5, color: '#334155', fontStyle: 'italic', lineHeight: 1.4 }}>
-                Excelente atención, me ayudaron a escoger la moto perfecta. ¡Todo rápido y sin complicaciones!
-              </div>
-              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#0052B4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10, fontWeight: 800 }}>C</div>
-                <div>
-                  <div style={{ fontSize: 8, fontWeight: 700, color: '#1e293b' }}>Cliente satisfecho</div>
-                  <div style={{ fontSize: 7.5, color: '#64748b' }}>⭐⭐⭐⭐⭐</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ══ FOOTER ══════════════════════════════════════════════════ */}
-          <div style={{ background: 'linear-gradient(135deg, #001a5e 0%, #0035a0 50%, #0052B4 100%)', padding: '0', overflow: 'hidden', position: 'relative' }}>
-            {/* Foto de fondo footer */}
-            {portada && (
-              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '35%', opacity: 0.2 }}>
-                <img src={portada} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'right center' }} />
-              </div>
-            )}
-            <div style={{ position: 'relative', zIndex: 2, display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '16px 28px', gap: 20 }}>
-              {/* Izquierda */}
-              <div>
-                <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 2 }}>Tu próxima aventura</div>
-                <div style={{ color: '#fff', fontSize: 22, fontWeight: 900, letterSpacing: -0.5, textTransform: 'uppercase', lineHeight: 1 }}>¡COMIENZA AQUÍ!</div>
-              </div>
-              {/* Centro: texto */}
-              <div style={{ textAlign: 'center', maxWidth: 200 }}>
-                <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,0.7)', lineHeight: 1.5 }}>
-                  En {tenant.nombre || 'nuestro concesionario'} nos apasiona lo que hacemos<br />
-                  y estamos listos para acompañarte en cada kilómetro.
-                </div>
-                {/* Social */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 8 }}>
-                  {['📘', '📸', '▶️'].map((ic, i) => (
-                    <div key={i} style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>{ic}</div>
+              {/* Badges */}
+              <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 12, padding: '12px 14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, textAlign: 'center' }}>
+                  {[
+                    { icon: '🛡️', title: 'GARANTÍA', sub: '12 MESES' },
+                    { icon: '⭐', title: 'CALIDAD', sub: 'GARANTIZADA' },
+                    { icon: '👍', title: 'CLIENTES', sub: 'SATISFECHOS' },
+                  ].map(b => (
+                    <div key={b.title}>
+                      <div style={{ fontSize: 20, marginBottom: 3 }}>{b.icon}</div>
+                      <div style={{ fontSize: 7.5, fontWeight: 800, color: '#0052B4', lineHeight: 1.2 }}>{b.title}</div>
+                      <div style={{ fontSize: 7, color: '#64748b', fontWeight: 600 }}>{b.sub}</div>
+                    </div>
                   ))}
                 </div>
               </div>
-              {/* Derecha: Logo */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                {tenant.logo_uri
-                  ? <img src={tenant.logo_uri} alt={tenant.nombre} style={{ height: 36, objectFit: 'contain', filter: 'brightness(0) invert(1)', opacity: 0.9 }} />
-                  : <div style={{ color: '#fff', fontWeight: 900, fontSize: 16, textTransform: 'uppercase' }}>{tenant.nombre}</div>
-                }
+            </div>
+          </div>
+
+          {/* ══ FOOTER con foto difuminada de fondo ══ */}
+          <div style={{ position: 'relative', overflow: 'hidden', background: '#001a5e' }}>
+            <BlurredBg src={fotoBg} opacity={0.2} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(0,26,94,0.92) 0%, rgba(0,52,160,0.85) 60%, rgba(0,82,204,0.80) 100%)', zIndex: 1 }} />
+            <div style={{ position: 'relative', zIndex: 2, display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '16px 28px', gap: 20 }}>
+              <div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 8.5, textTransform: 'uppercase', letterSpacing: 2.5, marginBottom: 2 }}>Tu próxima aventura</div>
+                <div style={{ color: '#fff', fontSize: 20, fontWeight: 900, letterSpacing: -0.5, textTransform: 'uppercase', lineHeight: 1 }}>¡COMIENZA AQUÍ!</div>
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12 }}>⏰</span>
+                  <span style={{ fontSize: 8.5, color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>Cotización válida por {cotizacion.vigencia_dias} días naturales</span>
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', maxWidth: 180 }}>
+                <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 }}>
+                  En {tenant.nombre || 'nuestro concesionario'} nos apasiona lo que hacemos<br />
+                  y estamos listos para acompañarte en cada kilómetro.
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
+                {tenant.logo_uri && (
+                  <img src={tenant.logo_uri} alt={tenant.nombre} style={{ height: 34, objectFit: 'contain', filter: 'brightness(0) invert(1)', opacity: 0.9 }} />
+                )}
               </div>
             </div>
           </div>

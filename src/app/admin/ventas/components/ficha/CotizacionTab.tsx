@@ -113,20 +113,15 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
   useEffect(() => { cargar() }, [cargar])
 
   function abrirNueva() {
-    // Pre-seleccionar motos de interés (hasta 3)
-    const presel = motosInteres
-      .filter(id => catalogo.some(c => c.id === id))
-      .slice(0, 3)
-    setSelected(presel)
+    // Pre-seleccionar primera moto de interés
+    const primera = motosInteres.find(id => catalogo.some(c => c.id === id))
+    setSelected(primera ? [primera] : [])
     setStep('nueva')
   }
 
+  // Una sola moto por cotización
   function toggleSelect(id: string) {
-    setSelected(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id)
-        : prev.length >= 3 ? prev
-        : [...prev, id]
-    )
+    setSelected(prev => prev.includes(id) ? [] : [id])
   }
 
   async function generar() {
@@ -198,10 +193,10 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
       {/* Motos */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-xs text-gray-500">Selecciona hasta 3 motos</p>
+          <p className="text-xs text-gray-500">Selecciona la moto a cotizar</p>
           {motosInteres.length > 0 && (
             <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
-              ✓ {Math.min(motosInteres.length, 3)} moto{motosInteres.length !== 1 ? 's' : ''} de interés pre-seleccionadas
+              ⭐ {motosInteres.length} moto{motosInteres.length !== 1 ? 's' : ''} de interés
             </span>
           )}
         </div>
@@ -319,7 +314,7 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
         className="w-full py-3 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2">
         {generating
           ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Generando...</>
-          : <><span>📄</span> Generar cotización ({selected.length} moto{selected.length !== 1 ? 's' : ''})</>
+          : <><span>📄</span> Generar cotización</>
         }
       </button>
     </div>
