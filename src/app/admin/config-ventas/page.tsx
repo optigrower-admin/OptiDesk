@@ -136,9 +136,10 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle }: {
   const [saving, setSaving] = useState(false)
   const [fotos, setFotos]   = useState(m.fotos)
 
-  const conPapeles  = local.precio + local.costo_documentos
-  const conPrenda   = conPapeles + local.costo_prenda
-  const conTarjeta  = Math.round(conPapeles * (1 + recargoTarjeta / 100))
+  const conPapeles         = local.precio + local.costo_documentos
+  const conPrenda          = conPapeles + local.costo_prenda
+  const conTarjetaPapeles  = Math.round(conPapeles * (1 + recargoTarjeta / 100))
+  const conTarjetaPrenda   = Math.round(conPrenda  * (1 + recargoTarjeta / 100))
 
   function campo(k: keyof MotoCat) {
     return (
@@ -175,23 +176,27 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle }: {
           <ToggleSwitch activo={m.activa} onChange={() => onToggle(m.id, m.activa)} />
         </div>
 
-        {/* 4 variantes de precio — siempre visibles */}
-        <div className="grid grid-cols-4 gap-2">
-          <div className="bg-gray-50 rounded-lg px-2.5 py-2">
-            <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Sin papeles</div>
-            <div className="text-sm font-bold text-gray-800 mt-0.5">{formatCOP(local.precio)}</div>
+        {/* 5 variantes de precio — siempre visibles */}
+        <div className="grid grid-cols-5 gap-1.5">
+          <div className="bg-gray-50 rounded-lg px-2 py-2">
+            <div className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide leading-tight">Sin papeles</div>
+            <div className="text-xs font-bold text-gray-800 mt-0.5">{formatCOP(local.precio)}</div>
           </div>
-          <div className="bg-emerald-50 rounded-lg px-2.5 py-2">
-            <div className="text-[10px] text-emerald-600 font-medium uppercase tracking-wide">Con papeles</div>
-            <div className="text-sm font-bold text-emerald-700 mt-0.5">{formatCOP(conPapeles)}</div>
+          <div className="bg-emerald-50 rounded-lg px-2 py-2">
+            <div className="text-[9px] text-emerald-600 font-semibold uppercase tracking-wide leading-tight">Con papeles</div>
+            <div className="text-xs font-bold text-emerald-700 mt-0.5">{formatCOP(conPapeles)}</div>
           </div>
-          <div className="bg-blue-50 rounded-lg px-2.5 py-2">
-            <div className="text-[10px] text-blue-500 font-medium uppercase tracking-wide">Pignorada</div>
-            <div className="text-sm font-bold text-blue-700 mt-0.5">{formatCOP(conPrenda)}</div>
+          <div className="bg-blue-50 rounded-lg px-2 py-2">
+            <div className="text-[9px] text-blue-500 font-semibold uppercase tracking-wide leading-tight">Pignorada</div>
+            <div className="text-xs font-bold text-blue-700 mt-0.5">{formatCOP(conPrenda)}</div>
           </div>
-          <div className="bg-amber-50 rounded-lg px-2.5 py-2">
-            <div className="text-[10px] text-amber-600 font-medium uppercase tracking-wide">Tarjeta (+{recargoTarjeta}%)</div>
-            <div className="text-sm font-bold text-amber-700 mt-0.5">{formatCOP(conTarjeta)}</div>
+          <div className="bg-amber-50 rounded-lg px-2 py-2">
+            <div className="text-[9px] text-amber-600 font-semibold uppercase tracking-wide leading-tight">Tarjeta c/papeles +{recargoTarjeta}%</div>
+            <div className="text-xs font-bold text-amber-700 mt-0.5">{formatCOP(conTarjetaPapeles)}</div>
+          </div>
+          <div className="bg-orange-50 rounded-lg px-2 py-2">
+            <div className="text-[9px] text-orange-600 font-semibold uppercase tracking-wide leading-tight">Tarjeta pignorada +{recargoTarjeta}%</div>
+            <div className="text-xs font-bold text-orange-700 mt-0.5">{formatCOP(conTarjetaPrenda)}</div>
           </div>
         </div>
       </div>
@@ -241,10 +246,15 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle }: {
                   className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <p className="text-[10px] text-gray-400 mt-0.5">Aplica en crédito con prenda</p>
               </div>
-              <div className="bg-amber-50 rounded-lg px-3 py-2 flex flex-col justify-center">
-                <div className="text-[10px] text-amber-600 font-semibold uppercase tracking-wide">Con tarjeta (+{recargoTarjeta}%)</div>
-                <div className="text-base font-bold text-amber-700 mt-1">{formatCOP(conTarjeta)}</div>
-                <div className="text-[10px] text-amber-500 mt-0.5">Calculado automático</div>
+              <div className="bg-amber-50 rounded-lg px-3 py-2 flex flex-col justify-center gap-1">
+                <div>
+                  <div className="text-[10px] text-amber-600 font-semibold">Tarjeta sobre papeles (+{recargoTarjeta}%)</div>
+                  <div className="text-sm font-bold text-amber-700">{formatCOP(conTarjetaPapeles)}</div>
+                </div>
+                <div className="border-t border-amber-200 pt-1">
+                  <div className="text-[10px] text-orange-600 font-semibold">Tarjeta sobre pignorada (+{recargoTarjeta}%)</div>
+                  <div className="text-sm font-bold text-orange-700">{formatCOP(conTarjetaPrenda)}</div>
+                </div>
               </div>
             </div>
           </div>
