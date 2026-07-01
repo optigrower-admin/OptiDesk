@@ -70,9 +70,21 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
     <>
       <style>{`
         @media print {
-          @page { margin: 0; size: A4 portrait; }
+          @page { margin: 0; size: letter portrait; }
           body { margin: 0 !important; background: white !important; }
           .no-print { display: none !important; }
+          /* Forzar impresión de fondos, gradientes e imágenes en Chrome/Edge/Firefox */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          /* Escalar todo al 88 % para que quepa en una sola hoja */
+          .cot-scale {
+            transform: scale(0.88);
+            transform-origin: top left;
+            width: 113.64%;   /* 100% / 0.88 — compensa el encogimiento horizontal */
+          }
         }
         body { margin: 0; background: #e5e7eb; }
         * { box-sizing: border-box; }
@@ -100,7 +112,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
       {/* DOCUMENTO */}
       <div className="no-print:mt-16 min-h-screen flex justify-center py-8 px-4 print:p-0 print:mt-0" style={{ background: '#e5e7eb' }}>
-        <div style={{ width: '210mm', background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 11 }}>
+        <div className="cot-scale" style={{ width: '210mm', background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 11 }}>
 
           {/* ══ HEADER ══════════════════════════════════════════════════ */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'stretch', background: '#fff', borderBottom: '3px solid #0052B4' }}>
@@ -132,10 +144,10 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
             </div>
 
             {/* Derecha: FOTO PROMOCIONAL en cuadrado + número de cotización */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', background: '#f0f5ff', padding: '0', minWidth: 160, borderLeft: '2px solid #0052B4', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', background: '#f0f5ff', padding: '0', minWidth: 112, maxWidth: 112, borderLeft: '2px solid #0052B4', overflow: 'hidden' }}>
 
-              {/* Foto promocional — cuadrado con fondo azul sutil */}
-              <div style={{ width: '100%', flex: 1, background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 110, position: 'relative', overflow: 'hidden' }}>
+              {/* Foto promocional — cuadrado pequeño esquina superior derecha */}
+              <div style={{ width: '100%', flex: 1, background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 88, position: 'relative', overflow: 'hidden' }}>
                 {fotoPromo ? (
                   <img
                     src={fotoPromo}
@@ -260,7 +272,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
               <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '10px 14px', marginBottom: 14, border: '1.5px solid #bbf7d0' }}>
                 <div style={{ fontSize: 9, fontWeight: 800, color: '#15803d', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Esta cotización incluye</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
-                  {['SOAT obligatorio', 'Matrícula + impuestos', 'Manual del propietario', 'Garantía de fábrica', 'Kit de herramientas', 'Asesoría en trámites'].map(item => (
+                  {['SOAT obligatorio', 'Matrícula + impuestos', 'Manual del propietario', 'Garantía de fábrica', '3 revisiones mano de obra gratis', 'Asesoría en trámites'].map(item => (
                     <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                       <Check color="#16a34a" />
                       <span style={{ fontSize: 8.5, color: '#166534', fontWeight: 500 }}>{item}</span>
