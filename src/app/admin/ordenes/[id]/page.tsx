@@ -800,9 +800,14 @@ export default function AdminOrdenDetallePage() {
   // el valor_total de la orden con el cambio ya aplicado.
   const actualizarItemRepuesto = async (id: string, cambios: Partial<{ descripcion: string; precio_venta: number; costo: number; metodo_pago_id: string | null }>) => {
     const itemAnterior = items.find((i) => i.id === id)
-    const { error } = await supabase.from('items_orden').update(cambios).eq('id', id)
+    const { data: updated, error } = await supabase
+      .from('items_orden').update(cambios).eq('id', id).select('id')
     if (error) {
       alert(`No se pudo guardar el cambio: ${error.message}`)
+      return
+    }
+    if (!updated || updated.length === 0) {
+      alert('No se pudo guardar el cambio: sin permisos para modificar este ítem. Contacta al administrador del sistema.')
       return
     }
     const nuevoTotal = items.map((i) => i.id === id ? { ...i, ...cambios } : i).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
@@ -2367,16 +2372,15 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               </div>
 
               {/* Lista de repuestos agregados (UMA / Externo / Insumo / Porta Placas) */}
-              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-[11px] text-gray-500 uppercase border-b bg-blue-50">
-                    <th className="text-left py-1 px-2 font-medium">Origen</th>
+                    <th className="text-left py-1 px-2 font-medium w-16">Origen</th>
                     <th className="text-left py-1 px-2 font-medium">Descripción</th>
-                    <th className="text-left py-1 px-2 font-medium whitespace-nowrap">Método pago prov.</th>
-                    <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio proveedor</th>
-                    <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio venta</th>
-                    <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Fecha / Acciones</th>
+                    <th className="text-left py-1 px-2 font-medium w-24 hidden sm:table-cell">Método prov.</th>
+                    <th className="text-right py-1 px-2 font-medium w-20 hidden sm:table-cell">Costo</th>
+                    <th className="text-right py-1 px-2 font-medium w-24">P. venta</th>
+                    <th className="text-right py-1 px-2 font-medium w-24">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2397,7 +2401,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                             className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
                           />
                         </td>
-                        <td className="py-1 px-2">
+                        <td className="py-1 px-2 hidden sm:table-cell">
                           {item.origen === 'externo' ? (
                             <select
                               value={editingItem.metodo_pago_id}
@@ -2409,11 +2413,11 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                             </select>
                           ) : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="py-1 px-2">
+                        <td className="py-1 px-2 hidden sm:table-cell">
                           {item.origen === 'externo' ? (
                             <input
                               type="text" inputMode="numeric"
-                              value={editingItem.costo ? '$' + parseInt(editingItem.costo.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                              value={editingItem.costo}
                               onChange={(e) => setEditingItem({ ...editingItem, costo: e.target.value.replace(/\D/g, '') })}
                               className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
                             />
@@ -2422,35 +2426,31 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <td className="py-1 px-2">
                           <input
                             type="text" inputMode="numeric"
-                            value={editingItem.precio ? '$' + parseInt(editingItem.precio.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                            value={editingItem.precio}
                             onChange={(e) => setEditingItem({ ...editingItem, precio: e.target.value.replace(/\D/g, '') })}
                             className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
                           />
                         </td>
                         <td className="py-1 px-2">
-                          <div className="flex items-center justify-end gap-2 flex-wrap">
-                            {celdaFecha(item)}
-                            <div className="flex gap-1">
-                              <button onClick={handleEditItem} className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-semibold">OK</button>
-                              <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
-                            </div>
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={handleEditItem} className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-semibold">OK</button>
+                            <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
                           </div>
                         </td>
                       </tr>
                     ) : (
                       <tr key={item.id} className="border-b hover:bg-gray-50">
                         <td className="py-1.5 px-2"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
-                        <td className="py-1.5 px-2 text-gray-800 max-w-[200px] truncate" title={item.descripcion}>{item.descripcion}</td>
-                        <td className="py-1.5 px-2 text-gray-500">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
-                        <td className="py-1.5 px-2 text-right text-gray-500 whitespace-nowrap">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
-                        <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>
+                        <td className="py-1.5 px-2 text-gray-800 truncate max-w-[120px]" title={item.descripcion}>{item.descripcion}</td>
+                        <td className="py-1.5 px-2 text-gray-500 hidden sm:table-cell">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
+                        <td className="py-1.5 px-2 text-right text-gray-500 hidden sm:table-cell">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
+                        <td className="py-1.5 px-2 text-right font-semibold">{formatCOP(item.precio_venta)}</td>
                         <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
-              </div>
 
               <div className="px-5 py-3 border-t space-y-1 text-sm font-semibold bg-blue-50">
                 <div className="flex justify-between">
@@ -2570,7 +2570,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                           <td className="py-2 px-3">
                             <input
                               type="text" inputMode="numeric"
-                              value={editingItem.precio ? '$' + parseInt(editingItem.precio || '0', 10).toLocaleString('es-CO') : ''}
+                              value={editingItem.precio}
                               onChange={(e) => setEditingItem({ ...editingItem, precio: e.target.value.replace(/\D/g, '') })}
                               className="w-full px-2 py-1.5 border border-orange-400 rounded-lg text-sm font-mono text-right focus:outline-none"
                             />
