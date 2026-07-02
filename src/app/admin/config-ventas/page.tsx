@@ -352,12 +352,30 @@ export default function ConfigVentasPage() {
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
 
-    const [{ data: ent }, { data: tip }, { data: plant }, { data: ten }] = await Promise.all([
+    const [{ data: ent }, { data: tip }, { data: plant }] = await Promise.all([
       supabase.from('entidades_financieras').select('id, nombre, activa').eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('tipos_recordatorio_automatico').select('id, tipo, activo, dias_umbral').eq('tenant_id', profile.tenant_id),
       supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, activa').eq('tenant_id', profile.tenant_id),
-      supabase.from('tenants').select('logo_url, cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok, cotizacion_incluye, recargo_tarjeta_porcentaje').eq('id', profile.tenant_id).single(),
     ])
+
+    // ── Tenant: queries defensivas separadas por migración ──
+    // Base (siempre existe): logo_url y recargo
+    const { data: tenBase } = await supabase.from('tenants')
+      .select('logo_url, recargo_tarjeta_porcentaje').eq('id', profile.tenant_id).single()
+
+    // V61 (cotizacion contact fields) — pueden no existir si la migración no corrió
+    const { data: ten61 } = await supabase.from('tenants')
+      .select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp')
+      .eq('id', profile.tenant_id).single()
+
+    // V62 (redes sociales) — pueden no existir
+    const { data: ten62 } = await supabase.from('tenants')
+      .select('cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok')
+      .eq('id', profile.tenant_id).single()
+
+    // V63 (incluye editable) — pueden no existir
+    const { data: ten63 } = await supabase.from('tenants')
+      .select('cotizacion_incluye').eq('id', profile.tenant_id).single()
 
     // Cargamos motos en dos pasos para que un fallo en las columnas nuevas
     // (si la migration_v61 no se corrió aún) no oculte las motos existentes.
@@ -412,20 +430,21 @@ export default function ConfigVentasPage() {
     })) as MotoCat[])
     setTipos((tip ?? []) as TipoRecordatorio[])
     setPlantillas((plant ?? []) as Plantilla[])
-    if (ten) setLogoUrl(ten.logo_url ?? '')
-    if (ten) setCotInfo({
-      tagline:        ten.cotizacion_tagline          ?? '',
-      direccion:      ten.cotizacion_direccion        ?? '',
-      telefono1:      ten.cotizacion_telefono1        ?? '',
-      telefono2:      ten.cotizacion_telefono2        ?? '',
-      email:          ten.cotizacion_email            ?? '',
-      web:            ten.cotizacion_web              ?? '',
-      whatsapp:       ten.cotizacion_whatsapp          ?? '',
-      instagram:      ten.cotizacion_instagram         ?? '',
-      facebook:       ten.cotizacion_facebook          ?? '',
-      tiktok:         ten.cotizacion_tiktok            ?? '',
-      incluye:        ten.cotizacion_incluye           ?? '',
-      recargoTarjeta: ten.recargo_tarjeta_porcentaje   ?? 5,
+    // Logo y recargo siempre disponibles (columnas base del tenant)
+    setLogoUrl(tenBase?.logo_url ?? '')
+    setCotInfo({
+      tagline:        ten61?.cotizacion_tagline    ?? '',
+      direccion:      ten61?.cotizacion_direccion  ?? '',
+      telefono1:      ten61?.cotizacion_telefono1  ?? '',
+      telefono2:      ten61?.cotizacion_telefono2  ?? '',
+      email:          ten61?.cotizacion_email      ?? '',
+      web:            ten61?.cotizacion_web        ?? '',
+      whatsapp:       ten61?.cotizacion_whatsapp   ?? '',
+      instagram:      ten62?.cotizacion_instagram  ?? '',
+      facebook:       ten62?.cotizacion_facebook   ?? '',
+      tiktok:         ten62?.cotizacion_tiktok     ?? '',
+      incluye:        ten63?.cotizacion_incluye    ?? '',
+      recargoTarjeta: tenBase?.recargo_tarjeta_porcentaje ?? 5,
     })
     setLoading(false)
   }, [profile?.tenant_id])

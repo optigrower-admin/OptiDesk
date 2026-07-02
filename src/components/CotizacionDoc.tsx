@@ -183,7 +183,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
             {/* Izquierda: Logo + tagline + barra de contacto */}
             <div style={{ padding: '14px 20px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6 }}>
               {tenant.logo_uri
-                ? <img src={tenant.logo_uri} alt={tenant.nombre} style={{ height: 62, objectFit: 'contain', objectPosition: 'left', filter: 'brightness(0) invert(1)', display: 'block' }} />
+                ? <img src={tenant.logo_uri} alt={tenant.nombre} style={{ height: 80, objectFit: 'contain', objectPosition: 'left', filter: 'brightness(0) invert(1)', display: 'block' }} />
                 : <div style={{ color: '#fff', fontSize: 22, fontWeight: 900, textTransform: 'uppercase', letterSpacing: -0.5 }}>{tenant.nombre}</div>
               }
               {tenant.tagline && (
@@ -312,7 +312,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
               {/* CONTACTO DIRECTO */}
               <div style={{ background: '#001a5e', borderRadius: 8, padding: '10px 12px', marginBottom: 10 }}>
-                <div style={{ fontSize: 8, fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Contacto directo</div>
+                <div style={{ fontSize: 8, fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Contacto {tenant.nombre || 'directo'}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 12px' }}>
                   {tenant.whatsapp ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -347,15 +347,16 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                     </div>
                   )}
                 </div>
-                {(tenant.instagram || tenant.facebook || tenant.tiktok) && (
+                {/* Redes sociales — siempre que existan */}
+                {(tenant.whatsapp || tenant.instagram || tenant.facebook || tenant.tiktok) && (
                   <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 8, paddingTop: 6, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 1 }}>Síguenos:</div>
+                    {tenant.whatsapp  && <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ fontSize: 11 }}>📱</span><span style={{ fontSize: 8, color: '#4ade80', fontWeight: 700 }}>+{tenant.whatsapp}</span></div>}
                     {tenant.instagram && <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ fontSize: 11 }}>📸</span><span style={{ fontSize: 8, color: '#e879f9', fontWeight: 700 }}>{tenant.instagram}</span></div>}
                     {tenant.facebook  && <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ fontSize: 11 }}>👥</span><span style={{ fontSize: 8, color: '#60a5fa', fontWeight: 700 }}>{tenant.facebook}</span></div>}
                     {tenant.tiktok    && <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ fontSize: 11 }}>🎵</span><span style={{ fontSize: 8, color: '#f0abfc', fontWeight: 700 }}>{tenant.tiktok}</span></div>}
                   </div>
                 )}
-                {!tenant.instagram && !tenant.facebook && !tenant.tiktok && !tenant.whatsapp && !tenant.telefono1 && !tenant.email && !tenant.direccion && (
+                {!tenant.whatsapp && !tenant.instagram && !tenant.facebook && !tenant.tiktok && !tenant.telefono1 && !tenant.email && !tenant.direccion && (
                   <div style={{ marginTop: 5, fontSize: 7, color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>Completa tus datos en Config. Ventas para que aparezcan aquí.</div>
                 )}
               </div>
@@ -373,13 +374,13 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
             {/* ─── COLUMNA DERECHA ─── */}
             <div style={{ padding: '13px 12px', background: '#f8faff', display: 'flex', flexDirection: 'column', gap: 9 }}>
 
-              {/* FOTO PROMOCIONAL — grande, bordes redondeados, sin difuminar */}
+              {/* FOTO PROMOCIONAL — grande, bordes redondeados, fondo blanco */}
               {fotoPromoSidebar && (
-                <div style={{ borderRadius: 12, overflow: 'hidden', background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 110 }}>
+                <div style={{ borderRadius: 12, overflow: 'hidden', background: '#ffffff', boxShadow: '0 2px 10px rgba(0,0,0,0.08)' }}>
                   <img
                     src={fotoPromoSidebar}
                     alt={op?.referencia ?? ''}
-                    style={{ width: '100%', maxHeight: 125, objectFit: 'contain', display: 'block', filter: 'drop-shadow(0 4px 14px rgba(0,52,180,0.14))' }}
+                    style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}
                   />
                 </div>
               )}
