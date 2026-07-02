@@ -163,20 +163,21 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
   return (
     <>
       <style>{`
+        /* Tamaño carta: 8.5in × 11in = 216mm × 279mm */
         @page { margin: 0; size: 8.5in 11in portrait; }
 
-        /* ancho en pantalla */
-        .cot-doc { width: 215mm; }
+        /* Pantalla: 216mm de ancho */
+        .cot-doc { width: 216mm; }
 
-        /* En impresión: zoom 0.75 para ajustar a carta.
-           width 286.7mm → tras zoom visual = 215mm = ancho carta. */
+        /* Impresión: zoom 0.9 → menos reducción → letra más grande.
+           216 / 0.9 = 240mm de ancho real → visual = 216mm = carta. */
         @media print {
           body  { margin: 0 !important; background: white !important; }
           .no-print { display: none !important; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .cot-doc {
-            zoom: 0.75;
-            width: 287mm;
+            zoom: 0.9;
+            width: 240mm;
             box-shadow: none !important;
           }
         }
@@ -206,7 +207,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
       {/* ── DOCUMENTO ── */}
       <div className="no-print:mt-16 min-h-screen flex justify-center py-8 px-4 print:p-0 print:mt-0" style={{ background: '#e5e7eb' }}>
-        <div className="cot-doc" style={{ background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 10 }}>
+        <div className="cot-doc" style={{ background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 11 }}>
 
           {/* ══ HEADER: fondo azul completo ══ */}
           <div style={{ background: 'linear-gradient(135deg, #001a5e 0%, #0035a0 55%, #0052B4 100%)', display: 'grid', gridTemplateColumns: '1fr 185px', alignItems: 'stretch', borderBottom: '3px solid #0052B4' }}>
@@ -295,24 +296,24 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 </div>
               )}
 
-              {/* FOTOS: extra (principal sin título) + frente/lado (con título) */}
-              {op && fotoPrincipal && (
-                <div style={{ display: 'grid', gridTemplateColumns: fotosSecundarias.length > 0 ? '3fr 2fr' : '1fr', gap: 6, marginBottom: 10 }}>
-                  <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 10, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 100 }}>
-                    <img src={fotoPrincipal.src} alt={op.referencia} style={{ maxHeight: 90, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,52,180,0.14))' }} />
+              {/* FOTOS DEL PRODUCTO — todas del mismo tamaño en grid uniforme */}
+              {op && fotoPrincipal && (() => {
+                const allPhotos = [
+                  { src: fotoPrincipal.src, label: '' },
+                  ...fotosSecundarias,
+                ]
+                const cols = Math.min(allPhotos.length, 3)
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 7, marginBottom: 11 }}>
+                    {allPhotos.map((f, i) => (
+                      <div key={i} style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 9, padding: 7, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 90 }}>
+                        <img src={f.src} alt={f.label || op.referencia} style={{ width: '100%', height: 80, objectFit: 'contain', filter: 'drop-shadow(0 3px 8px rgba(0,52,180,0.12))' }} />
+                        {f.label && <div style={{ fontSize: 7, color: '#64748b', fontWeight: 600, textAlign: 'center' }}>{f.label}</div>}
+                      </div>
+                    ))}
                   </div>
-                  {fotosSecundarias.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      {fotosSecundarias.map(f => (
-                        <div key={f.label} style={{ background: '#f8faff', borderRadius: 8, padding: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', flex: 1, gap: 3 }}>
-                          <img src={f.src} alt={f.label} style={{ maxHeight: fotosSecundarias.length > 1 ? 48 : 86, maxWidth: '100%', objectFit: 'contain' }} />
-                          <div style={{ fontSize: 6.5, color: '#94a3b8', fontWeight: 600 }}>{f.label}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                )
+              })()}
 
               {/* COLORES — azul grisáceo */}
               {op?.colores && (
@@ -374,35 +375,35 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
             {/* ─── COLUMNA DERECHA ─── */}
             <div style={{ padding: '13px 12px', background: '#f8faff', display: 'flex', flexDirection: 'column', gap: 9 }}>
 
-              {/* FOTO PROMOCIONAL — grande, bordes redondeados, fondo blanco */}
+              {/* FOTO PROMOCIONAL — alta, sin recorte, con fondo */}
               {fotoPromoSidebar && (
-                <div style={{ borderRadius: 12, overflow: 'hidden', background: '#ffffff', boxShadow: '0 2px 10px rgba(0,0,0,0.08)' }}>
+                <div style={{ borderRadius: 12, overflow: 'hidden', background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 160 }}>
                   <img
                     src={fotoPromoSidebar}
                     alt={op?.referencia ?? ''}
-                    style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}
+                    style={{ width: '100%', maxHeight: 160, objectFit: 'contain', display: 'block', padding: 6, filter: 'drop-shadow(0 4px 14px rgba(0,52,180,0.12))' }}
                   />
                 </div>
               )}
 
-              {/* PRECIO */}
+              {/* PRECIO — fondo azul suave con borde */}
               {(verContado || verPignorada) && (
-                <div style={{ background: '#0052B4', borderRadius: 10, padding: '11px 13px' }}>
-                  <div style={{ fontWeight: 800, fontSize: 9, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: 5 }}>
+                <div style={{ background: '#eff6ff', border: '2px solid #0052B4', borderRadius: 10, padding: '11px 13px' }}>
+                  <div style={{ fontWeight: 800, fontSize: 9.5, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 9, borderBottom: '1.5px solid #bfdbfe', paddingBottom: 5 }}>
                     Precio
                   </div>
                   {verContado && (
-                    <div style={{ marginBottom: verPignorada ? 8 : 0 }}>
-                      <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Contado con papeles</div>
-                      <div style={{ fontSize: 21, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: -0.5 }}>{cop(conPapeles)}</div>
-                      <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>IVA incluido · SOAT · Matrícula</div>
+                    <div style={{ marginBottom: verPignorada ? 9 : 0 }}>
+                      <div style={{ fontSize: 8, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Contado con papeles</div>
+                      <div style={{ fontSize: 23, fontWeight: 900, color: '#1e3a8a', lineHeight: 1, letterSpacing: -0.5 }}>{cop(conPapeles)}</div>
+                      <div style={{ fontSize: 7.5, color: '#64748b', marginTop: 2 }}>IVA incluido · SOAT · Matrícula</div>
                     </div>
                   )}
                   {verPignorada && (
-                    <div style={{ borderTop: verContado ? '1px solid rgba(255,255,255,0.2)' : 'none', paddingTop: verContado ? 8 : 0 }}>
-                      <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>En crédito (pignorada)</div>
-                      <div style={{ fontSize: verContado ? 17 : 21, fontWeight: 900, color: '#90d4f7', lineHeight: 1 }}>{cop(pignorada)}</div>
-                      <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>Incluye prenda · Con papeles</div>
+                    <div style={{ borderTop: verContado ? '1.5px solid #bfdbfe' : 'none', paddingTop: verContado ? 9 : 0 }}>
+                      <div style={{ fontSize: 8, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>En crédito (pignorada)</div>
+                      <div style={{ fontSize: verContado ? 18 : 23, fontWeight: 900, color: '#0052B4', lineHeight: 1 }}>{cop(pignorada)}</div>
+                      <div style={{ fontSize: 7.5, color: '#64748b', marginTop: 2 }}>Incluye prenda · Con papeles</div>
                     </div>
                   )}
                 </div>
@@ -431,18 +432,18 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 const fbL = tenant.facebook  ? `https://facebook.com/${tenant.facebook.replace(/^[/@]/,'')}` : '#'
                 const tkL = tenant.tiktok    ? `https://tiktok.com/@${tenant.tiktok.replace('@','')}` : '#'
                 return (
-                <div style={{ background: '#0052B4', borderRadius: 10, padding: '13px 12px' }}>
+                <div style={{ background: '#eff6ff', border: '2px solid #0052B4', borderRadius: 10, padding: '13px 12px' }}>
 
                   {/* Título */}
                   <div style={{ textAlign: 'center', marginBottom: 10 }}>
-                    <div style={{ fontWeight: 900, fontSize: 13, color: '#fff', letterSpacing: -0.3 }}>¡APARTA HOY!</div>
-                    <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.65)', marginTop: 3, lineHeight: 1.4 }}>
+                    <div style={{ fontWeight: 900, fontSize: 13, color: '#1e3a8a', letterSpacing: -0.3 }}>¡APARTA HOY!</div>
+                    <div style={{ fontSize: 7.5, color: '#1d4ed8', marginTop: 3, lineHeight: 1.4 }}>
                       No pierdas esta oportunidad.
                     </div>
                   </div>
 
                   {/* Título contacto */}
-                  <div style={{ fontSize: 7.5, fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 7 }}>
+                  <div style={{ fontSize: 7.5, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 7 }}>
                     Contacto {tenant.nombre || ''}
                   </div>
 
@@ -479,41 +480,41 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
                   {/* Datos de contacto */}
                   {(tenant.telefono1 || tenant.email || tenant.web || tenant.direccion) && (
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
+                    <div style={{ borderTop: '1.5px solid #bfdbfe', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
                       {tenant.telefono1 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.64A2 2 0 012 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-                          <span style={{ fontSize: 9.5, color: '#fff', fontWeight: 700 }}>{fmtPhone(tenant.telefono1)}{tenant.telefono2 ? `  ·  ${fmtPhone(tenant.telefono2)}` : ''}</span>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.64A2 2 0 012 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                          <span style={{ fontSize: 9.5, color: '#1e3a8a', fontWeight: 700 }}>{fmtPhone(tenant.telefono1)}{tenant.telefono2 ? `  ·  ${fmtPhone(tenant.telefono2)}` : ''}</span>
                         </div>
                       )}
                       {tenant.email && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                          <span style={{ fontSize: 9.5, color: '#fff', fontWeight: 700 }}>{tenant.email}</span>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                          <span style={{ fontSize: 9.5, color: '#1e3a8a', fontWeight: 700 }}>{tenant.email}</span>
                         </div>
                       )}
                       {tenant.web && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-                          <span style={{ fontSize: 9.5, color: '#fff', fontWeight: 700 }}>{tenant.web}</span>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+                          <span style={{ fontSize: 9.5, color: '#1e3a8a', fontWeight: 700 }}>{tenant.web}</span>
                         </div>
                       )}
                       {tenant.direccion && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                          <span style={{ fontSize: 9.5, color: '#fff', fontWeight: 700 }}>{tenant.direccion}</span>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                          <span style={{ fontSize: 9.5, color: '#1e3a8a', fontWeight: 700 }}>{tenant.direccion}</span>
                         </div>
                       )}
                     </div>
                   )}
 
                   {!tenant.whatsapp && !tenant.instagram && !tenant.facebook && !tenant.tiktok && !tenant.telefono1 && !tenant.email && !tenant.direccion && (
-                    <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', marginBottom: 8 }}>
+                    <div style={{ fontSize: 7.5, color: '#64748b', fontStyle: 'italic', marginBottom: 8 }}>
                       Completa tus datos en Config. Ventas.
                     </div>
                   )}
 
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 9, textAlign: 'center', fontFamily: 'Georgia, serif', fontStyle: 'italic', color: 'rgba(255,255,255,0.9)', fontSize: 10, lineHeight: 1.5 }}>
+                  <div style={{ borderTop: '1.5px solid #bfdbfe', paddingTop: 9, textAlign: 'center', fontFamily: 'Georgia, serif', fontStyle: 'italic', color: '#1e3a8a', fontSize: 10, lineHeight: 1.5 }}>
                     ¡Más que motos,<br/><strong>creamos experiencias!</strong>
                   </div>
                 </div>
