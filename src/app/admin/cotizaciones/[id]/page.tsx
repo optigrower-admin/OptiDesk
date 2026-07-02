@@ -49,8 +49,7 @@ export default async function CotizacionPage({ params }: { params: { id: string 
   const { data: tenantBase } = await admin
     .from('tenants').select('nombre, logo_url').eq('id', tid).single()
 
-  // Columnas de contacto (migration_v61). Cargamos en dos queries separadas
-  // para que el fallo de las columnas de redes (migration_v62) no oculte el contacto base.
+  // Columnas v61 (contacto) — robusta
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let tenantExtra: Record<string, any> = {}
   const { data: te1 } = await admin.from('tenants')
@@ -58,13 +57,19 @@ export default async function CotizacionPage({ params }: { params: { id: string 
     .eq('id', tid).single()
   if (te1) tenantExtra = { ...tenantExtra, ...te1 }
 
-  // Redes sociales (migration_v62 — pueden no existir aún)
+  // Columnas v62 (redes sociales) — pueden no existir
   const { data: te2 } = await admin.from('tenants')
     .select('cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok')
     .eq('id', tid).single()
   if (te2) tenantExtra = { ...tenantExtra, ...te2 }
 
-  // Fotos de opciones → data URIs (para que queden embebidas en el PDF)
+  // Columnas v63 (incluye editable) — pueden no existir
+  const { data: te3 } = await admin.from('tenants')
+    .select('cotizacion_incluye')
+    .eq('id', tid).single()
+  if (te3) tenantExtra = { ...tenantExtra, ...te3 }
+
+  // Fotos de opciones → data URIs (embebidas en el PDF)
   const opcionesConFotos = await Promise.all(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ((cot.opciones ?? []) as any[]).map(async (op: OpcionCotizacion) => ({
@@ -72,6 +77,7 @@ export default async function CotizacionPage({ params }: { params: { id: string 
       foto_frente_uri: await imgToDataUri(op.foto_frente_key),
       foto_lado_uri:   await imgToDataUri(op.foto_lado_key),
       foto_promo_uri:  await imgToDataUri(op.foto_promo_key),
+      foto_extra_uri:  await imgToDataUri(op.foto_extra_key),
     }))
   )
 
@@ -95,6 +101,7 @@ export default async function CotizacionPage({ params }: { params: { id: string 
         instagram: tenantExtra.cotizacion_instagram   ?? '',
         facebook:  tenantExtra.cotizacion_facebook    ?? '',
         tiktok:    tenantExtra.cotizacion_tiktok      ?? '',
+        incluye:   tenantExtra.cotizacion_incluye     ?? '',
       }}
     />
   )
@@ -113,16 +120,19 @@ export type OpcionCotizacion = {
   garantia?: string
   colores?: string
   caracteristica?: string
+  cotizacion_beneficios?: string
   foto_frente_key?: string
   foto_lado_key?: string
   foto_promo_key?: string
+  foto_extra_key?: string
   foto_frente_uri?: string
   foto_lado_uri?: string
   foto_promo_uri?: string
+  foto_extra_uri?: string
   precio: number
   costo_documentos: number
   costo_prenda: number
-  mostrar_precio: boolean    // legacy, usar mostrar_contado/mostrar_pignorada
+  mostrar_precio: boolean
   mostrar_contado?: boolean
   mostrar_pignorada?: boolean
 }

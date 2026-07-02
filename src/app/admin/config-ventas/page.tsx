@@ -25,6 +25,7 @@ interface MotoCat {
   garantia: string
   colores: string
   caracteristica: string
+  cotizacion_beneficios: string
   fotos: { tipo: string; r2_key: string }[]
 }
 
@@ -39,6 +40,7 @@ interface CotizacionInfo {
   instagram: string
   facebook: string
   tiktok: string
+  incluye: string
   recargoTarjeta: number
 }
 
@@ -55,6 +57,7 @@ const FOTO_TIPOS = [
   { tipo: 'frente',      label: 'Frente',       hint: 'Foto frontal, fondo transparente (PNG)' },
   { tipo: 'lado',        label: 'Lado',          hint: 'Foto lateral, fondo transparente (PNG)' },
   { tipo: 'promocional', label: 'Promocional',   hint: 'Foto en carretera o estudio' },
+  { tipo: 'extra',       label: 'Extra',         hint: '4ta foto adicional del producto' },
 ] as const
 
 function ToggleSwitch({ activo, onChange }: { activo: boolean; onChange: () => void }) {
@@ -160,7 +163,7 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
       tagline_venta: local.tagline_venta, cilindraje: local.cilindraje, potencia: local.potencia,
       frenos: local.frenos, combustible: local.combustible, rendimiento: local.rendimiento,
       velocidad_max: local.velocidad_max, garantia: local.garantia, colores: local.colores,
-      caracteristica: local.caracteristica,
+      caracteristica: local.caracteristica, cotizacion_beneficios: local.cotizacion_beneficios,
     })
     setSaving(false)
   }
@@ -286,6 +289,19 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
                 {campo('colores')}
               </div>
             </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Beneficios de venta <span className="text-gray-400">(uno por línea: emoji Título|Descripción)</span>
+              </label>
+              <textarea
+                value={local.cotizacion_beneficios ?? ''}
+                onChange={e => setLocal(p => ({ ...p, cotizacion_beneficios: e.target.value }))}
+                rows={5}
+                placeholder={'🚀 Movilidad sin límites|Llega a tiempo y ahorra tiempo\n💰 Inversión inteligente|Ahorra hasta 4x en combustible\n🛡️ Tranquilidad garantizada|Garantía de fábrica incluida'}
+                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono resize-none"
+              />
+              <p className="text-[10px] text-gray-400 mt-1">Si está vacío, se usan los beneficios predeterminados del sistema.</p>
+            </div>
           </div>
 
           <div className="flex items-center gap-3 pt-1 border-t border-gray-100">
@@ -309,6 +325,7 @@ const NUEVA_MOTO_VACIA: Omit<MotoCat, 'id' | 'activa' | 'fotos'> = {
   referencia: '', precio: 0, costo_documentos: 0, costo_prenda: 0,
   tagline_venta: '', cilindraje: '', potencia: '', frenos: '', combustible: '',
   rendimiento: '', velocidad_max: '', garantia: '', colores: '', caracteristica: '',
+  cotizacion_beneficios: '',
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -322,7 +339,7 @@ export default function ConfigVentasPage() {
   const [tipos, setTipos]                 = useState<TipoRecordatorio[]>([])
   const [plantillas, setPlantillas]       = useState<Plantilla[]>([])
   const [nuevaPlantilla, setNuevaPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '' })
-  const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '', instagram: '', facebook: '', tiktok: '', recargoTarjeta: 5 })
+  const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '', instagram: '', facebook: '', tiktok: '', incluye: '', recargoTarjeta: 5 })
   const [savingCotInfo, setSavingCotInfo] = useState(false)
   const [cotInfoOk, setCotInfoOk]         = useState(false)
   const [loading, setLoading]             = useState(true)
@@ -337,14 +354,14 @@ export default function ConfigVentasPage() {
       supabase.from('entidades_financieras').select('id, nombre, activa').eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('tipos_recordatorio_automatico').select('id, tipo, activo, dias_umbral').eq('tenant_id', profile.tenant_id),
       supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, activa').eq('tenant_id', profile.tenant_id),
-      supabase.from('tenants').select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok, recargo_tarjeta_porcentaje').eq('id', profile.tenant_id).single(),
+      supabase.from('tenants').select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok, cotizacion_incluye, recargo_tarjeta_porcentaje').eq('id', profile.tenant_id).single(),
     ])
 
     // Cargamos motos en dos pasos para que un fallo en las columnas nuevas
     // (si la migration_v61 no se corrió aún) no oculte las motos existentes.
     const { data: motBase, error: motErr } = await supabase
       .from('motos_catalogo')
-      .select('id, referencia, precio, costo_documentos, costo_prenda, activa, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica')
+      .select('id, referencia, precio, costo_documentos, costo_prenda, activa, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, cotizacion_beneficios')
       .eq('tenant_id', profile.tenant_id).order('orden')
 
     // Si la query de columnas nuevas falla (columnas no existen aún), intentamos solo las originales
@@ -386,9 +403,10 @@ export default function ConfigVentasPage() {
       rendimiento:   (m as never as Record<string,string>).rendimiento   ?? '',
       velocidad_max: (m as never as Record<string,string>).velocidad_max ?? '',
       garantia:      (m as never as Record<string,string>).garantia      ?? '',
-      colores:       (m as never as Record<string,string>).colores       ?? '',
-      caracteristica:(m as never as Record<string,string>).caracteristica ?? '',
-      fotos:         fotosPorMoto[m.id] ?? [],
+      colores:              (m as never as Record<string,string>).colores              ?? '',
+      caracteristica:       (m as never as Record<string,string>).caracteristica       ?? '',
+      cotizacion_beneficios:(m as never as Record<string,string>).cotizacion_beneficios ?? '',
+      fotos:                fotosPorMoto[m.id] ?? [],
     })) as MotoCat[])
     setTipos((tip ?? []) as TipoRecordatorio[])
     setPlantillas((plant ?? []) as Plantilla[])
@@ -403,6 +421,7 @@ export default function ConfigVentasPage() {
       instagram:      ten.cotizacion_instagram         ?? '',
       facebook:       ten.cotizacion_facebook          ?? '',
       tiktok:         ten.cotizacion_tiktok            ?? '',
+      incluye:        ten.cotizacion_incluye           ?? '',
       recargoTarjeta: ten.recargo_tarjeta_porcentaje   ?? 5,
     })
     setLoading(false)
@@ -524,6 +543,7 @@ export default function ConfigVentasPage() {
       cotizacion_instagram:         cotInfo.instagram,
       cotizacion_facebook:          cotInfo.facebook,
       cotizacion_tiktok:            cotInfo.tiktok,
+      cotizacion_incluye:           cotInfo.incluye,
       recargo_tarjeta_porcentaje:   cotInfo.recargoTarjeta,
     }).eq('id', profile.tenant_id)
     setSavingCotInfo(false)
@@ -741,6 +761,21 @@ export default function ConfigVentasPage() {
               <p className="text-[11px] text-gray-400 mt-1">Se aplica sobre precio con papeles. Ej: 5 = +5%</p>
             </div>
           </div>
+          {/* Ítems "Esta cotización incluye" */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">
+              Ítems &ldquo;Esta cotización incluye&rdquo; <span className="text-gray-400 font-normal">(uno por línea)</span>
+            </label>
+            <textarea
+              value={cotInfo.incluye}
+              onChange={e => setCotInfo(p => ({ ...p, incluye: e.target.value }))}
+              rows={5}
+              placeholder={'SOAT obligatorio\nMatrícula + impuestos\nManual del propietario\nGarantía de fábrica\n3 revisiones mano de obra gratis'}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono resize-none"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">Si está vacío, se usan los ítems predeterminados del sistema.</p>
+          </div>
+
           {/* Redes sociales */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Redes sociales (aparecen en la cotización)</p>

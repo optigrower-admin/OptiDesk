@@ -26,6 +26,7 @@ type MotoCat = {
   garantia: string
   colores: string
   caracteristica: string
+  cotizacion_beneficios: string
   fotos: { tipo: string; r2_key: string }[]
 }
 
@@ -70,7 +71,7 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const specsMap: Record<string, Record<string, any>> = {}
     const { data: specs } = await supabase.from('motos_catalogo')
-      .select('id, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica')
+      .select('id, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, cotizacion_beneficios')
       .eq('tenant_id', tenantId).eq('activa', true)
     for (const s of specs ?? []) specsMap[s.id] = s
 
@@ -95,6 +96,7 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
         potencia: s.potencia ?? '', frenos: s.frenos ?? '', combustible: s.combustible ?? '',
         rendimiento: s.rendimiento ?? '', velocidad_max: s.velocidad_max ?? '',
         garantia: s.garantia ?? '', colores: s.colores ?? '', caracteristica: s.caracteristica ?? '',
+        cotizacion_beneficios: s.cotizacion_beneficios ?? '',
         fotos: fotosMap[m.id] ?? [],
       } as MotoCat
     }))
@@ -144,9 +146,11 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
           garantia:         m.garantia,
           colores:          m.colores,
           caracteristica:   m.caracteristica,
+          cotizacion_beneficios: m.cotizacion_beneficios || null,
           foto_frente_key:  m.fotos.find(f => f.tipo === 'frente')?.r2_key ?? null,
           foto_lado_key:    m.fotos.find(f => f.tipo === 'lado')?.r2_key ?? null,
           foto_promo_key:   m.fotos.find(f => f.tipo === 'promocional')?.r2_key ?? null,
+          foto_extra_key:   m.fotos.find(f => f.tipo === 'extra')?.r2_key ?? null,
           precio:           m.precio,
           costo_documentos: m.costo_documentos,
           costo_prenda:     m.costo_prenda,

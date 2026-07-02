@@ -15,6 +15,7 @@ interface TenantInfo {
   direccion: string; telefono1: string; telefono2: string
   email: string; web: string; whatsapp: string
   instagram?: string; facebook?: string; tiktok?: string
+  incluye?: string
 }
 interface Cotizacion {
   id: string; numero: number; fecha_generacion: string; vigencia_dias: number
@@ -32,14 +33,32 @@ function Check({ color = '#0052B4' }: { color?: string }) {
   )
 }
 
+const DEFAULT_INCLUYE = [
+  'SOAT obligatorio',
+  'Matrícula + impuestos',
+  'Manual del propietario',
+  'Garantía de fábrica',
+  '3 revisiones mano de obra gratis',
+]
+
+const DEFAULT_BENEFICIOS = [
+  { icon: '🚀', bg: '#dbeafe', title: 'Movilidad sin límites',    desc: 'Llega a tiempo, evita trancones y recupera horas de tu día.' },
+  { icon: '💰', bg: '#fef9c3', title: 'Inversión inteligente',     desc: 'Ahorra hasta 4 veces más en combustible vs. un vehículo de 4 ruedas.' },
+  { icon: '🛡️', bg: '#dcfce7', title: 'Tranquilidad garantizada',  desc: 'Garantía de fábrica. Respaldo total.' },
+  { icon: '⚡', bg: '#fce7f3', title: 'Rendimiento comprobado',   desc: 'Motor de alto desempeño y bajo consumo.' },
+  { icon: '🤝', bg: '#ede9fe', title: 'Servicio posventa',         desc: 'Siempre estaremos aquí. Taller propio, repuestos originales.' },
+]
+const BG_CYCLE = ['#dbeafe', '#fef9c3', '#dcfce7', '#fce7f3', '#ede9fe']
+
 export default function CotizacionDoc({ cotizacion, tenant }: Props) {
   const whatsappNum  = tenant.whatsapp?.replace(/\D/g, '') ?? ''
   const whatsappLink = whatsappNum ? `https://wa.me/${whatsappNum}` : '#'
   const op           = cotizacion.opciones[0]
 
-  const fotoPromo  = op?.foto_promo_uri  || ''   // esquina header
-  const fotoLado   = op?.foto_lado_uri   || op?.foto_promo_uri || op?.foto_frente_uri || ''
+  const fotoPromo  = op?.foto_promo_uri  || ''
   const fotoFrente = op?.foto_frente_uri || ''
+  const fotoLado   = op?.foto_lado_uri   || ''
+  const fotoExtra  = op?.foto_extra_uri  || ''
 
   const base       = op?.precio ?? 0
   const docs       = op?.costo_documentos ?? 0
@@ -60,7 +79,6 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
     op.caracteristica && op.caracteristica,
   ].filter(Boolean) as string[] : []
 
-  // Chips de specs (los 3-4 más impactantes para el header de la moto)
   const specsChips = op ? [
     op.cilindraje    && { icon: '⚙️', label: op.cilindraje },
     op.frenos        && { icon: '🛡️', label: op.frenos },
@@ -68,7 +86,44 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
     op.caracteristica && { icon: '✨', label: op.caracteristica },
   ].filter(Boolean).slice(0, 4) as { icon: string; label: string }[] : []
 
-  // Cambia el título de pestaña/impresión para que no aparezca "OptiDesk - MS38"
+  // Parse "incluye" items — tenant override or defaults
+  const incluyeItems: string[] = (() => {
+    if (tenant.incluye?.trim()) {
+      return tenant.incluye.split('\n').map(l => l.trim()).filter(Boolean)
+    }
+    return DEFAULT_INCLUYE
+  })()
+
+  // Parse "beneficios" bullets — per-moto override or defaults
+  const beneficios: { icon: string; bg: string; title: string; desc: string }[] = (() => {
+    if (op?.cotizacion_beneficios?.trim()) {
+      return op.cotizacion_beneficios.split('\n').map((line, i) => {
+        const [head = '', desc = ''] = line.split('|')
+        const trimHead = head.trim()
+        // Extract leading emoji (could be multi-char)
+        const emojiMatch = trimHead.match(/^(\p{Emoji_Presentation}|\p{Extended_Pictographic}|\S{1,2})\s/u)
+        const icon  = emojiMatch ? emojiMatch[1] : '•'
+        const title = emojiMatch ? trimHead.slice(emojiMatch[0].length) : trimHead
+        return { icon, bg: BG_CYCLE[i % BG_CYCLE.length], title, desc: desc.trim() }
+      }).filter(b => b.title)
+    }
+    return DEFAULT_BENEFICIOS.map((b, i) => ({
+      ...b,
+      desc: b.title === 'Tranquilidad garantizada' && op?.garantia ? `Garantía de fábrica — ${op.garantia}. Respaldo total.`
+          : b.title === 'Rendimiento comprobado'   && op?.rendimiento ? `${op.rendimiento} de rendimiento.`
+          : b.desc,
+      bg: BG_CYCLE[i % BG_CYCLE.length],
+    }))
+  })()
+
+  // Fotos del cuerpo del documento
+  const fotosBody = [
+    fotoPromo  && { src: fotoPromo,  label: 'Foto promocional' },
+    fotoFrente && { src: fotoFrente, label: 'Vista frontal' },
+    fotoLado   && { src: fotoLado,   label: 'Vista lateral' },
+    fotoExtra  && { src: fotoExtra,  label: 'Vista adicional' },
+  ].filter(Boolean) as { src: string; label: string }[]
+
   useEffect(() => {
     const prev = document.title
     document.title = `Cotización MS-${pad(cotizacion.numero)}`
@@ -78,18 +133,15 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
   return (
     <>
       <style>{`
-        /* @page fuera de @media print también para máxima compatibilidad */
         @page { margin: 0; size: A4 portrait; }
         @media print {
           body { margin: 0 !important; background: white !important; }
           .no-print { display: none !important; }
-          /* Forzar impresión de fondos, gradientes e imágenes */
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             color-adjust: exact !important;
           }
-          /* Escalar al 85 % para una sola hoja A4 */
           .cot-scale {
             transform: scale(0.85);
             transform-origin: top left;
@@ -129,14 +181,12 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
             {/* Izquierda: Logo grande + número cotización + contactos */}
             <div style={{ background: 'linear-gradient(135deg, #001a5e 0%, #0035a0 55%, #0052B4 100%)', padding: '18px 24px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 8 }}>
-              {/* Logo — grande para que sea protagonista */}
               {tenant.logo_uri
                 ? <img src={tenant.logo_uri} alt={tenant.nombre} style={{ height: 72, objectFit: 'contain', objectPosition: 'left', filter: 'brightness(0) invert(1)', display: 'block' }} />
                 : <div style={{ color: '#fff', fontSize: 28, fontWeight: 900, textTransform: 'uppercase', letterSpacing: -0.5 }}>{tenant.nombre}</div>
               }
               {tenant.tagline && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 8, letterSpacing: 2.5, textTransform: 'uppercase', marginTop: -4 }}>{tenant.tagline}</div>}
 
-              {/* Número de cotización — debajo del logo */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 4 }}>
                 <div style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 8, padding: '7px 14px', border: '1px solid rgba(255,255,255,0.2)' }}>
                   <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 7.5, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 2 }}>Cotización</div>
@@ -148,7 +198,6 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 </div>
               </div>
 
-              {/* Contacto en barra inferior del header */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.12)' }}>
                 {[
                   { icon: '📍', text: tenant.direccion },
@@ -164,24 +213,29 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
               </div>
             </div>
 
-            {/* Derecha: FOTO PROMOCIONAL más grande, sin número debajo */}
-            <div style={{ display: 'flex', flexDirection: 'column', background: '#f0f5ff', minWidth: 130, maxWidth: 130, borderLeft: '2px solid #0052B4', overflow: 'hidden' }}>
-
-              {/* Foto promocional — ocupa todo el alto */}
+            {/* Derecha: FOTO PROMOCIONAL — grande, sin marco, bordes difuminados */}
+            <div style={{ display: 'flex', flexDirection: 'column', background: '#f0f5ff', minWidth: 160, maxWidth: 165, overflow: 'hidden' }}>
               <div style={{ width: '100%', flex: 1, background: 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
-                {(fotoPromo || fotoLado) ? (
+                {(fotoPromo || fotoLado || fotoFrente) ? (
                   <img
-                    src={fotoPromo || fotoLado}
+                    src={fotoPromo || fotoLado || fotoFrente}
                     alt={op?.referencia ?? ''}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center', padding: 8, display: 'block', filter: 'drop-shadow(0 4px 14px rgba(0,52,180,0.22))' }}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      objectPosition: 'center',
+                      padding: 6,
+                      display: 'block',
+                      filter: 'drop-shadow(0 4px 18px rgba(0,52,180,0.18))',
+                      maskImage: 'radial-gradient(ellipse 80% 80% at 50% 50%, black 45%, transparent 100%)',
+                      WebkitMaskImage: 'radial-gradient(ellipse 80% 80% at 50% 50%, black 45%, transparent 100%)',
+                    }}
                   />
                 ) : (
                   <span style={{ fontSize: 52, opacity: 0.2 }}>🏍️</span>
                 )}
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent, rgba(0,52,180,0.12))', height: 24 }} />
               </div>
-
-              {/* Franja azul inferior con badge */}
               <div style={{ background: '#0052B4', padding: '5px 10px', textAlign: 'center' }}>
                 <div style={{ color: '#fff', fontSize: 7, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Tu moto</div>
               </div>
@@ -239,38 +293,28 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 </div>
               )}
 
-              {/* LAS 3 FOTOS DEL PRODUCTO */}
-              {op && (fotoPromo || fotoLado || fotoFrente) && (() => {
-                const fotosDisponibles = [
-                  fotoPromo  && { src: fotoPromo,  label: 'Foto promo' },
-                  fotoLado   && { src: fotoLado,   label: 'Vista lateral' },
-                  fotoFrente && { src: fotoFrente, label: 'Vista frontal' },
-                ].filter(Boolean) as { src: string; label: string }[]
-
-                if (fotosDisponibles.length === 0) return null
-
-                // Si solo hay una, la mostramos grande
-                if (fotosDisponibles.length === 1) return (
+              {/* FOTOS DEL PRODUCTO (hasta 4) */}
+              {op && fotosBody.length > 0 && (() => {
+                if (fotosBody.length === 1) return (
                   <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 12, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 140, marginBottom: 14, position: 'relative' }}>
-                    <img src={fotosDisponibles[0].src} alt={op.referencia} style={{ maxHeight: 130, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 6px 16px rgba(0,52,180,0.15))' }} />
-                    <div style={{ position: 'absolute', bottom: 6, left: 10, fontSize: 7.5, color: '#94a3b8', fontWeight: 600 }}>{fotosDisponibles[0].label}</div>
+                    <img src={fotosBody[0].src} alt={op.referencia} style={{ maxHeight: 130, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 6px 16px rgba(0,52,180,0.15))' }} />
+                    <div style={{ position: 'absolute', bottom: 6, left: 10, fontSize: 7.5, color: '#94a3b8', fontWeight: 600 }}>{fotosBody[0].label}</div>
                   </div>
                 )
 
-                // Si hay 2-3 fotos: primera grande (2/3) + resto en columna (1/3)
-                const [principal, ...secundarias] = fotosDisponibles
+                const [principal, ...secundarias] = fotosBody
+                const secHeight = secundarias.length >= 3 ? 54 : secundarias.length === 2 ? 72 : 110
+
                 return (
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, marginBottom: 14 }}>
-                    {/* Foto principal */}
-                    <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 12, padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 140, position: 'relative' }}>
-                      <img src={principal.src} alt={op.referencia} style={{ maxHeight: 130, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 6px 16px rgba(0,52,180,0.15))' }} />
+                    <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 12, padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 150, position: 'relative' }}>
+                      <img src={principal.src} alt={op.referencia} style={{ maxHeight: 140, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 6px 16px rgba(0,52,180,0.15))' }} />
                       <div style={{ position: 'absolute', bottom: 6, left: 10, fontSize: 7.5, color: '#94a3b8', fontWeight: 600 }}>{principal.label}</div>
                     </div>
-                    {/* Fotos secundarias apiladas */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {secundarias.map(f => (
-                        <div key={f.label} style={{ background: '#f8faff', borderRadius: 10, padding: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', flex: 1, gap: 4 }}>
-                          <img src={f.src} alt={f.label} style={{ maxHeight: secundarias.length > 1 ? 60 : 110, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 3px 6px rgba(0,52,180,0.1))' }} />
+                        <div key={f.label} style={{ background: '#f8faff', borderRadius: 10, padding: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', flex: 1, gap: 3 }}>
+                          <img src={f.src} alt={f.label} style={{ maxHeight: secHeight, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 3px 6px rgba(0,52,180,0.1))' }} />
                           <div style={{ fontSize: 7, color: '#94a3b8', fontWeight: 600 }}>{f.label}</div>
                         </div>
                       ))}
@@ -278,6 +322,20 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                   </div>
                 )
               })()}
+
+              {/* COLORES DISPONIBLES — debajo de las fotos */}
+              {op?.colores && (
+                <div style={{ marginBottom: 14, background: '#fdf4ff', borderRadius: 10, padding: '9px 12px', border: '1.5px solid #e9d5ff' }}>
+                  <div style={{ fontSize: 8.5, fontWeight: 800, color: '#7e22ce', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>🎨 Colores disponibles</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {op.colores.split(/[,;\/]/).map(c => c.trim()).filter(Boolean).map(color => (
+                      <span key={color} style={{ background: '#ede9fe', border: '1.5px solid #c4b5fd', borderRadius: 20, padding: '3px 10px', fontSize: 9, fontWeight: 700, color: '#5b21b6' }}>
+                        {color}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* ESPECIFICACIONES TÉCNICAS */}
               {specsCheck.length > 0 && (
@@ -293,18 +351,6 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                       </div>
                     ))}
                   </div>
-                  {op?.colores && (
-                    <div style={{ marginTop: 10, background: '#fdf4ff', borderRadius: 8, padding: '8px 12px', border: '1.5px solid #e9d5ff' }}>
-                      <div style={{ fontSize: 8.5, fontWeight: 800, color: '#7e22ce', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>🎨 Colores disponibles</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {op.colores.split(/[,;\/]/).map(c => c.trim()).filter(Boolean).map(color => (
-                          <span key={color} style={{ background: '#ede9fe', border: '1.5px solid #c4b5fd', borderRadius: 20, padding: '3px 10px', fontSize: 9, fontWeight: 700, color: '#5b21b6' }}>
-                            {color}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -312,7 +358,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
               <div style={{ background: '#f0fdf4', borderRadius: 10, padding: '10px 14px', marginBottom: 14, border: '1.5px solid #bbf7d0' }}>
                 <div style={{ fontSize: 9, fontWeight: 800, color: '#15803d', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Esta cotización incluye</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
-                  {['SOAT obligatorio', 'Matrícula + impuestos', 'Manual del propietario', 'Garantía de fábrica', '3 revisiones mano de obra gratis'].map(item => (
+                  {incluyeItems.map(item => (
                     <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                       <Check color="#16a34a" />
                       <span style={{ fontSize: 8.5, color: '#166534', fontWeight: 500 }}>{item}</span>
@@ -321,85 +367,96 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 </div>
               </div>
 
-              {/* CONTACTO DIRECTO */}
-              {(tenant.whatsapp || tenant.telefono1 || tenant.telefono2 || tenant.email || tenant.direccion || tenant.instagram || tenant.facebook || tenant.tiktok) && (
-                <div style={{ background: '#001a5e', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Contacto directo</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
-                    {tenant.whatsapp && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ background: '#25d366', borderRadius: 5, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>📱</div>
-                        <div>
-                          <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>WhatsApp</div>
-                          <div style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>+{tenant.whatsapp}</div>
-                        </div>
+              {/* CONTACTO DIRECTO — siempre visible */}
+              <div style={{ background: '#001a5e', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Contacto directo</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+                  {tenant.whatsapp ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ background: '#25d366', borderRadius: 5, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>📱</div>
+                      <div>
+                        <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>WhatsApp</div>
+                        <div style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>+{tenant.whatsapp}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 5, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>📱</div>
+                      <div>
+                        <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>WhatsApp</div>
+                        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', fontWeight: 500 }}>—</div>
+                      </div>
+                    </div>
+                  )}
+                  {tenant.telefono1 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 14, flexShrink: 0 }}>☎️</span>
+                      <div>
+                        <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Teléfono</div>
+                        <div style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>{tenant.telefono1}</div>
+                      </div>
+                    </div>
+                  ) : null}
+                  {tenant.telefono2 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 14, flexShrink: 0 }}>📞</span>
+                      <div>
+                        <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Teléfono 2</div>
+                        <div style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>{tenant.telefono2}</div>
+                      </div>
+                    </div>
+                  ) : null}
+                  {tenant.email ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 14, flexShrink: 0 }}>✉️</span>
+                      <div>
+                        <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Email</div>
+                        <div style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>{tenant.email}</div>
+                      </div>
+                    </div>
+                  ) : null}
+                  {tenant.direccion ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, gridColumn: 'span 2' }}>
+                      <span style={{ fontSize: 14, flexShrink: 0 }}>📍</span>
+                      <div>
+                        <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Dirección</div>
+                        <div style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>{tenant.direccion}</div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                {/* Redes sociales */}
+                {(tenant.instagram || tenant.facebook || tenant.tiktok) && (
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 10, paddingTop: 8, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1 }}>Síguenos:</div>
+                    {tenant.instagram && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: 13 }}>📸</span>
+                        <span style={{ fontSize: 9, color: '#e879f9', fontWeight: 700 }}>{tenant.instagram}</span>
                       </div>
                     )}
-                    {tenant.telefono1 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 14, flexShrink: 0 }}>☎️</span>
-                        <div>
-                          <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Teléfono</div>
-                          <div style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>{tenant.telefono1}</div>
-                        </div>
+                    {tenant.facebook && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: 13 }}>👥</span>
+                        <span style={{ fontSize: 9, color: '#60a5fa', fontWeight: 700 }}>{tenant.facebook}</span>
                       </div>
                     )}
-                    {tenant.telefono2 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 14, flexShrink: 0 }}>📞</span>
-                        <div>
-                          <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Teléfono 2</div>
-                          <div style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>{tenant.telefono2}</div>
-                        </div>
-                      </div>
-                    )}
-                    {tenant.email && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 14, flexShrink: 0 }}>✉️</span>
-                        <div>
-                          <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Email</div>
-                          <div style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>{tenant.email}</div>
-                        </div>
-                      </div>
-                    )}
-                    {tenant.direccion && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, gridColumn: 'span 2' }}>
-                        <span style={{ fontSize: 14, flexShrink: 0 }}>📍</span>
-                        <div>
-                          <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Dirección</div>
-                          <div style={{ fontSize: 9, color: '#fff', fontWeight: 700 }}>{tenant.direccion}</div>
-                        </div>
+                    {tenant.tiktok && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: 13 }}>🎵</span>
+                        <span style={{ fontSize: 9, color: '#f0abfc', fontWeight: 700 }}>{tenant.tiktok}</span>
                       </div>
                     )}
                   </div>
-                  {/* Redes sociales */}
-                  {(tenant.instagram || tenant.facebook || tenant.tiktok) && (
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 10, paddingTop: 8, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1 }}>Síguenos:</div>
-                      {tenant.instagram && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <span style={{ fontSize: 13 }}>📸</span>
-                          <span style={{ fontSize: 9, color: '#e879f9', fontWeight: 700 }}>{tenant.instagram}</span>
-                        </div>
-                      )}
-                      {tenant.facebook && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <span style={{ fontSize: 13 }}>👥</span>
-                          <span style={{ fontSize: 9, color: '#60a5fa', fontWeight: 700 }}>{tenant.facebook}</span>
-                        </div>
-                      )}
-                      {tenant.tiktok && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <span style={{ fontSize: 13 }}>🎵</span>
-                          <span style={{ fontSize: 9, color: '#f0abfc', fontWeight: 700 }}>{tenant.tiktok}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+                {!tenant.instagram && !tenant.facebook && !tenant.tiktok && !tenant.whatsapp && !tenant.telefono1 && !tenant.email && !tenant.direccion && (
+                  <div style={{ marginTop: 6, fontSize: 8, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
+                    Completa tus datos en Config. Ventas para que aparezcan aquí.
+                  </div>
+                )}
+              </div>
 
-              {/* OBSERVACIONES — siempre visible, con placeholder si vacío */}
+              {/* OBSERVACIONES */}
               <div style={{ background: '#fffbeb', borderRadius: 10, padding: '10px 14px', border: '1.5px solid #fde68a' }}>
                 <div style={{ fontSize: 8.5, fontWeight: 800, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 }}>📝 Notas adicionales</div>
                 {cotizacion.notas ? (
@@ -440,18 +497,12 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 </div>
               )}
 
-              {/* RAZONES PARA COMPRAR — copy persuasivo */}
+              {/* RAZONES PARA COMPRAR */}
               <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 12, padding: '13px 14px' }}>
                 <div style={{ fontWeight: 800, fontSize: 9.5, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10, borderBottom: '2px solid #0052B4', paddingBottom: 5 }}>
                   ¿Por qué es la decisión correcta?
                 </div>
-                {[
-                  { icon: '🚀', bg: '#dbeafe', title: 'Movilidad sin límites',       desc: 'Llega a tiempo, evita trancones y recupera horas de tu día.' },
-                  { icon: '💰', bg: '#fef9c3', title: 'Inversión inteligente',        desc: 'Ahorra hasta 4 veces más en combustible vs. un vehículo de 4 ruedas.' },
-                  { icon: '🛡️', bg: '#dcfce7', title: 'Tranquilidad garantizada',    desc: `Garantía de fábrica${op?.garantia ? ` — ${op.garantia}` : ''}. Respaldo total.` },
-                  { icon: '⚡', bg: '#fce7f3', title: 'Rendimiento comprobado',      desc: op?.rendimiento ? `${op.rendimiento} de rendimiento.` : 'Motor de alto desempeño y bajo consumo.' },
-                  { icon: '🤝', bg: '#ede9fe', title: 'Servicio posventa',           desc: 'Siempre estaremos aquí. Taller propio, repuestos originales.' },
-                ].map(({ icon, bg, title, desc }) => (
+                {beneficios.map(({ icon, bg, title, desc }) => (
                   <div key={title} style={{ display: 'flex', gap: 9, marginBottom: 9, alignItems: 'flex-start' }}>
                     <div style={{ background: bg, borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>{icon}</div>
                     <div>
