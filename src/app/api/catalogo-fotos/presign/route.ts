@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     content_type: string
   }
 
-  if (!moto_catalogo_id || !tipo || !['frente', 'lado', 'promocional'].includes(tipo)) {
+  if (!moto_catalogo_id || !tipo || !['frente', 'lado', 'promocional', 'extra'].includes(tipo)) {
     return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 })
   }
 

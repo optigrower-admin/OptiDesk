@@ -34,13 +34,9 @@ function Check({ color = '#0052B4' }: { color?: string }) {
 }
 
 const DEFAULT_INCLUYE = [
-  'SOAT obligatorio',
-  'Matrícula + impuestos',
-  'Manual del propietario',
-  'Garantía de fábrica',
-  '3 revisiones mano de obra gratis',
+  'SOAT obligatorio', 'Matrícula + impuestos', 'Manual del propietario',
+  'Garantía de fábrica', '3 revisiones mano de obra gratis',
 ]
-
 const DEFAULT_BENEFICIOS = [
   { icon: '🚀', bg: '#dbeafe', title: 'Movilidad sin límites',   desc: 'Llega a tiempo, evita trancones y recupera horas de tu día.' },
   { icon: '💰', bg: '#fef9c3', title: 'Inversión inteligente',    desc: 'Ahorra hasta 4 veces más en combustible vs. un vehículo de 4 ruedas.' },
@@ -60,8 +56,8 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
   const fotoLado   = op?.foto_lado_uri   || ''
   const fotoExtra  = op?.foto_extra_uri  || ''
 
-  /* Foto del header: promo > extra > frente > lado */
-  const fotoHeader = fotoPromo || fotoExtra || fotoFrente || fotoLado
+  /* Foto promocional (sidebar derecho): promo > extra > frente > lado */
+  const fotoPromoSidebar = fotoPromo || fotoExtra || fotoFrente || fotoLado
 
   const base       = op?.precio ?? 0
   const docs       = op?.costo_documentos ?? 0
@@ -93,7 +89,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
     ? tenant.incluye.split('\n').map(l => l.trim()).filter(Boolean)
     : DEFAULT_INCLUYE
 
-  const beneficios: { icon: string; bg: string; title: string; desc: string }[] = (() => {
+  const beneficios = (() => {
     if (op?.cotizacion_beneficios?.trim()) {
       return op.cotizacion_beneficios.split('\n').map((line, i) => {
         const [head = '', desc = ''] = line.split('|')
@@ -113,7 +109,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
     }))
   })()
 
-  /* Fotos del cuerpo: extra (principal, sin título), frente + lado (con título) */
+  /* Fotos del cuerpo: extra (principal sin título), frente + lado (con título) */
   let fotoPrincipal: { src: string } | null = null
   const fotosSecundarias: { src: string; label: string }[] = []
   if (fotoExtra) {
@@ -136,34 +132,28 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
   return (
     <>
       <style>{`
-        /* ── Tamaño de página: carta ── */
         @page { margin: 0; size: 8.5in 11in portrait; }
 
-        /* ── Pantalla: el doc mide 215mm de ancho ── */
+        /* ancho en pantalla */
         .cot-doc { width: 215mm; }
 
-        /* ── Impresión: zoom 0.75 para que quepa en carta ──
-           zoom ajusta paginación correctamente (Chrome/Edge).
-           215mm / 0.75 = 286.7mm → visual 215mm = ancho carta. */
+        /* En impresión: zoom 0.75 para ajustar a carta.
+           width 286.7mm → tras zoom visual = 215mm = ancho carta. */
         @media print {
           body  { margin: 0 !important; background: white !important; }
-          .no-print  { display: none !important; }
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
+          .no-print { display: none !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .cot-doc {
             zoom: 0.75;
-            width: 286mm; /* 215/0.75 → tras zoom visual = 215mm */
+            width: 287mm;
             box-shadow: none !important;
           }
         }
-
         body { margin: 0; background: #e5e7eb; }
         * { box-sizing: border-box; }
       `}</style>
 
-      {/* ── TOOLBAR (no imprime) ── */}
+      {/* ── TOOLBAR ── */}
       <div className="no-print fixed top-0 left-0 right-0 z-50 bg-gray-900 text-white flex items-center justify-between px-6 py-3 shadow-lg">
         <button onClick={() => window.history.back()} className="text-sm text-gray-300 hover:text-white">← Volver</button>
         <span className="font-semibold text-sm">Cotización #{pad(cotizacion.numero)}</span>
@@ -187,30 +177,20 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
       <div className="no-print:mt-16 min-h-screen flex justify-center py-8 px-4 print:p-0 print:mt-0" style={{ background: '#e5e7eb' }}>
         <div className="cot-doc" style={{ background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 10 }}>
 
-          {/* ══ HEADER ══ */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 190px', alignItems: 'stretch', borderBottom: '3px solid #0052B4', overflow: 'hidden' }}>
+          {/* ══ HEADER: fondo azul completo ══ */}
+          <div style={{ background: 'linear-gradient(135deg, #001a5e 0%, #0035a0 55%, #0052B4 100%)', display: 'grid', gridTemplateColumns: '1fr 185px', alignItems: 'stretch', borderBottom: '3px solid #0052B4' }}>
 
-            {/* Izquierda: gradiente azul */}
-            <div style={{ background: 'linear-gradient(135deg, #001a5e 0%, #0035a0 55%, #0052B4 100%)', padding: '14px 20px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6 }}>
-              {/* Logo cargado desde Config Ventas (tenants.logo_url) */}
+            {/* Izquierda: Logo + tagline + barra de contacto */}
+            <div style={{ padding: '14px 20px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6 }}>
               {tenant.logo_uri
-                ? <img src={tenant.logo_uri} alt={tenant.nombre} style={{ height: 60, objectFit: 'contain', objectPosition: 'left', filter: 'brightness(0) invert(1)', display: 'block' }} />
-                : <div style={{ color: '#fff', fontSize: 24, fontWeight: 900, textTransform: 'uppercase', letterSpacing: -0.5 }}>{tenant.nombre}</div>
+                ? <img src={tenant.logo_uri} alt={tenant.nombre} style={{ height: 62, objectFit: 'contain', objectPosition: 'left', filter: 'brightness(0) invert(1)', display: 'block' }} />
+                : <div style={{ color: '#fff', fontSize: 22, fontWeight: 900, textTransform: 'uppercase', letterSpacing: -0.5 }}>{tenant.nombre}</div>
               }
-              {tenant.tagline && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 7.5, letterSpacing: 2, textTransform: 'uppercase', marginTop: -3 }}>{tenant.tagline}</div>}
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 2 }}>
-                <div style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 7, padding: '6px 12px', border: '1px solid rgba(255,255,255,0.2)' }}>
-                  <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 7, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 2 }}>Cotización</div>
-                  <div style={{ color: '#fff', fontWeight: 900, fontSize: 16, letterSpacing: 0.5 }}>MS-{pad(cotizacion.numero)}</div>
-                </div>
-                <div>
-                  <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 8.5, marginBottom: 1 }}>📅 {formatFecha(cotizacion.fecha_generacion)}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 8 }}>⏰ Válida {cotizacion.vigencia_dias} días</div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 7, borderTop: '1px solid rgba(255,255,255,0.12)' }}>
+              {tenant.tagline && (
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 7.5, letterSpacing: 2, textTransform: 'uppercase', marginTop: -2 }}>{tenant.tagline}</div>
+              )}
+              {/* Barra inferior de contacto del header */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.12)', marginTop: 'auto' }}>
                 {[
                   { icon: '📍', text: tenant.direccion },
                   { icon: '📞', text: [tenant.telefono1, tenant.telefono2].filter(Boolean).join(' · ') },
@@ -225,22 +205,14 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
               </div>
             </div>
 
-            {/* Derecha: foto promocional sin marco, difuminada desde la izquierda
-                Se usa un overlay sobre la imagen (más compatible que mask-image). */}
-            <div style={{ position: 'relative', overflow: 'hidden', background: '#0035a0' }}>
-              {fotoHeader ? (
-                <>
-                  <img
-                    src={fotoHeader}
-                    alt={op?.referencia ?? ''}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center right', display: 'block' }}
-                  />
-                  {/* Overlay gradiente: azul opaco izquierda → transparente derecha */}
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, #001a5e 0%, #001a5e 12%, rgba(0,26,94,0.82) 28%, rgba(0,45,130,0.45) 52%, rgba(0,52,180,0.1) 75%, transparent 100%)' }} />
-                </>
-              ) : (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, opacity: 0.15 }}>🏍️</div>
-              )}
+            {/* Derecha: número de cotización (donde antes estaba la foto) */}
+            <div style={{ borderLeft: '1px solid rgba(255,255,255,0.15)', padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', gap: 8 }}>
+              <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 7.5, textTransform: 'uppercase', letterSpacing: 2 }}>Cotización</div>
+              <div style={{ color: '#fff', fontWeight: 900, fontSize: 26, letterSpacing: 0.5, lineHeight: 1 }}>MS-{pad(cotizacion.numero)}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 }}>
+                <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 9 }}>📅 {formatFecha(cotizacion.fecha_generacion)}</div>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 8.5 }}>⏰ Válida {cotizacion.vigencia_dias} días</div>
+              </div>
             </div>
           </div>
 
@@ -258,12 +230,12 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {[
-                    ['Empresa / Nombre', cotizacion.cliente_nombre],
-                    ['Teléfono',         cotizacion.cliente_celular],
+                    ['Empresa / Nombre',   cotizacion.cliente_nombre],
+                    ['Teléfono',           cotizacion.cliente_celular],
                     ['Correo electrónico', cotizacion.cliente_email],
                   ].map(([label, val]) => (
                     <div key={label} style={{ display: 'flex', gap: 5, alignItems: 'flex-end' }}>
-                      <span style={{ fontSize: 8, color: '#64748b', minWidth: 70, flexShrink: 0 }}>{label}:</span>
+                      <span style={{ fontSize: 8, color: '#64748b', minWidth: 72, flexShrink: 0 }}>{label}:</span>
                       <span style={{ flex: 1, borderBottom: '1px solid #b8c4d8', paddingBottom: 1, fontSize: 8, color: val ? '#1a1a2e' : 'transparent', fontWeight: val ? 600 : 400 }}>{val ?? ' '}</span>
                     </div>
                   ))}
@@ -295,14 +267,14 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
               {/* FOTOS: extra (principal sin título) + frente/lado (con título) */}
               {op && fotoPrincipal && (
                 <div style={{ display: 'grid', gridTemplateColumns: fotosSecundarias.length > 0 ? '2fr 1fr' : '1fr', gap: 6, marginBottom: 10 }}>
-                  <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 10, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 100 }}>
-                    <img src={fotoPrincipal.src} alt={op.referencia} style={{ maxHeight: 90, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,52,180,0.14))' }} />
+                  <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 10, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 95 }}>
+                    <img src={fotoPrincipal.src} alt={op.referencia} style={{ maxHeight: 85, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,52,180,0.14))' }} />
                   </div>
                   {fotosSecundarias.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                       {fotosSecundarias.map(f => (
                         <div key={f.label} style={{ background: '#f8faff', borderRadius: 8, padding: 5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', flex: 1, gap: 2 }}>
-                          <img src={f.src} alt={f.label} style={{ maxHeight: fotosSecundarias.length > 1 ? 40 : 80, maxWidth: '100%', objectFit: 'contain' }} />
+                          <img src={f.src} alt={f.label} style={{ maxHeight: fotosSecundarias.length > 1 ? 38 : 75, maxWidth: '100%', objectFit: 'contain' }} />
                           <div style={{ fontSize: 6, color: '#94a3b8', fontWeight: 600 }}>{f.label}</div>
                         </div>
                       ))}
@@ -338,7 +310,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 </div>
               </div>
 
-              {/* CONTACTO DIRECTO — siempre visible */}
+              {/* CONTACTO DIRECTO */}
               <div style={{ background: '#001a5e', borderRadius: 8, padding: '10px 12px', marginBottom: 10 }}>
                 <div style={{ fontSize: 8, fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Contacto directo</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 12px' }}>
@@ -352,47 +324,26 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                     </div>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, width: 15, height: 15, fontSize: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>📱</div>
-                      <div>
-                        <div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>WhatsApp</div>
-                        <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.25)' }}>—</div>
-                      </div>
+                      <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, width: 15, height: 15, fontSize: 8, flexShrink: 0 }} />
+                      <div><div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>WhatsApp</div><div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.25)' }}>—</div></div>
                     </div>
                   )}
                   {tenant.telefono1 && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                       <span style={{ fontSize: 12, flexShrink: 0 }}>☎️</span>
-                      <div>
-                        <div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Teléfono</div>
-                        <div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{tenant.telefono1}</div>
-                      </div>
-                    </div>
-                  )}
-                  {tenant.telefono2 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 12, flexShrink: 0 }}>📞</span>
-                      <div>
-                        <div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Teléfono 2</div>
-                        <div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{tenant.telefono2}</div>
-                      </div>
+                      <div><div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Teléfono</div><div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{tenant.telefono1}</div></div>
                     </div>
                   )}
                   {tenant.email && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                       <span style={{ fontSize: 12, flexShrink: 0 }}>✉️</span>
-                      <div>
-                        <div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Email</div>
-                        <div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{tenant.email}</div>
-                      </div>
+                      <div><div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Email</div><div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{tenant.email}</div></div>
                     </div>
                   )}
                   {tenant.direccion && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, gridColumn: 'span 2' }}>
                       <span style={{ fontSize: 12, flexShrink: 0 }}>📍</span>
-                      <div>
-                        <div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Dirección</div>
-                        <div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{tenant.direccion}</div>
-                      </div>
+                      <div><div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Dirección</div><div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{tenant.direccion}</div></div>
                     </div>
                   )}
                 </div>
@@ -405,33 +356,39 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                   </div>
                 )}
                 {!tenant.instagram && !tenant.facebook && !tenant.tiktok && !tenant.whatsapp && !tenant.telefono1 && !tenant.email && !tenant.direccion && (
-                  <div style={{ marginTop: 5, fontSize: 7, color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>
-                    Completa tus datos en Config. Ventas para que aparezcan aquí.
-                  </div>
+                  <div style={{ marginTop: 5, fontSize: 7, color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>Completa tus datos en Config. Ventas para que aparezcan aquí.</div>
                 )}
               </div>
 
               {/* NOTAS */}
               <div style={{ background: '#fffbeb', borderRadius: 8, padding: '8px 11px', border: '1.5px solid #fde68a' }}>
                 <div style={{ fontSize: 7.5, fontWeight: 800, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>📝 Notas adicionales</div>
-                {cotizacion.notas ? (
-                  <div style={{ fontSize: 8, color: '#78350f', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{cotizacion.notas}</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {['', '', ''].map((_, i) => <div key={i} style={{ borderBottom: '1px solid #fcd34d', height: 13 }} />)}
-                  </div>
-                )}
+                {cotizacion.notas
+                  ? <div style={{ fontSize: 8, color: '#78350f', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{cotizacion.notas}</div>
+                  : <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>{['', '', ''].map((_, i) => <div key={i} style={{ borderBottom: '1px solid #fcd34d', height: 13 }} />)}</div>
+                }
               </div>
             </div>
 
             {/* ─── COLUMNA DERECHA ─── */}
             <div style={{ padding: '13px 12px', background: '#f8faff', display: 'flex', flexDirection: 'column', gap: 9 }}>
 
+              {/* FOTO PROMOCIONAL — grande, bordes redondeados, sin difuminar */}
+              {fotoPromoSidebar && (
+                <div style={{ borderRadius: 12, overflow: 'hidden', background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 110 }}>
+                  <img
+                    src={fotoPromoSidebar}
+                    alt={op?.referencia ?? ''}
+                    style={{ width: '100%', maxHeight: 125, objectFit: 'contain', display: 'block', filter: 'drop-shadow(0 4px 14px rgba(0,52,180,0.14))' }}
+                  />
+                </div>
+              )}
+
               {/* PRECIO */}
               {(verContado || verPignorada) && (
                 <div style={{ background: '#0052B4', borderRadius: 10, padding: '11px 13px' }}>
                   <div style={{ fontWeight: 800, fontSize: 9, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: 5 }}>
-                    Precio de tu moto
+                    Precio
                   </div>
                   {verContado && (
                     <div style={{ marginBottom: verPignorada ? 8 : 0 }}>
@@ -519,12 +476,12 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                   <div style={{ width: 19, height: 19, borderRadius: '50%', background: '#0052B4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 8, fontWeight: 800, flexShrink: 0 }}>C</div>
                   <div>
                     <div style={{ fontSize: 7, fontWeight: 700, color: '#1e293b' }}>Cliente satisfecho</div>
-                    <div style={{ fontSize: 8, color: '#f59e0b', lineHeight: 1 }}>⭐⭐⭐⭐⭐</div>
+                    <div style={{ fontSize: 8.5, color: '#f59e0b', lineHeight: 1 }}>⭐⭐⭐⭐⭐</div>
                   </div>
                 </div>
               </div>
 
-              {/* ESPECIFICACIONES TÉCNICAS — al final */}
+              {/* ESPECIFICACIONES TÉCNICAS */}
               {specsCheck.length > 0 && (
                 <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 8, padding: '8px 10px' }}>
                   <div style={{ fontSize: 8, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, paddingBottom: 4, borderBottom: '1.5px solid #dde3f0' }}>
@@ -540,7 +497,6 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                   </div>
                 </div>
               )}
-
             </div>
           </div>
 

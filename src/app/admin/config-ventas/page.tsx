@@ -342,6 +342,8 @@ export default function ConfigVentasPage() {
   const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '', instagram: '', facebook: '', tiktok: '', incluye: '', recargoTarjeta: 5 })
   const [savingCotInfo, setSavingCotInfo] = useState(false)
   const [cotInfoOk, setCotInfoOk]         = useState(false)
+  const [logoUrl, setLogoUrl]             = useState('')
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   const [loading, setLoading]             = useState(true)
   const [showNuevaMoto, setShowNuevaMoto] = useState(false)
   const [nuevaMoto, setNuevaMoto]         = useState<typeof NUEVA_MOTO_VACIA>(NUEVA_MOTO_VACIA)
@@ -354,7 +356,7 @@ export default function ConfigVentasPage() {
       supabase.from('entidades_financieras').select('id, nombre, activa').eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('tipos_recordatorio_automatico').select('id, tipo, activo, dias_umbral').eq('tenant_id', profile.tenant_id),
       supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, activa').eq('tenant_id', profile.tenant_id),
-      supabase.from('tenants').select('cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok, cotizacion_incluye, recargo_tarjeta_porcentaje').eq('id', profile.tenant_id).single(),
+      supabase.from('tenants').select('logo_url, cotizacion_tagline, cotizacion_direccion, cotizacion_telefono1, cotizacion_telefono2, cotizacion_email, cotizacion_web, cotizacion_whatsapp, cotizacion_instagram, cotizacion_facebook, cotizacion_tiktok, cotizacion_incluye, recargo_tarjeta_porcentaje').eq('id', profile.tenant_id).single(),
     ])
 
     // Cargamos motos en dos pasos para que un fallo en las columnas nuevas
@@ -410,6 +412,7 @@ export default function ConfigVentasPage() {
     })) as MotoCat[])
     setTipos((tip ?? []) as TipoRecordatorio[])
     setPlantillas((plant ?? []) as Plantilla[])
+    if (ten) setLogoUrl(ten.logo_url ?? '')
     if (ten) setCotInfo({
       tagline:        ten.cotizacion_tagline          ?? '',
       direccion:      ten.cotizacion_direccion        ?? '',
@@ -526,6 +529,27 @@ export default function ConfigVentasPage() {
     if (!confirm('¿Eliminar esta plantilla?')) return
     await supabase.from('plantillas_correo').delete().eq('id', id)
     cargar()
+  }
+
+  /* ── Logo ── */
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !profile?.tenant_id) return
+    setUploadingLogo(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('tenant_id', profile.tenant_id)
+      const res = await fetch('/api/admin/upload-logo', { method: 'POST', body: fd })
+      const json = await res.json() as { ok?: boolean; logo_url?: string; error?: string }
+      if (res.ok && json.logo_url) {
+        setLogoUrl(json.logo_url)
+      } else {
+        alert('Error al subir logo: ' + (json.error ?? 'desconocido'))
+      }
+    } finally {
+      setUploadingLogo(false)
+    }
   }
 
   /* ── Info cotización ── */
@@ -704,6 +728,25 @@ export default function ConfigVentasPage() {
         </div>
         <p className="text-xs text-gray-400 mb-4">Esta información aparece en el encabezado, contacto y pie de cada cotización generada</p>
         <div className="space-y-3">
+          {/* Logo del negocio */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-2">Logo del negocio <span className="font-normal text-gray-400">(aparece en las cotizaciones)</span></label>
+            <div className="flex items-center gap-4 flex-wrap">
+              {logoUrl && (
+                <div className="w-28 h-14 rounded-lg border border-gray-200 bg-gray-800 flex items-center justify-center p-2 flex-shrink-0">
+                  <img src={logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
+                </div>
+              )}
+              <label className={`cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors border ${uploadingLogo ? 'opacity-50 pointer-events-none bg-gray-50 border-gray-200 text-gray-400' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'}`}>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                {uploadingLogo ? 'Subiendo...' : logoUrl ? 'Cambiar logo' : 'Subir logo'}
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
+                  onChange={handleLogoUpload} disabled={uploadingLogo} />
+              </label>
+              <p className="text-[10px] text-gray-400">PNG, SVG, JPG o WebP · máx. 3 MB<br/>Recomendado: fondo transparente (PNG/SVG)</p>
+            </div>
+          </div>
+
           <div>
             <label className="text-xs font-semibold text-gray-500 block mb-1">Eslogan / Tagline</label>
             <input value={cotInfo.tagline} onChange={e => setCotInfo(p => ({ ...p, tagline: e.target.value }))}
