@@ -26,6 +26,8 @@ interface MotoCat {
   colores: string
   caracteristica: string
   cotizacion_beneficios: string
+  cotizacion_badges: string
+  cotizacion_testimonial: string
   fotos: { tipo: string; r2_key: string }[]
 }
 
@@ -130,7 +132,31 @@ function FotoSlot({ motoId, tipo, label, hint, rKey, onUploaded }: {
   )
 }
 
-/* ─── Tarjeta expandible por moto ───────────────────── */
+/* ─── Sección colapsable ───────────────────────────── */
+function SeccionColapsable({ titulo, icono, badge, children, defaultOpen = false }: {
+  titulo: string; icono: string; badge?: string | number
+  children: React.ReactNode; defaultOpen?: boolean
+}) {
+  const [abierto, setAbierto] = useState(defaultOpen)
+  return (
+    <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <button onClick={() => setAbierto(o => !o)}
+        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 transition-colors">
+        <span className="text-lg">{icono}</span>
+        <span className="font-bold text-gray-900 flex-1 text-sm">{titulo}</span>
+        {badge !== undefined && (
+          <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full">{badge}</span>
+        )}
+        <svg className={`w-4 h-4 text-gray-400 transition-transform ${abierto ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      {abierto && <div className="border-t border-gray-100">{children}</div>}
+    </section>
+  )
+}
+
+/* ─── Tarjeta por vehículo — compacta cuando cerrada ── */
 function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
   m: MotoCat
   recargoTarjeta: number
@@ -163,59 +189,80 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
       tagline_venta: local.tagline_venta, cilindraje: local.cilindraje, potencia: local.potencia,
       frenos: local.frenos, combustible: local.combustible, rendimiento: local.rendimiento,
       velocidad_max: local.velocidad_max, garantia: local.garantia, colores: local.colores,
-      caracteristica: local.caracteristica, cotizacion_beneficios: local.cotizacion_beneficios,
+      caracteristica: local.caracteristica,
+      cotizacion_beneficios:  local.cotizacion_beneficios,
+      cotizacion_badges:      local.cotizacion_badges,
+      cotizacion_testimonial: local.cotizacion_testimonial,
     })
     setSaving(false)
   }
 
   return (
-    <div className={`rounded-xl border transition-all ${m.activa ? 'border-gray-200' : 'border-gray-100 opacity-50'}`}>
+    <div className={`rounded-xl border transition-all ${m.activa ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
 
-      {/* ── CABECERA — siempre visible ── */}
-      <div className="px-4 py-3">
-        <div className="flex items-center gap-3 mb-2">
-          <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 flex-1 text-left min-w-0">
-            <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
-            <span className="font-bold text-sm text-gray-900 truncate">{m.referencia}</span>
-            {fotos.length > 0 && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">{fotos.length} foto{fotos.length > 1 ? 's' : ''}</span>}
-            {m.cilindraje && <span className="text-xs text-gray-400 flex-shrink-0">{m.cilindraje}</span>}
-          </button>
-          <ToggleSwitch activo={m.activa} onChange={() => onToggle(m.id, m.activa)} />
-        </div>
-
-        {/* 5 variantes de precio — siempre visibles */}
-        <div className="grid grid-cols-5 gap-1.5">
-          <div className="bg-gray-50 rounded-lg px-2 py-2">
-            <div className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide leading-tight">Sin papeles</div>
-            <div className="text-xs font-bold text-gray-800 mt-0.5">{formatCOP(local.precio)}</div>
-          </div>
-          <div className="bg-emerald-50 rounded-lg px-2 py-2">
-            <div className="text-[9px] text-emerald-600 font-semibold uppercase tracking-wide leading-tight">Con papeles</div>
-            <div className="text-xs font-bold text-emerald-700 mt-0.5">{formatCOP(conPapeles)}</div>
-          </div>
-          <div className="bg-blue-50 rounded-lg px-2 py-2">
-            <div className="text-[9px] text-blue-500 font-semibold uppercase tracking-wide leading-tight">Pignorada</div>
-            <div className="text-xs font-bold text-blue-700 mt-0.5">{formatCOP(conPrenda)}</div>
-          </div>
-          <div className="bg-amber-50 rounded-lg px-2 py-2">
-            <div className="text-[9px] text-amber-600 font-semibold uppercase tracking-wide leading-tight">Tarjeta c/papeles +{recargoTarjeta}%</div>
-            <div className="text-xs font-bold text-amber-700 mt-0.5">{formatCOP(conTarjetaPapeles)}</div>
-          </div>
-          <div className="bg-orange-50 rounded-lg px-2 py-2">
-            <div className="text-[9px] text-orange-600 font-semibold uppercase tracking-wide leading-tight">Tarjeta pignorada +{recargoTarjeta}%</div>
-            <div className="text-xs font-bold text-orange-700 mt-0.5">{formatCOP(conTarjetaPrenda)}</div>
-          </div>
-        </div>
+      {/* ── CABECERA COMPACTA ── */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+          <svg className={`w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
+          </svg>
+          <span className={`font-semibold text-sm truncate ${m.activa ? 'text-gray-900' : 'text-gray-400 line-through'}`}>{m.referencia}</span>
+          {local.cilindraje && <span className="text-[10px] text-gray-400 flex-shrink-0 hidden sm:inline">{local.cilindraje}</span>}
+          {fotos.length > 0 && <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">{fotos.length}📷</span>}
+          {!open && local.precio > 0 && (
+            <span className="text-[10px] text-emerald-700 font-semibold flex-shrink-0 ml-auto pr-2">{formatCOP(conPapeles)}</span>
+          )}
+        </button>
+        <ToggleSwitch activo={m.activa} onChange={() => onToggle(m.id, m.activa)} />
       </div>
 
       {/* ── EXPANDIDO ── */}
       {open && (
         <div className="border-t border-gray-100 px-4 py-4 space-y-5">
 
+          {/* Precios — ahora dentro del expandido */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Precios</p>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Sin papeles</label>
+                <input type="number" value={local.precio}
+                  onChange={e => setLocal(p => ({ ...p, precio: parseFloat(e.target.value) || 0 }))}
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Costo papeles</label>
+                <input type="number" value={local.costo_documentos}
+                  onChange={e => setLocal(p => ({ ...p, costo_documentos: parseFloat(e.target.value) || 0 }))}
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Costo pignoración</label>
+                <input type="number" value={local.costo_prenda}
+                  onChange={e => setLocal(p => ({ ...p, costo_prenda: parseFloat(e.target.value) || 0 }))}
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+            <div className="grid grid-cols-5 gap-1.5">
+              {[
+                { label: 'Sin papeles',           val: local.precio,         cls: 'bg-gray-50 text-gray-800' },
+                { label: 'Con papeles',            val: conPapeles,           cls: 'bg-emerald-50 text-emerald-700' },
+                { label: 'Pignorada',              val: conPrenda,            cls: 'bg-blue-50 text-blue-700' },
+                { label: `Tarjeta+papeles +${recargoTarjeta}%`, val: conTarjetaPapeles, cls: 'bg-amber-50 text-amber-700' },
+                { label: `Tarjeta+pignor. +${recargoTarjeta}%`, val: conTarjetaPrenda,  cls: 'bg-orange-50 text-orange-700' },
+              ].map(({ label, val, cls }) => (
+                <div key={label} className={`${cls} rounded-lg px-2 py-2`}>
+                  <div className="text-[8px] font-semibold uppercase leading-tight opacity-70 mb-0.5">{label}</div>
+                  <div className="text-xs font-bold">{formatCOP(val)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Fotos */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Fotos de la moto</p>
-            <div className="flex gap-6 flex-wrap">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Fotos del vehículo</p>
+            <div className="flex gap-4 flex-wrap">
               {FOTO_TIPOS.map(ft => (
                 <FotoSlot key={ft.tipo} motoId={m.id} tipo={ft.tipo} label={ft.label} hint={ft.hint}
                   rKey={fotos.find(f => f.tipo === ft.tipo)?.r2_key}
@@ -228,79 +275,72 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
             </div>
           </div>
 
-          {/* Precios editables */}
+          {/* Ficha técnica */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Precios base</p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="sm:col-span-1">
-                <label className="text-xs font-medium text-gray-600 block mb-1">Precio sin papeles</label>
-                <input type="number" value={local.precio}
-                  onChange={e => setLocal(p => ({ ...p, precio: parseFloat(e.target.value) || 0 }))}
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p className="text-[10px] text-gray-400 mt-0.5">Solo la moto, sin trámites</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Ficha técnica</p>
+            <p className="text-[10px] text-gray-400 mb-2">💡 Puedes iniciar cualquier valor con un emoji para personalizar su ícono en la cotización. Ej: <span className="font-mono">🔥 200cc</span></p>
+            <div className="space-y-2">
+              <div><label className="text-xs text-gray-500 block mb-1">Tagline de venta</label>{campo('tagline_venta')}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="text-xs text-gray-500 block mb-1">⚙️ Cilindraje</label>{campo('cilindraje')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">⚡ Potencia</label>{campo('potencia')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">🛡️ Frenos</label>{campo('frenos')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">⛽ Combustible</label>{campo('combustible')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">📊 Rendimiento</label>{campo('rendimiento')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">🏎️ Velocidad máx.</label>{campo('velocidad_max')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">✅ Garantía</label>{campo('garantia')}</div>
+                <div><label className="text-xs text-gray-500 block mb-1">✨ Característica especial</label>{campo('caracteristica')}</div>
               </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Costo papeles (SOAT + matrícula)</label>
-                <input type="number" value={local.costo_documentos}
-                  onChange={e => setLocal(p => ({ ...p, costo_documentos: parseFloat(e.target.value) || 0 }))}
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p className="text-[10px] text-gray-400 mt-0.5">Se suma al precio base</p>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Costo pignoración (crédito)</label>
-                <input type="number" value={local.costo_prenda}
-                  onChange={e => setLocal(p => ({ ...p, costo_prenda: parseFloat(e.target.value) || 0 }))}
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p className="text-[10px] text-gray-400 mt-0.5">Aplica en crédito con prenda</p>
-              </div>
-              <div className="bg-amber-50 rounded-lg px-3 py-2 flex flex-col justify-center gap-1">
-                <div>
-                  <div className="text-[10px] text-amber-600 font-semibold">Tarjeta sobre papeles (+{recargoTarjeta}%)</div>
-                  <div className="text-sm font-bold text-amber-700">{formatCOP(conTarjetaPapeles)}</div>
-                </div>
-                <div className="border-t border-amber-200 pt-1">
-                  <div className="text-[10px] text-orange-600 font-semibold">Tarjeta sobre pignorada (+{recargoTarjeta}%)</div>
-                  <div className="text-sm font-bold text-orange-700">{formatCOP(conTarjetaPrenda)}</div>
-                </div>
-              </div>
+              <div><label className="text-xs text-gray-500 block mb-1">Colores disponibles</label>{campo('colores')}</div>
             </div>
           </div>
 
-          {/* Specs */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ficha técnica y cotización</p>
-            <div className="space-y-2">
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Tagline de venta</label>
-                {campo('tagline_venta')}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div><label className="text-xs text-gray-500 block mb-1">Cilindraje</label>{campo('cilindraje')}</div>
-                <div><label className="text-xs text-gray-500 block mb-1">Potencia</label>{campo('potencia')}</div>
-                <div><label className="text-xs text-gray-500 block mb-1">Sistema de frenos</label>{campo('frenos')}</div>
-                <div><label className="text-xs text-gray-500 block mb-1">Combustible</label>{campo('combustible')}</div>
-                <div><label className="text-xs text-gray-500 block mb-1">Rendimiento</label>{campo('rendimiento')}</div>
-                <div><label className="text-xs text-gray-500 block mb-1">Velocidad máx.</label>{campo('velocidad_max')}</div>
-                <div><label className="text-xs text-gray-500 block mb-1">Garantía</label>{campo('garantia')}</div>
-                <div><label className="text-xs text-gray-500 block mb-1">Característica especial</label>{campo('caracteristica')}</div>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Colores disponibles</label>
-                {campo('colores')}
-              </div>
-            </div>
+          {/* Cotización — campos editables por vehículo */}
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Para cotización</p>
+
+            {/* Beneficios */}
             <div>
               <label className="text-xs text-gray-500 block mb-1">
-                Beneficios de venta <span className="text-gray-400">(uno por línea: emoji Título|Descripción)</span>
+                ¿Por qué es la decisión correcta? <span className="font-normal text-gray-400">(uno por línea: emoji Título|Descripción)</span>
               </label>
               <textarea
                 value={local.cotizacion_beneficios ?? ''}
                 onChange={e => setLocal(p => ({ ...p, cotizacion_beneficios: e.target.value }))}
-                rows={5}
-                placeholder={'🚀 Movilidad sin límites|Llega a tiempo y ahorra tiempo\n💰 Inversión inteligente|Ahorra hasta 4x en combustible\n🛡️ Tranquilidad garantizada|Garantía de fábrica incluida'}
+                rows={4}
+                placeholder={'🚀 Movilidad sin límites|Llega a tiempo\n💰 Inversión inteligente|Ahorra 4x en combustible\n🛡️ Garantía incluida|Respaldo total'}
                 className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono resize-none"
               />
-              <p className="text-[10px] text-gray-400 mt-1">Si está vacío, se usan los beneficios predeterminados del sistema.</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">Vacío = predeterminados del sistema.</p>
+            </div>
+
+            {/* Badges */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Badges de confianza <span className="font-normal text-gray-400">(3 líneas: emoji|TÍTULO|Subtítulo)</span>
+              </label>
+              <textarea
+                value={local.cotizacion_badges ?? ''}
+                onChange={e => setLocal(p => ({ ...p, cotizacion_badges: e.target.value }))}
+                rows={3}
+                placeholder={'🛡️|GARANTÍA|12 MESES*\n⭐|CALIDAD|CERTIFICADA\n👍|CLIENTES|SATISFECHOS'}
+                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono resize-none"
+              />
+              <p className="text-[10px] text-gray-400 mt-0.5">Ej: <span className="font-mono">🔧|REVISIONES|3 GRATIS</span></p>
+            </div>
+
+            {/* Testimonio */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Testimonio <span className="font-normal text-gray-400">(Texto|Nombre del cliente)</span>
+              </label>
+              <input
+                value={local.cotizacion_testimonial ?? ''}
+                onChange={e => setLocal(p => ({ ...p, cotizacion_testimonial: e.target.value }))}
+                placeholder="Excelente atención, entrega rápida y sin complicaciones.|Juan Pérez"
+                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-[10px] text-gray-400 mt-0.5">Separa el texto y el nombre con |</p>
             </div>
           </div>
 
@@ -326,6 +366,8 @@ const NUEVA_MOTO_VACIA: Omit<MotoCat, 'id' | 'activa' | 'fotos'> = {
   tagline_venta: '', cilindraje: '', potencia: '', frenos: '', combustible: '',
   rendimiento: '', velocidad_max: '', garantia: '', colores: '', caracteristica: '',
   cotizacion_beneficios: '',
+  cotizacion_badges: '',
+  cotizacion_testimonial: '',
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -348,9 +390,12 @@ export default function ConfigVentasPage() {
   const [showNuevaMoto, setShowNuevaMoto] = useState(false)
   const [nuevaMoto, setNuevaMoto]         = useState<typeof NUEVA_MOTO_VACIA>(NUEVA_MOTO_VACIA)
   const [creandoMoto, setCreandoMoto]     = useState(false)
+  const cargandoRef = useRef(false)
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
+    if (cargandoRef.current) return   // evita ejecuciones concurrentes
+    cargandoRef.current = true
 
     const [{ data: ent }, { data: tip }, { data: plant }] = await Promise.all([
       supabase.from('entidades_financieras').select('id, nombre, activa').eq('tenant_id', profile.tenant_id).order('orden'),
@@ -381,7 +426,7 @@ export default function ConfigVentasPage() {
     // (si la migration_v61 no se corrió aún) no oculte las motos existentes.
     const { data: motBase, error: motErr } = await supabase
       .from('motos_catalogo')
-      .select('id, referencia, precio, costo_documentos, costo_prenda, activa, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, cotizacion_beneficios')
+      .select('id, referencia, precio, costo_documentos, costo_prenda, activa, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, cotizacion_beneficios, cotizacion_badges, cotizacion_testimonial')
       .eq('tenant_id', profile.tenant_id).order('orden')
 
     // Si la query de columnas nuevas falla (columnas no existen aún), intentamos solo las originales
@@ -407,8 +452,16 @@ export default function ConfigVentasPage() {
       fotosPorMoto[f.moto_catalogo_id].push({ tipo: f.tipo, r2_key: f.r2_key })
     }
 
+    // Deduplicar por ID por seguridad (evita duplicados si cargar corre dos veces)
+    const seenIds = new Set<string>()
+    const motUniq = (mot ?? []).filter(m => {
+      if (seenIds.has(m.id)) return false
+      seenIds.add(m.id)
+      return true
+    })
+
     setEntidades((ent ?? []) as Entidad[])
-    setMotos((mot ?? []).map(m => ({
+    setMotos(motUniq.map(m => ({
       id:            m.id,
       referencia:    m.referencia,
       precio:        m.precio ?? 0,
@@ -425,7 +478,9 @@ export default function ConfigVentasPage() {
       garantia:      (m as never as Record<string,string>).garantia      ?? '',
       colores:              (m as never as Record<string,string>).colores              ?? '',
       caracteristica:       (m as never as Record<string,string>).caracteristica       ?? '',
-      cotizacion_beneficios:(m as never as Record<string,string>).cotizacion_beneficios ?? '',
+      cotizacion_beneficios: (m as never as Record<string,string>).cotizacion_beneficios  ?? '',
+      cotizacion_badges:     (m as never as Record<string,string>).cotizacion_badges      ?? '',
+      cotizacion_testimonial:(m as never as Record<string,string>).cotizacion_testimonial ?? '',
       fotos:                fotosPorMoto[m.id] ?? [],
     })) as MotoCat[])
     setTipos((tip ?? []) as TipoRecordatorio[])
@@ -447,6 +502,7 @@ export default function ConfigVentasPage() {
       recargoTarjeta: tenBase?.recargo_tarjeta_porcentaje ?? 5,
     })
     setLoading(false)
+    cargandoRef.current = false
   }, [profile?.tenant_id])
 
   useEffect(() => { cargar() }, [cargar])
@@ -571,185 +627,58 @@ export default function ConfigVentasPage() {
     }
   }
 
-  /* ── Info cotización ── */
+  /* ── Info cotización — usa API route con admin client (RLS no permite update directo) ── */
   async function guardarCotInfo() {
     if (!profile?.tenant_id) return
     setSavingCotInfo(true)
-    await supabase.from('tenants').update({
-      cotizacion_tagline:          cotInfo.tagline,
-      cotizacion_direccion:        cotInfo.direccion,
-      cotizacion_telefono1:        cotInfo.telefono1,
-      cotizacion_telefono2:        cotInfo.telefono2,
-      cotizacion_email:            cotInfo.email,
-      cotizacion_web:              cotInfo.web,
-      cotizacion_whatsapp:          cotInfo.whatsapp,
-      cotizacion_instagram:         cotInfo.instagram,
-      cotizacion_facebook:          cotInfo.facebook,
-      cotizacion_tiktok:            cotInfo.tiktok,
-      cotizacion_incluye:           cotInfo.incluye,
-      recargo_tarjeta_porcentaje:   cotInfo.recargoTarjeta,
-    }).eq('id', profile.tenant_id)
-    setSavingCotInfo(false)
-    setCotInfoOk(true)
-    setTimeout(() => setCotInfoOk(false), 2500)
+    try {
+      const res = await fetch('/api/tenant/cotizacion-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tagline:        cotInfo.tagline,
+          direccion:      cotInfo.direccion,
+          telefono1:      cotInfo.telefono1,
+          telefono2:      cotInfo.telefono2,
+          email:          cotInfo.email,
+          web:            cotInfo.web,
+          whatsapp:       cotInfo.whatsapp,
+          instagram:      cotInfo.instagram,
+          facebook:       cotInfo.facebook,
+          tiktok:         cotInfo.tiktok,
+          incluye:        cotInfo.incluye,
+          recargoTarjeta: cotInfo.recargoTarjeta,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        alert('Error al guardar: ' + (err.error ?? `HTTP ${res.status}`))
+        return
+      }
+      setCotInfoOk(true)
+      setTimeout(() => setCotInfoOk(false), 2500)
+    } finally {
+      setSavingCotInfo(false)
+    }
   }
 
   if (loading) return <div className="p-6 text-sm text-gray-400">Cargando...</div>
 
   return (
-    <div className="p-5 max-w-4xl mx-auto space-y-8">
+    <div className="p-5 max-w-4xl mx-auto space-y-4">
       <div>
         <h1 className="text-xl font-bold text-gray-900">Config Ventas</h1>
-        <p className="text-sm text-gray-500">Catálogos y reglas de Seguimiento Ventas (solo Gerencia)</p>
+        <p className="text-sm text-gray-500">Catálogos y configuración de cotizaciones (solo Gerencia)</p>
       </div>
 
-      {/* ── Entidades financieras ── */}
-      <section className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-base font-bold text-gray-900 mb-3">Entidades financieras</h2>
-        <div className="space-y-2 mb-3">
-          {entidades.map(e => (
-            <div key={e.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${!e.activa ? 'opacity-60' : 'border-gray-200'}`}>
-              <span className="flex-1 text-sm font-medium text-gray-800">{e.nombre}</span>
-              <ToggleSwitch activo={e.activa} onChange={() => toggleEntidad(e.id, e.activa)} />
-              <button onClick={() => eliminarEntidad(e.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <input value={nuevaEntidad} onChange={e => setNuevaEntidad(e.target.value)} placeholder="ej: Bancolombia"
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          <button onClick={agregarEntidad} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">+ Agregar</button>
-        </div>
-      </section>
+      {/* ── Info del negocio ── */}
+      <SeccionColapsable titulo="Info del negocio" icono="🏢" defaultOpen={false}>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-400">Logo, datos de contacto y redes sociales que aparecen en cada cotización generada.</p>
 
-      {/* ── Catálogo de motos ── */}
-      <section className="bg-white rounded-xl border border-gray-200 p-5">
-        <div className="flex items-start justify-between gap-3 mb-1">
-          <h2 className="text-base font-bold text-gray-900">Catálogo de motos</h2>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold hidden sm:block">Haz clic para editar</span>
-            <a href="/admin/lista-precios" target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-700 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-              Lista de precios
-            </a>
-          </div>
-        </div>
-        <p className="text-xs text-gray-400 mb-4">Agrega, edita o elimina motos. Las 5 variantes de precio se calculan automáticamente.</p>
-
-        <div className="space-y-2 mb-3">
-          {motos.map(m => (
-            <MotoCard key={m.id} m={m} recargoTarjeta={cotInfo.recargoTarjeta}
-              onSave={guardarMoto} onToggle={toggleMoto} onDelete={eliminarMoto} />
-          ))}
-          {motos.length === 0 && !showNuevaMoto && (
-            <p className="text-sm text-gray-400 text-center py-4">Sin motos en el catálogo. ¡Agrega la primera!</p>
-          )}
-        </div>
-
-        {/* ── Formulario nueva moto ── */}
-        {showNuevaMoto ? (
-          <div className="border-2 border-blue-200 rounded-xl p-4 bg-blue-50 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-sm text-blue-800">Nueva moto</span>
-              <button onClick={() => { setShowNuevaMoto(false); setNuevaMoto(NUEVA_MOTO_VACIA) }}
-                className="text-gray-400 hover:text-gray-700 text-sm">✕ Cancelar</button>
-            </div>
-
-            {/* Nombre */}
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1">Nombre / Referencia *</label>
-              <input value={nuevaMoto.referencia} onChange={e => setNuevaMoto(p => ({ ...p, referencia: e.target.value }))}
-                placeholder="ej: PULSAR NS 200 FI ABS UG2"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-            </div>
-
-            {/* Precios */}
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Precios</p>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Precio sin papeles</label>
-                  <input type="number" value={nuevaMoto.precio || ''}
-                    onChange={e => setNuevaMoto(p => ({ ...p, precio: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Costo papeles (SOAT + mat.)</label>
-                  <input type="number" value={nuevaMoto.costo_documentos || ''}
-                    onChange={e => setNuevaMoto(p => ({ ...p, costo_documentos: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Costo pignoración (crédito)</label>
-                  <input type="number" value={nuevaMoto.costo_prenda || ''}
-                    onChange={e => setNuevaMoto(p => ({ ...p, costo_prenda: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-            </div>
-
-            {/* Ficha técnica */}
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ficha técnica (opcional)</p>
-              <div className="grid grid-cols-2 gap-2">
-                {([
-                  ['tagline_venta',  'Tagline de venta',       'ej: La deportiva ideal para tu aventura'],
-                  ['cilindraje',     'Cilindraje',             'ej: 199.5 cc'],
-                  ['potencia',       'Potencia',               'ej: 24.5 HP'],
-                  ['frenos',         'Sistema de frenos',      'ej: ABS Doble Canal'],
-                  ['combustible',    'Sistema combustible',    'ej: Inyección FI'],
-                  ['rendimiento',    'Rendimiento',            'ej: 45 km/l'],
-                  ['velocidad_max',  'Velocidad máx.',         'ej: 140 km/h'],
-                  ['garantia',       'Garantía',               'ej: 2 años / 20,000 km'],
-                  ['caracteristica', 'Característica especial','ej: Smart Key, Puerto USB'],
-                ] as [keyof typeof NUEVA_MOTO_VACIA, string, string][]).map(([k, label, ph]) => (
-                  <div key={k} className={k === 'tagline_venta' || k === 'colores' ? 'col-span-2' : ''}>
-                    <label className="text-xs text-gray-500 block mb-1">{label}</label>
-                    <input value={nuevaMoto[k] as string}
-                      onChange={e => setNuevaMoto(p => ({ ...p, [k]: e.target.value }))}
-                      placeholder={ph}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                ))}
-                <div className="col-span-2">
-                  <label className="text-xs text-gray-500 block mb-1">Colores disponibles</label>
-                  <input value={nuevaMoto.colores}
-                    onChange={e => setNuevaMoto(p => ({ ...p, colores: e.target.value }))}
-                    placeholder="ej: Azul Perla, Negro Carbón, Rojo Fuego"
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 pt-1">
-              <button onClick={crearMoto} disabled={creandoMoto || !nuevaMoto.referencia.trim()}
-                className="px-5 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-bold transition-colors">
-                {creandoMoto ? 'Creando...' : '+ Agregar al catálogo'}
-              </button>
-              <span className="text-xs text-gray-400">Después podrás subir las fotos desde la tarjeta</span>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => setShowNuevaMoto(true)}
-            className="w-full py-3 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 text-blue-600 hover:text-blue-800 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
-            Agregar nueva moto
-          </button>
-        )}
-      </section>
-
-      {/* ── Datos del concesionario para cotizaciones ── */}
-      <section className="bg-white rounded-xl border border-blue-100 p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-xl">📄</span>
-          <h2 className="text-base font-bold text-gray-900">Datos del concesionario para cotizaciones</h2>
-        </div>
-        <p className="text-xs text-gray-400 mb-4">Esta información aparece en el encabezado, contacto y pie de cada cotización generada</p>
-        <div className="space-y-3">
-          {/* Logo del negocio */}
+          {/* Logo */}
           <div>
-            <label className="text-xs font-semibold text-gray-500 block mb-2">Logo del negocio <span className="font-normal text-gray-400">(aparece en las cotizaciones)</span></label>
+            <label className="text-xs font-semibold text-gray-500 block mb-2">Logo <span className="font-normal text-gray-400">(se muestra en el encabezado de la cotización)</span></label>
             <div className="flex items-center gap-4 flex-wrap">
               {logoUrl && (
                 <div className="w-28 h-14 rounded-lg border border-gray-200 bg-gray-800 flex items-center justify-center p-2 flex-shrink-0">
@@ -762,23 +691,26 @@ export default function ConfigVentasPage() {
                 <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
                   onChange={handleLogoUpload} disabled={uploadingLogo} />
               </label>
-              <p className="text-[10px] text-gray-400">PNG, SVG, JPG o WebP · máx. 3 MB<br/>Recomendado: fondo transparente (PNG/SVG)</p>
+              <p className="text-[10px] text-gray-400">PNG, SVG, JPG o WebP · máx. 3 MB · Recomendado: fondo transparente</p>
             </div>
           </div>
 
+          {/* Eslogan */}
           <div>
             <label className="text-xs font-semibold text-gray-500 block mb-1">Eslogan / Tagline</label>
             <input value={cotInfo.tagline} onChange={e => setCotInfo(p => ({ ...p, tagline: e.target.value }))}
               placeholder="ej: Tu ruta, nuestra pasión."
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-500 block mb-1">Dirección</label>
-            <input value={cotInfo.direccion} onChange={e => setCotInfo(p => ({ ...p, direccion: e.target.value }))}
-              placeholder="ej: Carretera Panamericana Km 38, Coatepec, Veracruz"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
+
+          {/* Contacto */}
           <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Dirección</label>
+              <input value={cotInfo.direccion} onChange={e => setCotInfo(p => ({ ...p, direccion: e.target.value }))}
+                placeholder="ej: Cra 10 # 15-22, Cali"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 block mb-1">Teléfono 1</label>
               <input value={cotInfo.telefono1} onChange={e => setCotInfo(p => ({ ...p, telefono1: e.target.value }))}
@@ -786,7 +718,7 @@ export default function ConfigVentasPage() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-1">Teléfono 2 (opcional)</label>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Teléfono 2</label>
               <input value={cotInfo.telefono2} onChange={e => setCotInfo(p => ({ ...p, telefono2: e.target.value }))}
                 placeholder="+57 310 000 0000"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -794,68 +726,55 @@ export default function ConfigVentasPage() {
             <div>
               <label className="text-xs font-semibold text-gray-500 block mb-1">Correo electrónico</label>
               <input value={cotInfo.email} onChange={e => setCotInfo(p => ({ ...p, email: e.target.value }))}
-                placeholder="ventas@miconcesionario.com"
+                placeholder="ventas@negocio.com"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 block mb-1">Sitio web</label>
               <input value={cotInfo.web} onChange={e => setCotInfo(p => ({ ...p, web: e.target.value }))}
-                placeholder="www.miconcesionario.com"
+                placeholder="www.negocio.com"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
+
+          {/* WhatsApp + recargo */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-1">WhatsApp (con código de país, sin +)</label>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">WhatsApp (código de país + número, sin +)</label>
               <input value={cotInfo.whatsapp} onChange={e => setCotInfo(p => ({ ...p, whatsapp: e.target.value }))}
                 placeholder="573001234567"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <p className="text-[11px] text-gray-400 mt-1">Ej: 573001234567 (57 = Colombia).</p>
+              <p className="text-[10px] text-gray-400 mt-1">Ej: 573001234567 (57 = Colombia)</p>
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-1">Recargo pago con tarjeta (%)</label>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Recargo tarjeta crédito (%)</label>
               <div className="flex items-center gap-2">
                 <input type="number" min={0} max={20} step={0.5} value={cotInfo.recargoTarjeta}
                   onChange={e => setCotInfo(p => ({ ...p, recargoTarjeta: parseFloat(e.target.value) || 0 }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <span className="text-sm text-gray-500 font-semibold">%</span>
               </div>
-              <p className="text-[11px] text-gray-400 mt-1">Se aplica sobre precio con papeles. Ej: 5 = +5%</p>
             </div>
-          </div>
-          {/* Ítems "Esta cotización incluye" */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 block mb-1">
-              Ítems &ldquo;Esta cotización incluye&rdquo; <span className="text-gray-400 font-normal">(uno por línea)</span>
-            </label>
-            <textarea
-              value={cotInfo.incluye}
-              onChange={e => setCotInfo(p => ({ ...p, incluye: e.target.value }))}
-              rows={5}
-              placeholder={'SOAT obligatorio\nMatrícula + impuestos\nManual del propietario\nGarantía de fábrica\n3 revisiones mano de obra gratis'}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono resize-none"
-            />
-            <p className="text-[11px] text-gray-400 mt-1">Si está vacío, se usan los ítems predeterminados del sistema.</p>
           </div>
 
           {/* Redes sociales */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Redes sociales (aparecen en la cotización)</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Redes sociales</p>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500 block mb-1">📸 Instagram</label>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Instagram</label>
                 <input value={cotInfo.instagram} onChange={e => setCotInfo(p => ({ ...p, instagram: e.target.value }))}
                   placeholder="@motospace38"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500 block mb-1">👥 Facebook (fan page)</label>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Facebook</label>
                 <input value={cotInfo.facebook} onChange={e => setCotInfo(p => ({ ...p, facebook: e.target.value }))}
                   placeholder="/motospace38"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500 block mb-1">🎵 TikTok</label>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">TikTok</label>
                 <input value={cotInfo.tiktok} onChange={e => setCotInfo(p => ({ ...p, tiktok: e.target.value }))}
                   placeholder="@motospace38"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -863,66 +782,202 @@ export default function ConfigVentasPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Incluye */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">
+              &ldquo;Esta cotización incluye&rdquo; <span className="font-normal text-gray-400">(uno por línea)</span>
+            </label>
+            <textarea value={cotInfo.incluye} onChange={e => setCotInfo(p => ({ ...p, incluye: e.target.value }))}
+              rows={5}
+              placeholder={'🛡️ SOAT obligatorio\n📋 Matrícula + impuestos\n🏭 Garantía de fábrica\n🔧 3 revisiones mano de obra gratis'}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono resize-none" />
+            <p className="text-[10px] text-gray-400 mt-1">Inicia cada línea con un emoji para usarlo como ícono (ej: 🛡️ SOAT). Si está vacío, se usan los predeterminados.</p>
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
             <button onClick={guardarCotInfo} disabled={savingCotInfo}
               className="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
-              {savingCotInfo ? 'Guardando...' : 'Guardar información'}
+              {savingCotInfo ? 'Guardando...' : 'Guardar'}
             </button>
             {cotInfoOk && <span className="text-sm text-green-600 font-medium">✓ Guardado</span>}
           </div>
         </div>
-      </section>
+      </SeccionColapsable>
+
+      {/* ── Catálogo de vehículos ── */}
+      <SeccionColapsable titulo="Catálogo de vehículos" icono="🏍️" badge={motos.length} defaultOpen={false}>
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-gray-400">Motos, toritos y demás vehículos. Haz clic en cada uno para editarlo.</p>
+            <a href="/admin/lista-precios" target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-700 text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+              Lista de precios
+            </a>
+          </div>
+
+          <div className="space-y-1.5 mb-3">
+            {motos.map(m => (
+              <MotoCard key={m.id} m={m} recargoTarjeta={cotInfo.recargoTarjeta}
+                onSave={guardarMoto} onToggle={toggleMoto} onDelete={eliminarMoto} />
+            ))}
+            {motos.length === 0 && !showNuevaMoto && (
+              <p className="text-sm text-gray-400 text-center py-6">Sin vehículos en el catálogo. ¡Agrega el primero!</p>
+            )}
+          </div>
+
+          {/* Formulario nuevo vehículo */}
+          {showNuevaMoto ? (
+            <div className="border-2 border-blue-200 rounded-xl p-4 bg-blue-50 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm text-blue-800">Nuevo vehículo</span>
+                <button onClick={() => { setShowNuevaMoto(false); setNuevaMoto(NUEVA_MOTO_VACIA) }}
+                  className="text-gray-400 hover:text-gray-700 text-sm">✕ Cancelar</button>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1">Nombre / Referencia *</label>
+                <input value={nuevaMoto.referencia} onChange={e => setNuevaMoto(p => ({ ...p, referencia: e.target.value }))}
+                  placeholder="ej: TORITO NG CARPA LUJO / PULSAR NS 200"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Precios base</p>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    ['precio', 'Sin papeles'],
+                    ['costo_documentos', 'Costo papeles'],
+                    ['costo_prenda', 'Costo pignoración'],
+                  ].map(([k, label]) => (
+                    <div key={k}>
+                      <label className="text-xs text-gray-500 block mb-1">{label}</label>
+                      <input type="number" value={(nuevaMoto[k as keyof typeof nuevaMoto] as number) || ''}
+                        onChange={e => setNuevaMoto(p => ({ ...p, [k]: parseFloat(e.target.value) || 0 }))}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ficha técnica (opcional)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['tagline_venta',  'Tagline de venta',       'ej: La deportiva ideal'],
+                    ['cilindraje',     'Cilindraje',             'ej: 199.5 cc'],
+                    ['potencia',       'Potencia',               'ej: 24.5 HP'],
+                    ['frenos',         'Frenos',                 'ej: ABS Doble Canal'],
+                    ['combustible',    'Combustible',            'ej: Inyección FI'],
+                    ['rendimiento',    'Rendimiento',            'ej: 45 km/l'],
+                    ['velocidad_max',  'Velocidad máx.',         'ej: 140 km/h'],
+                    ['garantia',       'Garantía',               'ej: 2 años / 20,000 km'],
+                    ['caracteristica', 'Característica',         'ej: Smart Key'],
+                  ] as [keyof typeof NUEVA_MOTO_VACIA, string, string][]).map(([k, label, ph]) => (
+                    <div key={k} className={k === 'tagline_venta' ? 'col-span-2' : ''}>
+                      <label className="text-xs text-gray-500 block mb-1">{label}</label>
+                      <input value={nuevaMoto[k] as string}
+                        onChange={e => setNuevaMoto(p => ({ ...p, [k]: e.target.value }))}
+                        placeholder={ph}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                  ))}
+                  <div className="col-span-2">
+                    <label className="text-xs text-gray-500 block mb-1">Colores disponibles</label>
+                    <input value={nuevaMoto.colores}
+                      onChange={e => setNuevaMoto(p => ({ ...p, colores: e.target.value }))}
+                      placeholder="ej: Azul Perla, Negro Carbón, Rojo Fuego"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 pt-1">
+                <button onClick={crearMoto} disabled={creandoMoto || !nuevaMoto.referencia.trim()}
+                  className="px-5 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-bold transition-colors">
+                  {creandoMoto ? 'Creando...' : '+ Agregar al catálogo'}
+                </button>
+                <span className="text-xs text-gray-400">Las fotos y specs se editan en la tarjeta del vehículo</span>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setShowNuevaMoto(true)}
+              className="w-full py-3 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 text-blue-600 hover:text-blue-800 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
+              Agregar nuevo vehículo
+            </button>
+          )}
+        </div>
+      </SeccionColapsable>
+
+      {/* ── Entidades financieras ── */}
+      <SeccionColapsable titulo="Entidades financieras" icono="🏦" badge={entidades.filter(e => e.activa).length} defaultOpen={false}>
+        <div className="p-5">
+          <div className="space-y-2 mb-3">
+            {entidades.map(e => (
+              <div key={e.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${!e.activa ? 'opacity-60' : 'border-gray-200'}`}>
+                <span className="flex-1 text-sm font-medium text-gray-800">{e.nombre}</span>
+                <ToggleSwitch activo={e.activa} onChange={() => toggleEntidad(e.id, e.activa)} />
+                <button onClick={() => eliminarEntidad(e.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input value={nuevaEntidad} onChange={e => setNuevaEntidad(e.target.value)} placeholder="ej: Bancolombia"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={agregarEntidad} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">+ Agregar</button>
+          </div>
+        </div>
+      </SeccionColapsable>
 
       {/* ── Recordatorios automáticos ── */}
-      <section className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-base font-bold text-gray-900 mb-1">Recordatorios automáticos</h2>
-        <p className="text-xs text-gray-400 mb-3">Se generan solos para clientes en Seguimiento Ventas que cumplan la condición</p>
-        <div className="space-y-2">
-          {tipos.map(t => (
-            <div key={t.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${!t.activo ? 'opacity-60' : 'border-gray-200'}`}>
-              <span className="flex-1 text-sm font-medium text-gray-800">{TIPO_LABEL[t.tipo] ?? t.tipo}</span>
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-gray-400">después de</span>
-                <input type="number" defaultValue={t.dias_umbral} onBlur={e => actualizarUmbral(t.id, e.target.value)}
-                  className="w-14 border border-gray-200 rounded px-1.5 py-1 text-xs text-center" />
-                <span className="text-xs text-gray-400">días</span>
+      <SeccionColapsable titulo="Recordatorios automáticos" icono="🔔" defaultOpen={false}>
+        <div className="p-5">
+          <p className="text-xs text-gray-400 mb-3">Se generan solos para clientes en Seguimiento Ventas que cumplan la condición</p>
+          <div className="space-y-2">
+            {tipos.map(t => (
+              <div key={t.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${!t.activo ? 'opacity-60' : 'border-gray-200'}`}>
+                <span className="flex-1 text-sm font-medium text-gray-800">{TIPO_LABEL[t.tipo] ?? t.tipo}</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-400">después de</span>
+                  <input type="number" defaultValue={t.dias_umbral} onBlur={e => actualizarUmbral(t.id, e.target.value)}
+                    className="w-14 border border-gray-200 rounded px-1.5 py-1 text-xs text-center" />
+                  <span className="text-xs text-gray-400">días</span>
+                </div>
+                <ToggleSwitch activo={t.activo} onChange={() => toggleTipo(t.id, t.activo)} />
               </div>
-              <ToggleSwitch activo={t.activo} onChange={() => toggleTipo(t.id, t.activo)} />
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </section>
+      </SeccionColapsable>
 
       {/* ── Plantillas de correo ── */}
-      <section className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-base font-bold text-gray-900 mb-1">Plantillas de correo</h2>
-        <p className="text-xs text-gray-400 mb-3">Variable disponible: {'{{nombre_cliente}}'}</p>
-        <div className="space-y-2 mb-3">
-          {plantillas.map(p => (
-            <div key={p.id} className={`rounded-lg border px-3 py-2 ${!p.activa ? 'opacity-60' : 'border-gray-200'}`}>
-              <div className="flex items-center gap-2">
-                <span className="flex-1 text-sm font-semibold text-gray-800">{p.nombre}</span>
-                <ToggleSwitch activo={p.activa} onChange={() => togglePlantilla(p.id, p.activa)} />
-                <button onClick={() => eliminarPlantilla(p.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+      <SeccionColapsable titulo="Plantillas de correo" icono="✉️" badge={plantillas.length} defaultOpen={false}>
+        <div className="p-5">
+          <p className="text-xs text-gray-400 mb-3">Variable disponible: {'{{nombre_cliente}}'}</p>
+          <div className="space-y-2 mb-3">
+            {plantillas.map(p => (
+              <div key={p.id} className={`rounded-lg border px-3 py-2 ${!p.activa ? 'opacity-60' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-sm font-semibold text-gray-800">{p.nombre}</span>
+                  <ToggleSwitch activo={p.activa} onChange={() => togglePlantilla(p.id, p.activa)} />
+                  <button onClick={() => eliminarPlantilla(p.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Asunto: {p.asunto}</p>
               </div>
-              <p className="text-xs text-gray-500 mt-1">Asunto: {p.asunto}</p>
-            </div>
-          ))}
+            ))}
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+            <p className="text-sm font-semibold text-gray-700">Nueva plantilla</p>
+            <input value={nuevaPlantilla.nombre} onChange={e => setNuevaPlantilla(p => ({ ...p, nombre: e.target.value }))} placeholder="Nombre interno"
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={nuevaPlantilla.asunto} onChange={e => setNuevaPlantilla(p => ({ ...p, asunto: e.target.value }))} placeholder="Asunto del correo"
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <textarea value={nuevaPlantilla.cuerpo_html} onChange={e => setNuevaPlantilla(p => ({ ...p, cuerpo_html: e.target.value }))}
+              placeholder="Cuerpo del correo (HTML). ej: Hola {{nombre_cliente}}, ..." rows={4}
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            <button onClick={crearPlantilla} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">
+              + Crear plantilla
+            </button>
+          </div>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-          <p className="text-sm font-semibold text-gray-700">Nueva plantilla</p>
-          <input value={nuevaPlantilla.nombre} onChange={e => setNuevaPlantilla(p => ({ ...p, nombre: e.target.value }))} placeholder="Nombre interno"
-            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          <input value={nuevaPlantilla.asunto} onChange={e => setNuevaPlantilla(p => ({ ...p, asunto: e.target.value }))} placeholder="Asunto del correo"
-            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          <textarea value={nuevaPlantilla.cuerpo_html} onChange={e => setNuevaPlantilla(p => ({ ...p, cuerpo_html: e.target.value }))}
-            placeholder="Cuerpo del correo (HTML). ej: Hola {{nombre_cliente}}, ..." rows={4}
-            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-          <button onClick={crearPlantilla} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">
-            + Crear plantilla
-          </button>
-        </div>
-      </section>
+      </SeccionColapsable>
     </div>
   )
 }

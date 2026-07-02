@@ -9,6 +9,18 @@ function pad(n: number) { return String(n).padStart(4, '0') }
 function formatFecha(iso: string) {
   return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
 }
+function fmtPhone(p: string): string {
+  const d = (p ?? '').replace(/\D/g, '')
+  if (d.length === 10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`
+  if (d.length === 7)  return `${d.slice(0,3)}-${d.slice(3)}`
+  return p ?? ''
+}
+/* Extrae emoji inicial de un texto: "🛡️ SOAT" → {icon:'🛡️', text:'SOAT'} */
+function parseIcono(raw: string, fallback = '•'): { icon: string; text: string } {
+  const m = raw.match(/^(\p{Emoji_Presentation}|\p{Extended_Pictographic})\s*/u)
+  if (m) return { icon: m[1], text: raw.slice(m[0].length) }
+  return { icon: fallback, text: raw }
+}
 
 interface TenantInfo {
   nombre: string; logo_uri: string; tagline: string
@@ -32,10 +44,25 @@ function Check({ color = '#0052B4' }: { color?: string }) {
     </svg>
   )
 }
+function IcoWA({ s = 13 }: { s?: number }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="#25D366" style={{ flexShrink: 0 }}><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+}
+function IcoIG({ s = 13 }: { s?: number }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" style={{ flexShrink: 0 }}><defs><linearGradient id="ig" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stopColor="#f09433"/><stop offset="25%" stopColor="#e6683c"/><stop offset="50%" stopColor="#dc2743"/><stop offset="75%" stopColor="#cc2366"/><stop offset="100%" stopColor="#bc1888"/></linearGradient></defs><path fill="url(#ig)" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+}
+function IcoFB({ s = 13 }: { s?: number }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="#1877F2" style={{ flexShrink: 0 }}><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+}
+function IcoTK({ s = 13 }: { s?: number }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="white" style={{ flexShrink: 0 }}><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.67a8.16 8.16 0 004.77 1.51V6.68a4.85 4.85 0 01-1-.01z"/></svg>
+}
 
 const DEFAULT_INCLUYE = [
-  'SOAT obligatorio', 'Matrícula + impuestos', 'Manual del propietario',
-  'Garantía de fábrica', '3 revisiones mano de obra gratis',
+  '🛡️ SOAT obligatorio',
+  '📋 Matrícula + impuestos',
+  '📖 Manual del propietario',
+  '🏭 Garantía de fábrica',
+  '🔧 3 revisiones mano de obra gratis',
 ]
 const DEFAULT_BENEFICIOS = [
   { icon: '🚀', bg: '#dbeafe', title: 'Movilidad sin límites',   desc: 'Llega a tiempo, evita trancones y recupera horas de tu día.' },
@@ -67,16 +94,20 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
   const verContado   = op?.mostrar_contado  ?? op?.mostrar_precio ?? false
   const verPignorada = op?.mostrar_pignorada ?? false
 
-  const specsCheck = op ? [
-    op.cilindraje    && `Motor ${op.cilindraje}`,
-    op.potencia      && op.potencia,
-    op.frenos        && op.frenos,
-    op.combustible   && op.combustible,
-    op.rendimiento   && op.rendimiento,
-    op.velocidad_max && `Vel. máx. ${op.velocidad_max}`,
-    op.garantia      && op.garantia,
-    op.caracteristica && op.caracteristica,
-  ].filter(Boolean) as string[] : []
+  /* Especificaciones con icono configurable: si el valor empieza con emoji lo usa,
+     si no usa el icono predeterminado del campo */
+  const specsItems = op ? [
+    op.cilindraje    && parseIcono(`Motor ${op.cilindraje}`,   '⚙️'),
+    op.potencia      && parseIcono(op.potencia,                '⚡'),
+    op.frenos        && parseIcono(op.frenos,                  '🛡️'),
+    op.combustible   && parseIcono(op.combustible,             '⛽'),
+    op.rendimiento   && parseIcono(op.rendimiento,             '📊'),
+    op.velocidad_max && parseIcono(`Vel. máx. ${op.velocidad_max}`, '🏎️'),
+    op.garantia      && parseIcono(op.garantia,                '✅'),
+    op.caracteristica && parseIcono(op.caracteristica,         '✨'),
+  ].filter(Boolean) as { icon: string; text: string }[] : []
+
+  const specsCheck = specsItems.map(s => s.text) // retrocompat para otros usos
 
   const specsChips = op ? [
     op.cilindraje    && { icon: '⚙️', label: op.cilindraje },
@@ -217,7 +248,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
           </div>
 
           {/* ══ CUERPO: 2 columnas ══ */}
-          <div style={{ display: 'grid', gridTemplateColumns: '60% 40%', alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '64% 36%', alignItems: 'start' }}>
 
             {/* ─── COLUMNA IZQUIERDA ─── */}
             <div style={{ padding: '13px 16px 12px', borderRight: '1px solid #e8edf5' }}>
@@ -266,16 +297,16 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
               {/* FOTOS: extra (principal sin título) + frente/lado (con título) */}
               {op && fotoPrincipal && (
-                <div style={{ display: 'grid', gridTemplateColumns: fotosSecundarias.length > 0 ? '2fr 1fr' : '1fr', gap: 6, marginBottom: 10 }}>
-                  <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 10, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 95 }}>
-                    <img src={fotoPrincipal.src} alt={op.referencia} style={{ maxHeight: 85, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,52,180,0.14))' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: fotosSecundarias.length > 0 ? '3fr 2fr' : '1fr', gap: 6, marginBottom: 10 }}>
+                  <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 10, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 100 }}>
+                    <img src={fotoPrincipal.src} alt={op.referencia} style={{ maxHeight: 90, maxWidth: '100%', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,52,180,0.14))' }} />
                   </div>
                   {fotosSecundarias.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                       {fotosSecundarias.map(f => (
-                        <div key={f.label} style={{ background: '#f8faff', borderRadius: 8, padding: 5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', flex: 1, gap: 2 }}>
-                          <img src={f.src} alt={f.label} style={{ maxHeight: fotosSecundarias.length > 1 ? 38 : 75, maxWidth: '100%', objectFit: 'contain' }} />
-                          <div style={{ fontSize: 6, color: '#94a3b8', fontWeight: 600 }}>{f.label}</div>
+                        <div key={f.label} style={{ background: '#f8faff', borderRadius: 8, padding: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px solid #e2e8f0', flex: 1, gap: 3 }}>
+                          <img src={f.src} alt={f.label} style={{ maxHeight: fotosSecundarias.length > 1 ? 48 : 86, maxWidth: '100%', objectFit: 'contain' }} />
+                          <div style={{ fontSize: 6.5, color: '#94a3b8', fontWeight: 600 }}>{f.label}</div>
                         </div>
                       ))}
                     </div>
@@ -297,76 +328,45 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 </div>
               )}
 
-              {/* INCLUYE */}
-              <div style={{ background: '#f0fdf4', borderRadius: 8, padding: '8px 11px', marginBottom: 10, border: '1.5px solid #bbf7d0' }}>
-                <div style={{ fontSize: 8, fontWeight: 800, color: '#15803d', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Esta cotización incluye</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 8px' }}>
-                  {incluyeItems.map(item => (
-                    <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Check color="#16a34a" />
-                      <span style={{ fontSize: 7.5, color: '#166534', fontWeight: 500 }}>{item}</span>
-                    </div>
-                  ))}
+              {/* INCLUYE — iconos, colores azul de marca */}
+              <div style={{ background: '#eff6ff', borderRadius: 8, padding: '8px 11px', marginBottom: 10, border: '1.5px solid #bfdbfe' }}>
+                <div style={{ fontSize: 8, fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 7 }}>Esta cotización incluye</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 8px' }}>
+                  {incluyeItems.map(item => {
+                    const { icon, text } = parseIcono(item, '📌')
+                    return (
+                      <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{icon}</span>
+                        <span style={{ fontSize: 7.5, color: '#1e40af', fontWeight: 600 }}>{text}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
-              {/* CONTACTO DIRECTO */}
-              <div style={{ background: '#001a5e', borderRadius: 8, padding: '10px 12px', marginBottom: 10 }}>
-                <div style={{ fontSize: 8, fontWeight: 800, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Contacto {tenant.nombre || 'directo'}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 12px' }}>
-                  {tenant.whatsapp ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <div style={{ background: '#25d366', borderRadius: 4, width: 15, height: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, flexShrink: 0 }}>📱</div>
-                      <div>
-                        <div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>WhatsApp</div>
-                        <div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>+{tenant.whatsapp}</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, width: 15, height: 15, fontSize: 8, flexShrink: 0 }} />
-                      <div><div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>WhatsApp</div><div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.25)' }}>—</div></div>
-                    </div>
-                  )}
-                  {tenant.telefono1 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 12, flexShrink: 0 }}>☎️</span>
-                      <div><div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Teléfono</div><div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{tenant.telefono1}</div></div>
-                    </div>
-                  )}
-                  {tenant.email && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 12, flexShrink: 0 }}>✉️</span>
-                      <div><div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Email</div><div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{tenant.email}</div></div>
-                    </div>
-                  )}
-                  {tenant.direccion && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, gridColumn: 'span 2' }}>
-                      <span style={{ fontSize: 12, flexShrink: 0 }}>📍</span>
-                      <div><div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Dirección</div><div style={{ fontSize: 8, color: '#fff', fontWeight: 700 }}>{tenant.direccion}</div></div>
-                    </div>
-                  )}
-                </div>
-                {/* Redes sociales — siempre que existan */}
-                {(tenant.whatsapp || tenant.instagram || tenant.facebook || tenant.tiktok) && (
-                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 8, paddingTop: 6, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                    {tenant.whatsapp  && <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ fontSize: 11 }}>📱</span><span style={{ fontSize: 8, color: '#4ade80', fontWeight: 700 }}>+{tenant.whatsapp}</span></div>}
-                    {tenant.instagram && <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ fontSize: 11 }}>📸</span><span style={{ fontSize: 8, color: '#e879f9', fontWeight: 700 }}>{tenant.instagram}</span></div>}
-                    {tenant.facebook  && <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ fontSize: 11 }}>👥</span><span style={{ fontSize: 8, color: '#60a5fa', fontWeight: 700 }}>{tenant.facebook}</span></div>}
-                    {tenant.tiktok    && <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span style={{ fontSize: 11 }}>🎵</span><span style={{ fontSize: 8, color: '#f0abfc', fontWeight: 700 }}>{tenant.tiktok}</span></div>}
+              {/* ESPECIFICACIONES TÉCNICAS — iconos por tipo de campo */}
+              {specsItems.length > 0 && (
+                <div style={{ marginBottom: 10, background: '#f8faff', borderRadius: 8, padding: '8px 11px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: 8, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 7, paddingBottom: 4, borderBottom: '1.5px solid #dde3f0' }}>
+                    Especificaciones técnicas
                   </div>
-                )}
-                {!tenant.whatsapp && !tenant.instagram && !tenant.facebook && !tenant.tiktok && !tenant.telefono1 && !tenant.email && !tenant.direccion && (
-                  <div style={{ marginTop: 5, fontSize: 7, color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>Completa tus datos en Config. Ventas para que aparezcan aquí.</div>
-                )}
-              </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 10px' }}>
+                    {specsItems.map(({ icon, text }) => (
+                      <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{icon}</span>
+                        <span style={{ fontSize: 7.5, color: '#334155', fontWeight: 500 }}>{text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* NOTAS */}
-              <div style={{ background: '#fffbeb', borderRadius: 8, padding: '8px 11px', border: '1.5px solid #fde68a' }}>
-                <div style={{ fontSize: 7.5, fontWeight: 800, color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>📝 Notas adicionales</div>
+              <div style={{ background: '#eff6ff', borderRadius: 8, padding: '8px 11px', border: '1px dashed #93c5fd' }}>
+                <div style={{ fontSize: 7.5, fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>📝 Notas adicionales</div>
                 {cotizacion.notas
-                  ? <div style={{ fontSize: 8, color: '#78350f', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{cotizacion.notas}</div>
-                  : <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>{['', '', ''].map((_, i) => <div key={i} style={{ borderBottom: '1px solid #fcd34d', height: 13 }} />)}</div>
+                  ? <div style={{ fontSize: 8, color: '#1e3a8a', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{cotizacion.notas}</div>
+                  : <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>{['', '', ''].map((_, i) => <div key={i} style={{ borderBottom: '1px solid #93c5fd', height: 13 }} />)}</div>
                 }
               </div>
             </div>
@@ -424,80 +424,152 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 ))}
               </div>
 
-              {/* CTA */}
-              <div style={{ background: 'linear-gradient(135deg, #001a5e, #0052B4)', borderRadius: 10, padding: '11px 12px', textAlign: 'center' }}>
-                <div style={{ fontWeight: 900, fontSize: 12, color: '#fff', marginBottom: 2 }}>¡APARTA HOY!</div>
-                <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.7)', marginBottom: 9, lineHeight: 1.4 }}>
-                  No pierdas esta oportunidad.<br/>Estamos listos para atenderte.
-                </div>
-                {tenant.whatsapp && (
-                  <div style={{ background: '#25d366', borderRadius: 7, padding: '6px 10px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-                    <span style={{ fontSize: 15 }}>📱</span>
-                    <div style={{ textAlign: 'left' }}>
-                      <div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: 1 }}>WhatsApp</div>
-                      <div style={{ fontWeight: 800, fontSize: 10.5, color: '#fff' }}>{tenant.whatsapp}</div>
+              {/* CTA + CONTACTO INTEGRADO */}
+              {(() => {
+                const waD = tenant.whatsapp?.startsWith('57') ? tenant.whatsapp.slice(2) : tenant.whatsapp ?? ''
+                const igL = tenant.instagram ? `https://instagram.com/${tenant.instagram.replace('@','')}` : '#'
+                const fbL = tenant.facebook  ? `https://facebook.com/${tenant.facebook.replace(/^[/@]/,'')}` : '#'
+                const tkL = tenant.tiktok    ? `https://tiktok.com/@${tenant.tiktok.replace('@','')}` : '#'
+                return (
+                <div style={{ background: '#0052B4', borderRadius: 10, padding: '13px 12px' }}>
+
+                  {/* Título */}
+                  <div style={{ textAlign: 'center', marginBottom: 10 }}>
+                    <div style={{ fontWeight: 900, fontSize: 13, color: '#fff', letterSpacing: -0.3 }}>¡APARTA HOY!</div>
+                    <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.65)', marginTop: 3, lineHeight: 1.4 }}>
+                      No pierdas esta oportunidad.
                     </div>
                   </div>
-                )}
-                {[{ icon: '☎️', val: tenant.telefono1 }, { icon: '✉️', val: tenant.email }].filter(c => c.val).map(c => (
-                  <div key={c.val} style={{ display: 'flex', gap: 5, marginBottom: 3, alignItems: 'center' }}>
-                    <span style={{ fontSize: 10 }}>{c.icon}</span>
-                    <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.85)', fontWeight: 600 }}>{c.val}</span>
-                  </div>
-                ))}
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.15)', marginTop: 8, paddingTop: 8, fontFamily: 'Georgia, serif', fontStyle: 'italic', color: 'rgba(255,255,255,0.85)', fontSize: 10, lineHeight: 1.4 }}>
-                  ¡Más que motos,<br/><strong>creamos experiencias!</strong>
-                </div>
-              </div>
 
-              {/* BADGES */}
-              <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, textAlign: 'center' }}>
-                  {[
-                    { icon: '🛡️', t: 'GARANTÍA', s: '12 MESES*' },
-                    { icon: '⭐', t: 'CALIDAD',   s: 'CERTIFICADA' },
-                    { icon: '👍', t: 'CLIENTES',  s: 'SATISFECHOS' },
-                  ].map(b => (
-                    <div key={b.t}>
-                      <div style={{ fontSize: 17, marginBottom: 2 }}>{b.icon}</div>
-                      <div style={{ fontSize: 6.5, fontWeight: 800, color: '#0052B4', lineHeight: 1.2 }}>{b.t}</div>
-                      <div style={{ fontSize: 6, color: '#64748b', fontWeight: 600 }}>{b.s}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* TESTIMONIAL */}
-              <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 8, padding: '8px 10px' }}>
-                <div style={{ fontSize: 17, color: '#0052B4', fontFamily: 'Georgia, serif', lineHeight: 1, marginBottom: 4 }}>&ldquo;</div>
-                <div style={{ fontSize: 7.5, color: '#334155', fontStyle: 'italic', lineHeight: 1.5 }}>
-                  Excelente atención. Me asesoraron perfectamente y la entrega fue rápida y sin complicaciones.
-                </div>
-                <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <div style={{ width: 19, height: 19, borderRadius: '50%', background: '#0052B4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 8, fontWeight: 800, flexShrink: 0 }}>C</div>
-                  <div>
-                    <div style={{ fontSize: 7, fontWeight: 700, color: '#1e293b' }}>Cliente satisfecho</div>
-                    <div style={{ fontSize: 8.5, color: '#f59e0b', lineHeight: 1 }}>⭐⭐⭐⭐⭐</div>
+                  {/* Título contacto */}
+                  <div style={{ fontSize: 7.5, fontWeight: 800, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 7 }}>
+                    Contacto {tenant.nombre || ''}
                   </div>
-                </div>
-              </div>
 
-              {/* ESPECIFICACIONES TÉCNICAS */}
-              {specsCheck.length > 0 && (
-                <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 8, padding: '8px 10px' }}>
-                  <div style={{ fontSize: 8, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, paddingBottom: 4, borderBottom: '1.5px solid #dde3f0' }}>
-                    Especificaciones técnicas
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2px 0' }}>
-                    {specsCheck.map(s => (
-                      <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 0' }}>
-                        <Check />
-                        <span style={{ fontSize: 7.5, color: '#334155' }}>{s}</span>
+                  {/* WhatsApp — protagonista */}
+                  {tenant.whatsapp ? (
+                    <a href={whatsappLink} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#128C7E', borderRadius: 8, padding: '8px 10px', marginBottom: 7, textDecoration: 'none' }}>
+                      <IcoWA s={20} />
+                      <div>
+                        <div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1 }}>WhatsApp</div>
+                        <div style={{ fontWeight: 900, fontSize: 13, color: '#fff', letterSpacing: -0.3 }}>{waD}</div>
                       </div>
-                    ))}
+                    </a>
+                  ) : null}
+
+                  {/* Redes sociales — mismo tamaño, borde prominente */}
+                  {(tenant.instagram || tenant.facebook || tenant.tiktok) && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
+                      {([
+                        tenant.instagram && { href: igL, ico: <IcoIG s={18}/>, label: 'Instagram', handle: tenant.instagram, bg: 'rgba(225,48,108,0.2)', border: 'rgba(225,48,108,0.6)', color: '#fda4af' },
+                        tenant.facebook  && { href: fbL, ico: <IcoFB s={18}/>, label: 'Facebook',  handle: tenant.facebook,  bg: 'rgba(24,119,242,0.2)',  border: 'rgba(100,170,255,0.6)', color: '#93c5fd' },
+                        tenant.tiktok    && { href: tkL, ico: <IcoTK s={18}/>, label: 'TikTok',    handle: tenant.tiktok,    bg: 'rgba(255,255,255,0.12)', border: 'rgba(220,180,255,0.5)', color: '#f0abfc' },
+                      ].filter(Boolean) as { href:string; ico:React.ReactNode; label:string; handle:string; bg:string; border:string; color:string }[]).map(n => (
+                        <a key={n.label} href={n.href}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, background: n.bg, border: `1.5px solid ${n.border}`, borderRadius: 7, padding: '7px 10px', textDecoration: 'none', minHeight: 38 }}>
+                          {n.ico}
+                          <div>
+                            <div style={{ fontSize: 6, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1 }}>{n.label}</div>
+                            <div style={{ fontSize: 10, color: n.color, fontWeight: 800 }}>{n.handle}</div>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Datos de contacto */}
+                  {(tenant.telefono1 || tenant.email || tenant.web || tenant.direccion) && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
+                      {tenant.telefono1 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.64A2 2 0 012 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                          <span style={{ fontSize: 9.5, color: '#fff', fontWeight: 700 }}>{fmtPhone(tenant.telefono1)}{tenant.telefono2 ? `  ·  ${fmtPhone(tenant.telefono2)}` : ''}</span>
+                        </div>
+                      )}
+                      {tenant.email && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                          <span style={{ fontSize: 9.5, color: '#fff', fontWeight: 700 }}>{tenant.email}</span>
+                        </div>
+                      )}
+                      {tenant.web && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+                          <span style={{ fontSize: 9.5, color: '#fff', fontWeight: 700 }}>{tenant.web}</span>
+                        </div>
+                      )}
+                      {tenant.direccion && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                          <span style={{ fontSize: 9.5, color: '#fff', fontWeight: 700 }}>{tenant.direccion}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!tenant.whatsapp && !tenant.instagram && !tenant.facebook && !tenant.tiktok && !tenant.telefono1 && !tenant.email && !tenant.direccion && (
+                    <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', marginBottom: 8 }}>
+                      Completa tus datos en Config. Ventas.
+                    </div>
+                  )}
+
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 9, textAlign: 'center', fontFamily: 'Georgia, serif', fontStyle: 'italic', color: 'rgba(255,255,255,0.9)', fontSize: 10, lineHeight: 1.5 }}>
+                    ¡Más que motos,<br/><strong>creamos experiencias!</strong>
                   </div>
                 </div>
-              )}
+                )
+              })()}
+
+              {/* BADGES — editables por vehículo */}
+              {(() => {
+                const DEFAULT_BADGES = [
+                  { icon: '🛡️', t: 'GARANTÍA', s: '12 MESES*' },
+                  { icon: '⭐', t: 'CALIDAD',   s: 'CERTIFICADA' },
+                  { icon: '👍', t: 'CLIENTES',  s: 'SATISFECHOS' },
+                ]
+                const badges = op?.cotizacion_badges?.trim()
+                  ? op.cotizacion_badges.split('\n').slice(0, 3).map(line => {
+                      const [icon = '⭐', t = '', s = ''] = line.split('|')
+                      return { icon: icon.trim(), t: t.trim(), s: s.trim() }
+                    })
+                  : DEFAULT_BADGES
+                return (
+                  <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 8, padding: '8px 10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, textAlign: 'center' }}>
+                      {badges.map(b => (
+                        <div key={b.t}>
+                          <div style={{ fontSize: 17, marginBottom: 2 }}>{b.icon}</div>
+                          <div style={{ fontSize: 6.5, fontWeight: 800, color: '#0052B4', lineHeight: 1.2 }}>{b.t}</div>
+                          <div style={{ fontSize: 6, color: '#64748b', fontWeight: 600 }}>{b.s}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* TESTIMONIAL — editable por vehículo */}
+              {(() => {
+                const raw = op?.cotizacion_testimonial?.trim() || ''
+                const sepIdx = raw.lastIndexOf('|')
+                const texto  = sepIdx > 0 ? raw.slice(0, sepIdx).trim()  : (raw || 'Excelente atención. Me asesoraron perfectamente y la entrega fue rápida y sin complicaciones.')
+                const autor  = sepIdx > 0 ? raw.slice(sepIdx + 1).trim() : 'Cliente satisfecho'
+                const inicial = (autor?.[0] ?? 'C').toUpperCase()
+                return (
+                  <div style={{ background: '#fff', border: '1.5px solid #dde3f0', borderRadius: 8, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 17, color: '#0052B4', fontFamily: 'Georgia, serif', lineHeight: 1, marginBottom: 4 }}>&ldquo;</div>
+                    <div style={{ fontSize: 7.5, color: '#334155', fontStyle: 'italic', lineHeight: 1.5 }}>{texto}</div>
+                    <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <div style={{ width: 19, height: 19, borderRadius: '50%', background: '#0052B4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 8, fontWeight: 800, flexShrink: 0 }}>{inicial}</div>
+                      <div>
+                        <div style={{ fontSize: 7, fontWeight: 700, color: '#1e293b' }}>{autor}</div>
+                        <div style={{ fontSize: 8.5, color: '#f59e0b', lineHeight: 1 }}>⭐⭐⭐⭐⭐</div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
             </div>
           </div>
 

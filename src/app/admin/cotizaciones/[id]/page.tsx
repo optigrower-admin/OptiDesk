@@ -121,6 +121,8 @@ export type OpcionCotizacion = {
   colores?: string
   caracteristica?: string
   cotizacion_beneficios?: string
+  cotizacion_badges?: string
+  cotizacion_testimonial?: string
   foto_frente_key?: string
   foto_lado_key?: string
   foto_promo_key?: string

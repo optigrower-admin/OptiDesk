@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCOP } from '@/lib/ventas/pipeline'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Props {
   clienteId: string
@@ -27,6 +28,8 @@ type MotoCat = {
   colores: string
   caracteristica: string
   cotizacion_beneficios: string
+  cotizacion_badges: string
+  cotizacion_testimonial: string
   fotos: { tipo: string; r2_key: string }[]
 }
 
@@ -42,6 +45,8 @@ function pad(n: number) { return String(n).padStart(4, '0') }
 
 export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clienteCelular }: Props) {
   const supabase = createClient()
+  const { profile } = useAuth()
+  const puedeEliminar = ['gerencia', 'admin', 'control_total'].includes(profile?.rol ?? '')
 
   const [catalogo, setCatalogo]             = useState<MotoCat[]>([])
   const [historial, setHistorial]           = useState<Cotizacion[]>([])
@@ -71,7 +76,7 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const specsMap: Record<string, Record<string, any>> = {}
     const { data: specs } = await supabase.from('motos_catalogo')
-      .select('id, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, cotizacion_beneficios')
+      .select('id, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, cotizacion_beneficios, cotizacion_badges, cotizacion_testimonial')
       .eq('tenant_id', tenantId).eq('activa', true)
     for (const s of specs ?? []) specsMap[s.id] = s
 
@@ -96,7 +101,9 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
         potencia: s.potencia ?? '', frenos: s.frenos ?? '', combustible: s.combustible ?? '',
         rendimiento: s.rendimiento ?? '', velocidad_max: s.velocidad_max ?? '',
         garantia: s.garantia ?? '', colores: s.colores ?? '', caracteristica: s.caracteristica ?? '',
-        cotizacion_beneficios: s.cotizacion_beneficios ?? '',
+        cotizacion_beneficios:  s.cotizacion_beneficios  ?? '',
+        cotizacion_badges:      s.cotizacion_badges      ?? '',
+        cotizacion_testimonial: s.cotizacion_testimonial ?? '',
         fotos: fotosMap[m.id] ?? [],
       } as MotoCat
     }))
@@ -127,6 +134,17 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
     setSelected(prev => prev.includes(id) ? [] : [id])
   }
 
+  async function eliminarCotizacion(id: string, numero: number) {
+    if (!confirm(`¿Eliminar cotización MS-${String(numero).padStart(4, '0')}? Esta acción no se puede deshacer.`)) return
+    const res = await fetch(`/api/cotizaciones/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { error?: string }
+      alert('No se pudo eliminar: ' + (err.error ?? 'Error desconocido'))
+      return
+    }
+    setHistorial(prev => prev.filter(c => c.id !== id))
+  }
+
   async function generar() {
     if (selected.length === 0) return
     setGenerating(true)
@@ -146,7 +164,9 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
           garantia:         m.garantia,
           colores:          m.colores,
           caracteristica:   m.caracteristica,
-          cotizacion_beneficios: m.cotizacion_beneficios || null,
+          cotizacion_beneficios:  m.cotizacion_beneficios  || null,
+          cotizacion_badges:      m.cotizacion_badges      || null,
+          cotizacion_testimonial: m.cotizacion_testimonial || null,
           foto_frente_key:  m.fotos.find(f => f.tipo === 'frente')?.r2_key ?? null,
           foto_lado_key:    m.fotos.find(f => f.tipo === 'lado')?.r2_key ?? null,
           foto_promo_key:   m.fotos.find(f => f.tipo === 'promocional')?.r2_key ?? null,
@@ -369,27 +389,38 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
       ) : (
         <div className="space-y-2">
           {historial.map(c => (
-            <a key={c.id} href={`/admin/cotizaciones/${c.id}`} target="_blank" rel="noopener noreferrer"
-              className="flex items-center justify-between border border-gray-200 rounded-xl p-3 hover:border-blue-300 hover:bg-blue-50 transition-all group">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm text-gray-900">Cot. #{pad(c.numero)}</span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                    c.estado === 'aceptada'  ? 'bg-green-100 text-green-700' :
-                    c.estado === 'rechazada' ? 'bg-red-100 text-red-600' :
-                    c.estado === 'enviada'   ? 'bg-blue-100 text-blue-700' :
-                    'bg-gray-100 text-gray-600'
-                  }`}>{c.estado}</span>
+            <div key={c.id} className="flex items-center gap-2 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all group">
+              <a href={`/admin/cotizaciones/${c.id}`} target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-between flex-1 p-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-gray-900">Cot. #{pad(c.numero)}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                      c.estado === 'aceptada'  ? 'bg-green-100 text-green-700' :
+                      c.estado === 'rechazada' ? 'bg-red-100 text-red-600' :
+                      c.estado === 'enviada'   ? 'bg-blue-100 text-blue-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>{c.estado}</span>
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {new Date(c.fecha_generacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {' · '}vigencia {c.vigencia_dias} días
+                  </div>
                 </div>
-                <div className="text-xs text-gray-400 mt-0.5">
-                  {new Date(c.fecha_generacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  {' · '}vigencia {c.vigencia_dias} días
-                </div>
-              </div>
-              <svg className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-              </svg>
-            </a>
+                <svg className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                </svg>
+              </a>
+              {puedeEliminar && (
+                <button onClick={() => eliminarCotizacion(c.id, c.numero)}
+                  className="p-2 mr-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                  title="Eliminar cotización">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}
