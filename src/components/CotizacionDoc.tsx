@@ -176,8 +176,8 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
           .no-print { display: none !important; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .cot-doc {
-            zoom: 0.9;
-            width: 240mm;
+            zoom: 0.86;
+            width: 251mm; /* 216/0.86 → visual = 216mm = ancho carta */
             box-shadow: none !important;
           }
         }
@@ -207,7 +207,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
       {/* ── DOCUMENTO ── */}
       <div className="no-print:mt-16 min-h-screen flex justify-center py-8 px-4 print:p-0 print:mt-0" style={{ background: '#e5e7eb' }}>
-        <div className="cot-doc" style={{ background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 12 }}>
+        <div className="cot-doc" style={{ background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 14 }}>
 
           {/* ══ HEADER: azul muy suave / transparentoso, sin tinta pesada ══ */}
           <div style={{ background: 'linear-gradient(135deg, #e0eeff 0%, #dbeafe 45%, #eff6ff 100%)', display: 'grid', gridTemplateColumns: '1fr 185px', alignItems: 'stretch', borderBottom: '2px solid #93c5fd' }}>
@@ -458,20 +458,20 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                     </a>
                   ) : null}
 
-                  {/* Redes sociales — texto oscuro sobre fondo claro */}
+                  {/* Redes sociales — colores de marca, texto blanco = máximo contraste */}
                   {(tenant.instagram || tenant.facebook || tenant.tiktok) && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
                       {([
-                        tenant.instagram && { href: igL, ico: <IcoIG s={18}/>,              label: 'Instagram', handle: tenant.instagram, bg: 'rgba(225,48,108,0.08)',  border: 'rgba(225,48,108,0.4)', color: '#9d174d' },
-                        tenant.facebook  && { href: fbL, ico: <IcoFB s={18}/>,              label: 'Facebook',  handle: tenant.facebook,  bg: 'rgba(24,119,242,0.08)', border: 'rgba(24,119,242,0.35)', color: '#1e40af' },
-                        tenant.tiktok    && { href: tkL, ico: <IcoTK s={18} color="#1a1a2e"/>, label: 'TikTok',  handle: tenant.tiktok,    bg: 'rgba(0,0,0,0.05)',     border: 'rgba(0,0,0,0.2)',      color: '#1a1a2e' },
-                      ].filter(Boolean) as { href:string; ico:React.ReactNode; label:string; handle:string; bg:string; border:string; color:string }[]).map(n => (
+                        tenant.instagram && { href: igL, ico: <IcoIG s={20}/>,               label: 'Instagram', handle: tenant.instagram, bg: 'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)' },
+                        tenant.facebook  && { href: fbL, ico: <IcoFB s={20}/>,               label: 'Facebook',  handle: tenant.facebook,  bg: '#1877f2' },
+                        tenant.tiktok    && { href: tkL, ico: <IcoTK s={20} color="#fff"/>,  label: 'TikTok',    handle: tenant.tiktok,    bg: '#010101' },
+                      ].filter(Boolean) as { href:string; ico:React.ReactNode; label:string; handle:string; bg:string }[]).map(n => (
                         <a key={n.label} href={n.href}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8, background: n.bg, border: `1.5px solid ${n.border}`, borderRadius: 7, padding: '7px 10px', textDecoration: 'none', minHeight: 38 }}>
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, background: n.bg, borderRadius: 8, padding: '8px 12px', textDecoration: 'none', minHeight: 42 }}>
                           {n.ico}
                           <div>
-                            <div style={{ fontSize: 7, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>{n.label}</div>
-                            <div style={{ fontSize: 10.5, color: n.color, fontWeight: 800 }}>{n.handle}</div>
+                            <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>{n.label}</div>
+                            <div style={{ fontSize: 11.5, color: '#fff', fontWeight: 800 }}>{n.handle}</div>
                           </div>
                         </a>
                       ))}
