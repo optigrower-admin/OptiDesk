@@ -53,8 +53,8 @@ function IcoIG({ s = 13 }: { s?: number }) {
 function IcoFB({ s = 13 }: { s?: number }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="#1877F2" style={{ flexShrink: 0 }}><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
 }
-function IcoTK({ s = 13 }: { s?: number }) {
-  return <svg width={s} height={s} viewBox="0 0 24 24" fill="white" style={{ flexShrink: 0 }}><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.67a8.16 8.16 0 004.77 1.51V6.68a4.85 4.85 0 01-1-.01z"/></svg>
+function IcoTK({ s = 13, color = 'white' }: { s?: number; color?: string }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill={color} style={{ flexShrink: 0 }}><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.67a8.16 8.16 0 004.77 1.51V6.68a4.85 4.85 0 01-1-.01z"/></svg>
 }
 
 const DEFAULT_INCLUYE = [
@@ -458,20 +458,20 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                     </a>
                   ) : null}
 
-                  {/* Redes sociales — mismo tamaño, borde prominente */}
+                  {/* Redes sociales — texto oscuro sobre fondo claro */}
                   {(tenant.instagram || tenant.facebook || tenant.tiktok) && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
                       {([
-                        tenant.instagram && { href: igL, ico: <IcoIG s={18}/>, label: 'Instagram', handle: tenant.instagram, bg: 'rgba(225,48,108,0.2)', border: 'rgba(225,48,108,0.6)', color: '#fda4af' },
-                        tenant.facebook  && { href: fbL, ico: <IcoFB s={18}/>, label: 'Facebook',  handle: tenant.facebook,  bg: 'rgba(24,119,242,0.2)',  border: 'rgba(100,170,255,0.6)', color: '#93c5fd' },
-                        tenant.tiktok    && { href: tkL, ico: <IcoTK s={18}/>, label: 'TikTok',    handle: tenant.tiktok,    bg: 'rgba(255,255,255,0.12)', border: 'rgba(220,180,255,0.5)', color: '#f0abfc' },
+                        tenant.instagram && { href: igL, ico: <IcoIG s={18}/>,              label: 'Instagram', handle: tenant.instagram, bg: 'rgba(225,48,108,0.08)',  border: 'rgba(225,48,108,0.4)', color: '#9d174d' },
+                        tenant.facebook  && { href: fbL, ico: <IcoFB s={18}/>,              label: 'Facebook',  handle: tenant.facebook,  bg: 'rgba(24,119,242,0.08)', border: 'rgba(24,119,242,0.35)', color: '#1e40af' },
+                        tenant.tiktok    && { href: tkL, ico: <IcoTK s={18} color="#1a1a2e"/>, label: 'TikTok',  handle: tenant.tiktok,    bg: 'rgba(0,0,0,0.05)',     border: 'rgba(0,0,0,0.2)',      color: '#1a1a2e' },
                       ].filter(Boolean) as { href:string; ico:React.ReactNode; label:string; handle:string; bg:string; border:string; color:string }[]).map(n => (
                         <a key={n.label} href={n.href}
                           style={{ display: 'flex', alignItems: 'center', gap: 8, background: n.bg, border: `1.5px solid ${n.border}`, borderRadius: 7, padding: '7px 10px', textDecoration: 'none', minHeight: 38 }}>
                           {n.ico}
                           <div>
-                            <div style={{ fontSize: 6, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1 }}>{n.label}</div>
-                            <div style={{ fontSize: 10, color: n.color, fontWeight: 800 }}>{n.handle}</div>
+                            <div style={{ fontSize: 7, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>{n.label}</div>
+                            <div style={{ fontSize: 10.5, color: n.color, fontWeight: 800 }}>{n.handle}</div>
                           </div>
                         </a>
                       ))}
