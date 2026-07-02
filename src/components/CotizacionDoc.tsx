@@ -38,7 +38,7 @@ interface Props { cotizacion: Cotizacion; tenant: TenantInfo }
 
 function Check({ color = '#0052B4' }: { color?: string }) {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
       <circle cx="12" cy="12" r="12" fill={color}/>
       <path d="M7 12.5l3.5 3.5 6.5-7" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
@@ -176,8 +176,8 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
           .no-print { display: none !important; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .cot-doc {
-            zoom: 0.86;
-            width: 251mm; /* 216/0.86 → visual = 216mm = ancho carta */
+            zoom: 0.80;
+            width: 270mm; /* 216/0.80 → visual = 216mm = ancho carta */
             box-shadow: none !important;
           }
         }
@@ -207,7 +207,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
       {/* ── DOCUMENTO ── */}
       <div className="no-print:mt-16 min-h-screen flex justify-center py-8 px-4 print:p-0 print:mt-0" style={{ background: '#e5e7eb' }}>
-        <div className="cot-doc" style={{ background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 14 }}>
+        <div className="cot-doc" style={{ background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 16 }}>
 
           {/* ══ HEADER: azul muy suave / transparentoso, sin tinta pesada ══ */}
           <div style={{ background: 'linear-gradient(135deg, #e0eeff 0%, #dbeafe 45%, #eff6ff 100%)', display: 'grid', gridTemplateColumns: '1fr 185px', alignItems: 'stretch', borderBottom: '2px solid #93c5fd' }}>
@@ -336,9 +336,9 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                   {incluyeItems.map(item => {
                     const { icon, text } = parseIcono(item, '📌')
                     return (
-                      <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{icon}</span>
-                        <span style={{ fontSize: 7.5, color: '#1e40af', fontWeight: 600 }}>{text}</span>
+                      <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{icon}</span>
+                        <span style={{ fontSize: 9, color: '#1e40af', fontWeight: 600 }}>{text}</span>
                       </div>
                     )
                   })}
@@ -353,9 +353,9 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 10px' }}>
                     {specsItems.map(({ icon, text }) => (
-                      <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{icon}</span>
-                        <span style={{ fontSize: 7.5, color: '#334155', fontWeight: 500 }}>{text}</span>
+                      <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{icon}</span>
+                        <span style={{ fontSize: 9, color: '#334155', fontWeight: 500 }}>{text}</span>
                       </div>
                     ))}
                   </div>
@@ -449,11 +449,11 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
                   {/* WhatsApp — protagonista */}
                   {tenant.whatsapp ? (
-                    <a href={whatsappLink} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#128C7E', borderRadius: 8, padding: '8px 10px', marginBottom: 7, textDecoration: 'none' }}>
-                      <IcoWA s={20} />
+                    <a href={whatsappLink} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#128C7E', borderRadius: 9, padding: '10px 12px', marginBottom: 8, textDecoration: 'none' }}>
+                      <IcoWA s={28} />
                       <div>
-                        <div style={{ fontSize: 6.5, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1 }}>WhatsApp</div>
-                        <div style={{ fontWeight: 900, fontSize: 13, color: '#fff', letterSpacing: -0.3 }}>{waD}</div>
+                        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: 1 }}>WhatsApp</div>
+                        <div style={{ fontWeight: 900, fontSize: 16, color: '#fff', letterSpacing: -0.3 }}>{fmtPhone(waD)}</div>
                       </div>
                     </a>
                   ) : null}
@@ -462,16 +462,16 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                   {(tenant.instagram || tenant.facebook || tenant.tiktok) && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
                       {([
-                        tenant.instagram && { href: igL, ico: <IcoIG s={20}/>,               label: 'Instagram', handle: tenant.instagram, bg: 'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)' },
-                        tenant.facebook  && { href: fbL, ico: <IcoFB s={20}/>,               label: 'Facebook',  handle: tenant.facebook,  bg: '#1877f2' },
-                        tenant.tiktok    && { href: tkL, ico: <IcoTK s={20} color="#fff"/>,  label: 'TikTok',    handle: tenant.tiktok,    bg: '#010101' },
+                        tenant.instagram && { href: igL, ico: <IcoIG s={24}/>,               label: 'Instagram', handle: tenant.instagram, bg: 'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)' },
+                        tenant.facebook  && { href: fbL, ico: <IcoFB s={24}/>,               label: 'Facebook',  handle: tenant.facebook,  bg: '#1877f2' },
+                        tenant.tiktok    && { href: tkL, ico: <IcoTK s={24} color="#fff"/>,  label: 'TikTok',    handle: tenant.tiktok,    bg: '#010101' },
                       ].filter(Boolean) as { href:string; ico:React.ReactNode; label:string; handle:string; bg:string }[]).map(n => (
                         <a key={n.label} href={n.href}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, background: n.bg, borderRadius: 8, padding: '8px 12px', textDecoration: 'none', minHeight: 42 }}>
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, background: n.bg, borderRadius: 9, padding: '9px 12px', textDecoration: 'none', minHeight: 46 }}>
                           {n.ico}
                           <div>
-                            <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.75)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>{n.label}</div>
-                            <div style={{ fontSize: 11.5, color: '#fff', fontWeight: 800 }}>{n.handle}</div>
+                            <div style={{ fontSize: 8.5, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>{n.label}</div>
+                            <div style={{ fontSize: 13, color: '#fff', fontWeight: 800 }}>{n.handle}</div>
                           </div>
                         </a>
                       ))}
@@ -539,7 +539,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, textAlign: 'center' }}>
                       {badges.map(b => (
                         <div key={b.t}>
-                          <div style={{ fontSize: 17, marginBottom: 2 }}>{b.icon}</div>
+                          <div style={{ fontSize: 22, marginBottom: 3 }}>{b.icon}</div>
                           <div style={{ fontSize: 6.5, fontWeight: 800, color: '#0052B4', lineHeight: 1.2 }}>{b.t}</div>
                           <div style={{ fontSize: 6, color: '#64748b', fontWeight: 600 }}>{b.s}</div>
                         </div>
