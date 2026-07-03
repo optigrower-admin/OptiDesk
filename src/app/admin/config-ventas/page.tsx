@@ -26,6 +26,7 @@ interface MotoCat {
   colores: string
   caracteristica: string
   cotizacion_beneficios: string
+  cotizacion_incluye: string
   cotizacion_badges: string
   cotizacion_testimonial: string
   fotos: { tipo: string; r2_key: string }[]
@@ -191,6 +192,7 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
       velocidad_max: local.velocidad_max, garantia: local.garantia, colores: local.colores,
       caracteristica: local.caracteristica,
       cotizacion_beneficios:  local.cotizacion_beneficios,
+      cotizacion_incluye:     local.cotizacion_incluye,
       cotizacion_badges:      local.cotizacion_badges,
       cotizacion_testimonial: local.cotizacion_testimonial,
     })
@@ -299,6 +301,21 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Para cotización</p>
 
+            {/* Esta cotización incluye — por vehículo */}
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">
+                Esta cotización incluye <span className="font-normal text-gray-400">(uno por línea, emoji al inicio para personalizar ícono)</span>
+              </label>
+              <textarea
+                value={local.cotizacion_incluye ?? ''}
+                onChange={e => setLocal(p => ({ ...p, cotizacion_incluye: e.target.value }))}
+                rows={5}
+                placeholder={'🛡️ SOAT obligatorio\n📋 Matrícula + impuestos\n📖 Manual del propietario\n🏭 Garantía de fábrica\n🔧 3 revisiones mano de obra gratis'}
+                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono resize-none"
+              />
+              <p className="text-[10px] text-gray-400 mt-0.5">Vacío = usa los predeterminados del sistema.</p>
+            </div>
+
             {/* Beneficios */}
             <div>
               <label className="text-xs text-gray-500 block mb-1">
@@ -366,6 +383,7 @@ const NUEVA_MOTO_VACIA: Omit<MotoCat, 'id' | 'activa' | 'fotos'> = {
   tagline_venta: '', cilindraje: '', potencia: '', frenos: '', combustible: '',
   rendimiento: '', velocidad_max: '', garantia: '', colores: '', caracteristica: '',
   cotizacion_beneficios: '',
+  cotizacion_incluye: '',
   cotizacion_badges: '',
   cotizacion_testimonial: '',
 }
@@ -426,7 +444,7 @@ export default function ConfigVentasPage() {
     // (si la migration_v61 no se corrió aún) no oculte las motos existentes.
     const { data: motBase, error: motErr } = await supabase
       .from('motos_catalogo')
-      .select('id, referencia, precio, costo_documentos, costo_prenda, activa, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, cotizacion_beneficios, cotizacion_badges, cotizacion_testimonial')
+      .select('id, referencia, precio, costo_documentos, costo_prenda, activa, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, cotizacion_beneficios, cotizacion_incluye, cotizacion_badges, cotizacion_testimonial')
       .eq('tenant_id', profile.tenant_id).order('orden')
 
     // Si la query de columnas nuevas falla (columnas no existen aún), intentamos solo las originales
@@ -479,6 +497,7 @@ export default function ConfigVentasPage() {
       colores:              (m as never as Record<string,string>).colores              ?? '',
       caracteristica:       (m as never as Record<string,string>).caracteristica       ?? '',
       cotizacion_beneficios: (m as never as Record<string,string>).cotizacion_beneficios  ?? '',
+      cotizacion_incluye:    (m as never as Record<string,string>).cotizacion_incluye     ?? '',
       cotizacion_badges:     (m as never as Record<string,string>).cotizacion_badges      ?? '',
       cotizacion_testimonial:(m as never as Record<string,string>).cotizacion_testimonial ?? '',
       fotos:                fotosPorMoto[m.id] ?? [],

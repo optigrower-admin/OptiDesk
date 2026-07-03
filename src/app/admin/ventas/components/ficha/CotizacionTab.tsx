@@ -28,6 +28,7 @@ type MotoCat = {
   colores: string
   caracteristica: string
   cotizacion_beneficios: string
+  cotizacion_incluye: string
   cotizacion_badges: string
   cotizacion_testimonial: string
   fotos: { tipo: string; r2_key: string }[]
@@ -77,7 +78,7 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const specsMap: Record<string, Record<string, any>> = {}
     const { data: specs } = await supabase.from('motos_catalogo')
-      .select('id, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, cotizacion_beneficios, cotizacion_badges, cotizacion_testimonial')
+      .select('id, tagline_venta, cilindraje, potencia, frenos, combustible, rendimiento, velocidad_max, garantia, colores, caracteristica, cotizacion_beneficios, cotizacion_incluye, cotizacion_badges, cotizacion_testimonial')
       .eq('tenant_id', tenantId).eq('activa', true)
     for (const s of specs ?? []) specsMap[s.id] = s
 
@@ -103,6 +104,7 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
         rendimiento: s.rendimiento ?? '', velocidad_max: s.velocidad_max ?? '',
         garantia: s.garantia ?? '', colores: s.colores ?? '', caracteristica: s.caracteristica ?? '',
         cotizacion_beneficios:  s.cotizacion_beneficios  ?? '',
+        cotizacion_incluye:     s.cotizacion_incluye     ?? '',
         cotizacion_badges:      s.cotizacion_badges      ?? '',
         cotizacion_testimonial: s.cotizacion_testimonial ?? '',
         fotos: fotosMap[m.id] ?? [],
@@ -166,6 +168,7 @@ export default function CotizacionTab({ clienteId, tenantId, clienteNombre, clie
           colores:          m.colores,
           caracteristica:   m.caracteristica,
           cotizacion_beneficios:  m.cotizacion_beneficios  || null,
+          cotizacion_incluye:     m.cotizacion_incluye     || null,
           cotizacion_badges:      m.cotizacion_badges      || null,
           cotizacion_testimonial: m.cotizacion_testimonial || null,
           foto_frente_key:  m.fotos.find(f => f.tipo === 'frente')?.r2_key ?? null,
