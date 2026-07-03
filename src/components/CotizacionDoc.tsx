@@ -176,7 +176,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
         /* Pantalla */
         .cot-doc { width: 216mm; }
-        @media screen { .cot-doc { zoom: 0.75; } }
+        @media screen { .cot-doc { zoom: 0.65; } }
 
         @media print {
           body  { margin: 0 !important; background: white !important; }
@@ -456,7 +456,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
                   {/* WhatsApp — protagonista */}
                   {tenant.whatsapp ? (
-                    <a href={whatsappLink} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#128C7E', borderRadius: 9, padding: '10px 12px', marginBottom: 8, textDecoration: 'none', zoom: 1.147 }}>
+                    <a href={whatsappLink} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#128C7E', borderRadius: 9, padding: '10px 12px', marginBottom: 8, textDecoration: 'none', zoom: 1.323 }}>
                       <IcoWA s={28} color="white" />
                       <div>
                         <div style={{ fontSize: 17.5, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', letterSpacing: 1 }}>WhatsApp</div>
@@ -467,7 +467,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
                   {/* Redes sociales — colores de marca, texto blanco = máximo contraste */}
                   {(tenant.instagram || tenant.facebook || tenant.tiktok) && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, zoom: 1.147 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10, zoom: 1.323 }}>
                       {([
                         tenant.instagram && { href: igL, ico: <IcoIG s={24} color="white"/>, label: 'Instagram', handle: tenant.instagram, bg: 'linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)' },
                         tenant.facebook  && { href: fbL, ico: <IcoFB s={24} color="white"/>, label: 'Facebook',  handle: tenant.facebook,  bg: '#1877f2' },
