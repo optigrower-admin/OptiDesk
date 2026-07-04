@@ -91,6 +91,14 @@ function ConfigServicioContent() {
   const [uploadResultManuales, setUploadResultManuales] = useState<{ ok: boolean; msg: string } | null>(null)
   const [manualesCount, setManualesCount] = useState(0)
 
+  /* ── Config cotizaciones S.T. ── */
+  const [servtecTel1, setServtecTel1]       = useState('')
+  const [servtecTel2, setServtecTel2]       = useState('')
+  const [servtecEmail, setServtecEmail]     = useState('')
+  const [servtecMsg, setServtecMsg]         = useState('')
+  const [savingServtec, setSavingServtec]   = useState(false)
+  const [servtecOk, setServtecOk]           = useState(false)
+
   /* ── Estado lava moto ── */
   const [lavaMotoConfig, setLavaMotoConfig] = useState<LavaMotoConfig>({ costo: 0, precio_venta: 0, activo: false })
   const [editingLavaMoto, setEditingLavaMoto] = useState(false)
@@ -158,6 +166,17 @@ function ConfigServicioContent() {
         setDriveFolderGuardado(data?.drive_folder_id ?? null)
         setDriveFolderInput(data?.drive_folder_id ?? '')
         setDriveParaNuevas(data?.drive_para_nuevas !== false)
+      })
+    // Config cotizaciones S.T. (defensiva — columnas pueden no existir si v68 no corrió)
+    supabase.from('tenants')
+      .select('servtec_telefono1, servtec_telefono2, servtec_email, servtec_mensaje_cotizacion')
+      .eq('id', profile.tenant_id).single()
+      .then(({ data }) => {
+        if (!data) return
+        setServtecTel1(data.servtec_telefono1 ?? '')
+        setServtecTel2(data.servtec_telefono2 ?? '')
+        setServtecEmail(data.servtec_email ?? '')
+        setServtecMsg(data.servtec_mensaje_cotizacion ?? '')
       })
   }, [profile?.tenant_id])
 
@@ -1491,6 +1510,62 @@ function ConfigServicioContent() {
           </div>
         )
       })()}
+
+      {/* ── COTIZACIONES S.T. — Contacto y mensaje ── */}
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📄</span>
+            <h2 className="text-base font-bold text-gray-900">Cotizaciones S.T. — Pie de página y mensaje</h2>
+          </div>
+        </div>
+        <div className="p-5 space-y-3 max-w-lg">
+          <p className="text-xs text-gray-400">Estos datos aparecen en el pie de cada página del PDF de cotización de Servicio Técnico.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Teléfono 1</label>
+              <input value={servtecTel1} onChange={e => setServtecTel1(e.target.value)} placeholder="ej: 3001234567"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Teléfono 2 (opcional)</label>
+              <input value={servtecTel2} onChange={e => setServtecTel2(e.target.value)} placeholder="ej: 6011234567"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Correo electrónico</label>
+            <input value={servtecEmail} onChange={e => setServtecEmail(e.target.value)} placeholder="ej: servicio@taller.com" type="email"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Mensaje de cierre de cotización</label>
+            <textarea value={servtecMsg} onChange={e => setServtecMsg(e.target.value)} rows={3}
+              placeholder="Texto que aparece al final de la cotización..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={async () => {
+                if (!profile?.tenant_id) return
+                setSavingServtec(true); setServtecOk(false)
+                await supabase.from('tenants').update({
+                  servtec_telefono1: servtecTel1 || null,
+                  servtec_telefono2: servtecTel2 || null,
+                  servtec_email: servtecEmail || null,
+                  servtec_mensaje_cotizacion: servtecMsg || null,
+                }).eq('id', profile.tenant_id)
+                setSavingServtec(false); setServtecOk(true)
+                setTimeout(() => setServtecOk(false), 2500)
+              }}
+              disabled={savingServtec}
+              className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors">
+              {savingServtec ? 'Guardando...' : 'Guardar'}
+            </button>
+            {servtecOk && <span className="text-sm text-green-600 font-medium">✓ Guardado</span>}
+          </div>
+        </div>
+      </div>
 
     </div>
   )

@@ -66,7 +66,7 @@ export default function CotizacionesServTecPage() {
         <div className="space-y-2">
           {lista.map(c => (
             <div key={c.id} className="flex items-center gap-3 border border-gray-200 rounded-xl p-3 hover:border-blue-300 hover:bg-blue-50 transition-all group">
-              <Link href={`/admin/cotizaciones-servtec/${c.id}`} target="_blank" className="flex-1 min-w-0">
+              <Link href={`/admin/cotizaciones-servtec/${c.id}/editar`} className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-sm text-gray-900">ST-{pad(c.numero)}</span>
                   <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">{c.estado}</span>

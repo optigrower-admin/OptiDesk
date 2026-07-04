@@ -53,6 +53,12 @@ export default async function CotizacionServTecPage({ params }: { params: { id: 
     .eq('id', tid).single()
   if (te1) tenantExtra = { ...te1 as Record<string, string> }
 
+  // Config S.T. cotizaciones v68 — defensiva
+  const { data: te68 } = await admin.from('tenants')
+    .select('servtec_telefono1, servtec_telefono2, servtec_email, servtec_mensaje_cotizacion')
+    .eq('id', tid).single()
+  if (te68) tenantExtra = { ...tenantExtra, ...te68 as Record<string, string> }
+
   const logoUri = await imgToUri(tenBase?.logo_url)
 
   const cotizacion: CotizacionServTec = {
@@ -72,10 +78,14 @@ export default async function CotizacionServTecPage({ params }: { params: { id: 
     logo_uri:  logoUri,
     tagline:   tenantExtra.cotizacion_tagline    ?? '',
     direccion: tenantExtra.cotizacion_direccion  ?? '',
-    telefono1: tenantExtra.cotizacion_telefono1  ?? '',
-    email:     tenantExtra.cotizacion_email      ?? '',
-    web:       tenantExtra.cotizacion_web        ?? '',
-    whatsapp:  tenantExtra.cotizacion_whatsapp   ?? '',
+    telefono1:          tenantExtra.cotizacion_telefono1        ?? '',
+    email:              tenantExtra.cotizacion_email            ?? '',
+    web:                tenantExtra.cotizacion_web              ?? '',
+    whatsapp:           tenantExtra.cotizacion_whatsapp         ?? '',
+    servtec_telefono1:  tenantExtra.servtec_telefono1           ?? '',
+    servtec_telefono2:  tenantExtra.servtec_telefono2           ?? '',
+    servtec_email:      tenantExtra.servtec_email               ?? '',
+    mensaje_cotizacion: tenantExtra.servtec_mensaje_cotizacion  ?? '',
   }
 
   return <CotizacionServTecDoc cotizacion={cotizacion} tenant={tenant} />

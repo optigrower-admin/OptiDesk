@@ -43,9 +43,14 @@ export type TenantInfoST = {
   tagline: string
   direccion: string
   telefono1: string
+  telefono2?: string
   email: string
   web: string
   whatsapp: string
+  servtec_telefono1?: string
+  servtec_telefono2?: string
+  servtec_email?: string
+  mensaje_cotizacion?: string
 }
 
 interface Props {
@@ -76,15 +81,53 @@ export default function CotizacionServTecDoc({ cotizacion, tenant }: Props) {
   return (
     <>
       <style>{`
-        @page { margin: 0; size: 8.5in 11in portrait; }
+        @page {
+          margin: 0;
+          size: 8.5in 11in portrait;
+        }
         .cot-st { width: 216mm; }
+
         @media print {
           body  { margin: 0 !important; background: white !important; }
           .no-print { display: none !important; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          .cot-st { zoom: 0.82; width: 263mm; box-shadow: none !important; }
-          .page-break { page-break-before: always; }
+
+          /* Documento escalado para encajar en carta */
+          .cot-st {
+            zoom: 0.82;
+            width: 263mm;
+            box-shadow: none !important;
+            padding-bottom: 68px; /* espacio para footer fijo */
+          }
+
+          /* Footer fijo — aparece en TODAS las páginas */
+          .cot-print-footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: white;
+            border-top: 2px solid #93c5fd;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            gap: 12px;
+            zoom: 1; /* cancelar el zoom del padre */
+          }
+
+          /* Numeración automática de páginas */
+          .cot-page-num::after {
+            content: "Página " counter(page) " / " counter(pages);
+          }
+
+          /* Mostrar el footer fijo solo en print */
+          .cot-print-footer {
+            display: flex !important;
+          }
         }
+
         body { margin: 0; background: #e5e7eb; }
         * { box-sizing: border-box; }
       `}</style>
@@ -206,6 +249,13 @@ export default function CotizacionServTecDoc({ cotizacion, tenant }: Props) {
                 <div style={{ fontSize: 11, color: '#1e3a8a', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{cotizacion.notas}</div>
               </div>
             )}
+
+            {/* Mensaje de cierre */}
+            {tenant.mensaje_cotizacion && (
+              <div style={{ marginTop: 16, padding: '10px 14px', background: '#f8faff', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <p style={{ fontSize: 11, color: '#475569', lineHeight: 1.6, fontStyle: 'italic' }}>{tenant.mensaje_cotizacion}</p>
+              </div>
+            )}
           </div>
 
           {/* ══ FOOTER ══ */}
@@ -230,6 +280,31 @@ export default function CotizacionServTecDoc({ cotizacion, tenant }: Props) {
           </div>
 
         </div>
+      </div>
+
+      {/* ── FOOTER FIJO — invisible en pantalla, aparece en cada hoja al imprimir ── */}
+      <div className="cot-print-footer" style={{ display: 'none' }}>
+        {/* Contacto */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, flexWrap: 'wrap' }}>
+          {(tenant.servtec_telefono1 || tenant.telefono1) && (
+            <span style={{ fontSize: 9, color: '#475569', display: 'flex', alignItems: 'center', gap: 3 }}>
+              📞 {tenant.servtec_telefono1 || tenant.telefono1}
+              {tenant.servtec_telefono2 && <span style={{ marginLeft: 6 }}>· {tenant.servtec_telefono2}</span>}
+            </span>
+          )}
+          {(tenant.servtec_email || tenant.email) && (
+            <span style={{ fontSize: 9, color: '#475569', display: 'flex', alignItems: 'center', gap: 3 }}>
+              ✉️ {tenant.servtec_email || tenant.email}
+            </span>
+          )}
+          {tenant.direccion && (
+            <span style={{ fontSize: 9, color: '#475569', display: 'flex', alignItems: 'center', gap: 3 }}>
+              📍 {tenant.direccion}
+            </span>
+          )}
+        </div>
+        {/* Número de página */}
+        <span className="cot-page-num" style={{ fontSize: 9, color: '#94a3b8', flexShrink: 0, fontWeight: 600 }} />
       </div>
     </>
   )
