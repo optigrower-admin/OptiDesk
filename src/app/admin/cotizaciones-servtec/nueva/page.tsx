@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 
 type UmaItem = { id: string; codigo: string; descripcion: string; subgrupo: string | null; precio_publico_iva: number }
-type ClienteSugerido = { id: string; nombre: string | null; celular: string | null }
+type ClienteSugerido = { id: string; nombre: string | null; celular: string | null; placa?: string | null }
 type Item = {
   _key: string
   tipo: 'repuesto_uma' | 'repuesto_externo' | 'mano_obra'
@@ -73,16 +73,46 @@ export default function NuevaCotizacionServTecPage() {
 
   const busqRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  /* ── Búsqueda de clientes existentes ── */
+  /* ── Búsqueda de clientes por nombre O placa ── */
   useEffect(() => {
-    if (clienteBusq.trim().length < 2 || !profile?.tenant_id) { setClientesSug([]); return }
+    const q = clienteBusq.trim()
+    if (q.length < 2 || !profile?.tenant_id) { setClientesSug([]); return }
     const t = setTimeout(async () => {
-      const { data } = await supabase.from('clientes')
+      const tid = profile.tenant_id
+
+      // Buscar por nombre
+      const { data: porNombre } = await supabase.from('clientes')
         .select('id, nombre, celular')
-        .eq('tenant_id', profile.tenant_id)
-        .ilike('nombre', `%${clienteBusq}%`)
+        .eq('tenant_id', tid)
+        .ilike('nombre', `%${q}%`)
         .limit(6)
-      setClientesSug((data ?? []) as ClienteSugerido[])
+
+      // Buscar por placa en tabla motos
+      const { data: motos } = await supabase.from('motos')
+        .select('cliente_id, placa')
+        .eq('tenant_id', tid)
+        .ilike('placa', `%${q}%`)
+        .limit(6)
+
+      // Si hay resultados por placa, cargar esos clientes
+      let porPlaca: ClienteSugerido[] = []
+      if (motos && motos.length > 0) {
+        const ids = [...new Set(motos.map(m => m.cliente_id).filter(Boolean))]
+        if (ids.length > 0) {
+          const { data: clis } = await supabase.from('clientes')
+            .select('id, nombre, celular')
+            .in('id', ids)
+          porPlaca = (clis ?? []).map(c => ({
+            ...c,
+            placa: motos.find(m => m.cliente_id === c.id)?.placa ?? null,
+          })) as ClienteSugerido[]
+        }
+      }
+
+      // Deduplicar por id
+      const map = new Map<string, ClienteSugerido>()
+      for (const c of [...(porNombre ?? []), ...porPlaca]) map.set(c.id, c)
+      setClientesSug(Array.from(map.values()).slice(0, 8))
     }, 300)
     return () => clearTimeout(t)
   }, [clienteBusq, profile?.tenant_id])
@@ -225,23 +255,36 @@ export default function NuevaCotizacionServTecPage() {
         <div className="mb-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
-      {/* ── CLIENTE ── */}
-      <section className="bg-white border border-gray-200 rounded-2xl p-4 mb-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Cliente</p>
+      {/* ── CLIENTE (opcional) ── */}
+      <section className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Cliente</p>
+          <span className="text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-semibold">OPCIONAL</span>
+          <span className="text-xs text-amber-600 ml-1">— busca por nombre o placa</span>
+        </div>
 
         {/* Buscar existente */}
         {!clienteId && (
           <div className="relative mb-3">
             <input value={clienteBusq} onChange={e => setClienteBusq(e.target.value)}
-              placeholder="Buscar cliente existente por nombre..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              placeholder="🔍 Nombre del cliente o placa del vehículo..."
+              className="w-full border border-amber-300 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-amber-400" />
             {clientesSug.length > 0 && (
-              <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+              <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-amber-200 rounded-xl shadow-lg overflow-hidden">
                 {clientesSug.map(c => (
                   <button key={c.id} onClick={() => seleccionarCliente(c)}
-                    className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-0">
-                    <p className="text-sm font-medium text-gray-900">{c.nombre ?? 'Sin nombre'}</p>
-                    {c.celular && <p className="text-xs text-gray-400">{c.celular}</p>}
+                    className="w-full text-left px-3 py-2 hover:bg-amber-50 transition-colors border-b border-gray-100 last:border-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{c.nombre ?? 'Sin nombre'}</p>
+                        {c.celular && <p className="text-xs text-gray-400">{c.celular}</p>}
+                      </div>
+                      {c.placa && (
+                        <span className="text-xs font-mono font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                          {c.placa}
+                        </span>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -250,20 +293,20 @@ export default function NuevaCotizacionServTecPage() {
         )}
 
         {clienteId && (
-          <div className="flex items-center gap-2 mb-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-            <span className="text-xs text-blue-700 font-semibold flex-1">✓ Cliente vinculado: {cliNombre}</span>
-            <button onClick={limpiarCliente} className="text-xs text-blue-500 hover:text-blue-700">Cambiar</button>
+          <div className="flex items-center gap-2 mb-3 bg-amber-100 border border-amber-300 rounded-lg px-3 py-2">
+            <span className="text-xs text-amber-800 font-semibold flex-1">✓ Cliente vinculado: {cliNombre}</span>
+            <button onClick={limpiarCliente} className="text-xs text-amber-600 hover:text-amber-900">Cambiar</button>
           </div>
         )}
 
         <div className="grid grid-cols-1 gap-2">
           <input value={cliNombre} onChange={e => setCliNombre(e.target.value)} placeholder="Nombre completo *"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="w-full border border-amber-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
           <div className="grid grid-cols-2 gap-2">
             <input value={cliCelular} onChange={e => setCliCelular(e.target.value)} placeholder="Celular"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border border-amber-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
             <input value={cliEmail} onChange={e => setCliEmail(e.target.value)} placeholder="Correo (opcional)" type="email"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border border-amber-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
           </div>
         </div>
       </section>
