@@ -12,6 +12,7 @@ import {
   useSortable, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import React from 'react'
 
 type UmaItem = {
   id: string; codigo: string; descripcion: string
@@ -40,10 +41,43 @@ function nextKey() { return String(++keyCounter) }
 
 type TipoAdd = 'repuesto_uma' | 'repuesto_externo' | 'mano_obra'
 
-/* ── Fila arrastrable ── */
-function SortableRow({ item, onDelete }: { item: Item; onDelete: () => void }) {
+/* ── Fila arrastrable con edición de precio ── */
+function SortableRow({ item, onDelete, onPriceChange }: {
+  item: Item
+  onDelete: () => void
+  onPriceChange: (key: string, price: number) => void
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item._key })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+
+  const [editingPrice, setEditingPrice] = React.useState(false)
+  const [priceVal, setPriceVal]         = React.useState(String(item.precio_venta))
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  // Piso: UMA → precio catálogo, externo → costo proveedor, mano obra → 0
+  const minPrice = item.tipo === 'repuesto_uma'
+    ? (item.precio_catalogo ?? 0)
+    : item.tipo === 'repuesto_externo'
+    ? (item.precio_proveedor ?? 0)
+    : 0
+
+  React.useEffect(() => {
+    if (!editingPrice) setPriceVal(String(item.precio_venta))
+  }, [item.precio_venta, editingPrice])
+
+  React.useEffect(() => {
+    if (editingPrice) inputRef.current?.select()
+  }, [editingPrice])
+
+  function commitPrice() {
+    const p = parseFloat(priceVal.replace(/[^0-9.]/g, ''))
+    if (!isNaN(p) && p >= minPrice) {
+      onPriceChange(item._key, p)
+    } else {
+      setPriceVal(String(item.precio_venta)) // revert
+    }
+    setEditingPrice(false)
+  }
 
   return (
     <tr ref={setNodeRef} style={style} className="border-t border-gray-100 hover:bg-gray-50">
@@ -67,7 +101,32 @@ function SortableRow({ item, onDelete }: { item: Item; onDelete: () => void }) {
       <td className="px-2 py-1.5 text-gray-800 max-w-[160px] truncate text-sm">{item.descripcion}</td>
       <td className="px-2 py-1.5 text-center text-gray-700 font-medium text-sm">{item.cantidad}</td>
       <td className="px-2 py-1.5 text-right text-gray-400 text-xs">{item.precio_proveedor ? cop(item.precio_proveedor) : '—'}</td>
-      <td className="px-2 py-1.5 text-right text-gray-700 text-sm">{cop(item.precio_venta)}</td>
+
+      {/* Precio de venta — editable al hacer clic */}
+      <td className="px-2 py-1.5 text-right">
+        {editingPrice ? (
+          <input
+            ref={inputRef}
+            type="number"
+            value={priceVal}
+            min={minPrice}
+            onChange={e => setPriceVal(e.target.value)}
+            onBlur={commitPrice}
+            onKeyDown={e => { if (e.key === 'Enter') commitPrice(); if (e.key === 'Escape') { setPriceVal(String(item.precio_venta)); setEditingPrice(false) } }}
+            className="w-24 border border-blue-400 rounded px-1.5 py-0.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        ) : (
+          <button
+            onClick={() => setEditingPrice(true)}
+            title={`Clic para editar precio (mín: ${cop(minPrice)})`}
+            className="text-gray-700 text-sm hover:text-blue-700 hover:underline decoration-dashed underline-offset-2 transition-colors"
+          >
+            {cop(item.precio_venta)}
+            <span className="text-[9px] text-blue-400 ml-0.5">✏️</span>
+          </button>
+        )}
+      </td>
+
       <td className="px-2 py-1.5 text-right font-bold text-emerald-700 text-sm">{cop(item.precio_venta * item.cantidad)}</td>
       <td className="px-1 py-1.5">
         <button onClick={onDelete} className="text-red-400 hover:text-red-600 p-0.5 rounded hover:bg-red-50">
@@ -230,6 +289,7 @@ export default function NuevaCotizacionServTecPage() {
   }
 
   function eliminarItem(key: string) { setItems(p => p.filter(i => i._key !== key)) }
+  function cambiarPrecio(key: string, price: number) { setItems(p => p.map(i => i._key === key ? { ...i, precio_venta: price } : i)) }
 
   /* ── Drag & drop ── */
   function onDragStart({ active }: DragStartEvent) { setActiveId(active.id as string) }
@@ -596,7 +656,7 @@ export default function NuevaCotizacionServTecPage() {
                 <SortableContext items={items.map(i => i._key)} strategy={verticalListSortingStrategy}>
                   <tbody>
                     {items.map(item => (
-                      <SortableRow key={item._key} item={item} onDelete={() => eliminarItem(item._key)} />
+                      <SortableRow key={item._key} item={item} onDelete={() => eliminarItem(item._key)} onPriceChange={cambiarPrecio} />
                     ))}
                   </tbody>
                 </SortableContext>
