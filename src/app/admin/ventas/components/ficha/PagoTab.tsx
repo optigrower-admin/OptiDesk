@@ -316,9 +316,12 @@ export default function PagoTab({ clienteId, tenantId, usuarioId }: Props) {
               placeholder="Monto *"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
 
-            <input value={formMetodo} onChange={e => setFormMetodo(e.target.value)}
-              placeholder="Método de pago (ej: Efectivo, Transferencia)"
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <select value={formMetodo} onChange={e => setFormMetodo(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+              <option value="">Método de pago (opcional)</option>
+              {metodos.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+              {metodos.length === 0 && <option disabled>Sin métodos — agrégalos en Config Ventas</option>}
+            </select>
 
             <button onClick={agregarPago} disabled={!formMonto || savingPago}
               className="w-full py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
