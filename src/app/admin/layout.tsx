@@ -42,6 +42,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/caja',            label: 'Caja',                seccion: 'caja',             soloGerencia: false, defaultOrden: 35  },
       { href: '/admin/clientes',        label: 'Clientes',           seccion: 'clientes',         soloGerencia: false, defaultOrden: 40  },
       { href: '/admin/motos',           label: 'Motos',              seccion: 'motos',            soloGerencia: false, defaultOrden: 50  },
+      { href: '/admin/cotizaciones-servtec', label: 'Cotizaciones S.T.', seccion: 'cotizaciones_servtec', soloGerencia: false, defaultOrden: 55  },
       { href: '/admin/config-servicio', label: 'Config Serv. Téc.',  seccion: 'config_servicio',  soloGerencia: true,  defaultOrden: 85  },
     ],
   },
