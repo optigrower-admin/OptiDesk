@@ -6,7 +6,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/ventas/pipeline'
 
 /* ─── Tipos ─────────────────────────────────────────── */
-interface Entidad { id: string; nombre: string; activa: boolean }
+interface Entidad       { id: string; nombre: string; activa: boolean }
+interface CategoriaPago { id: string; nombre: string; activa: boolean; orden: number }
 
 interface MotoCat {
   id: string
@@ -395,6 +396,10 @@ export default function ConfigVentasPage() {
 
   const [entidades, setEntidades]         = useState<Entidad[]>([])
   const [nuevaEntidad, setNuevaEntidad]   = useState('')
+  const [categoriasPago, setCategoriasPago]     = useState<CategoriaPago[]>([])
+  const [nuevaCategoriaPago, setNuevaCategoriaPago] = useState('')
+  const [editandoCatId, setEditandoCatId]       = useState<string | null>(null)
+  const [editandoCatNombre, setEditandoCatNombre] = useState('')
   const [motos, setMotos]                 = useState<MotoCat[]>([])
   const [tipos, setTipos]                 = useState<TipoRecordatorio[]>([])
   const [plantillas, setPlantillas]       = useState<Plantilla[]>([])
@@ -520,6 +525,11 @@ export default function ConfigVentasPage() {
       incluye:        ten63?.cotizacion_incluye    ?? '',
       recargoTarjeta: tenBase?.recargo_tarjeta_porcentaje ?? 5,
     })
+    // Categorías de pago (defensiva, pueden no existir si la migración v66 no corrió)
+    const { data: cats } = await supabase.from('categorias_pago')
+      .select('id, nombre, activa, orden').eq('tenant_id', profile.tenant_id).order('orden')
+    setCategoriasPago((cats ?? []) as CategoriaPago[])
+
     setLoading(false)
     cargandoRef.current = false
   }, [profile?.tenant_id])
@@ -535,6 +545,45 @@ export default function ConfigVentasPage() {
     )).then(cargar)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.tenant_id, loading])
+
+  /* ── Categorías de pago ── */
+  const DEFAULT_CATEGORIAS = ['Cuota Inicial', 'Crédito Progreser', 'Crédito Banco Mujer', 'Pago por transferencia', 'Pago en efectivo']
+
+  async function agregarCategoriaPago() {
+    if (!nuevaCategoriaPago.trim() || !profile?.tenant_id) return
+    const orden = categoriasPago.length
+    const { data } = await supabase.from('categorias_pago')
+      .insert({ tenant_id: profile.tenant_id, nombre: nuevaCategoriaPago.trim(), orden })
+      .select().single()
+    if (data) setCategoriasPago(p => [...p, data as CategoriaPago])
+    setNuevaCategoriaPago('')
+  }
+
+  async function guardarEditCategoria(id: string) {
+    if (!editandoCatNombre.trim()) return
+    await supabase.from('categorias_pago').update({ nombre: editandoCatNombre.trim() }).eq('id', id)
+    setCategoriasPago(p => p.map(c => c.id === id ? { ...c, nombre: editandoCatNombre.trim() } : c))
+    setEditandoCatId(null)
+  }
+
+  async function toggleCategoriaPago(id: string, activa: boolean) {
+    await supabase.from('categorias_pago').update({ activa: !activa }).eq('id', id)
+    setCategoriasPago(p => p.map(c => c.id === id ? { ...c, activa: !activa } : c))
+  }
+
+  async function eliminarCategoriaPago(id: string) {
+    if (!confirm('¿Eliminar esta categoría? Los pagos existentes con esta categoría la perderán.')) return
+    await supabase.from('categorias_pago').delete().eq('id', id)
+    setCategoriasPago(p => p.filter(c => c.id !== id))
+  }
+
+  async function sembrarCategoriasPago() {
+    if (!profile?.tenant_id) return
+    await Promise.all(DEFAULT_CATEGORIAS.map((nombre, orden) =>
+      supabase.from('categorias_pago').insert({ tenant_id: profile.tenant_id, nombre, orden })
+    ))
+    cargar()
+  }
 
   /* ── Entidades ── */
   async function agregarEntidad() {
@@ -922,6 +971,52 @@ export default function ConfigVentasPage() {
               Agregar nuevo vehículo
             </button>
           )}
+        </div>
+      </SeccionColapsable>
+
+      {/* ── Categorías de pago ── */}
+      <SeccionColapsable titulo="Categorías de pago" icono="🏷️" badge={categoriasPago.filter(c => c.activa).length} defaultOpen={false}>
+        <div className="p-5">
+          {categoriasPago.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-xs text-gray-400 mb-3">Sin categorías. Puedes agregar las predeterminadas o crear las tuyas.</p>
+              <button onClick={sembrarCategoriasPago}
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-200 transition-colors">
+                Cargar categorías predeterminadas
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2 mb-3">
+              {categoriasPago.map(cat => (
+                <div key={cat.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${!cat.activa ? 'opacity-60 border-gray-100' : 'border-gray-200'}`}>
+                  {editandoCatId === cat.id ? (
+                    <>
+                      <input value={editandoCatNombre} onChange={e => setEditandoCatNombre(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && guardarEditCategoria(cat.id)}
+                        className="flex-1 border border-blue-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <button onClick={() => guardarEditCategoria(cat.id)} className="text-green-600 hover:text-green-700 text-xs font-semibold">✓</button>
+                      <button onClick={() => setEditandoCatId(null)} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm font-medium text-gray-800">{cat.nombre}</span>
+                      <button onClick={() => { setEditandoCatId(cat.id); setEditandoCatNombre(cat.nombre) }}
+                        className="text-blue-400 hover:text-blue-600 text-xs">Editar</button>
+                      <ToggleSwitch activo={cat.activa} onChange={() => toggleCategoriaPago(cat.id, cat.activa)} />
+                      <button onClick={() => eliminarCategoriaPago(cat.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2 mt-3">
+            <input value={nuevaCategoriaPago} onChange={e => setNuevaCategoriaPago(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && agregarCategoriaPago()}
+              placeholder="ej: Subsidio vivienda"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={agregarCategoriaPago} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">+ Agregar</button>
+          </div>
         </div>
       </SeccionColapsable>
 
