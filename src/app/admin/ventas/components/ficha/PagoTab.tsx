@@ -112,13 +112,11 @@ export default function PagoTab({ clienteId, tenantId, usuarioId }: Props) {
   async function guardar() {
     setSaving(true)
     try {
-      const esCredito = formaPago === 'credito' || formaPago === 'credito_ci'
       const { error } = await supabase.from('clientes').update({
-        forma_pago:                   formaPago || null,
-        metodo_pago_id:               metodoPagoId || null,
-        credito_tiene_cuota_inicial:  esCredito ? cuotaInicialSi : null,
-        cuota_inicial:                esCredito && cuotaInicialSi && cuotaInicial ? parseFloat(cuotaInicial) : null,
-        cuota_deseada:                esCredito && cuotaDeseada ? parseFloat(cuotaDeseada) : null,
+        forma_pago:    formaPago || null,
+        cuota_inicial: cuotaInicial ? parseFloat(cuotaInicial) : null,
+        cuota_deseada: (formaPago === 'credito' || formaPago === 'credito_ci') && cuotaDeseada ? parseFloat(cuotaDeseada) : null,
+        credito_tiene_cuota_inicial: formaPago === 'credito_ci' ? true : null,
       }).eq('id', clienteId)
       if (error) throw new Error(error.message)
       await cargar()
@@ -199,23 +197,25 @@ export default function PagoTab({ clienteId, tenantId, usuarioId }: Props) {
         </div>
       </div>
 
+      {/* ── CONTADO: solo valor total ── */}
+      {formaPago === 'contado' && (
+        <div className="space-y-2 border border-gray-200 rounded-xl p-3">
+          {totalMotos > 0 && (
+            <p className="text-xs text-gray-400">Referencia motos: {formatCOP(totalMotos)}</p>
+          )}
+          <div>
+            <label className="text-xs text-gray-500">Valor total a pagar de contado (COP)</label>
+            <input type="number" value={cuotaInicial} onChange={e => setCuotaInicial(e.target.value)}
+              placeholder={totalMotos > 0 ? String(totalMotos) : '0'}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+          </div>
+        </div>
+      )}
+
       {/* ── DETALLES CRÉDITO ── */}
       {esCredito && (
         <div className="space-y-2 border border-gray-200 rounded-xl p-3">
-          {(formaPago === 'credito_ci') && (
-            <div>
-              <label className="text-xs text-gray-500">Monto cuota inicial (COP)</label>
-              <input type="number" value={cuotaInicial} onChange={e => setCuotaInicial(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
-            </div>
-          )}
-          {formaPago === 'credito' && (
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={cuotaInicialSi} onChange={e => setCuotaInicialSi(e.target.checked)} />
-              Tiene cuota inicial
-            </label>
-          )}
-          {formaPago === 'credito' && cuotaInicialSi && (
+          {formaPago === 'credito_ci' && (
             <div>
               <label className="text-xs text-gray-500">Monto cuota inicial (COP)</label>
               <input type="number" value={cuotaInicial} onChange={e => setCuotaInicial(e.target.value)}
@@ -257,24 +257,6 @@ export default function PagoTab({ clienteId, tenantId, usuarioId }: Props) {
               </div>
             )
           })}
-        </div>
-      )}
-
-      {/* Método de pago */}
-      <div>
-        <label className="text-xs text-gray-500">Método de pago recibido</label>
-        <select value={metodoPagoId} onChange={e => setMetodoPagoId(e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5">
-          <option value="">Selecciona...</option>
-          {metodos.map(m => <option key={m.id} value={m.id}>{m.nombre}{m.recargo_porcentaje > 0 ? ` (+${m.recargo_porcentaje}%)` : ''}</option>)}
-        </select>
-      </div>
-
-      {totalMotos > 0 && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-          <p className="text-xs text-emerald-700">Total motos seleccionadas: {formatCOP(totalMotos)}</p>
-          {recargo > 0 && <p className="text-xs text-emerald-700">Recargo (+{recargo}%): {formatCOP(totalMotos * recargo / 100)}</p>}
-          <p className="text-sm font-bold text-emerald-800 mt-1">Total a cobrar: {formatCOP(totalFinal)}</p>
         </div>
       )}
 
