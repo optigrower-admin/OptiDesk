@@ -17,7 +17,11 @@ export type LeadData = {
   lead_source: string | null
   no_leidos_count: number       // total sumado de todas las conversaciones
   sin_respuesta_asesor_desde: string | null
+  assigned_to: string | null
   cliente: { id: string; nombre: string | null; celular: string | null } | null
+  cliente_apellido: string | null
+  cliente_documento: string | null
+  cliente_email: string | null
   leads_campana: { utm_campaign: string | null }[] | null
   todas_conversaciones: ConvCanal[]  // todas las conversaciones del cliente
 }
@@ -56,6 +60,14 @@ export default function LeadCard({ lead, onClick, overlay }: Props) {
     ? lead.todas_conversaciones
     : [{ id: lead.id, canal: lead.canal, no_leidos_count: lead.no_leidos_count }]
 
+  const datosCompletos = !!(
+    lead.cliente?.nombre &&
+    lead.cliente_apellido &&
+    lead.cliente_documento &&
+    lead.cliente?.celular &&
+    lead.cliente_email
+  )
+
   return (
     <div
       ref={setNodeRef}
@@ -67,11 +79,22 @@ export default function LeadCard({ lead, onClick, overlay }: Props) {
         esUrgente ? 'border-l-4 border-l-red-500 border-r border-t border-b border-gray-200' : 'border-gray-200'
       } ${overlay ? 'shadow-lg rotate-1' : ''}`}
     >
-      {/* Nombre + no leídos */}
+      {/* Nombre + indicador datos + no leídos */}
       <div className="flex items-start justify-between gap-1 mb-1.5">
-        <p className="font-semibold text-sm text-gray-900 leading-tight truncate">
-          {lead.cliente?.nombre ?? 'Sin nombre'}
-        </p>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {datosCompletos ? (
+            <span className="flex-shrink-0 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center" title="Datos completos">
+              <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+              </svg>
+            </span>
+          ) : (
+            <span className="flex-shrink-0 text-amber-400 leading-none text-[13px]" title="Datos incompletos (nombre, apellido, cédula, celular o correo)">⚠</span>
+          )}
+          <p className="font-semibold text-sm text-gray-900 leading-tight truncate">
+            {lead.cliente?.nombre ?? 'Sin nombre'}
+          </p>
+        </div>
         {lead.no_leidos_count > 0 && (
           <span className="flex-shrink-0 w-5 h-5 bg-green-500 text-white rounded-full text-xs flex items-center justify-center font-bold">
             {lead.no_leidos_count > 9 ? '9+' : lead.no_leidos_count}
@@ -81,12 +104,12 @@ export default function LeadCard({ lead, onClick, overlay }: Props) {
 
       {/* Moto de interés */}
       {lead.moto_interes && (
-        <p className="text-xs text-gray-500 mb-2 truncate">🏍️ {lead.moto_interes}</p>
+        <p className="text-xs text-gray-500 mb-1.5 truncate">🏍️ {lead.moto_interes}</p>
       )}
 
-      {/* Valor estimado */}
-      {lead.valor_estimado_venta && (
-        <p className="text-xs font-semibold text-emerald-700 mb-2">{formatCOP(lead.valor_estimado_venta)}</p>
+      {/* Próximos pasos */}
+      {lead.proxima_accion && (
+        <p className="text-xs text-blue-700 font-medium mb-1.5 truncate">📌 {lead.proxima_accion}</p>
       )}
 
       {/* Etapa badge visible en la tarjeta */}

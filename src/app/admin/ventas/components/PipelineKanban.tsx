@@ -7,7 +7,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { createPortal } from 'react-dom'
-import { ETAPAS, ETAPA_MAP, formatCOP, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS, ETAPA_MAP, type EtapaVenta } from '@/lib/ventas/pipeline'
 import LeadCard, { type LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
 import ModalPerdida from './ModalPerdida'
@@ -28,7 +28,6 @@ function KanbanColumn({
   onOpen: (id: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: etapaConfig.id })
-  const valor = leads.reduce((s, l) => s + (l.valor_estimado_venta ?? 0), 0)
 
   return (
     <div className={`flex-shrink-0 w-64 rounded-2xl flex flex-col border transition-colors ${
@@ -44,10 +43,8 @@ function KanbanColumn({
           <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium">
             {leads.length}
           </span>
+          <span className="text-xs text-gray-400 ml-auto">{leads.length === 1 ? '1 cliente' : `${leads.length} clientes`}</span>
         </div>
-        {valor > 0 && (
-          <p className="text-xs text-gray-400 mt-0.5 ml-4">{formatCOP(valor)}</p>
-        )}
       </div>
 
       {/* Cards */}

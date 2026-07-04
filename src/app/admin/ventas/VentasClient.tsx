@@ -1,8 +1,8 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { ETAPAS_ACTIVAS, formatCOP } from '@/lib/ventas/pipeline'
+import { ETAPAS_ACTIVAS } from '@/lib/ventas/pipeline'
 import type { LeadData } from './components/LeadCard'
 import PipelineKanban from './components/PipelineKanban'
 import VistaHoy from './components/VistaHoy'
@@ -16,6 +16,8 @@ interface Props {
   leadsIniciales: LeadData[]
   tenantId: string
 }
+
+type UsuarioFiltro = { id: string; nombre: string }
 
 const TIPOS_DOCUMENTO = [
   { value: 'CC', label: 'Cédula de ciudadanía' },
@@ -122,25 +124,46 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const supabase = createClient()
   const [tab, setTab] = useState<Tab>('kanban')
   const [nuevoOpen, setNuevoOpen] = useState(false)
+  const [usuarios, setUsuarios] = useState<UsuarioFiltro[]>([])
+  const [usuarioFiltro, setUsuarioFiltro] = useState<string | null>(null) // null = todos
+
+  useEffect(() => {
+    supabase
+      .from('usuarios')
+      .select('id, nombre, email')
+      .eq('tenant_id', tenantId)
+      .order('nombre')
+      .then(({ data }) => {
+        setUsuarios((data ?? []).map(u => ({
+          id: u.id as string,
+          nombre: (u.nombre as string | null) || (u.email as string | null) || 'Usuario',
+        })))
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId])
 
   const activos = useMemo(
     () => leadsIniciales.filter(l => ETAPAS_ACTIVAS.includes(l.etapa_venta as typeof ETAPAS_ACTIVAS[0])),
     [leadsIniciales]
   )
 
-  const totalValor   = activos.reduce((s, l) => s + (l.valor_estimado_venta ?? 0), 0)
-  const sinSeguim    = activos.filter(l => !l.proxima_accion_fecha).length
+  const leadsFiltrados = useMemo(
+    () => usuarioFiltro ? leadsIniciales.filter(l => l.assigned_to === usuarioFiltro) : leadsIniciales,
+    [leadsIniciales, usuarioFiltro]
+  )
+
+  const sinSeguim = activos.filter(l => !l.proxima_accion_fecha).length
 
   return (
     <div className="p-5">
       {nuevoOpen && <NuevoClienteModal onClose={() => setNuevoOpen(false)} />}
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 gap-3">
+      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Seguimiento Ventas</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {activos.length} clientes activos · {formatCOP(totalValor)} en seguimiento
+            {activos.length} clientes activos
             {sinSeguim > 0 && (
               <span className="ml-2 text-amber-600 font-medium">
                 · ⚠️ {sinSeguim} sin seguimiento
@@ -178,6 +201,36 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         </div>
       </div>
 
+      {/* Filtro por usuario */}
+      {usuarios.length > 1 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-xs text-gray-500 font-medium">Asesor:</span>
+          <button
+            onClick={() => setUsuarioFiltro(null)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+              usuarioFiltro === null
+                ? 'bg-blue-700 text-white border-blue-700'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+            }`}
+          >
+            Todos
+          </button>
+          {usuarios.map(u => (
+            <button
+              key={u.id}
+              onClick={() => setUsuarioFiltro(u.id)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                usuarioFiltro === u.id
+                  ? 'bg-blue-700 text-white border-blue-700'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+              }`}
+            >
+              {u.nombre}
+            </button>
+          ))}
+        </div>
+      )}
+
       {(profile?.rol === 'gerencia' || profile?.rol === 'admin') && (
         <div className="mb-4">
           <ImportadorExcel
@@ -205,7 +258,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
 
       {/* Content */}
       {tab === 'kanban' && (
-        <PipelineKanban leadsIniciales={leadsIniciales} tenantId={tenantId} />
+        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} />
       )}
       {tab === 'hoy' && (
         <VistaHoy leads={activos} tenantId={tenantId} />

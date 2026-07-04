@@ -27,6 +27,9 @@ export default function VentasPage() {
         .select(`
           id,
           nombre,
+          primer_apellido,
+          numero_documento,
+          email,
           celular,
           etapa_venta,
           etapa_venta_orden,
@@ -80,7 +83,11 @@ export default function VentasPage() {
           lead_source:                (c.lead_source ?? null) as string | null,
           no_leidos_count:            noLeidos,
           sin_respuesta_asesor_desde: (c.sin_respuesta_asesor_desde ?? null) as string | null,
+          assigned_to:                (c.assigned_to ?? null) as string | null,
           cliente:                    { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null },
+          cliente_apellido:           (c.primer_apellido ?? null) as string | null,
+          cliente_documento:          (c.numero_documento ?? null) as string | null,
+          cliente_email:              (c.email ?? null) as string | null,
           leads_campana:              [],
           todas_conversaciones:       convs.map(cv => ({ id: cv.id, canal: cv.canal, no_leidos_count: cv.no_leidos_count ?? 0 })),
         }
