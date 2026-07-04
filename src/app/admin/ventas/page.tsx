@@ -27,9 +27,6 @@ export default function VentasPage() {
         .select(`
           id,
           nombre,
-          primer_apellido,
-          numero_documento,
-          email,
           celular,
           etapa_venta,
           etapa_venta_orden,
@@ -65,11 +62,25 @@ export default function VentasPage() {
 
       const { data: raw } = await query
 
+      // Datos extra (apellido, documento, email) en query defensiva separada
+      // Si las columnas no existen aún no rompe la carga principal
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const extraMap: Record<string, Record<string, any>> = {}
+      if ((raw ?? []).length > 0) {
+        const ids = (raw ?? []).map((c) => c.id as string)
+        const { data: extras } = await supabase
+          .from('clientes')
+          .select('id, primer_apellido, numero_documento, email')
+          .in('id', ids)
+        for (const e of extras ?? []) extraMap[e.id as string] = e
+      }
+
       const mapped: LeadData[] = (raw ?? []).map((c) => {
         const convs = (c.conversaciones as { id: string; canal: string; no_leidos_count: number }[] | null) ?? []
         const motosInteres = (c.motos_interes_resumen as unknown as { motos_catalogo: { referencia: string } | null }[] | null) ?? []
         const motoLabel = motosInteres.map(m => m.motos_catalogo?.referencia).filter(Boolean).join(' · ')
         const noLeidos = convs.reduce((s, cv) => s + (cv.no_leidos_count ?? 0), 0)
+        const ex = extraMap[c.id as string] ?? {}
 
         return {
           id:                         c.id as string,
@@ -85,9 +96,9 @@ export default function VentasPage() {
           sin_respuesta_asesor_desde: (c.sin_respuesta_asesor_desde ?? null) as string | null,
           assigned_to:                (c.assigned_to ?? null) as string | null,
           cliente:                    { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null },
-          cliente_apellido:           (c.primer_apellido ?? null) as string | null,
-          cliente_documento:          (c.numero_documento ?? null) as string | null,
-          cliente_email:              (c.email ?? null) as string | null,
+          cliente_apellido:           (ex.primer_apellido ?? null) as string | null,
+          cliente_documento:          (ex.numero_documento ?? null) as string | null,
+          cliente_email:              (ex.email ?? null) as string | null,
           leads_campana:              [],
           todas_conversaciones:       convs.map(cv => ({ id: cv.id, canal: cv.canal, no_leidos_count: cv.no_leidos_count ?? 0 })),
         }
