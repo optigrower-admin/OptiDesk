@@ -57,11 +57,15 @@ export default function CotizacionServTecDoc({ cotizacion, tenant }: Props) {
   const whatsappNum  = tenant.whatsapp?.replace(/\D/g, '') ?? ''
   const whatsappLink = whatsappNum ? `https://wa.me/${whatsappNum}` : '#'
 
-  const repuestos  = cotizacion.items.filter(i => i.tipo === 'repuesto_uma' || i.tipo === 'repuesto_externo')
+  const repUma     = cotizacion.items.filter(i => i.tipo === 'repuesto_uma')
+  const repExt     = cotizacion.items.filter(i => i.tipo === 'repuesto_externo')
   const manoObra   = cotizacion.items.filter(i => i.tipo === 'mano_obra')
 
-  const totalVenta     = cotizacion.items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-  const totalProveedor = cotizacion.items.reduce((s, i) => s + (i.precio_proveedor ?? 0) * i.cantidad, 0)
+  const totalUmaVenta  = repUma.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+  const totalExtVenta  = repExt.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+  const totalExtCosto  = repExt.reduce((s, i) => s + (i.precio_proveedor ?? 0) * i.cantidad, 0)
+  const totalMO        = manoObra.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+  const totalVenta     = totalUmaVenta + totalExtVenta + totalMO
 
   useEffect(() => {
     const prev = document.title
@@ -165,84 +169,111 @@ export default function CotizacionServTecDoc({ cotizacion, tenant }: Props) {
           {/* ══ TABLA DE ITEMS ══ */}
           <div style={{ padding: '12px 20px' }}>
 
-            {/* Repuestos */}
-            {repuestos.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, paddingBottom: 4, borderBottom: '2px solid #0052B4' }}>
-                  🔧 Repuestos
+            {/* Columnas compartidas para tablas con referencia */}
+            {[
+              { label: '🔧 Repuestos UMA', items: repUma, color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', conRef: true },
+              { label: '📦 Repuestos Externos', items: repExt, color: '#92400e', bg: '#fffbeb', border: '#fde68a', conRef: false },
+            ].filter(g => g.items.length > 0).map(g => (
+              <div key={g.label} style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: g.color, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, paddingBottom: 4, borderBottom: `2px solid ${g.color}` }}>
+                  {g.label}
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                   <thead>
-                    <tr style={{ background: '#eff6ff' }}>
-                      <th style={{ padding: '5px 8px', textAlign: 'left', color: '#1d4ed8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #bfdbfe' }}>Referencia</th>
-                      <th style={{ padding: '5px 8px', textAlign: 'left', color: '#1d4ed8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #bfdbfe' }}>Descripción</th>
-                      <th style={{ padding: '5px 8px', textAlign: 'center', color: '#1d4ed8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #bfdbfe', width: 50 }}>Cant.</th>
-                      <th style={{ padding: '5px 8px', textAlign: 'right', color: '#1d4ed8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #bfdbfe', width: 90 }}>P. Unit.</th>
-                      <th style={{ padding: '5px 8px', textAlign: 'right', color: '#1d4ed8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #bfdbfe', width: 90 }}>Total</th>
+                    <tr style={{ background: g.bg }}>
+                      {g.conRef && <th style={{ padding: '5px 8px', textAlign: 'left', color: g.color, fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: `1px solid ${g.border}`, width: 90 }}>Referencia</th>}
+                      <th style={{ padding: '5px 8px', textAlign: 'left', color: g.color, fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: `1px solid ${g.border}` }}>Descripción</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'center', color: g.color, fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: `1px solid ${g.border}`, width: 50 }}>Cant.</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'right', color: g.color, fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: `1px solid ${g.border}`, width: 90 }}>P. Unit.</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'right', color: g.color, fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: `1px solid ${g.border}`, width: 90 }}>Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {repuestos.map((item, i) => (
-                      <tr key={item.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8faff' }}>
-                        <td style={{ padding: '5px 8px', color: '#475569', fontFamily: 'monospace', fontSize: 10 }}>{item.referencia ?? '—'}</td>
+                    {g.items.map((item, i) => (
+                      <tr key={item.id} style={{ background: i % 2 === 0 ? '#fff' : g.bg }}>
+                        {g.conRef && <td style={{ padding: '5px 8px', color: '#475569', fontFamily: 'monospace', fontSize: 10 }}>{item.referencia ?? '—'}</td>}
                         <td style={{ padding: '5px 8px', color: '#1e293b' }}>{item.descripcion}</td>
                         <td style={{ padding: '5px 8px', textAlign: 'center', color: '#1e293b', fontWeight: 600 }}>{item.cantidad}</td>
                         <td style={{ padding: '5px 8px', textAlign: 'right', color: '#1e293b' }}>{cop(item.precio_venta)}</td>
                         <td style={{ padding: '5px 8px', textAlign: 'right', color: '#1e293b', fontWeight: 700 }}>{cop(item.precio_venta * item.cantidad)}</td>
                       </tr>
                     ))}
-                    <tr style={{ background: '#eff6ff', borderTop: '1.5px solid #bfdbfe' }}>
-                      <td colSpan={4} style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, color: '#1d4ed8', fontSize: 10, textTransform: 'uppercase' }}>Subtotal repuestos</td>
-                      <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 800, color: '#1e3a8a', fontSize: 12 }}>{cop(repuestos.reduce((s, i) => s + i.precio_venta * i.cantidad, 0))}</td>
+                    <tr style={{ background: g.bg, borderTop: `1.5px solid ${g.border}` }}>
+                      <td colSpan={g.conRef ? 4 : 3} style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, color: g.color, fontSize: 10, textTransform: 'uppercase' }}>
+                        Subtotal {g.label.replace(/^..\s/, '')}
+                      </td>
+                      <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 800, color: '#1e3a8a', fontSize: 12 }}>
+                        {cop(g.items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0))}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-            )}
+            ))}
 
             {/* Mano de obra */}
             {manoObra.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, paddingBottom: 4, borderBottom: '2px solid #0052B4' }}>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#6d28d9', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, paddingBottom: 4, borderBottom: '2px solid #6d28d9' }}>
                   🛠️ Mano de Obra
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                   <thead>
-                    <tr style={{ background: '#eff6ff' }}>
-                      <th style={{ padding: '5px 8px', textAlign: 'left', color: '#1d4ed8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #bfdbfe' }}>Descripción</th>
-                      <th style={{ padding: '5px 8px', textAlign: 'center', color: '#1d4ed8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #bfdbfe', width: 50 }}>Cant.</th>
-                      <th style={{ padding: '5px 8px', textAlign: 'right', color: '#1d4ed8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #bfdbfe', width: 90 }}>P. Unit.</th>
-                      <th style={{ padding: '5px 8px', textAlign: 'right', color: '#1d4ed8', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #bfdbfe', width: 90 }}>Total</th>
+                    <tr style={{ background: '#f5f3ff' }}>
+                      <th style={{ padding: '5px 8px', textAlign: 'left', color: '#6d28d9', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #ddd6fe' }}>Descripción</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'center', color: '#6d28d9', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #ddd6fe', width: 50 }}>Cant.</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'right', color: '#6d28d9', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #ddd6fe', width: 90 }}>P. Unit.</th>
+                      <th style={{ padding: '5px 8px', textAlign: 'right', color: '#6d28d9', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', borderBottom: '1px solid #ddd6fe', width: 90 }}>Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {manoObra.map((item, i) => (
-                      <tr key={item.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8faff' }}>
+                      <tr key={item.id} style={{ background: i % 2 === 0 ? '#fff' : '#f5f3ff' }}>
                         <td style={{ padding: '5px 8px', color: '#1e293b' }}>{item.descripcion}</td>
                         <td style={{ padding: '5px 8px', textAlign: 'center', color: '#1e293b', fontWeight: 600 }}>{item.cantidad}</td>
                         <td style={{ padding: '5px 8px', textAlign: 'right', color: '#1e293b' }}>{cop(item.precio_venta)}</td>
                         <td style={{ padding: '5px 8px', textAlign: 'right', color: '#1e293b', fontWeight: 700 }}>{cop(item.precio_venta * item.cantidad)}</td>
                       </tr>
                     ))}
-                    <tr style={{ background: '#eff6ff', borderTop: '1.5px solid #bfdbfe' }}>
-                      <td colSpan={3} style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, color: '#1d4ed8', fontSize: 10, textTransform: 'uppercase' }}>Subtotal mano de obra</td>
-                      <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 800, color: '#1e3a8a', fontSize: 12 }}>{cop(manoObra.reduce((s, i) => s + i.precio_venta * i.cantidad, 0))}</td>
+                    <tr style={{ background: '#f5f3ff', borderTop: '1.5px solid #ddd6fe' }}>
+                      <td colSpan={3} style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 700, color: '#6d28d9', fontSize: 10, textTransform: 'uppercase' }}>Subtotal mano de obra</td>
+                      <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 800, color: '#1e3a8a', fontSize: 12 }}>{cop(totalMO)}</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
             )}
 
-            {/* TOTAL FINAL */}
+            {/* TOTAL FINAL desglosado */}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <div style={{ background: '#eff6ff', border: '2px solid #0052B4', borderRadius: 10, padding: '10px 16px', minWidth: 240 }}>
-                {totalProveedor > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total proveedor</span>
-                    <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{cop(totalProveedor)}</span>
+              <div style={{ background: '#eff6ff', border: '2px solid #0052B4', borderRadius: 10, padding: '10px 16px', minWidth: 260 }}>
+                {totalUmaVenta > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, marginBottom: 3 }}>
+                    <span style={{ fontSize: 10, color: '#64748b' }}>Repuestos UMA</span>
+                    <span style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 600 }}>{cop(totalUmaVenta)}</span>
                   </div>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24 }}>
+                {totalExtVenta > 0 && (
+                  <div style={{ marginBottom: 3 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24 }}>
+                      <span style={{ fontSize: 10, color: '#64748b' }}>Repuestos externos (venta)</span>
+                      <span style={{ fontSize: 11, color: '#92400e', fontWeight: 600 }}>{cop(totalExtVenta)}</span>
+                    </div>
+                    {totalExtCosto > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24 }}>
+                        <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>— costo proveedor ext.</span>
+                        <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic' }}>{cop(totalExtCosto)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {totalMO > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, marginBottom: 3 }}>
+                    <span style={{ fontSize: 10, color: '#64748b' }}>Mano de obra</span>
+                    <span style={{ fontSize: 11, color: '#6d28d9', fontWeight: 600 }}>{cop(totalMO)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, borderTop: '1.5px solid #bfdbfe', paddingTop: 6, marginTop: 4 }}>
                   <span style={{ fontSize: 11, fontWeight: 800, color: '#0052B4', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total a cobrar</span>
                   <span style={{ fontSize: 16, fontWeight: 900, color: '#1e3a8a' }}>{cop(totalVenta)}</span>
                 </div>
