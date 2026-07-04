@@ -2,7 +2,6 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import Link from 'next/link'
 
@@ -19,25 +18,22 @@ type Cot = {
 function pad(n: number) { return String(n).padStart(4, '0') }
 
 export default function CotizacionesServTecPage() {
-  const { profile } = useAuth()
-  const supabase = createClient()
+  useAuth() // solo para asegurar autenticación
   const [lista, setLista] = useState<Cot[]>([])
   const [loading, setLoading] = useState(true)
 
   async function cargar() {
-    if (!profile?.tenant_id) return
     setLoading(true)
-    const { data } = await supabase
-      .from('cotizaciones_servtec')
-      .select('id, numero, fecha_generacion, cliente_nombre, cliente_celular, estado, created_at')
-      .eq('tenant_id', profile.tenant_id)
-      .order('created_at', { ascending: false })
-      .limit(200)
-    setLista((data ?? []) as Cot[])
+    try {
+      const res = await fetch('/api/cotizaciones-servtec')
+      if (!res.ok) throw new Error('Error al cargar')
+      const data = await res.json()
+      setLista(data ?? [])
+    } catch { /* silencioso */ }
     setLoading(false)
   }
 
-  useEffect(() => { if (profile?.tenant_id) cargar() }, [profile?.tenant_id])
+  useEffect(() => { cargar() }, [])
 
   async function eliminar(id: string, numero: number) {
     if (!confirm(`¿Eliminar cotización ST-${pad(numero)}? Esta acción no se puede deshacer.`)) return

@@ -41,43 +41,101 @@ function nextKey() { return String(++keyCounter) }
 
 type TipoAdd = 'repuesto_uma' | 'repuesto_externo' | 'mano_obra'
 
-/* ── Fila arrastrable con edición de precio ── */
-function SortableRow({ item, onDelete, onPriceChange }: {
+/* ── Input de dinero con formato $#.### ── */
+function MoneyInput({ rawValue, onRawChange, placeholder = '$0', className = '', disabled = false }: {
+  rawValue: string
+  onRawChange: (raw: string) => void
+  placeholder?: string
+  className?: string
+  disabled?: boolean
+}) {
+  const [focused, setFocused] = React.useState(false)
+  const [display, setDisplay] = React.useState(rawValue)
+
+  // Cuando cambia el valor externo y no está en foco, sincroniza
+  React.useEffect(() => { if (!focused) setDisplay(formatDisplay(rawValue)) }, [rawValue, focused])
+
+  function formatDisplay(v: string) {
+    const n = parseFloat(v.replace(/[^0-9]/g, ''))
+    if (isNaN(n)) return ''
+    return n.toLocaleString('es-CO')
+  }
+  function onFocus() {
+    setFocused(true)
+    setDisplay(rawValue || '') // muestra número crudo al enfocar
+  }
+  function onChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value.replace(/[^0-9]/g, '') // solo dígitos
+    setDisplay(raw)
+    onRawChange(raw)
+  }
+  function onBlur() {
+    setFocused(false)
+    setDisplay(formatDisplay(rawValue))
+  }
+  return (
+    <input type="text" inputMode="numeric" value={display} onChange={onChange}
+      onFocus={onFocus} onBlur={onBlur} placeholder={placeholder}
+      disabled={disabled} className={className} />
+  )
+}
+
+/* ── Celda editable genérica ── */
+function EditableCell({ value, min = 0, integer = false, className = '', onCommit }: {
+  value: number; min?: number; integer?: boolean; className?: string
+  onCommit: (v: number) => void
+}) {
+  const [editing, setEditing] = React.useState(false)
+  const [val, setVal]         = React.useState(String(value))
+  const inputRef              = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => { if (!editing) setVal(String(value)) }, [value, editing])
+  React.useEffect(() => { if (editing) inputRef.current?.select() }, [editing])
+
+  function commit() {
+    const n = integer ? parseInt(val) : parseFloat(val.replace(/[^0-9.]/g, ''))
+    if (!isNaN(n) && n >= min) { onCommit(n) } else { setVal(String(value)) }
+    setEditing(false)
+  }
+
+  function fmtVal(v: number) {
+    if (integer) return String(v)
+    return v.toLocaleString('es-CO')
+  }
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = integer ? e.target.value.replace(/[^0-9]/g, '') : e.target.value.replace(/[^0-9]/g, '')
+    setVal(raw)
+  }
+
+  return editing ? (
+    <input ref={inputRef} type="text" inputMode="numeric" value={val} min={min}
+      onChange={handleChange} onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setVal(String(value)); setEditing(false) } }}
+      className={`border border-blue-400 rounded px-1.5 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 ${className}`} />
+  ) : (
+    <button onClick={() => { setEditing(true); setVal(String(value)) }} title="Clic para editar"
+      className="hover:text-blue-700 hover:underline decoration-dashed underline-offset-2 transition-colors group">
+      {fmtVal(value)}
+      <span className="text-[9px] text-blue-300 group-hover:text-blue-500 ml-0.5">✏️</span>
+    </button>
+  )
+}
+
+/* ── Fila arrastrable con edición de precio y cantidad ── */
+function SortableRow({ item, onDelete, onPriceChange, onQtyChange }: {
   item: Item
   onDelete: () => void
   onPriceChange: (key: string, price: number) => void
+  onQtyChange: (key: string, qty: number) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item._key })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
 
-  const [editingPrice, setEditingPrice] = React.useState(false)
-  const [priceVal, setPriceVal]         = React.useState(String(item.precio_venta))
-  const inputRef = React.useRef<HTMLInputElement>(null)
-
-  // Piso: UMA → precio catálogo, externo → costo proveedor, mano obra → 0
   const minPrice = item.tipo === 'repuesto_uma'
     ? (item.precio_catalogo ?? 0)
     : item.tipo === 'repuesto_externo'
     ? (item.precio_proveedor ?? 0)
     : 0
-
-  React.useEffect(() => {
-    if (!editingPrice) setPriceVal(String(item.precio_venta))
-  }, [item.precio_venta, editingPrice])
-
-  React.useEffect(() => {
-    if (editingPrice) inputRef.current?.select()
-  }, [editingPrice])
-
-  function commitPrice() {
-    const p = parseFloat(priceVal.replace(/[^0-9.]/g, ''))
-    if (!isNaN(p) && p >= minPrice) {
-      onPriceChange(item._key, p)
-    } else {
-      setPriceVal(String(item.precio_venta)) // revert
-    }
-    setEditingPrice(false)
-  }
 
   return (
     <tr ref={setNodeRef} style={style} className="border-t border-gray-100 hover:bg-gray-50">
@@ -88,7 +146,7 @@ function SortableRow({ item, onDelete, onPriceChange }: {
           <circle cx="5" cy="12" r="1.2"/><circle cx="11" cy="12" r="1.2"/>
         </svg>
       </td>
-      <td className="px-2 py-1.5">
+      <td className="px-2 py-1.5 whitespace-nowrap">
         <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
           item.tipo === 'repuesto_uma' ? 'bg-blue-100 text-blue-700' :
           item.tipo === 'repuesto_externo' ? 'bg-amber-100 text-amber-700' :
@@ -97,37 +155,28 @@ function SortableRow({ item, onDelete, onPriceChange }: {
           {item.tipo === 'repuesto_uma' ? 'UMA' : item.tipo === 'repuesto_externo' ? 'Ext.' : 'M.O.'}
         </span>
       </td>
-      <td className="px-2 py-1.5 font-mono text-xs text-gray-500 max-w-[80px] truncate">{item.referencia || '—'}</td>
-      <td className="px-2 py-1.5 text-gray-800 max-w-[160px] truncate text-sm">{item.descripcion}</td>
-      <td className="px-2 py-1.5 text-center text-gray-700 font-medium text-sm">{item.cantidad}</td>
-      <td className="px-2 py-1.5 text-right text-gray-400 text-xs">{item.precio_proveedor ? cop(item.precio_proveedor) : '—'}</td>
+      <td className="px-2 py-1.5 font-mono text-xs text-gray-500 whitespace-nowrap">{item.referencia || '—'}</td>
+      <td className="px-2 py-2 text-gray-800 text-sm">{item.descripcion}</td>
 
-      {/* Precio de venta — editable al hacer clic */}
-      <td className="px-2 py-1.5 text-right">
-        {editingPrice ? (
-          <input
-            ref={inputRef}
-            type="number"
-            value={priceVal}
-            min={minPrice}
-            onChange={e => setPriceVal(e.target.value)}
-            onBlur={commitPrice}
-            onKeyDown={e => { if (e.key === 'Enter') commitPrice(); if (e.key === 'Escape') { setPriceVal(String(item.precio_venta)); setEditingPrice(false) } }}
-            className="w-24 border border-blue-400 rounded px-1.5 py-0.5 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        ) : (
-          <button
-            onClick={() => setEditingPrice(true)}
-            title={`Clic para editar precio (mín: ${cop(minPrice)})`}
-            className="text-gray-700 text-sm hover:text-blue-700 hover:underline decoration-dashed underline-offset-2 transition-colors"
-          >
-            {cop(item.precio_venta)}
-            <span className="text-[9px] text-blue-400 ml-0.5">✏️</span>
-          </button>
-        )}
+      {/* Cantidad — editable */}
+      <td className="px-2 py-1.5 text-center text-gray-700 font-medium text-sm">
+        <EditableCell value={item.cantidad} min={1} integer className="w-14 text-center"
+          onCommit={v => onQtyChange(item._key, v)} />
       </td>
 
-      <td className="px-2 py-1.5 text-right font-bold text-emerald-700 text-sm">{cop(item.precio_venta * item.cantidad)}</td>
+      <td className="px-2 py-1.5 text-right text-gray-400 text-xs whitespace-nowrap">
+        {item.precio_proveedor ? cop(item.precio_proveedor) : '—'}
+      </td>
+
+      {/* Precio — editable */}
+      <td className="px-2 py-1.5 text-right text-gray-700 text-sm">
+        <EditableCell value={item.precio_venta} min={minPrice} className="w-28 text-right"
+          onCommit={v => onPriceChange(item._key, v)} />
+      </td>
+
+      <td className="px-2 py-1.5 text-right font-bold text-emerald-700 text-sm whitespace-nowrap">
+        {cop(item.precio_venta * item.cantidad)}
+      </td>
       <td className="px-1 py-1.5">
         <button onClick={onDelete} className="text-red-400 hover:text-red-600 p-0.5 rounded hover:bg-red-50">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -290,6 +339,7 @@ export default function NuevaCotizacionServTecPage() {
 
   function eliminarItem(key: string) { setItems(p => p.filter(i => i._key !== key)) }
   function cambiarPrecio(key: string, price: number) { setItems(p => p.map(i => i._key === key ? { ...i, precio_venta: price } : i)) }
+  function cambiarCantidad(key: string, qty: number) { setItems(p => p.map(i => i._key === key ? { ...i, cantidad: qty } : i)) }
 
   /* ── Drag & drop ── */
   function onDragStart({ active }: DragStartEvent) { setActiveId(active.id as string) }
@@ -380,7 +430,7 @@ export default function NuevaCotizacionServTecPage() {
   }
 
   return (
-    <div className="p-5 max-w-3xl mx-auto pb-16">
+    <div className="p-5 max-w-5xl mx-auto pb-16">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => router.back()} className="text-sm text-gray-500 hover:text-gray-800">← Volver</button>
         <h1 className="text-xl font-bold text-gray-900">Nueva Cotización S. Técnico</h1>
@@ -559,8 +609,7 @@ export default function NuevaCotizacionServTecPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-xs text-gray-500">Precio venta c/IVA * (≥ catálogo)</label>
-                    <input type="number" value={umaPrecioVenta} onChange={e => setUmaPrecioVenta(e.target.value)}
-                      min={umaSeleccionada.precio_publico_iva}
+                    <MoneyInput rawValue={umaPrecioVenta} onRawChange={setUmaPrecioVenta}
                       className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
                   </div>
                   <div>
@@ -586,12 +635,12 @@ export default function NuevaCotizacionServTecPage() {
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="text-xs text-gray-500">Costo proveedor (COP)</label>
-                <input type="number" value={extCostoProv} onChange={e => setExtCostoProv(e.target.value)} placeholder="0"
+                <MoneyInput rawValue={extCostoProv} onRawChange={setExtCostoProv} placeholder="$0"
                   className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
               </div>
               <div>
                 <label className="text-xs text-gray-500">Precio venta c/IVA *</label>
-                <input type="number" value={extPrecioVenta} onChange={e => setExtPrecioVenta(e.target.value)} placeholder="0"
+                <MoneyInput rawValue={extPrecioVenta} onRawChange={setExtPrecioVenta} placeholder="$0"
                   className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
               </div>
               <div>
@@ -615,7 +664,7 @@ export default function NuevaCotizacionServTecPage() {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-xs text-gray-500">Precio *</label>
-                <input type="number" value={moPrecio} onChange={e => setMoPrecio(e.target.value)} placeholder="0"
+                <MoneyInput rawValue={moPrecio} onRawChange={setMoPrecio} placeholder="$0"
                   className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
               </div>
               <div>
@@ -659,7 +708,10 @@ export default function NuevaCotizacionServTecPage() {
                 <SortableContext items={items.map(i => i._key)} strategy={verticalListSortingStrategy}>
                   <tbody>
                     {items.map(item => (
-                      <SortableRow key={item._key} item={item} onDelete={() => eliminarItem(item._key)} onPriceChange={cambiarPrecio} />
+                      <SortableRow key={item._key} item={item}
+                        onDelete={() => eliminarItem(item._key)}
+                        onPriceChange={cambiarPrecio}
+                        onQtyChange={cambiarCantidad} />
                     ))}
                   </tbody>
                 </SortableContext>
