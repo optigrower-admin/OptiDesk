@@ -354,7 +354,7 @@ export default function NuevaCotizacionServTecPage() {
     repuesto_uma: 'Repuesto / Lubricante UMA', repuesto_externo: 'Repuesto externo', mano_obra: 'Mano de obra',
   }
 
-  async function generar() {
+  async function guardarCotizacion(abrirPdf = false) {
     if (items.length === 0) { setError('Agrega al menos un ítem'); return }
     if (!cliNombre.trim()) { setError('Ingresa el nombre del cliente'); return }
     setSaving(true); setError('')
@@ -369,10 +369,13 @@ export default function NuevaCotizacionServTecPage() {
         }),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Error al crear')
-      router.push(`/admin/cotizaciones-servtec/${json.id}`)
+      if (!res.ok) throw new Error(json.error ?? 'Error al guardar')
+      if (abrirPdf) {
+        window.open(`/admin/cotizaciones-servtec/${json.id}`, '_blank')
+      }
+      router.push('/admin/cotizaciones-servtec')
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al generar'); setSaving(false)
+      setError(e instanceof Error ? e.message : 'Error al guardar'); setSaving(false)
     }
   }
 
@@ -713,13 +716,22 @@ export default function NuevaCotizacionServTecPage() {
         </div>
       </section>
 
-      <button onClick={generar} disabled={saving || items.length === 0}
-        className="w-full py-3 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2">
-        {saving
-          ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Generando...</>
-          : '📄 Generar cotización'
-        }
-      </button>
+      <div className="flex gap-3">
+        <button onClick={() => guardarCotizacion(false)} disabled={saving || items.length === 0}
+          className="flex-1 py-3 bg-gray-700 hover:bg-gray-800 disabled:opacity-40 text-white rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2">
+          {saving
+            ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Guardando...</>
+            : '💾 Guardar'
+          }
+        </button>
+        <button onClick={() => guardarCotizacion(true)} disabled={saving || items.length === 0}
+          className="flex-1 py-3 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2">
+          {saving
+            ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Guardando...</>
+            : '📄 Guardar y ver PDF'
+          }
+        </button>
+      </div>
     </div>
   )
 }
