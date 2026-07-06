@@ -60,6 +60,12 @@ function formatFecha(iso: string): string {
   })
 }
 
+function isoToDatetimeLocal(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 function estadoPagoDeTotales(abono: number, total: number): 'pagado' | 'abono' | 'pendiente' {
   if (total <= 0 || abono <= 0) return 'pendiente'
   if (abono >= total) return 'pagado'
@@ -98,6 +104,13 @@ export default function VentaDetallePage() {
   const [saving, setSaving] = useState(false)
   const [savedOk, setSavedOk] = useState(false)
   const [errorPago, setErrorPago] = useState('')
+
+  const esGerencia = profile?.rol === 'gerencia' || profile?.rol === 'admin'
+
+  // Edición de fecha (solo gerencia)
+  const [editandoFecha, setEditandoFecha] = useState(false)
+  const [fechaInput, setFechaInput] = useState('')
+  const [savingFecha, setSavingFecha] = useState(false)
 
   // Edición de ítems
   const [editingItem, setEditingItem] = useState<{
@@ -189,6 +202,26 @@ export default function VentaDetallePage() {
     setSavedOk(true)
     setTimeout(() => setSavedOk(false), 3000)
     setSaving(false)
+    await cargar()
+  }
+
+  const handleGuardarFecha = async () => {
+    if (!orden || !fechaInput) return
+    setSavingFecha(true)
+    const nuevaFecha = new Date(fechaInput).toISOString()
+    await supabase.from('ordenes').update({ created_at: nuevaFecha }).eq('id', ordenId)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'ordenes',
+      registro_id: ordenId,
+      tipo: 'edicion',
+      valor_anterior: { created_at: orden.created_at },
+      valor_nuevo: { created_at: nuevaFecha },
+      descripcion: `Cambió la fecha de venta directa #${orden.numero} a ${formatFecha(nuevaFecha)}`,
+      usuario_id: profile?.id,
+    })
+    setEditandoFecha(false)
+    setSavingFecha(false)
     await cargar()
   }
 
@@ -307,7 +340,45 @@ export default function VentaDetallePage() {
               {ESTADO_PAGO_LABEL[orden!.estado_pago] ?? orden!.estado_pago}
             </span>
           </div>
-          <p className="text-xs text-gray-400 mt-0.5">{formatFecha(orden!.created_at)}</p>
+          {editandoFecha ? (
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <input
+                type="datetime-local"
+                value={fechaInput}
+                onChange={(e) => setFechaInput(e.target.value)}
+                className="text-xs border border-blue-400 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              <button
+                onClick={handleGuardarFecha}
+                disabled={savingFecha}
+                className="px-2 py-0.5 bg-blue-700 text-white rounded text-xs font-semibold disabled:opacity-50"
+              >
+                {savingFecha ? '...' : 'OK'}
+              </button>
+              <button
+                onClick={() => setEditandoFecha(false)}
+                className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mt-0.5 group/fecha">
+              <p className="text-xs text-gray-400">{formatFecha(orden!.created_at)}</p>
+              {esGerencia && (
+                <button
+                  onClick={() => { setFechaInput(isoToDatetimeLocal(orden!.created_at)); setEditandoFecha(true) }}
+                  className="text-gray-300 hover:text-blue-500 opacity-0 group-hover/fecha:opacity-100 transition-opacity"
+                  title="Editar fecha"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
