@@ -277,6 +277,7 @@ function MotoCard({ m, recargoTarjeta, tenantId, onSave, onToggle, onDelete }: {
   async function guardar() {
     setSaving(true)
     await onSave(m.id, {
+      referencia: local.referencia.trim() || m.referencia,
       precio: local.precio, costo_documentos: local.costo_documentos, costo_prenda: local.costo_prenda,
       tagline_venta: local.tagline_venta, cilindraje: local.cilindraje, potencia: local.potencia,
       frenos: local.frenos, combustible: local.combustible, rendimiento: local.rendimiento,
@@ -335,6 +336,15 @@ function MotoCard({ m, recargoTarjeta, tenantId, onSave, onToggle, onDelete }: {
       {/* ── EXPANDIDO ── */}
       {open && (
         <div className="border-t border-gray-100 px-4 py-4 space-y-5">
+
+          {/* Nombre / Referencia */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Nombre del vehículo</label>
+            <input value={local.referencia}
+              onChange={e => setLocal(p => ({ ...p, referencia: e.target.value }))}
+              placeholder="ej: PULSAR NS 200 / TORITO NG CARPA LUJO"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
 
           {/* Precios — ahora dentro del expandido */}
           <div>
