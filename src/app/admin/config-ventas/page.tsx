@@ -9,6 +9,17 @@ import { formatCOP } from '@/lib/ventas/pipeline'
 interface Entidad       { id: string; nombre: string; activa: boolean }
 interface CategoriaPago { id: string; nombre: string; activa: boolean; orden: number }
 
+interface ColorVariante {
+  id?: string
+  nombre: string
+  imagen_key?: string
+  dias_entrega?: number
+  orden: number
+}
+interface LocalColorVariante extends ColorVariante {
+  previewUrl?: string
+}
+
 interface MotoCat {
   id: string
   referencia: string
@@ -31,6 +42,7 @@ interface MotoCat {
   cotizacion_badges: string
   cotizacion_testimonial: string
   fotos: { tipo: string; r2_key: string }[]
+  colores_detalle: ColorVariante[]
 }
 
 interface CotizacionInfo {
@@ -134,6 +146,77 @@ function FotoSlot({ motoId, tipo, label, hint, rKey, onUploaded }: {
   )
 }
 
+/* ─── Slot de variante de color ─────────────────────── */
+function ColorVarianteSlot({ motoId, color, index, onChange, onRemove }: {
+  motoId: string
+  color: LocalColorVariante
+  index: number
+  onChange: (c: LocalColorVariante) => void
+  onRemove: () => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const imgSrc = color.previewUrl || (color.imagen_key ? `/api/catalogo-fotos/view?key=${color.imagen_key}` : '')
+
+  async function handleFile(file: File) {
+    setUploading(true)
+    try {
+      const res = await fetch('/api/catalogo-colores/presign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moto_catalogo_id: motoId, index, content_type: file.type }),
+      })
+      const { url, key } = await res.json()
+      await fetch(url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+      onChange({ ...color, imagen_key: key, previewUrl: URL.createObjectURL(file) })
+    } catch { /* silencioso */ }
+    finally { setUploading(false) }
+  }
+
+  return (
+    <div className="relative rounded-xl border-2 border-dashed border-gray-200 hover:border-blue-300 bg-white overflow-hidden flex flex-col transition-colors">
+      <button type="button" onClick={onRemove}
+        className="absolute top-1.5 right-1.5 z-10 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs font-bold flex items-center justify-center leading-none">
+        ×
+      </button>
+
+      <div onClick={() => !uploading && fileRef.current?.click()}
+        className="h-20 flex items-center justify-center cursor-pointer overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-50 hover:opacity-80 transition-opacity">
+        {imgSrc ? (
+          <img src={imgSrc} alt={color.nombre || 'Color'} className="w-full h-full object-contain p-1.5" onError={() => {}} />
+        ) : uploading ? (
+          <svg className="w-5 h-5 animate-spin text-blue-400" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+        ) : (
+          <div className="text-center">
+            <span className="text-2xl">🎨</span>
+            <p className="text-[9px] text-gray-400 leading-tight mt-0.5">Subir foto</p>
+          </div>
+        )}
+      </div>
+
+      <div className="p-2 space-y-1.5">
+        <input value={color.nombre}
+          onChange={e => onChange({ ...color, nombre: e.target.value })}
+          placeholder="Nombre del color"
+          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+        <div className="flex items-center gap-1">
+          <input type="number" value={color.dias_entrega ?? ''}
+            onChange={e => onChange({ ...color, dias_entrega: parseInt(e.target.value) || undefined })}
+            placeholder="—" min={0}
+            className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          <span className="text-[10px] text-gray-400 whitespace-nowrap">días entrega</span>
+        </div>
+      </div>
+
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+        onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+    </div>
+  )
+}
+
 /* ─── Sección colapsable ───────────────────────────── */
 function SeccionColapsable({ titulo, icono, badge, children, defaultOpen = false }: {
   titulo: string; icono: string; badge?: string | number
@@ -159,17 +242,24 @@ function SeccionColapsable({ titulo, icono, badge, children, defaultOpen = false
 }
 
 /* ─── Tarjeta por vehículo — compacta cuando cerrada ── */
-function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
+function MotoCard({ m, recargoTarjeta, tenantId, onSave, onToggle, onDelete }: {
   m: MotoCat
   recargoTarjeta: number
+  tenantId: string
   onSave:   (id: string, campos: Partial<MotoCat>) => void
   onToggle: (id: string, activa: boolean) => void
   onDelete: (id: string, referencia: string) => void
 }) {
+  const supabase = createClient()
   const [open, setOpen]     = useState(false)
   const [local, setLocal]   = useState(m)
   const [saving, setSaving] = useState(false)
   const [fotos, setFotos]   = useState(m.fotos)
+  const [coloresLocal, setColoresLocal] = useState<LocalColorVariante[]>(
+    m.colores_detalle.map(c => ({ ...c }))
+  )
+  const [savingColores, setSavingColores] = useState(false)
+  const [coloresOk, setColoresOk] = useState(false)
 
   const conPapeles         = local.precio + local.costo_documentos
   const conPrenda          = conPapeles + local.costo_prenda
@@ -190,7 +280,7 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
       precio: local.precio, costo_documentos: local.costo_documentos, costo_prenda: local.costo_prenda,
       tagline_venta: local.tagline_venta, cilindraje: local.cilindraje, potencia: local.potencia,
       frenos: local.frenos, combustible: local.combustible, rendimiento: local.rendimiento,
-      velocidad_max: local.velocidad_max, garantia: local.garantia, colores: local.colores,
+      velocidad_max: local.velocidad_max, garantia: local.garantia,
       caracteristica: local.caracteristica,
       cotizacion_beneficios:  local.cotizacion_beneficios,
       cotizacion_incluye:     local.cotizacion_incluye,
@@ -198,6 +288,29 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
       cotizacion_testimonial: local.cotizacion_testimonial,
     })
     setSaving(false)
+  }
+
+  async function guardarColores() {
+    setSavingColores(true)
+    try {
+      await supabase.from('motos_catalogo_colores').delete().eq('moto_catalogo_id', m.id)
+      const validos = coloresLocal.filter(c => c.nombre.trim())
+      if (validos.length > 0) {
+        await supabase.from('motos_catalogo_colores').insert(
+          validos.map((c, i) => ({
+            moto_catalogo_id: m.id,
+            tenant_id: tenantId,
+            nombre: c.nombre.trim(),
+            imagen_key: c.imagen_key || null,
+            dias_entrega: c.dias_entrega || null,
+            orden: i,
+          }))
+        )
+      }
+      setColoresOk(true)
+      setTimeout(() => setColoresOk(false), 2500)
+    } catch { /* silencioso */ }
+    finally { setSavingColores(false) }
   }
 
   return (
@@ -294,7 +407,39 @@ function MotoCard({ m, recargoTarjeta, onSave, onToggle, onDelete }: {
                 <div><label className="text-xs text-gray-500 block mb-1">✅ Garantía</label>{campo('garantia')}</div>
                 <div><label className="text-xs text-gray-500 block mb-1">✨ Característica especial</label>{campo('caracteristica')}</div>
               </div>
-              <div><label className="text-xs text-gray-500 block mb-1">Colores disponibles</label>{campo('colores')}</div>
+              {/* Colores — nuevo sistema visual */}
+              <div>
+                <label className="text-xs text-gray-500 block mb-1.5">
+                  🎨 Colores disponibles
+                  <span className="font-normal text-gray-400 ml-1">(máx. 6 — haz clic en la imagen para subir foto del color)</span>
+                </label>
+                {coloresLocal.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    {coloresLocal.map((c, i) => (
+                      <ColorVarianteSlot key={i} motoId={m.id} color={c} index={i}
+                        onChange={nc => setColoresLocal(p => p.map((x, j) => j === i ? nc : x))}
+                        onRemove={() => setColoresLocal(p => p.filter((_, j) => j !== i))} />
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {coloresLocal.length < 6 && (
+                    <button type="button"
+                      onClick={() => setColoresLocal(p => [...p, { nombre: '', orden: p.length }])}
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors">
+                      + Agregar color
+                    </button>
+                  )}
+                  <button type="button" onClick={guardarColores} disabled={savingColores}
+                    className="px-3 py-1 bg-blue-700 text-white text-xs rounded-lg hover:bg-blue-800 disabled:opacity-40 transition-colors">
+                    {savingColores ? 'Guardando...' : '✓ Guardar colores'}
+                  </button>
+                  {coloresOk && <span className="text-xs text-green-600 font-medium">✓ Guardado</span>}
+                  {coloresLocal.length > 0 && (
+                    <span className="text-[10px] text-gray-400">{coloresLocal.length}/6</span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -387,6 +532,7 @@ const NUEVA_MOTO_VACIA: Omit<MotoCat, 'id' | 'activa' | 'fotos'> = {
   cotizacion_incluye: '',
   cotizacion_badges: '',
   cotizacion_testimonial: '',
+  colores_detalle: [],
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -463,16 +609,34 @@ export default function ConfigVentasPage() {
       if (motFallback && mot.length === 0) mot.push(...motFallback)
     }
 
-    // Fotos en query separada — si la tabla no existe aún, simplemente queda vacío
+    // Fotos y colores en queries separadas — si las tablas no existen aún, quedan vacíos
+    const motoIds = (mot ?? []).map((mo: { id: string }) => mo.id)
+
     const { data: fotosAll } = await supabase
       .from('motos_catalogo_fotos')
       .select('moto_catalogo_id, tipo, r2_key')
-      .in('moto_catalogo_id', (mot ?? []).map(m => m.id))
+      .in('moto_catalogo_id', motoIds.length > 0 ? motoIds : ['__none__'])
 
     const fotosPorMoto: Record<string, { tipo: string; r2_key: string }[]> = {}
     for (const f of fotosAll ?? []) {
       if (!fotosPorMoto[f.moto_catalogo_id]) fotosPorMoto[f.moto_catalogo_id] = []
       fotosPorMoto[f.moto_catalogo_id].push({ tipo: f.tipo, r2_key: f.r2_key })
+    }
+
+    // Colores en query defensiva (tabla v69, puede no existir aún)
+    const coloresPorMoto: Record<string, ColorVariante[]> = {}
+    if (motoIds.length > 0) {
+      const { data: coloresAll } = await supabase
+        .from('motos_catalogo_colores')
+        .select('id, moto_catalogo_id, nombre, imagen_key, dias_entrega, orden')
+        .in('moto_catalogo_id', motoIds)
+        .order('orden')
+      for (const c of coloresAll ?? []) {
+        if (!coloresPorMoto[c.moto_catalogo_id]) coloresPorMoto[c.moto_catalogo_id] = []
+        coloresPorMoto[c.moto_catalogo_id].push({
+          id: c.id, nombre: c.nombre, imagen_key: c.imagen_key, dias_entrega: c.dias_entrega, orden: c.orden,
+        })
+      }
     }
 
     // Deduplicar por ID por seguridad (evita duplicados si cargar corre dos veces)
@@ -506,6 +670,7 @@ export default function ConfigVentasPage() {
       cotizacion_badges:     (m as never as Record<string,string>).cotizacion_badges      ?? '',
       cotizacion_testimonial:(m as never as Record<string,string>).cotizacion_testimonial ?? '',
       fotos:                fotosPorMoto[m.id] ?? [],
+      colores_detalle:      coloresPorMoto[m.id] ?? [],
     })) as MotoCat[])
     setTipos((tip ?? []) as TipoRecordatorio[])
     setPlantillas((plant ?? []) as Plantilla[])
@@ -887,6 +1052,7 @@ export default function ConfigVentasPage() {
           <div className="space-y-1.5 mb-3">
             {motos.map(m => (
               <MotoCard key={m.id} m={m} recargoTarjeta={cotInfo.recargoTarjeta}
+                tenantId={profile?.tenant_id ?? ''}
                 onSave={guardarMoto} onToggle={toggleMoto} onDelete={eliminarMoto} />
             ))}
             {motos.length === 0 && !showNuevaMoto && (

@@ -1,6 +1,6 @@
 'use client'
 import { useEffect } from 'react'
-import type { OpcionCotizacion } from '@/app/admin/cotizaciones/[id]/page'
+import type { OpcionCotizacion, ColorVarianteCot } from '@/app/admin/cotizaciones/[id]/page'
 
 function cop(n: number) {
   return n.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
@@ -320,19 +320,51 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 )
               })()}
 
-              {/* COLORES — azul grisáceo */}
-              {op?.colores && (
-                <div style={{ marginBottom: 10, background: '#eef2f7', borderRadius: 8, padding: '7px 10px', border: '1.5px solid #c8d6e5' }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 800, color: '#2d4a6b', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>🎨 Colores disponibles</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {op.colores.split(/[,;\/]/).map(c => c.trim()).filter(Boolean).map(color => (
-                      <span key={color} style={{ background: '#dce6f0', border: '1.5px solid #9ab5cc', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700, color: '#2d4a6b' }}>
-                        {color}
-                      </span>
-                    ))}
+              {/* COLORES — tarjetas visuales con foto */}
+              {(() => {
+                const det: ColorVarianteCot[] = op?.colores_detalle ?? []
+                const hasNew = det.length > 0
+                const hasOld = !!(op?.colores?.trim())
+                if (!hasNew && !hasOld) return null
+                const numCols = hasNew ? Math.min(det.length, 3) : 0
+                return (
+                  <div style={{ marginBottom: 10, background: '#eef2f7', borderRadius: 8, padding: '7px 10px', border: '1.5px solid #c8d6e5' }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, color: '#2d4a6b', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>🎨 Colores disponibles</div>
+                    {hasNew ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${numCols}, 1fr)`, gap: 5 }}>
+                        {det.map((c, i) => (
+                          <div key={i} style={{ background: '#fff', borderRadius: 7, overflow: 'hidden', border: '1.5px solid #c8d6e5' }}>
+                            <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4 }}>
+                              {c.imagen_uri ? (
+                                <img src={c.imagen_uri} alt={c.nombre} style={{ maxWidth: '100%', maxHeight: 52, objectFit: 'contain', filter: 'drop-shadow(0 1px 4px rgba(0,52,180,0.12))' }} />
+                              ) : (
+                                <span style={{ fontSize: 22 }}>🎨</span>
+                              )}
+                            </div>
+                            <div style={{ padding: '4px 5px', textAlign: 'center' }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: '#2d4a6b', lineHeight: 1.2, marginBottom: 2 }}>{c.nombre}</div>
+                              {c.dias_entrega ? (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, background: '#dbeafe', borderRadius: 20, padding: '1px 6px' }}>
+                                  <span style={{ fontSize: 8.5 }}>📦</span>
+                                  <span style={{ fontSize: 8.5, fontWeight: 700, color: '#1d4ed8' }}>{c.dias_entrega} días</span>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {op!.colores!.split(/[,;\/]/).map(c => c.trim()).filter(Boolean).map(color => (
+                          <span key={color} style={{ background: '#dce6f0', border: '1.5px solid #9ab5cc', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700, color: '#2d4a6b' }}>
+                            {color}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                )
+              })()}
 
               {/* INCLUYE — iconos, colores azul de marca */}
               <div style={{ background: '#eff6ff', borderRadius: 8, padding: '8px 11px', marginBottom: 10, border: '1.5px solid #bfdbfe' }}>

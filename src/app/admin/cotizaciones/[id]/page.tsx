@@ -81,6 +81,27 @@ export default async function CotizacionPage({ params }: { params: { id: string 
     }))
   )
 
+  // Colores del primer vehículo (tabla v69, defensiva — puede no existir aún)
+  const primeraOpcion = opcionesConFotos[0]
+  if (primeraOpcion?.moto_catalogo_id) {
+    try {
+      const { data: coloresDB } = await admin.from('motos_catalogo_colores')
+        .select('nombre, imagen_key, dias_entrega, orden')
+        .eq('moto_catalogo_id', primeraOpcion.moto_catalogo_id)
+        .order('orden')
+      if (coloresDB && coloresDB.length > 0) {
+        const coloresConUri: ColorVarianteCot[] = await Promise.all(
+          coloresDB.map(async c => ({
+            nombre: c.nombre,
+            imagen_uri: await imgToDataUri(c.imagen_key),
+            dias_entrega: c.dias_entrega ?? undefined,
+          }))
+        )
+        opcionesConFotos[0] = { ...opcionesConFotos[0], colores_detalle: coloresConUri }
+      }
+    } catch { /* migración v69 no aplicada aún — se muestra fallback de texto */ }
+  }
+
   // Logo
   const rawLogo = tenantBase?.logo_url ?? ''
   const logoUri = rawLogo.startsWith('http') ? rawLogo : await imgToDataUri(rawLogo)
@@ -105,6 +126,12 @@ export default async function CotizacionPage({ params }: { params: { id: string 
       }}
     />
   )
+}
+
+export type ColorVarianteCot = {
+  nombre: string
+  imagen_uri?: string
+  dias_entrega?: number
 }
 
 export type OpcionCotizacion = {
@@ -132,6 +159,7 @@ export type OpcionCotizacion = {
   foto_lado_uri?: string
   foto_promo_uri?: string
   foto_extra_uri?: string
+  colores_detalle?: ColorVarianteCot[]
   precio: number
   costo_documentos: number
   costo_prenda: number
