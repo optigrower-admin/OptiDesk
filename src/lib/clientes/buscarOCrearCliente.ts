@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { SupabaseClient } from '@supabase/supabase-js'
 
 type CanalContacto = 'whatsapp' | 'messenger' | 'instagram' | 'telefono' | 'presencial'
 
@@ -16,10 +17,13 @@ interface BuscarCrearParams {
   tipoDocumento?: string
   email?: string
   assignedTo?: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabaseClient?: SupabaseClient<any, any, any>
 }
 
 export async function buscarOCrearCliente(params: BuscarCrearParams) {
-  const supabase = createAdminClient()
+  // Usar el cliente inyectado si está disponible (para evitar re-crear el cliente en contextos donde ya existe)
+  const supabase = params.supabaseClient ?? createAdminClient()
   const {
     tenantId, canal, contactId, celular, cedula, nombre,
     primerNombre, segundoNombre, primerApellido, segundoApellido,

@@ -174,10 +174,11 @@ async function asegurarClienteEnSeguimiento(
     const { cliente } = await buscarOCrearCliente({
       tenantId,
       canal,
-      contactId:  canalContactId,
-      celular:    canal === 'whatsapp' ? canalContactId : undefined,
-      nombre:     nombreSugerido,
-      assignedTo: assignedTo ?? undefined,
+      contactId:      canalContactId,
+      celular:        canal === 'whatsapp' ? canalContactId : undefined,
+      nombre:         nombreSugerido,
+      assignedTo:     assignedTo ?? undefined,
+      supabaseClient: supabase,
     })
 
     if (!cliente) {

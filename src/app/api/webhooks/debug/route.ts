@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       contactId: phone,
       celular: phone,
       nombre: `Debug ${phone}`,
+      supabaseClient: supabase,
     })
 
     log.push(`buscarOCrearCliente OK — creado=${creado} id=${cliente?.id}`)
