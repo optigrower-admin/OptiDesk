@@ -287,7 +287,7 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
               {/* NOMBRE + CHIPS */}
               {op && (
                 <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontWeight: 900, fontSize: 12, color: '#001a5e', letterSpacing: -0.5, lineHeight: 1.1 }}>{op.referencia}</div>
+                  <div style={{ fontWeight: 900, fontSize: 24, color: '#001a5e', letterSpacing: -0.5, lineHeight: 1.1 }}>{op.referencia}</div>
                   {op.tagline_venta && <div style={{ fontSize: 13, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>{op.tagline_venta}</div>}
                   {specsChips.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
@@ -311,8 +311,8 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                 return (
                   <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 7, marginBottom: 11 }}>
                     {allPhotos.map((f, i) => (
-                      <div key={i} style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 9, padding: 7, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 115 }}>
-                        <img src={f.src} alt={f.label || op.referencia} style={{ width: '100%', height: 105, objectFit: 'contain', filter: 'drop-shadow(0 3px 8px rgba(0,52,180,0.12))' }} />
+                      <div key={i} style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', borderRadius: 9, padding: 7, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 165 }}>
+                        <img src={f.src} alt={f.label || op.referencia} style={{ width: '100%', height: 155, objectFit: 'contain', filter: 'drop-shadow(0 3px 8px rgba(0,52,180,0.12))' }} />
                         {f.label && <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textAlign: 'center' }}>{f.label}</div>}
                       </div>
                     ))}
@@ -334,9 +334,9 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
                       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${numCols}, 1fr)`, gap: 5 }}>
                         {det.map((c, i) => (
                           <div key={i} style={{ background: '#fff', borderRadius: 7, overflow: 'hidden', border: '1.5px solid #c8d6e5' }}>
-                            <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4 }}>
+                            <div style={{ background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', height: 95, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4 }}>
                               {c.imagen_uri ? (
-                                <img src={c.imagen_uri} alt={c.nombre} style={{ maxWidth: '100%', maxHeight: 52, objectFit: 'contain', filter: 'drop-shadow(0 1px 4px rgba(0,52,180,0.12))' }} />
+                                <img src={c.imagen_uri} alt={c.nombre} style={{ maxWidth: '100%', maxHeight: 85, objectFit: 'contain', filter: 'drop-shadow(0 1px 4px rgba(0,52,180,0.12))' }} />
                               ) : (
                                 <span style={{ fontSize: 22 }}>🎨</span>
                               )}
@@ -414,11 +414,11 @@ export default function CotizacionDoc({ cotizacion, tenant }: Props) {
 
               {/* FOTO PROMOCIONAL — alta, sin recorte, con fondo */}
               {fotoPromoSidebar && (
-                <div style={{ borderRadius: 12, overflow: 'hidden', background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 160 }}>
+                <div style={{ borderRadius: 12, overflow: 'hidden', background: 'linear-gradient(135deg, #f0f5ff, #e8f0fe)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 210 }}>
                   <img
                     src={fotoPromoSidebar}
                     alt={op?.referencia ?? ''}
-                    style={{ width: '100%', maxHeight: 160, objectFit: 'contain', display: 'block', padding: 6, filter: 'drop-shadow(0 4px 14px rgba(0,52,180,0.12))' }}
+                    style={{ width: '100%', maxHeight: 210, objectFit: 'contain', display: 'block', padding: 6, filter: 'drop-shadow(0 4px 14px rgba(0,52,180,0.12))' }}
                   />
                 </div>
               )}
