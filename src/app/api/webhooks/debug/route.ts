@@ -23,6 +23,11 @@ export async function POST(request: NextRequest) {
   try {
     log.push(`Iniciando para phone=${phone} tenant=${tenant_id}`)
 
+    // Verificar que el admin client funciona antes de llamar buscarOCrearCliente
+    const { data: testRow, error: testErr } = await supabase
+      .from('tenants').select('id').limit(1).maybeSingle()
+    log.push(`Admin client test — data=${JSON.stringify(testRow)} err=${testErr?.message ?? 'OK'}`)
+
     const { cliente, creado } = await buscarOCrearCliente({
       tenantId: tenant_id,
       canal: 'whatsapp',
