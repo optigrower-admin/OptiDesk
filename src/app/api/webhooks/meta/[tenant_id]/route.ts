@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createAnonClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { decrypt } from '@/lib/crypto'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,6 +106,125 @@ async function procesarMensajeMeta(body: unknown, tenantId: string) {
   }
 }
 
+// ─── Obtiene el nombre del contacto desde el webhook o la Graph API ─────────
+
+async function obtenerNombreContacto(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  canal: 'whatsapp' | 'messenger' | 'instagram',
+  canalContactId: string,
+  value: Record<string, unknown>,
+): Promise<string> {
+  // WhatsApp: el nombre del perfil viene en el payload
+  if (canal === 'whatsapp') {
+    const contacts = value.contacts as Array<{ profile?: { name?: string } }> | undefined
+    const nombre = contacts?.[0]?.profile?.name
+    if (nombre) return nombre
+    // Fallback: formatear el número como +XX XXX XXX XXXX
+    return `+${canalContactId}`
+  }
+
+  // Messenger / Instagram: llamar Graph API con el token del tenant
+  try {
+    const { data: cfg } = await supabase
+      .from('config_meta')
+      .select('messenger_access_token_enc, instagram_access_token_enc')
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+
+    const tokenEnc = canal === 'messenger'
+      ? cfg?.messenger_access_token_enc
+      : cfg?.instagram_access_token_enc
+
+    if (!tokenEnc) throw new Error('Sin token')
+
+    const token    = decrypt(tokenEnc)
+    const fields   = canal === 'instagram' ? 'name,username' : 'name'
+    const url      = `https://graph.facebook.com/v19.0/${canalContactId}?fields=${fields}&access_token=${token}`
+    const resp     = await fetch(url)
+
+    if (resp.ok) {
+      const data = await resp.json() as { name?: string; username?: string }
+      return data.name ?? data.username ?? canalContactId
+    }
+  } catch {
+    // Graph API falló — usar placeholder
+  }
+
+  const label = canal === 'messenger' ? 'Messenger' : 'Instagram'
+  return `${label} - ${canalContactId.slice(-6)}`
+}
+
+// ─── Crea o vincula el cliente a la conversación y lo pone en seguimiento ───
+
+async function asegurarClienteEnSeguimiento(
+  supabase: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  canal: 'whatsapp' | 'messenger' | 'instagram',
+  canalContactId: string,
+  nombreSugerido: string,
+  convId: string,
+  assignedTo: string | null,
+): Promise<void> {
+  // Buscar cliente existente por identificador de canal
+  const campoCanal = canal === 'whatsapp' ? 'whatsapp_number'
+    : canal === 'messenger' ? 'messenger_id' : 'instagram_id'
+
+  const { data: existente } = await supabase
+    .from('clientes')
+    .select('id, en_seguimiento_ventas')
+    .eq('tenant_id', tenantId)
+    .eq(campoCanal, canalContactId)
+    .maybeSingle()
+
+  let clienteId: string
+
+  if (existente) {
+    clienteId = existente.id
+    // Asegurarse de que esté en seguimiento (puede ya estar, no rompe nada)
+    if (!existente.en_seguimiento_ventas) {
+      await supabase.from('clientes').update({
+        en_seguimiento_ventas: true,
+        etapa_venta:           'nuevo',
+        etapa_venta_orden:     0,
+        assigned_to:           assignedTo,
+      }).eq('id', clienteId)
+    }
+  } else {
+    // Crear nuevo cliente desde el canal
+    const nuevoCliente: Record<string, unknown> = {
+      tenant_id:                    tenantId,
+      nombre:                       nombreSugerido,
+      en_seguimiento_ventas:        true,
+      etapa_venta:                  'nuevo',
+      etapa_venta_orden:            0,
+      nombre_pendiente_aprobacion:  true,
+      assigned_to:                  assignedTo,
+      [campoCanal]:                 canalContactId,
+    }
+    if (canal === 'whatsapp') {
+      nuevoCliente.celular = canalContactId
+    }
+
+    const { data: creado } = await supabase
+      .from('clientes')
+      .insert(nuevoCliente)
+      .select('id')
+      .single()
+
+    if (!creado) return
+    clienteId = creado.id
+  }
+
+  // Vincular la conversación al cliente
+  await supabase
+    .from('conversaciones')
+    .update({ cliente_id: clienteId })
+    .eq('id', convId)
+}
+
+// ─── Procesamiento de cada mensaje individual ────────────────────────────────
+
 async function procesarMensajeIndividual(
   supabase: ReturnType<typeof createAdminClient>,
   tenantId: string,
@@ -156,10 +276,10 @@ async function procesarMensajeIndividual(
     if (dup) return
   }
 
-  // Buscar conversación activa
+  // Buscar conversación activa (incluir cliente_id para saber si ya está vinculado)
   let { data: conv } = await supabase
     .from('conversaciones')
-    .select('id,assigned_to,no_leidos_count')
+    .select('id,assigned_to,no_leidos_count,cliente_id,sin_respuesta_asesor_desde')
     .eq('tenant_id', tenantId)
     .eq('canal', canal)
     .eq('canal_contact_id', canalContactId)
@@ -171,10 +291,9 @@ async function procesarMensajeIndividual(
   const esNueva = !conv
 
   if (!conv) {
-    // Determinar asignación
     const assignedTo = await determinarAsignacion(supabase, tenantId, canal, canalContactId)
 
-    // Buscar cliente existente
+    // Para WhatsApp buscar cliente existente por número antes de crear la conversación
     let clienteId: string | null = null
     if (canal === 'whatsapp') {
       const { data: cliente } = await supabase
@@ -189,19 +308,36 @@ async function procesarMensajeIndividual(
     const { data: nuevaConv } = await supabase
       .from('conversaciones')
       .insert({
-        tenant_id:       tenantId,
+        tenant_id:        tenantId,
         canal,
         canal_contact_id: canalContactId,
-        assigned_to:     assignedTo,
-        cliente_id:      clienteId,
-        estado:          'abierta',
+        assigned_to:      assignedTo,
+        cliente_id:       clienteId,
+        estado:           'abierta',
       })
-      .select('id,assigned_to,no_leidos_count')
+      .select('id,assigned_to,no_leidos_count,cliente_id,sin_respuesta_asesor_desde')
       .single()
     conv = nuevaConv
   }
 
   if (!conv) return
+
+  // ── Garantizar que el cliente existe y está en Seguimiento Ventas ──
+  if (!conv.cliente_id) {
+    const nombreSugerido = await obtenerNombreContacto(supabase, tenantId, canal, canalContactId, value)
+    await asegurarClienteEnSeguimiento(
+      supabase, tenantId, canal, canalContactId,
+      nombreSugerido, conv.id,
+      (conv as Record<string, unknown>).assigned_to as string | null,
+    )
+  } else {
+    // Cliente existe — asegurarse de que esté visible en Seguimiento Ventas
+    await supabase
+      .from('clientes')
+      .update({ en_seguimiento_ventas: true })
+      .eq('id', conv.cliente_id)
+      .eq('en_seguimiento_ventas', false)
+  }
 
   // Guardar el mensaje
   const now = new Date().toISOString()
@@ -216,16 +352,16 @@ async function procesarMensajeIndividual(
   })
 
   // Actualizar conversación
+  const sinRespDesde = (conv as Record<string, unknown>).sin_respuesta_asesor_desde as string | null
   await supabase.from('conversaciones').update({
-    ultimo_mensaje_at:        now,
-    ultimo_mensaje_texto:     contenido.slice(0, 100),
-    ultimo_mensaje_direccion: 'entrante',
-    no_leidos_count:          (conv.no_leidos_count ?? 0) + 1,
-    sin_respuesta_asesor_desde: esNueva ? now : conv.sin_respuesta_asesor_desde ?? now,
-    updated_at:               now,
+    ultimo_mensaje_at:          now,
+    ultimo_mensaje_texto:       contenido.slice(0, 100),
+    ultimo_mensaje_direccion:   'entrante',
+    no_leidos_count:            ((conv as Record<string, unknown>).no_leidos_count as number ?? 0) + 1,
+    sin_respuesta_asesor_desde: esNueva ? now : sinRespDesde ?? now,
+    updated_at:                 now,
   }).eq('id', conv.id)
 
-  // Verificar límite diario antes de cualquier respuesta automática
   await verificarLimiteDiario(supabase, tenantId)
 }
 

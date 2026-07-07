@@ -37,6 +37,7 @@ export default function VentasPage() {
           lead_source,
           sin_respuesta_asesor_desde,
           assigned_to,
+          nombre_pendiente_aprobacion,
           conversaciones ( id, canal, no_leidos_count )
         `)
         .eq('tenant_id', profile.tenant_id)
@@ -95,11 +96,12 @@ export default function VentasPage() {
           no_leidos_count:            noLeidos,
           sin_respuesta_asesor_desde: (c.sin_respuesta_asesor_desde ?? null) as string | null,
           assigned_to:                (c.assigned_to ?? null) as string | null,
-          cliente:                    { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null },
-          cliente_apellido:           (ex.primer_apellido ?? null) as string | null,
-          cliente_documento:          (ex.numero_documento ?? null) as string | null,
-          cliente_email:              (ex.email ?? null) as string | null,
-          leads_campana:              [],
+          cliente:                      { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null },
+          cliente_apellido:             (ex.primer_apellido ?? null) as string | null,
+          cliente_documento:            (ex.numero_documento ?? null) as string | null,
+          cliente_email:                (ex.email ?? null) as string | null,
+          nombre_pendiente_aprobacion:  (c.nombre_pendiente_aprobacion ?? null) as boolean | null,
+          leads_campana:                [],
           todas_conversaciones:       convs.map(cv => ({ id: cv.id, canal: cv.canal, no_leidos_count: cv.no_leidos_count ?? 0 })),
         }
       })

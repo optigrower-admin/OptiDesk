@@ -49,7 +49,7 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string }) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null }) => void
   onLeadDelete?: (id: string) => void
 }
 
@@ -102,6 +102,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [nuevoNombre, setNuevoNombre]       = useState(lead.cliente?.nombre ?? '')
   const [savingNombre, setSavingNombre]     = useState(false)
   const [confirmDelete, setConfirmDelete]   = useState(false)
+  const [confirmDeleteInput, setConfirmDeleteInput] = useState('')
   const [deleting, setDeleting]             = useState(false)
 
   // Campos editables — tab Resumen
@@ -180,8 +181,10 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     const nombre = nuevoNombre.trim()
     if (!nombre || !lead.cliente?.id) return
     setSavingNombre(true)
-    await supabase.from('clientes').update({ nombre }).eq('id', lead.cliente.id)
-    onLeadUpdate?.(lead.id, { nombre })
+    await supabase.from('clientes')
+      .update({ nombre, nombre_pendiente_aprobacion: false })
+      .eq('id', lead.cliente.id)
+    onLeadUpdate?.(lead.id, { nombre, nombre_pendiente_aprobacion: false })
     setEditandoNombre(false)
     setSavingNombre(false)
   }
@@ -218,18 +221,26 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         {confirmDelete && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 rounded-2xl">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 mx-4">
-              <h2 className="font-bold text-gray-900 mb-2">¿Eliminar cliente?</h2>
-              <p className="text-sm text-gray-600 mb-5">
-                Esto eliminará permanentemente a <strong>{lead.cliente?.nombre ?? 'este cliente'}</strong> y todos sus datos del sistema. Esta acción no se puede deshacer.
+              <h2 className="font-bold text-red-700 mb-1">⚠️ Eliminar cliente</h2>
+              <p className="text-sm text-gray-600 mb-3">
+                Esto eliminará permanentemente a <strong>{lead.cliente?.nombre ?? 'este cliente'}</strong> y todos sus datos. Esta acción no se puede deshacer.
               </p>
+              <p className="text-xs text-gray-500 mb-1.5">Para confirmar, escribe <span className="font-bold text-red-600">ELIMINAR</span> en el campo:</p>
+              <input
+                autoFocus
+                value={confirmDeleteInput}
+                onChange={e => setConfirmDeleteInput(e.target.value)}
+                placeholder="Escribe ELIMINAR"
+                className="w-full border border-red-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 mb-4"
+              />
               <div className="flex gap-2">
-                <button onClick={() => setConfirmDelete(false)} disabled={deleting}
+                <button onClick={() => { setConfirmDelete(false); setConfirmDeleteInput('') }} disabled={deleting}
                   className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40">
                   Cancelar
                 </button>
-                <button onClick={handleEliminar} disabled={deleting}
-                  className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
-                  {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+                <button onClick={handleEliminar} disabled={deleting || confirmDeleteInput !== 'ELIMINAR'}
+                  className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
+                  {deleting ? 'Eliminando...' : 'Eliminar'}
                 </button>
               </div>
             </div>
@@ -277,8 +288,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {esGerencia && (
-              <button onClick={() => setConfirmDelete(true)}
+            {profile?.rol === 'gerencia' && (
+              <button onClick={() => { setConfirmDeleteInput(''); setConfirmDelete(true) }}
                 className="text-xs text-red-400 hover:text-red-600 font-medium px-2 py-1 hover:bg-red-50 rounded-lg transition-colors">
                 🗑 Eliminar
               </button>
