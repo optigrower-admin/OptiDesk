@@ -192,28 +192,38 @@ async function asegurarClienteEnSeguimiento(
     }
   } else {
     // Crear nuevo cliente desde el canal
+    // Campos base sin nombre_pendiente_aprobacion (por si la migración aún no se corrió)
     const nuevoCliente: Record<string, unknown> = {
-      tenant_id:                    tenantId,
-      nombre:                       nombreSugerido,
-      en_seguimiento_ventas:        true,
-      etapa_venta:                  'nuevo',
-      etapa_venta_orden:            0,
-      nombre_pendiente_aprobacion:  true,
-      assigned_to:                  assignedTo,
-      [campoCanal]:                 canalContactId,
+      tenant_id:             tenantId,
+      nombre:                nombreSugerido,
+      en_seguimiento_ventas: true,
+      etapa_venta:           'nuevo',
+      etapa_venta_orden:     0,
+      assigned_to:           assignedTo,
+      [campoCanal]:          canalContactId,
     }
     if (canal === 'whatsapp') {
       nuevoCliente.celular = canalContactId
     }
 
-    const { data: creado } = await supabase
+    const { data: creado, error: errInsert } = await supabase
       .from('clientes')
       .insert(nuevoCliente)
       .select('id')
       .single()
 
-    if (!creado) return
+    if (errInsert || !creado) {
+      console.error('[webhook] error creando cliente:', errInsert?.message)
+      return
+    }
     clienteId = creado.id
+
+    // Intentar marcar nombre como pendiente de aprobación
+    // (falla silenciosamente si la migración v72 aún no se corrió)
+    await supabase
+      .from('clientes')
+      .update({ nombre_pendiente_aprobacion: true } as Record<string, unknown>)
+      .eq('id', clienteId)
   }
 
   // Vincular la conversación al cliente
