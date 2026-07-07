@@ -8,6 +8,7 @@ interface Props {
   clienteId: string
   tenantId: string
   usuarioId: string
+  onProximaAccionChange?: (proxAccion: string | null, proxFecha: string | null) => void
 }
 
 type MotoCatalogo = { id: string; referencia: string; precio: number; costo_documentos: number; costo_prenda: number }
@@ -18,7 +19,7 @@ function formatDateHour(d: string) {
   return new Date(d).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ResumenTab({ clienteId, tenantId, usuarioId }: Props) {
+export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAccionChange }: Props) {
   const supabase = createClient()
   const [seleccion, setSeleccion] = useState<Seleccion[]>([])
   const [formaPago, setFormaPago] = useState<'contado' | 'credito' | ''>('')
@@ -52,6 +53,24 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId }: Props) {
   }, [clienteId])
 
   useEffect(() => { cargar() }, [cargar])
+
+  async function completarRecordatorio(id: string) {
+    await supabase.from('recordatorios').update({
+      completado: true,
+      completado_at: new Date().toISOString(),
+    }).eq('id', id)
+    // Siguiente recordatorio pendiente → actualizar proxima_accion en clientes
+    const { data: prox } = await supabase.from('recordatorios')
+      .select('nota, fecha_recordatorio')
+      .eq('cliente_id', clienteId).eq('completado', false)
+      .order('fecha_recordatorio', { ascending: true }).limit(1).maybeSingle()
+    await supabase.from('clientes').update({
+      proxima_accion:       prox?.nota ?? null,
+      proxima_accion_fecha: prox?.fecha_recordatorio ?? null,
+    }).eq('id', clienteId)
+    onProximaAccionChange?.(prox?.nota ?? null, prox?.fecha_recordatorio ?? null)
+    cargar()
+  }
 
   if (loading) return <p className="text-sm text-gray-400 text-center py-8">Cargando...</p>
 
@@ -109,12 +128,31 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId }: Props) {
             Sin próximas acciones — créalas en la pestaña Recordatorios
           </p>
         )}
-        {recordatorios.map(r => (
-          <div key={r.id} className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mb-1.5">
-            <p className="text-xs font-semibold text-blue-800">{formatDateHour(r.fecha_recordatorio)}</p>
-            {r.nota && <p className="text-xs text-blue-700 mt-0.5">{r.nota}</p>}
-          </div>
-        ))}
+        {recordatorios.map(r => {
+          const vencido = new Date(r.fecha_recordatorio).getTime() < Date.now()
+          return (
+            <div key={r.id} className={`border rounded-xl px-3 py-2 mb-1.5 ${vencido ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-200'}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className={`text-xs font-semibold ${vencido ? 'text-red-700' : 'text-blue-800'}`}>
+                    {vencido ? '⏰ ' : '📌 '}{formatDateHour(r.fecha_recordatorio)}
+                  </p>
+                  {r.nota && <p className={`text-xs mt-0.5 ${vencido ? 'text-red-700' : 'text-blue-700'}`}>{r.nota}</p>}
+                </div>
+                <button
+                  onClick={() => completarRecordatorio(r.id)}
+                  className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                  title="Marcar como hecho"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Hecho
+                </button>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

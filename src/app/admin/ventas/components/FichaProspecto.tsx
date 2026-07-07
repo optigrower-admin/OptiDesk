@@ -520,7 +520,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     {saving ? 'Guardando...' : 'Guardar cambios'}
                   </button>
 
-                  <ResumenTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />
+                  <ResumenTab
+                    clienteId={lead.id}
+                    tenantId={tenantId}
+                    usuarioId={profile?.id ?? ''}
+                    onProximaAccionChange={(proxAccion, proxFecha) => onLeadUpdate?.(lead.id, { proxima_accion: proxAccion, proxima_accion_fecha: proxFecha })}
+                  />
 
                   {ordenes.length > 0 && (
                     <div className="border-t pt-3">
