@@ -23,6 +23,20 @@ export async function POST(request: NextRequest) {
   try {
     log.push(`Iniciando para phone=${phone} tenant=${tenant_id}`)
 
+    // Diagnóstico de variables de entorno (sin exponer valores)
+    const envVars = [
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+      'SUPABASE_SERVICE_ROLE_KEY',
+      'SUPABASE_SERVICE_KEY',
+      'SUPABASE_ADMIN_KEY',
+      'SUPABASE_KEY',
+    ]
+    for (const v of envVars) {
+      const val = process.env[v]
+      log.push(`${v}: ${val ? `SET (starts: ${val.slice(0,8)})` : 'NOT SET'}`)
+    }
+
     // Verificar que el admin client funciona antes de llamar buscarOCrearCliente
     const { data: testRow, error: testErr } = await supabase
       .from('tenants').select('id').limit(1).maybeSingle()
