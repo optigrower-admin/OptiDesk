@@ -7,6 +7,7 @@ interface Props {
   tenantId: string
   usuarioId: string
   clienteEmail: string | null
+  onProximaAccionChange?: (proxAccion: string | null, proxFecha: string | null) => void
 }
 
 type Recordatorio = { id: string; nota: string | null; fecha_recordatorio: string; completado: boolean; enviar_email: boolean; email_enviado_at: string | null }
@@ -16,7 +17,7 @@ function formatDateHour(d: string) {
   return new Date(d).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
-export default function RecordatoriosTab({ clienteId, tenantId, usuarioId, clienteEmail }: Props) {
+export default function RecordatoriosTab({ clienteId, tenantId, usuarioId, clienteEmail, onProximaAccionChange }: Props) {
   const supabase = createClient()
   const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([])
   const [plantillas, setPlantillas]       = useState<Plantilla[]>([])
@@ -52,6 +53,7 @@ export default function RecordatoriosTab({ clienteId, tenantId, usuarioId, clien
       proxima_accion: prox?.nota ?? null,
       proxima_accion_fecha: prox?.fecha_recordatorio ?? null,
     }).eq('id', clienteId)
+    onProximaAccionChange?.(prox?.nota ?? null, prox?.fecha_recordatorio ?? null)
   }
 
   async function crear() {

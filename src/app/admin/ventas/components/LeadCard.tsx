@@ -41,9 +41,10 @@ interface Props {
   lead: LeadData
   onClick: () => void
   overlay?: boolean
+  asignado?: string
 }
 
-export default function LeadCard({ lead, onClick, overlay }: Props) {
+export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: lead.id })
 
   const style = {
@@ -145,6 +146,11 @@ export default function LeadCard({ lead, onClick, overlay }: Props) {
           <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">Referido</span>
         )}
       </div>
+
+      {/* Asesor asignado */}
+      {asignado && (
+        <p className="text-xs text-gray-400 mb-1.5 truncate">👤 {asignado}</p>
+      )}
 
       {/* Indicadores de urgencia */}
       {sinResponder.urgente && (

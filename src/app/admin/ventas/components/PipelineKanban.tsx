@@ -15,6 +15,40 @@ import ModalPerdida from './ModalPerdida'
 interface Props {
   leadsIniciales: LeadData[]
   tenantId: string
+  usuarios?: { id: string; nombre: string }[]
+}
+
+function ConfirmMoveModal({
+  to,
+  onConfirm,
+  onCancel,
+}: {
+  to: typeof ETAPAS[0]
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h2 className="font-bold text-gray-900 mb-2">¿Cambiar etapa?</h2>
+        <p className="text-sm text-gray-600 mb-5">
+          ¿Mover a{' '}
+          <span className="font-semibold" style={{ color: to.color }}>{to.label}</span>?
+        </p>
+        <div className="flex gap-2">
+          <button onClick={onCancel}
+            className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={onConfirm}
+            className="flex-1 py-2 text-white rounded-lg text-sm font-semibold"
+            style={{ background: to.color }}>
+            Sí, mover
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // Each column needs to be a proper droppable zone
@@ -22,10 +56,12 @@ function KanbanColumn({
   etapaConfig,
   leads,
   onOpen,
+  usuariosMap,
 }: {
   etapaConfig: typeof ETAPAS[0]
   leads: LeadData[]
   onOpen: (id: string) => void
+  usuariosMap: Record<string, string>
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: etapaConfig.id })
 
@@ -58,7 +94,8 @@ function KanbanColumn({
             </div>
           )}
           {leads.map(lead => (
-            <LeadCard key={lead.id} lead={lead} onClick={() => onOpen(lead.id)} />
+            <LeadCard key={lead.id} lead={lead} onClick={() => onOpen(lead.id)}
+              asignado={lead.assigned_to ? (usuariosMap[lead.assigned_to] ?? undefined) : undefined} />
           ))}
         </SortableContext>
       </div>
@@ -66,11 +103,14 @@ function KanbanColumn({
   )
 }
 
-export default function PipelineKanban({ leadsIniciales, tenantId }: Props) {
+export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [] }: Props) {
   const [leads, setLeads]             = useState<LeadData[]>(leadsIniciales)
   const [activeId, setActiveId]       = useState<string | null>(null)
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [perdidaId, setPerdidaId]     = useState<string | null>(null)
+  const [pendingMove, setPendingMove] = useState<{ leadId: string; targetEtapa: typeof ETAPAS[0] } | null>(null)
+
+  const usuariosMap = Object.fromEntries(usuarios.map(u => [u.id, u.nombre]))
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
@@ -118,28 +158,35 @@ export default function PipelineKanban({ leadsIniciales, tenantId }: Props) {
     const lead      = leads.find(l => l.id === leadId)
     if (!lead) return
 
-    // `over.id` is either a column etapa or another card's id
     let targetEtapa: EtapaVenta | null = null
     if (ETAPA_MAP[overId as EtapaVenta]) {
-      // Dropped directly on a column
       targetEtapa = overId as EtapaVenta
     } else {
-      // Dropped on a card — use that card's column
       const targetLead = leads.find(l => l.id === overId)
       targetEtapa = targetLead?.etapa_venta ?? null
     }
 
     if (!targetEtapa || targetEtapa === lead.etapa_venta) return
 
-    // Optimistic move
-    moverLead(leadId, targetEtapa)
+    // Always confirm before moving
+    const etapaConfig = ETAPA_MAP[targetEtapa]
+    setPendingMove({ leadId, targetEtapa: etapaConfig })
+  }
 
-    if (targetEtapa === 'perdido') {
+  function confirmarMove() {
+    if (!pendingMove) return
+    const { leadId, targetEtapa } = pendingMove
+    moverLead(leadId, targetEtapa.id as EtapaVenta)
+    if (targetEtapa.id === 'perdido') {
       setPerdidaId(leadId)
-      // Persist happens after modal confirmation
     } else {
-      persistirEtapa(leadId, targetEtapa)
+      persistirEtapa(leadId, targetEtapa.id as EtapaVenta)
     }
+    setPendingMove(null)
+  }
+
+  function cancelarMove() {
+    setPendingMove(null)
   }
 
   function confirmarPerdida(motivo: string, detalle: string) {
@@ -160,8 +207,33 @@ export default function PipelineKanban({ leadsIniciales, tenantId }: Props) {
     moverLead(id, etapa)
   }
 
+  function handleLeadUpdate(id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string }) {
+    setLeads(prev => prev.map(l => {
+      if (l.id !== id) return l
+      return {
+        ...l,
+        ...(updates.proxima_accion !== undefined ? { proxima_accion: updates.proxima_accion } : {}),
+        ...(updates.proxima_accion_fecha !== undefined ? { proxima_accion_fecha: updates.proxima_accion_fecha } : {}),
+        ...(updates.nombre !== undefined && l.cliente ? { cliente: { ...l.cliente, nombre: updates.nombre } } : {}),
+      }
+    }))
+  }
+
+  function handleLeadDelete(id: string) {
+    setLeads(prev => prev.filter(l => l.id !== id))
+    setFichaId(null)
+  }
+
   return (
     <>
+      {pendingMove && (
+        <ConfirmMoveModal
+          to={pendingMove.targetEtapa}
+          onConfirm={confirmarMove}
+          onCancel={cancelarMove}
+        />
+      )}
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -175,6 +247,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId }: Props) {
               etapaConfig={etapaConfig}
               leads={leadsEn(etapaConfig.id)}
               onOpen={setFichaId}
+              usuariosMap={usuariosMap}
             />
           ))}
         </div>
@@ -195,6 +268,8 @@ export default function PipelineKanban({ leadsIniciales, tenantId }: Props) {
           tenantId={tenantId}
           onClose={() => setFichaId(null)}
           onEtapaChange={handleEtapaChange}
+          onLeadUpdate={handleLeadUpdate}
+          onLeadDelete={handleLeadDelete}
         />
       )}
 

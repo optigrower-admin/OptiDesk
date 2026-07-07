@@ -49,6 +49,8 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string }) => void
+  onLeadDelete?: (id: string) => void
 }
 
 function formatTime(d: string) {
@@ -77,7 +79,7 @@ const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'historial',     label: 'Historial',     icon: '📅' },
 ]
 
-export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange }: Props) {
+export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange, onLeadUpdate, onLeadDelete }: Props) {
   const supabase = createClient()
   const { profile } = useAuth()
   const endRef   = useRef<HTMLDivElement>(null)
@@ -94,6 +96,13 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
   const [tabDer, setTabDer]             = useState<TabDerecha>('resumen')
   const [vincularOpen, setVincularOpen] = useState(false)
   const [convActivaId, setConvActivaId] = useState(lead.todas_conversaciones[0]?.id ?? '')
+
+  // Renombrar / eliminar cliente (solo Gerencia)
+  const [editandoNombre, setEditandoNombre] = useState(false)
+  const [nuevoNombre, setNuevoNombre]       = useState(lead.cliente?.nombre ?? '')
+  const [savingNombre, setSavingNombre]     = useState(false)
+  const [confirmDelete, setConfirmDelete]   = useState(false)
+  const [deleting, setDeleting]             = useState(false)
 
   // Campos editables — tab Resumen
   const [etapa, setEtapa]         = useState<EtapaVenta>(lead.etapa_venta)
@@ -167,6 +176,24 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
     }
   }
 
+  const handleRenombrar = async () => {
+    const nombre = nuevoNombre.trim()
+    if (!nombre || !lead.cliente?.id) return
+    setSavingNombre(true)
+    await supabase.from('clientes').update({ nombre }).eq('id', lead.cliente.id)
+    onLeadUpdate?.(lead.id, { nombre })
+    setEditandoNombre(false)
+    setSavingNombre(false)
+  }
+
+  const handleEliminar = async () => {
+    if (!lead.cliente?.id) return
+    setDeleting(true)
+    await supabase.from('clientes').delete().eq('id', lead.cliente.id)
+    onLeadDelete?.(lead.id)
+    onClose()
+  }
+
   const etapaActual = ETAPA_MAP[etapa]
 
   return (
@@ -187,19 +214,77 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden">
 
+        {/* Modal confirmar eliminación */}
+        {confirmDelete && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 rounded-2xl">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 mx-4">
+              <h2 className="font-bold text-gray-900 mb-2">¿Eliminar cliente?</h2>
+              <p className="text-sm text-gray-600 mb-5">
+                Esto eliminará permanentemente a <strong>{lead.cliente?.nombre ?? 'este cliente'}</strong> y todos sus datos del sistema. Esta acción no se puede deshacer.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setConfirmDelete(false)} disabled={deleting}
+                  className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40">
+                  Cancelar
+                </button>
+                <button onClick={handleEliminar} disabled={deleting}
+                  className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
+                  {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <p className="font-bold text-gray-900">{lead.cliente?.nombre ?? 'Sin nombre'}</p>
-            <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-white"
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            {editandoNombre ? (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={nuevoNombre}
+                  onChange={e => setNuevoNombre(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleRenombrar(); if (e.key === 'Escape') setEditandoNombre(false) }}
+                  className="border border-blue-400 rounded-lg px-2.5 py-1 text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 w-48"
+                />
+                <button onClick={handleRenombrar} disabled={savingNombre}
+                  className="px-2.5 py-1 bg-blue-700 text-white rounded-lg text-xs font-semibold disabled:opacity-40">
+                  {savingNombre ? '...' : 'OK'}
+                </button>
+                <button onClick={() => setEditandoNombre(false)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs">✕</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <p className="font-bold text-gray-900">{lead.cliente?.nombre ?? 'Sin nombre'}</p>
+                {esGerencia && (
+                  <button onClick={() => { setNuevoNombre(lead.cliente?.nombre ?? ''); setEditandoNombre(true) }}
+                    className="text-gray-300 hover:text-blue-500 transition-colors" title="Editar nombre">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
+            <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-white flex-shrink-0"
               style={{ background: etapaActual.color }}>
               {etapaActual.label}
             </span>
             {lead.cliente?.celular && (
-              <span className="text-xs text-gray-400">{lead.cliente.celular}</span>
+              <span className="text-xs text-gray-400 flex-shrink-0">{lead.cliente.celular}</span>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {esGerencia && (
+              <button onClick={() => setConfirmDelete(true)}
+                className="text-xs text-red-400 hover:text-red-600 font-medium px-2 py-1 hover:bg-red-50 rounded-lg transition-colors">
+                🗑 Eliminar
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+          </div>
         </div>
 
         {/* Body */}
@@ -467,7 +552,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange 
               {tabDer === 'archivos'      && <ArchivosTab clienteId={lead.id} />}
               {tabDer === 'comentarios'   && <ComentariosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'pasos'         && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
-              {tabDer === 'recordatorios' && <RecordatoriosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={clienteEmail} />}
+              {tabDer === 'recordatorios' && <RecordatoriosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={clienteEmail} onProximaAccionChange={(proxAccion, proxFecha) => onLeadUpdate?.(lead.id, { proxima_accion: proxAccion, proxima_accion_fecha: proxFecha })} />}
               {tabDer === 'historial'     && <HistorialTab clienteId={lead.id} />}
               {tabDer === 'visibilidad' && esGerencia && <VisibilidadTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
             </div>
