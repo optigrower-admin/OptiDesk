@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createAnonClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { decrypt } from '@/lib/crypto'
+import { buscarOCrearCliente } from '@/lib/clientes/buscarOCrearCliente'
 
 export const dynamic = 'force-dynamic'
 
@@ -166,71 +167,49 @@ async function asegurarClienteEnSeguimiento(
   convId: string,
   assignedTo: string | null,
 ): Promise<void> {
-  // Buscar cliente existente por identificador de canal
-  const campoCanal = canal === 'whatsapp' ? 'whatsapp_number'
-    : canal === 'messenger' ? 'messenger_id' : 'instagram_id'
+  try {
+    // buscarOCrearCliente busca por whatsapp_number/messenger_id/instagram_id
+    // y si no existe, lo crea con los campos mínimos necesarios.
+    // Maneja internamente el fallback de columnas que aún no existan.
+    const { cliente } = await buscarOCrearCliente({
+      tenantId,
+      canal,
+      contactId:  canalContactId,
+      celular:    canal === 'whatsapp' ? canalContactId : undefined,
+      nombre:     nombreSugerido,
+      assignedTo: assignedTo ?? undefined,
+    })
 
-  const { data: existente } = await supabase
-    .from('clientes')
-    .select('id, en_seguimiento_ventas')
-    .eq('tenant_id', tenantId)
-    .eq(campoCanal, canalContactId)
-    .maybeSingle()
-
-  let clienteId: string
-
-  if (existente) {
-    clienteId = existente.id
-    // Asegurarse de que esté en seguimiento (puede ya estar, no rompe nada)
-    if (!existente.en_seguimiento_ventas) {
-      await supabase.from('clientes').update({
-        en_seguimiento_ventas: true,
-        etapa_venta:           'nuevo',
-        etapa_venta_orden:     0,
-        assigned_to:           assignedTo,
-      }).eq('id', clienteId)
+    if (!cliente) {
+      console.error('[webhook] buscarOCrearCliente retornó null')
+      return
     }
-  } else {
-    // Crear nuevo cliente desde el canal
-    // Campos base sin nombre_pendiente_aprobacion (por si la migración aún no se corrió)
-    const nuevoCliente: Record<string, unknown> = {
-      tenant_id:             tenantId,
-      nombre:                nombreSugerido,
+
+    const clienteId: string = cliente.id
+
+    // Poner en seguimiento ventas con etapa Nuevo
+    const actualizacion: Record<string, unknown> = {
       en_seguimiento_ventas: true,
       etapa_venta:           'nuevo',
       etapa_venta_orden:     0,
-      assigned_to:           assignedTo,
-      [campoCanal]:          canalContactId,
     }
-    if (canal === 'whatsapp') {
-      nuevoCliente.celular = canalContactId
+    if (!cliente.assigned_to && assignedTo) {
+      actualizacion.assigned_to = assignedTo
     }
+    await supabase.from('clientes').update(actualizacion).eq('id', clienteId)
 
-    const { data: creado, error: errInsert } = await supabase
-      .from('clientes')
-      .insert(nuevoCliente)
-      .select('id')
-      .single()
-
-    if (errInsert || !creado) {
-      console.error('[webhook] error creando cliente:', errInsert?.message)
-      return
-    }
-    clienteId = creado.id
-
-    // Intentar marcar nombre como pendiente de aprobación
-    // (falla silenciosamente si la migración v72 aún no se corrió)
+    // Intentar marcar nombre pendiente de aprobación (falla silenciosamente si no existe la columna)
     await supabase
       .from('clientes')
       .update({ nombre_pendiente_aprobacion: true } as Record<string, unknown>)
       .eq('id', clienteId)
-  }
 
-  // Vincular la conversación al cliente
-  await supabase
-    .from('conversaciones')
-    .update({ cliente_id: clienteId })
-    .eq('id', convId)
+    // Vincular conversación al cliente
+    await supabase.from('conversaciones').update({ cliente_id: clienteId }).eq('id', convId)
+
+  } catch (e) {
+    console.error('[webhook] error en asegurarClienteEnSeguimiento:', e)
+  }
 }
 
 // ─── Procesamiento de cada mensaje individual ────────────────────────────────
