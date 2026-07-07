@@ -333,20 +333,38 @@ async function procesarMensajeIndividual(
   if (!conv) return
 
   // ── Garantizar que el cliente existe y está en Seguimiento Ventas ──
-  if (!conv.cliente_id) {
+  const clienteIdActual = (conv as Record<string, unknown>).cliente_id as string | null
+  const assignedToActual = (conv as Record<string, unknown>).assigned_to as string | null
+
+  if (!clienteIdActual) {
+    // Sin cliente vinculado → crear uno nuevo
     const nombreSugerido = await obtenerNombreContacto(supabase, tenantId, canal, canalContactId, value)
     await asegurarClienteEnSeguimiento(
       supabase, tenantId, canal, canalContactId,
-      nombreSugerido, conv.id,
-      (conv as Record<string, unknown>).assigned_to as string | null,
+      nombreSugerido, conv.id, assignedToActual,
     )
   } else {
-    // Cliente existe — asegurarse de que esté visible en Seguimiento Ventas
-    await supabase
+    // Verificar que el cliente aún existe (pudo haber sido eliminado)
+    const { data: clienteVivo } = await supabase
       .from('clientes')
-      .update({ en_seguimiento_ventas: true })
-      .eq('id', conv.cliente_id)
-      .eq('en_seguimiento_ventas', false)
+      .select('id, en_seguimiento_ventas')
+      .eq('id', clienteIdActual)
+      .maybeSingle()
+
+    if (!clienteVivo) {
+      // Cliente fue eliminado → limpiar referencia y crear uno nuevo
+      await supabase.from('conversaciones').update({ cliente_id: null }).eq('id', conv.id)
+      const nombreSugerido = await obtenerNombreContacto(supabase, tenantId, canal, canalContactId, value)
+      await asegurarClienteEnSeguimiento(
+        supabase, tenantId, canal, canalContactId,
+        nombreSugerido, conv.id, assignedToActual,
+      )
+    } else if (!clienteVivo.en_seguimiento_ventas) {
+      // Cliente existe pero no está visible en seguimiento → activarlo
+      await supabase.from('clientes')
+        .update({ en_seguimiento_ventas: true })
+        .eq('id', clienteIdActual)
+    }
   }
 
   // Guardar el mensaje

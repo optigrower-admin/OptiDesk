@@ -192,6 +192,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const handleEliminar = async () => {
     if (!lead.cliente?.id) return
     setDeleting(true)
+    // Desvincula las conversaciones antes de eliminar para que el webhook
+    // pueda recrear el cliente si el contacto vuelve a escribir
+    await supabase.from('conversaciones')
+      .update({ cliente_id: null })
+      .eq('cliente_id', lead.cliente.id)
     await supabase.from('clientes').delete().eq('id', lead.cliente.id)
     onLeadDelete?.(lead.id)
     onClose()
