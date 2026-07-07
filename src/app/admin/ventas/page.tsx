@@ -111,6 +111,29 @@ export default function VentasPage() {
     }
 
     cargar()
+
+    // Escuchar inserciones de nuevos clientes en seguimiento (ej: creados desde webhook)
+    const channel = supabase
+      .channel(`ventas-nuevos-${profile.tenant_id}`)
+      .on(
+        'postgres_changes',
+        {
+          event:  'INSERT',
+          schema: 'public',
+          table:  'clientes',
+          filter: `tenant_id=eq.${profile.tenant_id}`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>
+          if (row.en_seguimiento_ventas) {
+            // Recargar silenciosamente para incluir el nuevo cliente
+            cargar()
+          }
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.tenant_id, profile?.rol, profile?.id])
 
