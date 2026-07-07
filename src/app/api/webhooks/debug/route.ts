@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     ]
     for (const v of envVars) {
       const val = process.env[v]
-      log.push(`${v}: ${val ? `SET (starts: ${val.slice(0,8)})` : 'NOT SET'}`)
+      log.push(`${v}: ${val ? `SET len=${val.length} first12=${JSON.stringify(val.slice(0,12))}` : 'NOT SET'}`)
     }
 
     // Verificar que el admin client funciona antes de llamar buscarOCrearCliente
