@@ -70,6 +70,7 @@ interface OrdenVenta {
   tenant_id: string
   moto_id: string | null
   cliente_id: string | null
+  created_at: string
 }
 
 type EstadoPago = 'pagado' | 'abono' | 'pendiente'
@@ -98,6 +99,7 @@ function NuevaVentaContent() {
   const [creando, setCreando] = useState(false)
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
+  const [creationDate, setCreationDate] = useState('')   // solo gerencia puede fijar fecha al crear
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const placaTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -127,6 +129,11 @@ function NuevaVentaContent() {
   const [editandoPagoFechaId, setEditandoPagoFechaId] = useState<string | null>(null)
   const [pagoFechaInputValue, setPagoFechaInputValue] = useState('')
   const [savingPagoFecha, setSavingPagoFecha] = useState(false)
+
+  // Fecha de la orden (solo gerencia puede editar)
+  const [editandoOrdenFecha, setEditandoOrdenFecha] = useState(false)
+  const [ordenFechaInputValue, setOrdenFechaInputValue] = useState('')
+  const [savingOrdenFecha, setSavingOrdenFecha] = useState(false)
 
   // ─── Borrador (solo en modo creación) ───────────────────
   useEffect(() => {
@@ -158,7 +165,7 @@ function NuevaVentaContent() {
   const cargar = useCallback(async () => {
     if (!ordenId || !profile?.tenant_id) return
     const [{ data: o }, { data: i }, { data: mp }, { data: pg }] = await Promise.all([
-      supabase.from('ordenes').select('id, numero, cliente, cedula, celular, placa, tenant_id, moto_id, cliente_id').eq('id', ordenId).single(),
+      supabase.from('ordenes').select('id, numero, cliente, cedula, celular, placa, tenant_id, moto_id, cliente_id, created_at').eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, repuesto_uma_id, repuesto_externo_id, metodo_pago_id, created_at').eq('orden_id', ordenId).neq('origen', 'mano_obra'),
       supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', profile.tenant_id).eq('activo', true),
       supabase.from('pagos_orden').select('id, monto, metodo_pago_id, fecha, notas, metodos_pago(nombre)').eq('orden_id', ordenId).order('fecha', { ascending: true }),
@@ -225,24 +232,29 @@ function NuevaVentaContent() {
         motoExtras: panelResult.motoExtras,
       })
 
+      const insertPayload: Record<string, unknown> = {
+        tenant_id: profile.tenant_id,
+        placa: placaNorm || null,
+        cliente,
+        cedula: cedula || null,
+        celular: celular || null,
+        telefono: celular || null,
+        tipo_orden: 'venta_repuestos',
+        estado: 'en_proceso',
+        estado_pago: 'pendiente',
+        valor_total: 0,
+        valor_abono: 0,
+        numero: 0,
+        moto_id: motoId,
+        cliente_id: clienteId,
+      }
+      if (esGerencia && creationDate) {
+        insertPayload.created_at = new Date(creationDate).toISOString()
+      }
+
       const { data: nuevaOrden, error: ordenErr } = await supabase
         .from('ordenes')
-        .insert({
-          tenant_id: profile.tenant_id,
-          placa: placaNorm || null,
-          cliente,
-          cedula: cedula || null,
-          celular: celular || null,
-          telefono: celular || null,
-          tipo_orden: 'venta_repuestos',
-          estado: 'en_proceso',
-          estado_pago: 'pendiente',
-          valor_total: 0,
-          valor_abono: 0,
-          numero: 0,
-          moto_id: motoId,
-          cliente_id: clienteId,
-        })
+        .insert(insertPayload)
         .select('id')
         .single()
 
@@ -674,6 +686,29 @@ function NuevaVentaContent() {
     }
   }
 
+  const handleGuardarFechaOrden = async () => {
+    if (!orden || !ordenFechaInputValue) return
+    setSavingOrdenFecha(true)
+    try {
+      const nuevaFechaISO = new Date(ordenFechaInputValue).toISOString()
+      await supabase.from('ordenes').update({ created_at: nuevaFechaISO }).eq('id', orden.id)
+      await registrarAuditoria(supabase, {
+        tenant_id: orden.tenant_id,
+        tabla: 'ordenes',
+        registro_id: orden.id,
+        tipo: 'edicion',
+        valor_anterior: { created_at: orden.created_at },
+        valor_nuevo: { created_at: nuevaFechaISO },
+        descripcion: `Gerencia editó la fecha de la venta directa #${orden.numero}`,
+        usuario_id: profile?.id,
+      })
+      setEditandoOrdenFecha(false)
+      await cargar()
+    } finally {
+      setSavingOrdenFecha(false)
+    }
+  }
+
   const placaNorm = placa ? normalizarPlaca(placa) : ''
   const ordenActiva = historialPlaca.find((o) => ['programado', 'falta_revision', 'en_proceso', 'pendiente'].includes(o.estado))
 
@@ -844,6 +879,29 @@ function NuevaVentaContent() {
             )}
           </div>
 
+          {esGerencia && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+              <label className="block text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1.5">
+                Fecha y hora de la venta
+                <span className="ml-1.5 font-normal text-purple-500">(solo Gerencia)</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={creationDate}
+                onChange={(e) => setCreationDate(e.target.value)}
+                className="px-3 py-2 border border-purple-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
+              {creationDate && (
+                <p className="text-xs text-purple-600 mt-1">
+                  La venta se registrará con fecha {new Date(creationDate).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })}
+                </p>
+              )}
+              {!creationDate && (
+                <p className="text-xs text-purple-400 mt-1">Si no especificas fecha, se usa la fecha y hora actual.</p>
+              )}
+            </div>
+          )}
+
           <Button className="w-full" size="lg" onClick={handleCrear} loading={creando}>
             {`Crear venta${placaNorm ? ` — vincular a ${placaNorm}` : ''}`}
           </Button>
@@ -859,7 +917,58 @@ function NuevaVentaContent() {
         <>
           {/* Datos del cliente (modo edición — autoguardado por campo) */}
           <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-            <h2 className="font-semibold text-gray-900">Datos del cliente</h2>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h2 className="font-semibold text-gray-900">Datos del cliente</h2>
+              {esGerencia && orden.created_at && (
+                <div className="flex items-center gap-2">
+                  {editandoOrdenFecha ? (
+                    <>
+                      <input
+                        type="datetime-local"
+                        value={ordenFechaInputValue}
+                        onChange={(e) => setOrdenFechaInputValue(e.target.value)}
+                        className="text-xs border border-purple-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleGuardarFechaOrden}
+                        disabled={savingOrdenFecha}
+                        className="text-green-600 hover:text-green-800 p-1"
+                        title="Guardar fecha"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setEditandoOrdenFecha(false)}
+                        disabled={savingOrdenFecha}
+                        className="text-gray-400 hover:text-red-500 p-1"
+                        title="Cancelar"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setOrdenFechaInputValue(isoToDatetimeLocal(orden.created_at))
+                        setEditandoOrdenFecha(true)
+                      }}
+                      className="flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                      title="Editar fecha de la venta (solo gerencia)"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      {new Date(orden.created_at).toLocaleString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
