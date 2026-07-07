@@ -112,7 +112,9 @@ export default function VentasPage() {
 
     cargar()
 
-    // Escuchar inserciones de nuevos clientes en seguimiento (ej: creados desde webhook)
+    // Escuchar nuevos clientes en seguimiento (INSERT + UPDATE desde webhook)
+    // El INSERT inicial del webhook no trae en_seguimiento_ventas=true todavía;
+    // el UPDATE posterior sí — por eso se escuchan ambos eventos.
     const channel = supabase
       .channel(`ventas-nuevos-${profile.tenant_id}`)
       .on(
@@ -125,10 +127,22 @@ export default function VentasPage() {
         },
         (payload) => {
           const row = payload.new as Record<string, unknown>
-          if (row.en_seguimiento_ventas) {
-            // Recargar silenciosamente para incluir el nuevo cliente
-            cargar()
-          }
+          if (row.en_seguimiento_ventas) cargar()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event:  'UPDATE',
+          schema: 'public',
+          table:  'clientes',
+          filter: `tenant_id=eq.${profile.tenant_id}`,
+        },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>
+          const old = payload.old as Record<string, unknown>
+          // Solo recargar cuando en_seguimiento_ventas acaba de activarse
+          if (row.en_seguimiento_ventas && !old.en_seguimiento_ventas) cargar()
         }
       )
       .subscribe()

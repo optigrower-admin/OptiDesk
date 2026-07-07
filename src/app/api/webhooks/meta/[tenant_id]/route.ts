@@ -187,22 +187,17 @@ async function asegurarClienteEnSeguimiento(
 
     const clienteId: string = cliente.id
 
-    // Poner en seguimiento ventas con etapa Nuevo
+    // Un solo UPDATE con todos los campos (activa Realtime con en_seguimiento_ventas=true)
     const actualizacion: Record<string, unknown> = {
-      en_seguimiento_ventas: true,
-      etapa_venta:           'nuevo',
-      etapa_venta_orden:     0,
+      en_seguimiento_ventas:        true,
+      etapa_venta:                  'nuevo',
+      etapa_venta_orden:            0,
+      nombre_pendiente_aprobacion:  true,
     }
     if (!cliente.assigned_to && assignedTo) {
       actualizacion.assigned_to = assignedTo
     }
     await supabase.from('clientes').update(actualizacion).eq('id', clienteId)
-
-    // Intentar marcar nombre pendiente de aprobación (falla silenciosamente si no existe la columna)
-    await supabase
-      .from('clientes')
-      .update({ nombre_pendiente_aprobacion: true } as Record<string, unknown>)
-      .eq('id', clienteId)
 
     // Vincular conversación al cliente
     await supabase.from('conversaciones').update({ cliente_id: clienteId }).eq('id', convId)
