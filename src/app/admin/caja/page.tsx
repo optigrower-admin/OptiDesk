@@ -98,8 +98,22 @@ function calcularRango(periodo: Periodo, desdeManual: string, hastaManual: strin
   return { desde: desdeManual || hastaHoy, hasta: hastaManual || hastaHoy }
 }
 
-function NuevoGastoModal({ tenantId, usuarioId, titulo = 'Nuevo gasto de caja', descripcionInicial = '', onClose, onCreado }: {
-  tenantId: string; usuarioId: string; titulo?: string; descripcionInicial?: string
+function isoToDatetimeLocal(iso: string): string {
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const da = String(d.getDate()).padStart(2, '0')
+  const h = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  return `${y}-${mo}-${da}T${h}:${mi}`
+}
+
+function nowDatetimeLocal(): string {
+  return isoToDatetimeLocal(new Date().toISOString())
+}
+
+function NuevoGastoModal({ tenantId, usuarioId, titulo = 'Nuevo gasto de caja', descripcionInicial = '', esGerencia = false, onClose, onCreado }: {
+  tenantId: string; usuarioId: string; titulo?: string; descripcionInicial?: string; esGerencia?: boolean
   onClose: () => void; onCreado: () => void
 }) {
   const supabase = createClient()
@@ -107,6 +121,7 @@ function NuevoGastoModal({ tenantId, usuarioId, titulo = 'Nuevo gasto de caja', 
   const [monto, setMonto] = useState('')
   const [metodoPagoId, setMetodoPagoId] = useState('')
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [fecha, setFecha] = useState(nowDatetimeLocal())
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
@@ -122,20 +137,22 @@ function NuevoGastoModal({ tenantId, usuarioId, titulo = 'Nuevo gasto de caja', 
     setGuardando(true); setError('')
     const montoNum = parseInt(monto.replace(/\D/g, ''), 10)
     try {
-      const { data, error: err } = await supabase.from('gastos_caja').insert({
+      const payload: Record<string, unknown> = {
         tenant_id: tenantId,
         descripcion: descripcion.trim(),
         monto: montoNum,
         metodo_pago_id: metodoPagoId,
         registrado_por: usuarioId,
-      }).select('id').single()
+      }
+      if (esGerencia && fecha) payload.fecha = new Date(fecha).toISOString()
+      const { data, error: err } = await supabase.from('gastos_caja').insert(payload).select('id').single()
       if (err) throw new Error(err.message)
       await registrarAuditoria(supabase, {
         tenant_id: tenantId,
         tabla: 'gastos_caja',
         registro_id: (data as { id: string }).id,
         tipo: 'movimiento',
-        valor_nuevo: { descripcion: descripcion.trim(), monto: montoNum },
+        valor_nuevo: { descripcion: descripcion.trim(), monto: montoNum, ...(esGerencia && fecha ? { fecha: new Date(fecha).toISOString() } : {}) },
         descripcion: `Registró un gasto de caja: "${descripcion.trim()}" por ${formatCOP(montoNum)}`,
         usuario_id: usuarioId,
       })
@@ -152,8 +169,15 @@ function NuevoGastoModal({ tenantId, usuarioId, titulo = 'Nuevo gasto de caja', 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
         <h2 className="font-bold text-gray-900 mb-1">{titulo}</h2>
-        <p className="text-xs text-gray-500 mb-4">Se registra con la fecha de hoy.</p>
+        {!esGerencia && <p className="text-xs text-gray-500 mb-4">Se registra con la fecha de hoy.</p>}
         <div className="space-y-2">
+          {esGerencia && (
+            <div>
+              <label className="text-xs text-purple-700 font-semibold">Fecha y hora</label>
+              <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
+                className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 mt-0.5 bg-purple-50" />
+            </div>
+          )}
           <div>
             <label className="text-xs text-gray-500">Descripción</label>
             <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Pago de servicios, papelería..."
@@ -194,14 +218,15 @@ function NuevoGastoModal({ tenantId, usuarioId, titulo = 'Nuevo gasto de caja', 
   )
 }
 
-function EditarGastoModal({ tenantId, usuarioId, gasto, onClose, onEditado }: {
-  tenantId: string; usuarioId: string
-  gasto: { id: string; descripcion: string; monto: number; metodoPagoId: string | null }
+function EditarGastoModal({ tenantId, usuarioId, gasto, esGerencia = false, onClose, onEditado }: {
+  tenantId: string; usuarioId: string; esGerencia?: boolean
+  gasto: { id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string }
   onClose: () => void; onEditado: () => void
 }) {
   const supabase = createClient()
   const [monto, setMonto] = useState(String(gasto.monto))
   const [metodoPagoId, setMetodoPagoId] = useState(gasto.metodoPagoId ?? '')
+  const [fecha, setFecha] = useState(isoToDatetimeLocal(gasto.fecha))
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
@@ -218,19 +243,19 @@ function EditarGastoModal({ tenantId, usuarioId, gasto, onClose, onEditado }: {
     if (!confirm('¿Seguro que deseas editar este gasto?')) return
     setGuardando(true); setError('')
     const montoNum = parseInt(monto.replace(/\D/g, ''), 10)
+    const nuevaFechaISO = esGerencia && fecha ? new Date(fecha).toISOString() : gasto.fecha
     try {
-      const { error: err } = await supabase.from('gastos_caja').update({
-        monto: montoNum,
-        metodo_pago_id: metodoPagoId,
-      }).eq('id', gasto.id)
+      const updatePayload: Record<string, unknown> = { monto: montoNum, metodo_pago_id: metodoPagoId }
+      if (esGerencia && fecha) updatePayload.fecha = nuevaFechaISO
+      const { error: err } = await supabase.from('gastos_caja').update(updatePayload).eq('id', gasto.id)
       if (err) throw new Error(err.message)
       await registrarAuditoria(supabase, {
         tenant_id: tenantId,
         tabla: 'gastos_caja',
         registro_id: gasto.id,
         tipo: 'edicion',
-        valor_anterior: { monto: gasto.monto, metodo_pago_id: gasto.metodoPagoId },
-        valor_nuevo: { monto: montoNum, metodo_pago_id: metodoPagoId },
+        valor_anterior: { monto: gasto.monto, metodo_pago_id: gasto.metodoPagoId, fecha: gasto.fecha },
+        valor_nuevo: { monto: montoNum, metodo_pago_id: metodoPagoId, fecha: nuevaFechaISO },
         descripcion: `Editó el gasto de caja "${gasto.descripcion}"`,
         usuario_id: usuarioId,
       })
@@ -249,6 +274,13 @@ function EditarGastoModal({ tenantId, usuarioId, gasto, onClose, onEditado }: {
         <h2 className="font-bold text-gray-900 mb-1">Editar gasto de caja</h2>
         <p className="text-xs text-gray-500 mb-4">{gasto.descripcion}</p>
         <div className="space-y-2">
+          {esGerencia && (
+            <div>
+              <label className="text-xs text-purple-700 font-semibold">Fecha y hora</label>
+              <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
+                className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 mt-0.5 bg-purple-50" />
+            </div>
+          )}
           <div>
             <label className="text-xs text-gray-500">Monto</label>
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-red-400 bg-white mt-0.5">
@@ -284,14 +316,15 @@ function EditarGastoModal({ tenantId, usuarioId, gasto, onClose, onEditado }: {
   )
 }
 
-function NuevoIngresoModal({ tenantId, usuarioId, onClose, onCreado }: {
-  tenantId: string; usuarioId: string; onClose: () => void; onCreado: () => void
+function NuevoIngresoModal({ tenantId, usuarioId, esGerencia = false, onClose, onCreado }: {
+  tenantId: string; usuarioId: string; esGerencia?: boolean; onClose: () => void; onCreado: () => void
 }) {
   const supabase = createClient()
   const [descripcion, setDescripcion] = useState('')
   const [monto, setMonto] = useState('')
   const [metodoPagoId, setMetodoPagoId] = useState('')
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [fecha, setFecha] = useState(nowDatetimeLocal())
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
@@ -307,20 +340,22 @@ function NuevoIngresoModal({ tenantId, usuarioId, onClose, onCreado }: {
     setGuardando(true); setError('')
     const montoNum = parseInt(monto.replace(/\D/g, ''), 10)
     try {
-      const { data, error: err } = await supabase.from('ingresos_caja').insert({
+      const payload: Record<string, unknown> = {
         tenant_id: tenantId,
         descripcion: descripcion.trim(),
         monto: montoNum,
         metodo_pago_id: metodoPagoId,
         registrado_por: usuarioId,
-      }).select('id').single()
+      }
+      if (esGerencia && fecha) payload.fecha = new Date(fecha).toISOString()
+      const { data, error: err } = await supabase.from('ingresos_caja').insert(payload).select('id').single()
       if (err) throw new Error(err.message)
       await registrarAuditoria(supabase, {
         tenant_id: tenantId,
         tabla: 'ingresos_caja',
         registro_id: (data as { id: string }).id,
         tipo: 'movimiento',
-        valor_nuevo: { descripcion: descripcion.trim(), monto: montoNum },
+        valor_nuevo: { descripcion: descripcion.trim(), monto: montoNum, ...(esGerencia && fecha ? { fecha: new Date(fecha).toISOString() } : {}) },
         descripcion: `Registró un ingreso a caja: "${descripcion.trim()}" por ${formatCOP(montoNum)}`,
         usuario_id: usuarioId,
       })
@@ -337,8 +372,15 @@ function NuevoIngresoModal({ tenantId, usuarioId, onClose, onCreado }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
         <h2 className="font-bold text-gray-900 mb-1">Ingreso a caja</h2>
-        <p className="text-xs text-gray-500 mb-4">Se registra con la fecha de hoy.</p>
+        {!esGerencia && <p className="text-xs text-gray-500 mb-4">Se registra con la fecha de hoy.</p>}
         <div className="space-y-2">
+          {esGerencia && (
+            <div>
+              <label className="text-xs text-purple-700 font-semibold">Fecha y hora</label>
+              <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
+                className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 mt-0.5 bg-purple-50" />
+            </div>
+          )}
           <div>
             <label className="text-xs text-gray-500">Descripción</label>
             <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Préstamo, capital, devolución..."
@@ -379,14 +421,15 @@ function NuevoIngresoModal({ tenantId, usuarioId, onClose, onCreado }: {
   )
 }
 
-function EditarIngresoModal({ tenantId, usuarioId, ingreso, onClose, onEditado }: {
-  tenantId: string; usuarioId: string
-  ingreso: { id: string; descripcion: string; monto: number; metodoPagoId: string | null }
+function EditarIngresoModal({ tenantId, usuarioId, ingreso, esGerencia = false, onClose, onEditado }: {
+  tenantId: string; usuarioId: string; esGerencia?: boolean
+  ingreso: { id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string }
   onClose: () => void; onEditado: () => void
 }) {
   const supabase = createClient()
   const [monto, setMonto] = useState(String(ingreso.monto))
   const [metodoPagoId, setMetodoPagoId] = useState(ingreso.metodoPagoId ?? '')
+  const [fecha, setFecha] = useState(isoToDatetimeLocal(ingreso.fecha))
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
@@ -403,19 +446,19 @@ function EditarIngresoModal({ tenantId, usuarioId, ingreso, onClose, onEditado }
     if (!confirm('¿Seguro que deseas editar este ingreso?')) return
     setGuardando(true); setError('')
     const montoNum = parseInt(monto.replace(/\D/g, ''), 10)
+    const nuevaFechaISO = esGerencia && fecha ? new Date(fecha).toISOString() : ingreso.fecha
     try {
-      const { error: err } = await supabase.from('ingresos_caja').update({
-        monto: montoNum,
-        metodo_pago_id: metodoPagoId,
-      }).eq('id', ingreso.id)
+      const updatePayload: Record<string, unknown> = { monto: montoNum, metodo_pago_id: metodoPagoId }
+      if (esGerencia && fecha) updatePayload.fecha = nuevaFechaISO
+      const { error: err } = await supabase.from('ingresos_caja').update(updatePayload).eq('id', ingreso.id)
       if (err) throw new Error(err.message)
       await registrarAuditoria(supabase, {
         tenant_id: tenantId,
         tabla: 'ingresos_caja',
         registro_id: ingreso.id,
         tipo: 'edicion',
-        valor_anterior: { monto: ingreso.monto, metodo_pago_id: ingreso.metodoPagoId },
-        valor_nuevo: { monto: montoNum, metodo_pago_id: metodoPagoId },
+        valor_anterior: { monto: ingreso.monto, metodo_pago_id: ingreso.metodoPagoId, fecha: ingreso.fecha },
+        valor_nuevo: { monto: montoNum, metodo_pago_id: metodoPagoId, fecha: nuevaFechaISO },
         descripcion: `Editó el ingreso de caja "${ingreso.descripcion}"`,
         usuario_id: usuarioId,
       })
@@ -434,6 +477,13 @@ function EditarIngresoModal({ tenantId, usuarioId, ingreso, onClose, onEditado }
         <h2 className="font-bold text-gray-900 mb-1">Editar ingreso de caja</h2>
         <p className="text-xs text-gray-500 mb-4">{ingreso.descripcion}</p>
         <div className="space-y-2">
+          {esGerencia && (
+            <div>
+              <label className="text-xs text-purple-700 font-semibold">Fecha y hora</label>
+              <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
+                className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 mt-0.5 bg-purple-50" />
+            </div>
+          )}
           <div>
             <label className="text-xs text-gray-500">Monto</label>
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-green-400 bg-white mt-0.5">
@@ -867,9 +917,9 @@ export default function CajaPage() {
   const [busqueda, setBusqueda] = useState('')
   const [gastoModal, setGastoModal] = useState<{ titulo: string; descripcionInicial: string } | null>(null)
   const [ajusteOpen, setAjusteOpen] = useState(false)
-  const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null } | null>(null)
+  const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
   const [ingresoModalOpen, setIngresoModalOpen] = useState(false)
-  const [editIngreso, setEditIngreso] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null } | null>(null)
+  const [editIngreso, setEditIngreso] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
   const [vistaTabla, setVistaTabla] = useState<'item' | 'metodo'>('item')
 
   const esGerencia = profile?.rol === 'gerencia'
@@ -1068,6 +1118,7 @@ export default function CajaPage() {
           usuarioId={profile.id}
           titulo={gastoModal.titulo}
           descripcionInicial={gastoModal.descripcionInicial}
+          esGerencia={esGerencia}
           onClose={() => setGastoModal(null)}
           onCreado={cargar}
         />
@@ -1087,6 +1138,7 @@ export default function CajaPage() {
           tenantId={profile.tenant_id}
           usuarioId={profile.id}
           gasto={editGasto}
+          esGerencia={esGerencia}
           onClose={() => setEditGasto(null)}
           onEditado={cargar}
         />
@@ -1096,6 +1148,7 @@ export default function CajaPage() {
         <NuevoIngresoModal
           tenantId={profile.tenant_id}
           usuarioId={profile.id}
+          esGerencia={esGerencia}
           onClose={() => setIngresoModalOpen(false)}
           onCreado={cargar}
         />
@@ -1106,6 +1159,7 @@ export default function CajaPage() {
           tenantId={profile.tenant_id}
           usuarioId={profile.id}
           ingreso={editIngreso}
+          esGerencia={esGerencia}
           onClose={() => setEditIngreso(null)}
           onEditado={cargar}
         />
@@ -1321,7 +1375,7 @@ export default function CajaPage() {
                     {m.categoria === 'gasto' && puedeEditarGastos && (
                       <>
                         <button
-                          onClick={() => setEditGasto({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId })}
+                          onClick={() => setEditGasto({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId, fecha: m.fecha })}
                           className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
                         >
                           Editar
@@ -1339,7 +1393,7 @@ export default function CajaPage() {
                     {m.categoria === 'ingreso_manual' && puedeEditarGastos && (
                       <>
                         <button
-                          onClick={() => setEditIngreso({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId })}
+                          onClick={() => setEditIngreso({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId, fecha: m.fecha })}
                           className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
                         >
                           Editar
@@ -1399,7 +1453,7 @@ export default function CajaPage() {
                     {f.categoria === 'gasto' && puedeEditarGastos && (
                       <>
                         <button
-                          onClick={() => setEditGasto({ id: f.rawId, descripcion: f.concepto, monto: Math.abs(f.monto), metodoPagoId: f.metodoPagoId })}
+                          onClick={() => setEditGasto({ id: f.rawId, descripcion: f.concepto, monto: Math.abs(f.monto), metodoPagoId: f.metodoPagoId, fecha: f.fecha })}
                           className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
                         >
                           Editar
@@ -1417,7 +1471,7 @@ export default function CajaPage() {
                     {f.categoria === 'ingreso_manual' && puedeEditarGastos && (
                       <>
                         <button
-                          onClick={() => setEditIngreso({ id: f.rawId, descripcion: f.concepto, monto: Math.abs(f.monto), metodoPagoId: f.metodoPagoId })}
+                          onClick={() => setEditIngreso({ id: f.rawId, descripcion: f.concepto, monto: Math.abs(f.monto), metodoPagoId: f.metodoPagoId, fecha: f.fecha })}
                           className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
                         >
                           Editar
