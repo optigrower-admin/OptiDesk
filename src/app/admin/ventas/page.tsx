@@ -38,8 +38,7 @@ export default function VentasPage() {
           sin_respuesta_asesor_desde,
           assigned_to,
           nombre_pendiente_aprobacion,
-          conversaciones ( id, canal, no_leidos_count ),
-          clientes_etiquetas ( etiquetas_venta ( id, nombre, color ) )
+          conversaciones ( id, canal, no_leidos_count )
         `)
         .eq('tenant_id', profile.tenant_id)
         .eq('en_seguimiento_ventas', true)
@@ -77,14 +76,33 @@ export default function VentasPage() {
         for (const e of extras ?? []) extraMap[e.id as string] = e
       }
 
+      // Etiquetas en query separada y defensiva — no rompe si la migración aún no se corrió
+      type EtiquetaRow = { id: string; nombre: string; color: string }
+      const etiquetasMap: Record<string, EtiquetaRow[]> = {}
+      if ((raw ?? []).length > 0) {
+        try {
+          const ids = (raw ?? []).map((c) => c.id as string)
+          const { data: etRows } = await supabase
+            .from('clientes_etiquetas')
+            .select('cliente_id, etiquetas_venta(id, nombre, color)')
+            .in('cliente_id', ids)
+          for (const row of (etRows ?? []) as unknown as { cliente_id: string; etiquetas_venta: EtiquetaRow | null }[]) {
+            if (!row.etiquetas_venta) continue
+            if (!etiquetasMap[row.cliente_id]) etiquetasMap[row.cliente_id] = []
+            etiquetasMap[row.cliente_id].push(row.etiquetas_venta)
+          }
+        } catch {
+          // tablas de etiquetas aún no existen — ignorar
+        }
+      }
+
       const mapped: LeadData[] = (raw ?? []).map((c) => {
         const convs = (c.conversaciones as { id: string; canal: string; no_leidos_count: number }[] | null) ?? []
         const motosInteres = (c.motos_interes_resumen as unknown as { motos_catalogo: { referencia: string } | null }[] | null) ?? []
         const motoLabel = motosInteres.map(m => m.motos_catalogo?.referencia).filter(Boolean).join(' · ')
         const noLeidos = convs.reduce((s, cv) => s + (cv.no_leidos_count ?? 0), 0)
         const ex = extraMap[c.id as string] ?? {}
-        const etiquetasRaw = (c.clientes_etiquetas as unknown as { etiquetas_venta: { id: string; nombre: string; color: string } | null }[] | null) ?? []
-        const etiquetas = etiquetasRaw.map(e => e.etiquetas_venta).filter((e): e is { id: string; nombre: string; color: string } => !!e)
+        const etiquetas = etiquetasMap[c.id as string] ?? []
 
         return {
           id:                         c.id as string,
