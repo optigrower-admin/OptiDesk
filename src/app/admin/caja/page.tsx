@@ -521,14 +521,14 @@ function EditarIngresoModal({ tenantId, usuarioId, ingreso, esGerencia = false, 
 
 const OPCION_CAJA_FUERTE = '__caja_fuerte__'
 
-function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
-  tenantId: string; usuarioId: string; onClose: () => void; onCreado: () => void
+function AjusteModal({ tenantId, usuarioId, cuentaInicial = '', onClose, onCreado }: {
+  tenantId: string; usuarioId: string; cuentaInicial?: string; onClose: () => void; onCreado: () => void
 }) {
   const supabase = createClient()
   const [descripcion, setDescripcion] = useState('')
   const [signo, setSigno] = useState<'+' | '-'>('+')
   const [monto, setMonto] = useState('')
-  const [metodoPagoId, setMetodoPagoId] = useState('')
+  const [metodoPagoId, setMetodoPagoId] = useState(cuentaInicial)
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
@@ -577,7 +577,7 @@ function AjusteModal({ tenantId, usuarioId, onClose, onCreado }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
-        <h2 className="font-bold text-gray-900 mb-1">Ajuste de caja</h2>
+        <h2 className="font-bold text-gray-900 mb-1">{cuentaInicial === OPCION_CAJA_FUERTE ? 'Ajuste caja fuerte' : 'Ajuste de caja'}</h2>
         <p className="text-xs text-gray-500 mb-4">Solo Gerencia puede registrar ajustes — queda guardado quién y cuándo lo hizo.</p>
         <div className="space-y-2">
           <div>
@@ -916,7 +916,7 @@ export default function CajaPage() {
   const [catFiltro, setCatFiltro] = useState<Categoria | 'todos'>('todos')
   const [busqueda, setBusqueda] = useState('')
   const [gastoModal, setGastoModal] = useState<{ titulo: string; descripcionInicial: string } | null>(null)
-  const [ajusteOpen, setAjusteOpen] = useState(false)
+  const [ajusteOpen, setAjusteOpen] = useState<{ cuentaInicial?: string } | null>(null)
   const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
   const [ingresoModalOpen, setIngresoModalOpen] = useState(false)
   const [editIngreso, setEditIngreso] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
@@ -1128,7 +1128,8 @@ export default function CajaPage() {
         <AjusteModal
           tenantId={profile.tenant_id}
           usuarioId={profile.id}
-          onClose={() => setAjusteOpen(false)}
+          cuentaInicial={ajusteOpen.cuentaInicial}
+          onClose={() => setAjusteOpen(null)}
           onCreado={cargar}
         />
       )}
@@ -1190,10 +1191,16 @@ export default function CajaPage() {
             Transferir a caja fuerte
           </button>
           {esGerencia && (
-            <button onClick={() => setAjusteOpen(true)}
-              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-semibold transition-colors">
-              + Ajuste
-            </button>
+            <>
+              <button onClick={() => setAjusteOpen({})}
+                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-semibold transition-colors">
+                + Ajuste
+              </button>
+              <button onClick={() => setAjusteOpen({ cuentaInicial: OPCION_CAJA_FUERTE })}
+                className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-semibold transition-colors">
+                Ajuste caja fuerte
+              </button>
+            </>
           )}
         </div>
       </div>
