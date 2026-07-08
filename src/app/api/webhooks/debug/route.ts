@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
     if (cliente) {
       const { error: updErr } = await supabase.from('clientes').update({
         en_seguimiento_ventas:       true,
-        etapa_venta:                 'nuevo',
-        etapa_venta_orden:           0,
+        etapa_venta:                 'nuevo_mensaje',
+        etapa_venta_orden:           -1,
         nombre_pendiente_aprobacion: true,
       } as Record<string, unknown>).eq('id', cliente.id)
 

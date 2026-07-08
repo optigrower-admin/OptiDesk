@@ -1,12 +1,13 @@
 export type EtapaVenta =
-  | 'nuevo' | 'con_objecion' | 'seguimiento' | 'buscando_credito'
+  | 'nuevo_mensaje' | 'nuevo' | 'con_objecion' | 'seguimiento' | 'buscando_credito'
   | 'calificado' | 'demo' | 'propuesta' | 'negociacion' | 'ganado'
   | 'en_matricula' | 'alistamiento' | 'espera_entrega' | 'entregada'
   | 'perdido'
 
 export const ETAPAS: { id: EtapaVenta; label: string; color: string; bg: string; border: string }[] = [
-  { id: 'nuevo',           label: 'Nuevo',             color: '#378ADD', bg: 'bg-blue-50',    border: 'border-blue-500'    },
-  { id: 'con_objecion',    label: 'Con objeción',       color: '#DC2626', bg: 'bg-red-50',     border: 'border-red-600'     },
+  { id: 'nuevo_mensaje',   label: 'Nuevo Contacto - Mensaje', color: '#0891b2', bg: 'bg-cyan-50',   border: 'border-cyan-500'    },
+  { id: 'nuevo',           label: 'Nuevo',                    color: '#378ADD', bg: 'bg-blue-50',   border: 'border-blue-500'    },
+  { id: 'con_objecion',    label: 'Con objeción',             color: '#DC2626', bg: 'bg-red-50',    border: 'border-red-600'     },
   { id: 'seguimiento',     label: 'Seguimiento',        color: '#7C3AED', bg: 'bg-violet-50',  border: 'border-violet-600'  },
   { id: 'buscando_credito',label: 'Buscando Crédito',   color: '#D97706', bg: 'bg-orange-50',  border: 'border-orange-500'  },
   { id: 'calificado',      label: 'Calificado',         color: '#1D9E75', bg: 'bg-emerald-50', border: 'border-emerald-600' },
@@ -24,13 +25,14 @@ export const ETAPAS: { id: EtapaVenta; label: string; color: string; bg: string;
 export const ETAPA_MAP = Object.fromEntries(ETAPAS.map(e => [e.id, e])) as Record<EtapaVenta, typeof ETAPAS[0]>
 
 export const ETAPAS_ACTIVAS: EtapaVenta[] = [
-  'nuevo', 'con_objecion', 'seguimiento', 'buscando_credito', 'calificado', 'demo', 'propuesta', 'negociacion',
+  'nuevo_mensaje', 'nuevo', 'con_objecion', 'seguimiento', 'buscando_credito', 'calificado', 'demo', 'propuesta', 'negociacion',
 ]
 
 export const ETAPAS_POSVENTA: EtapaVenta[] = ['en_matricula', 'alistamiento', 'espera_entrega', 'entregada']
 
 // Numeric order for comparing etapa priority (higher = more advanced)
 export const ETAPA_ORDEN: Record<EtapaVenta, number> = {
+  nuevo_mensaje: -1,
   nuevo: 0, con_objecion: 1, seguimiento: 2, buscando_credito: 3,
   calificado: 4, demo: 5, propuesta: 6, negociacion: 7, ganado: 8,
   en_matricula: 9, alistamiento: 10, espera_entrega: 11, entregada: 12, perdido: 13,

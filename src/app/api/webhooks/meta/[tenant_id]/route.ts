@@ -191,8 +191,8 @@ async function asegurarClienteEnSeguimiento(
     // Un solo UPDATE con todos los campos (activa Realtime con en_seguimiento_ventas=true)
     const actualizacion: Record<string, unknown> = {
       en_seguimiento_ventas:        true,
-      etapa_venta:                  'nuevo',
-      etapa_venta_orden:            0,
+      etapa_venta:                  'nuevo_mensaje',
+      etapa_venta_orden:            -1,
       nombre_pendiente_aprobacion:  true,
     }
     if (!cliente.assigned_to && assignedTo) {
@@ -335,10 +335,13 @@ async function procesarMensajeIndividual(
         nombreSugerido, conv.id, assignedToActual,
       )
     } else if (!clienteVivo.en_seguimiento_ventas) {
-      // Cliente existe pero no está visible en seguimiento → activarlo
-      await supabase.from('clientes')
-        .update({ en_seguimiento_ventas: true })
-        .eq('id', clienteIdActual)
+      // Cliente existe pero no está en seguimiento → activarlo con etapa de canal
+      await supabase.from('clientes').update({
+        en_seguimiento_ventas:       true,
+        etapa_venta:                 'nuevo_mensaje',
+        etapa_venta_orden:           -1,
+        nombre_pendiente_aprobacion: true,
+      }).eq('id', clienteIdActual)
     }
   }
 
