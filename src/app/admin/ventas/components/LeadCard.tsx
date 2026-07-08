@@ -25,6 +25,7 @@ export type LeadData = {
   nombre_pendiente_aprobacion: boolean | null
   leads_campana: { utm_campaign: string | null }[] | null
   todas_conversaciones: ConvCanal[]  // todas las conversaciones del cliente
+  etiquetas: { id: string; nombre: string; color: string }[]
 }
 
 const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
@@ -127,11 +128,18 @@ export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
       )}
 
       {/* Etapa badge visible en la tarjeta */}
-      <div className="mb-2">
+      <div className="mb-2 flex flex-wrap gap-1 items-center">
         <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-white"
           style={{ background: ETAPA_MAP[lead.etapa_venta].color }}>
           {ETAPA_MAP[lead.etapa_venta].label}
         </span>
+        {lead.etiquetas.map(e => (
+          <span key={e.id}
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-white leading-tight"
+            style={{ background: e.color }}>
+            {e.nombre}
+          </span>
+        ))}
       </div>
 
       {/* Canales + origen */}

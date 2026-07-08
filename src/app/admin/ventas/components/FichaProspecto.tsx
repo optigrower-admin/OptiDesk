@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { ETAPAS, ETAPA_MAP, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import VincularClienteModal from './VincularClienteModal'
+import EtiquetasPicker, { type Etiqueta } from './EtiquetasPicker'
 import ResumenTab from './ficha/ResumenTab'
 import DatosClienteTab from './ficha/DatosClienteTab'
 import MotosInteresTab from './ficha/MotosInteresTab'
@@ -49,7 +50,7 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null }) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[] }) => void
   onLeadDelete?: (id: string) => void
 }
 
@@ -301,6 +302,16 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
             )}
             <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
           </div>
+        </div>
+
+        {/* Etiquetas */}
+        <div className="px-5 py-2 border-b flex-shrink-0 bg-gray-50/50">
+          <EtiquetasPicker
+            tenantId={tenantId}
+            clienteId={lead.id}
+            etiquetasIniciales={lead.etiquetas}
+            onChange={etiquetas => onLeadUpdate?.(lead.id, { etiquetas })}
+          />
         </div>
 
         {/* Body */}

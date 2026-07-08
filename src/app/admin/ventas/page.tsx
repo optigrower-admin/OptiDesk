@@ -38,7 +38,8 @@ export default function VentasPage() {
           sin_respuesta_asesor_desde,
           assigned_to,
           nombre_pendiente_aprobacion,
-          conversaciones ( id, canal, no_leidos_count )
+          conversaciones ( id, canal, no_leidos_count ),
+          clientes_etiquetas ( etiquetas_venta ( id, nombre, color ) )
         `)
         .eq('tenant_id', profile.tenant_id)
         .eq('en_seguimiento_ventas', true)
@@ -82,6 +83,8 @@ export default function VentasPage() {
         const motoLabel = motosInteres.map(m => m.motos_catalogo?.referencia).filter(Boolean).join(' · ')
         const noLeidos = convs.reduce((s, cv) => s + (cv.no_leidos_count ?? 0), 0)
         const ex = extraMap[c.id as string] ?? {}
+        const etiquetasRaw = (c.clientes_etiquetas as unknown as { etiquetas_venta: { id: string; nombre: string; color: string } | null }[] | null) ?? []
+        const etiquetas = etiquetasRaw.map(e => e.etiquetas_venta).filter((e): e is { id: string; nombre: string; color: string } => !!e)
 
         return {
           id:                         c.id as string,
@@ -103,6 +106,7 @@ export default function VentasPage() {
           nombre_pendiente_aprobacion:  (c.nombre_pendiente_aprobacion ?? null) as boolean | null,
           leads_campana:                [],
           todas_conversaciones:       convs.map(cv => ({ id: cv.id, canal: cv.canal, no_leidos_count: cv.no_leidos_count ?? 0 })),
+          etiquetas,
         }
       })
 

@@ -207,7 +207,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     moverLead(id, etapa)
   }
 
-  function handleLeadUpdate(id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null }) {
+  function handleLeadUpdate(id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: { id: string; nombre: string; color: string }[] }) {
     setLeads(prev => prev.map(l => {
       if (l.id !== id) return l
       return {
@@ -216,6 +216,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
         ...(updates.proxima_accion_fecha !== undefined ? { proxima_accion_fecha: updates.proxima_accion_fecha } : {}),
         ...(updates.nombre !== undefined && l.cliente ? { cliente: { ...l.cliente, nombre: updates.nombre } } : {}),
         ...(updates.nombre_pendiente_aprobacion !== undefined ? { nombre_pendiente_aprobacion: updates.nombre_pendiente_aprobacion } : {}),
+        ...(updates.etiquetas !== undefined ? { etiquetas: updates.etiquetas } : {}),
       }
     }))
   }
