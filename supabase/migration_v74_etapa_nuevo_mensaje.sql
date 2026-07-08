@@ -1,10 +1,17 @@
--- Mover al canal "Nuevo Contacto - Mensaje" todos los clientes en seguimiento
--- que tienen whatsapp_number, messenger_id o instagram_id registrado
--- y están actualmente en la etapa 'nuevo' (asignada por el webhook anterior)
--- o sin etapa definida.
--- Esto incluye los contactos que ya estaban en la BD con canal pero aún
--- figuraban como 'nuevo'.
+-- Paso 1: Ampliar el CHECK constraint para incluir 'nuevo_mensaje'
+ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_etapa_venta_check;
+ALTER TABLE clientes ADD CONSTRAINT clientes_etapa_venta_check
+  CHECK (etapa_venta IN (
+    'nuevo_mensaje',
+    'nuevo','con_objecion','seguimiento','buscando_credito',
+    'calificado','demo','propuesta','negociacion',
+    'ganado','en_matricula','alistamiento','espera_entrega','entregada',
+    'perdido'
+  ));
 
+-- Paso 2: Mover al canal "Nuevo Contacto - Mensaje" todos los clientes en seguimiento
+-- que tienen whatsapp_number, messenger_id o instagram_id registrado
+-- y están actualmente en la etapa 'nuevo' o sin etapa definida.
 UPDATE clientes
 SET
   etapa_venta       = 'nuevo_mensaje',
