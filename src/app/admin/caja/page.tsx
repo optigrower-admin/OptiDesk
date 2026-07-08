@@ -530,6 +530,7 @@ function AjusteModal({ tenantId, usuarioId, cuentaInicial = '', onClose, onCread
   const [monto, setMonto] = useState('')
   const [metodoPagoId, setMetodoPagoId] = useState(cuentaInicial)
   const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [fecha, setFecha] = useState(nowDatetimeLocal())
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
@@ -554,6 +555,7 @@ function AjusteModal({ tenantId, usuarioId, cuentaInicial = '', onClose, onCread
         metodo_pago_id: esCajaFuerte ? null : metodoPagoId,
         cuenta_especial: esCajaFuerte ? 'caja_fuerte' : null,
         registrado_por: usuarioId,
+        ...(fecha ? { fecha: new Date(fecha).toISOString() } : {}),
       }).select('id').single()
       if (err) throw new Error(err.message)
       await registrarAuditoria(supabase, {
@@ -561,7 +563,7 @@ function AjusteModal({ tenantId, usuarioId, cuentaInicial = '', onClose, onCread
         tabla: 'ajustes_caja',
         registro_id: (data as { id: string }).id,
         tipo: 'movimiento',
-        valor_nuevo: { descripcion: descripcion.trim(), monto: montoNum },
+        valor_nuevo: { descripcion: descripcion.trim(), monto: montoNum, fecha: fecha ? new Date(fecha).toISOString() : undefined },
         descripcion: `Registró un ajuste de caja: "${descripcion.trim()}" por ${formatCOP(montoNum)}`,
         usuario_id: usuarioId,
       })
@@ -580,6 +582,11 @@ function AjusteModal({ tenantId, usuarioId, cuentaInicial = '', onClose, onCread
         <h2 className="font-bold text-gray-900 mb-1">{cuentaInicial === OPCION_CAJA_FUERTE ? 'Ajuste caja fuerte' : 'Ajuste de caja'}</h2>
         <p className="text-xs text-gray-500 mb-4">Solo Gerencia puede registrar ajustes — queda guardado quién y cuándo lo hizo.</p>
         <div className="space-y-2">
+          <div>
+            <label className="text-xs text-purple-700 font-semibold">Fecha y hora</label>
+            <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
+              className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 mt-0.5 bg-purple-50" />
+          </div>
           <div>
             <label className="text-xs text-gray-500">Motivo del ajuste</label>
             <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Corrección de saldo en efectivo..."
@@ -625,6 +632,68 @@ function AjusteModal({ tenantId, usuarioId, cuentaInicial = '', onClose, onCread
           <button onClick={guardar} disabled={!valido || guardando}
             className="flex-1 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
             {guardando ? 'Guardando...' : 'Guardar ajuste'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EditarAjusteModal({ tenantId, usuarioId, ajuste, onClose, onEditado }: {
+  tenantId: string; usuarioId: string
+  ajuste: { id: string; descripcion: string; fecha: string }
+  onClose: () => void; onEditado: () => void
+}) {
+  const supabase = createClient()
+  const [fecha, setFecha] = useState(isoToDatetimeLocal(ajuste.fecha))
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  async function guardar() {
+    if (!fecha) return
+    if (!confirm('¿Seguro que deseas cambiar la fecha de este ajuste?')) return
+    setGuardando(true); setError('')
+    const nuevaFechaISO = new Date(fecha).toISOString()
+    try {
+      const { error: err } = await supabase.from('ajustes_caja').update({ fecha: nuevaFechaISO }).eq('id', ajuste.id)
+      if (err) throw new Error(err.message)
+      await registrarAuditoria(supabase, {
+        tenant_id: tenantId,
+        tabla: 'ajustes_caja',
+        registro_id: ajuste.id,
+        tipo: 'edicion',
+        valor_anterior: { fecha: ajuste.fecha },
+        valor_nuevo: { fecha: nuevaFechaISO },
+        descripcion: `Gerencia editó la fecha del ajuste de caja "${ajuste.descripcion}"`,
+        usuario_id: usuarioId,
+      })
+      onEditado()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al editar la fecha')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h2 className="font-bold text-gray-900 mb-1">Editar fecha del ajuste</h2>
+        <p className="text-xs text-gray-500 mb-4">{ajuste.descripcion}</p>
+        <div>
+          <label className="text-xs text-purple-700 font-semibold">Fecha y hora</label>
+          <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
+            className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 mt-0.5 bg-purple-50" />
+        </div>
+        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={!fecha || guardando}
+            className="flex-1 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
+            {guardando ? 'Guardando...' : 'Guardar fecha'}
           </button>
         </div>
       </div>
@@ -917,6 +986,7 @@ export default function CajaPage() {
   const [busqueda, setBusqueda] = useState('')
   const [gastoModal, setGastoModal] = useState<{ titulo: string; descripcionInicial: string } | null>(null)
   const [ajusteOpen, setAjusteOpen] = useState<{ cuentaInicial?: string } | null>(null)
+  const [editAjuste, setEditAjuste] = useState<{ id: string; descripcion: string; fecha: string } | null>(null)
   const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
   const [ingresoModalOpen, setIngresoModalOpen] = useState(false)
   const [editIngreso, setEditIngreso] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
@@ -1131,6 +1201,16 @@ export default function CajaPage() {
           cuentaInicial={ajusteOpen.cuentaInicial}
           onClose={() => setAjusteOpen(null)}
           onCreado={cargar}
+        />
+      )}
+
+      {editAjuste && profile?.tenant_id && profile?.id && (
+        <EditarAjusteModal
+          tenantId={profile.tenant_id}
+          usuarioId={profile.id}
+          ajuste={editAjuste}
+          onClose={() => setEditAjuste(null)}
+          onEditado={cargar}
         />
       )}
 
@@ -1393,9 +1473,17 @@ export default function CajaPage() {
                       </>
                     )}
                     {m.categoria === 'ajuste' && esGerencia && (
-                      <button onClick={() => eliminarAjuste(m)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
-                        Eliminar
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setEditAjuste({ id: m.rawId, descripcion: m.concepto, fecha: m.fecha })}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                        >
+                          Editar fecha
+                        </button>
+                        <button onClick={() => eliminarAjuste(m)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
+                          Eliminar
+                        </button>
+                      </>
                     )}
                     {m.categoria === 'ingreso_manual' && puedeEditarGastos && (
                       <>
@@ -1471,9 +1559,17 @@ export default function CajaPage() {
                       </>
                     )}
                     {f.categoria === 'ajuste' && esGerencia && (
-                      <button onClick={() => eliminarAjuste(f)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
-                        Eliminar
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setEditAjuste({ id: f.rawId, descripcion: f.concepto, fecha: f.fecha })}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                        >
+                          Editar fecha
+                        </button>
+                        <button onClick={() => eliminarAjuste(f)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
+                          Eliminar
+                        </button>
+                      </>
                     )}
                     {f.categoria === 'ingreso_manual' && puedeEditarGastos && (
                       <>
