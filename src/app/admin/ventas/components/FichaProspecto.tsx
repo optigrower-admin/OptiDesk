@@ -193,14 +193,20 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const handleEliminar = async () => {
     if (!lead.cliente?.id) return
     setDeleting(true)
-    // Desvincula las conversaciones antes de eliminar para que el webhook
-    // pueda recrear el cliente si el contacto vuelve a escribir
-    await supabase.from('conversaciones')
-      .update({ cliente_id: null })
-      .eq('cliente_id', lead.cliente.id)
-    await supabase.from('clientes').delete().eq('id', lead.cliente.id)
-    onLeadDelete?.(lead.id)
-    onClose()
+    try {
+      const res = await fetch('/api/admin/ventas/archivar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cliente_id: lead.cliente.id }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        console.error('[archivar]', json.error)
+      }
+    } finally {
+      onLeadDelete?.(lead.id)
+      onClose()
+    }
   }
 
   const etapaActual = ETAPA_MAP[etapa]
@@ -227,9 +233,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         {confirmDelete && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 rounded-2xl">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 mx-4">
-              <h2 className="font-bold text-red-700 mb-1">⚠️ Eliminar cliente</h2>
+              <h2 className="font-bold text-red-700 mb-1">⚠️ Sacar de seguimiento</h2>
               <p className="text-sm text-gray-600 mb-3">
-                Esto eliminará permanentemente a <strong>{lead.cliente?.nombre ?? 'este cliente'}</strong> y todos sus datos. Esta acción no se puede deshacer.
+                <strong>{lead.cliente?.nombre ?? 'Este cliente'}</strong> desaparecerá del tablero de ventas. Sus conversaciones, historial y datos quedan guardados y podrán consultarse en el perfil del cliente.
               </p>
               <p className="text-xs text-gray-500 mb-1.5">Para confirmar, escribe <span className="font-bold text-red-600">ELIMINAR</span> en el campo:</p>
               <input
