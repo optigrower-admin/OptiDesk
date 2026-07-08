@@ -193,20 +193,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const handleEliminar = async () => {
     if (!lead.cliente?.id) return
     setDeleting(true)
-    try {
-      const res = await fetch('/api/admin/ventas/archivar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cliente_id: lead.cliente.id }),
-      })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        console.error('[archivar]', json.error)
-      }
-    } finally {
-      onLeadDelete?.(lead.id)
-      onClose()
-    }
+    // Sacar del seguimiento vía la ruta de guardar (admin client, bypasa RLS)
+    await fetch('/api/admin/ventas/guardar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cliente_id: lead.cliente.id, en_seguimiento_ventas: false }),
+    })
+    onLeadDelete?.(lead.id)
+    onClose()
   }
 
   const etapaActual = ETAPA_MAP[etapa]
