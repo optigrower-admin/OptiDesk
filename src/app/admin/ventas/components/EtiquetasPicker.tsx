@@ -78,8 +78,7 @@ export default function EtiquetasPicker({ tenantId, clienteId, etiquetasIniciale
       .insert({ tenant_id: tenantId, nombre, color })
       .select('id, nombre, color').single()
     if (error || !data) {
-      console.error('[EtiquetasPicker] error creando etiqueta:', error?.message)
-      alert('No se pudo guardar la etiqueta. Verifica que se ejecutó la migración v73 en Supabase Studio.')
+      alert(`Error: ${error?.message ?? 'sin datos'} | code: ${error?.code ?? '?'}`)
       setCreando(false)
       return
     }
