@@ -597,11 +597,22 @@ export default function AdminOrdenDetallePage() {
     await cargar()
   }
 
+  const recalcularValorTotal = async (): Promise<number> => {
+    const [{ data: itemsDB }, { data: lavaMoto }] = await Promise.all([
+      supabase.from('items_orden').select('precio_venta, cantidad').eq('orden_id', ordenId),
+      supabase.from('lava_moto_ordenes').select('precio_venta_unitario, cantidad').eq('orden_id', ordenId),
+    ])
+    const total =
+      (itemsDB ?? []).reduce((s, i) => s + (i.precio_venta ?? 0) * (i.cantidad ?? 0), 0) +
+      (lavaMoto ?? []).reduce((s, l) => s + (l.precio_venta_unitario ?? 0) * (l.cantidad ?? 0), 0)
+    await supabase.from('ordenes').update({ valor_total: total }).eq('id', ordenId)
+    return total
+  }
+
   const handleDeleteItem = async (item: ItemOrden) => {
     if (!confirm(`¿Eliminar "${item.descripcion}"?`)) return
     await supabase.from('items_orden').delete().eq('id', item.id)
-    const nuevoTotal = items.filter((i) => i.id !== item.id).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-    await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+    await recalcularValorTotal()
     // Devolver al inventario si era UMA
     await registrarDevolucion(supabase, {
       tenantId: orden!.tenant_id,
@@ -763,9 +774,8 @@ export default function AdminOrdenDetallePage() {
     }
     if (data) {
       const itemId = (data as { id: string }).id
-      const nuevoTotal = [...items, data].reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
       await Promise.all([
-        supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId),
+        recalcularValorTotal(),
         registrarSalida(
           supabase,
           orden!.tipo_orden === 'venta_repuestos' ? 'venta_directa' : 'uso_st',
@@ -833,8 +843,7 @@ export default function AdminOrdenDetallePage() {
       alert('No se pudo guardar el cambio: sin permisos para modificar este ítem. Contacta al administrador del sistema.')
       return
     }
-    const nuevoTotal = items.map((i) => i.id === id ? { ...i, ...cambios } : i).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-    await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+    await recalcularValorTotal()
     await registrarAuditoria(supabase, {
       tenant_id: orden!.tenant_id,
       tabla: 'items_orden',
@@ -879,9 +888,7 @@ export default function AdminOrdenDetallePage() {
         return
       }
       if (lmData) {
-        const nuevoTotalLM = [...lavaMotoOrdenes, { precio_venta_unitario: precioLav, cantidad: cantidadLav }].reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-        const nuevoTotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + nuevoTotalLM
-        await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+        await recalcularValorTotal()
         await registrarAuditoria(supabase, {
           tenant_id: orden!.tenant_id,
           tabla: 'lava_moto_ordenes',
@@ -912,9 +919,7 @@ export default function AdminOrdenDetallePage() {
       await supabase.from('lava_moto_ordenes').update({
         cantidad: cantidadLav, costo_unitario: costoLav, precio_venta_unitario: precioLav, metodo_pago_id: lavadoQuick.metodo || null,
       }).eq('id', id)
-      const nuevoTotalLM = lavaMotoOrdenes.map((r) => r.id === id ? { ...r, cantidad: cantidadLav, costo_unitario: costoLav, precio_venta_unitario: precioLav } : r).reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
-      const nuevoTotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + nuevoTotalLM
-      await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+      await recalcularValorTotal()
       await registrarAuditoria(supabase, {
         tenant_id: orden!.tenant_id,
         tabla: 'lava_moto_ordenes',
@@ -953,8 +958,7 @@ export default function AdminOrdenDetallePage() {
         return
       }
       if (data) {
-        const nuevoTotal = [...items, { precio_venta: precio, cantidad: 1 }].reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-        await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+        await recalcularValorTotal()
         await registrarAuditoria(supabase, {
           tenant_id: orden!.tenant_id,
           tabla: 'items_orden',
@@ -1318,12 +1322,10 @@ export default function AdminOrdenDetallePage() {
     if (!confirm('¿Eliminar este servicio de lavado?') || !orden) return
     const lmEliminado = lavaMotoOrdenes.find((r) => r.id === id)
     await supabase.from('lava_moto_ordenes').delete().eq('id', id)
-    const lmRestantes = lavaMotoOrdenes.filter((r) => r.id !== id)
-    const lmTotal = lmRestantes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
+    const nuevoTotal = await recalcularValorTotal()
     const totalCliente = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
-    const nuevoTotal = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0) + lmTotal
     const nuevoEstado = calcularEstadoPago(pagosOrden, nuevoTotal)
-    await supabase.from('ordenes').update({ estado_pago: nuevoEstado, valor_abono: totalCliente, valor_total: nuevoTotal }).eq('id', ordenId)
+    await supabase.from('ordenes').update({ estado_pago: nuevoEstado, valor_abono: totalCliente }).eq('id', ordenId)
     await registrarAuditoria(supabase, {
       tenant_id: orden.tenant_id,
       tabla: 'lava_moto_ordenes',
