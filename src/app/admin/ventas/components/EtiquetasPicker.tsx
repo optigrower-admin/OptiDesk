@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
 
 export type Etiqueta = { id: string; nombre: string; color: string }
 
@@ -17,8 +16,7 @@ interface Props {
   onChange: (etiquetas: Etiqueta[]) => void
 }
 
-export default function EtiquetasPicker({ tenantId, clienteId, etiquetasIniciales, onChange }: Props) {
-  const supabase = createClient()
+export default function EtiquetasPicker({ tenantId: _tenantId, clienteId, etiquetasIniciales, onChange }: Props) {
   const [open, setOpen] = useState(false)
   const [todas, setTodas] = useState<Etiqueta[]>([])
   const [aplicadas, setAplicadas] = useState<Etiqueta[]>(etiquetasIniciales)
@@ -29,11 +27,10 @@ export default function EtiquetasPicker({ tenantId, clienteId, etiquetasIniciale
 
   useEffect(() => {
     if (!open) return
-    supabase.from('etiquetas_venta').select('id, nombre, color')
-      .eq('tenant_id', tenantId).order('nombre')
-      .then(({ data }) => setTodas((data ?? []) as Etiqueta[]))
+    fetch('/api/admin/ventas/etiquetas')
+      .then(r => r.json())
+      .then(j => setTodas(j.etiquetas ?? []))
     setTimeout(() => inputRef.current?.focus(), 50)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   useEffect(() => {
@@ -55,14 +52,20 @@ export default function EtiquetasPicker({ tenantId, clienteId, etiquetasIniciale
 
   async function toggleEtiqueta(e: Etiqueta) {
     if (aplicadasIds.has(e.id)) {
-      await supabase.from('clientes_etiquetas').delete()
-        .eq('cliente_id', clienteId).eq('etiqueta_id', e.id)
+      await fetch('/api/admin/ventas/etiquetas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'quitar', etiqueta_id: e.id, cliente_id: clienteId }),
+      })
       const nuevas = aplicadas.filter(a => a.id !== e.id)
       setAplicadas(nuevas)
       onChange(nuevas)
     } else {
-      await supabase.from('clientes_etiquetas')
-        .insert({ cliente_id: clienteId, etiqueta_id: e.id, tenant_id: tenantId })
+      await fetch('/api/admin/ventas/etiquetas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'aplicar', etiqueta_id: e.id, cliente_id: clienteId }),
+      })
       const nuevas = [...aplicadas, e]
       setAplicadas(nuevas)
       onChange(nuevas)
@@ -74,17 +77,18 @@ export default function EtiquetasPicker({ tenantId, clienteId, etiquetasIniciale
     if (!nombre || existeExacta || creando) return
     setCreando(true)
     const color = PALETTE[todas.length % PALETTE.length]
-    const { data, error } = await supabase.from('etiquetas_venta')
-      .insert({ tenant_id: tenantId, nombre, color })
-      .select('id, nombre, color').single()
-    if (error || !data) {
-      alert(`Error: ${error?.message ?? 'sin datos'} | code: ${error?.code ?? '?'}`)
+    const res = await fetch('/api/admin/ventas/etiquetas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'crear_y_aplicar', nombre, color, cliente_id: clienteId }),
+    })
+    const json = await res.json()
+    if (!res.ok || !json.etiqueta) {
+      alert(`No se pudo guardar la etiqueta: ${json.error ?? 'error desconocido'}`)
       setCreando(false)
       return
     }
-    const nueva = data as Etiqueta
-    await supabase.from('clientes_etiquetas')
-      .insert({ cliente_id: clienteId, etiqueta_id: nueva.id, tenant_id: tenantId })
+    const nueva: Etiqueta = json.etiqueta
     const nuevas = [...aplicadas, nueva]
     setAplicadas(nuevas)
     setTodas(prev => [...prev, nueva].sort((a, b) => a.nombre.localeCompare(b.nombre)))
@@ -95,8 +99,11 @@ export default function EtiquetasPicker({ tenantId, clienteId, etiquetasIniciale
 
   async function quitar(e: Etiqueta, ev: React.MouseEvent) {
     ev.stopPropagation()
-    await supabase.from('clientes_etiquetas').delete()
-      .eq('cliente_id', clienteId).eq('etiqueta_id', e.id)
+    await fetch('/api/admin/ventas/etiquetas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'quitar', etiqueta_id: e.id, cliente_id: clienteId }),
+    })
     const nuevas = aplicadas.filter(a => a.id !== e.id)
     setAplicadas(nuevas)
     onChange(nuevas)
