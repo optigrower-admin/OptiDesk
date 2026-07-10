@@ -77,7 +77,12 @@ export default function EtiquetasPicker({ tenantId, clienteId, etiquetasIniciale
     const { data, error } = await supabase.from('etiquetas_venta')
       .insert({ tenant_id: tenantId, nombre, color })
       .select('id, nombre, color').single()
-    if (error || !data) { setCreando(false); return }
+    if (error || !data) {
+      console.error('[EtiquetasPicker] error creando etiqueta:', error?.message)
+      alert('No se pudo guardar la etiqueta. Verifica que se ejecutó la migración v73 en Supabase Studio.')
+      setCreando(false)
+      return
+    }
     const nueva = data as Etiqueta
     await supabase.from('clientes_etiquetas')
       .insert({ cliente_id: clienteId, etiqueta_id: nueva.id, tenant_id: tenantId })
