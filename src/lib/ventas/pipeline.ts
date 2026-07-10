@@ -1,5 +1,6 @@
 export type EtapaVenta =
   | 'nuevo_mensaje' | 'nuevo' | 'con_objecion' | 'seguimiento' | 'buscando_credito'
+  | 'en_proceso_credito'
   | 'calificado' | 'demo' | 'propuesta' | 'negociacion' | 'ganado'
   | 'en_matricula' | 'alistamiento' | 'espera_entrega' | 'entregada'
   | 'perdido'
@@ -9,8 +10,9 @@ export const ETAPAS: { id: EtapaVenta; label: string; color: string; bg: string;
   { id: 'nuevo',           label: 'Nuevo',                    color: '#378ADD', bg: 'bg-blue-50',   border: 'border-blue-500'    },
   { id: 'con_objecion',    label: 'Con objeción',             color: '#DC2626', bg: 'bg-red-50',    border: 'border-red-600'     },
   { id: 'seguimiento',     label: 'Seguimiento',        color: '#7C3AED', bg: 'bg-violet-50',  border: 'border-violet-600'  },
-  { id: 'buscando_credito',label: 'Buscando Crédito',   color: '#D97706', bg: 'bg-orange-50',  border: 'border-orange-500'  },
-  { id: 'calificado',      label: 'Calificado',         color: '#1D9E75', bg: 'bg-emerald-50', border: 'border-emerald-600' },
+  { id: 'buscando_credito',   label: 'Buscando Crédito',      color: '#D97706', bg: 'bg-orange-50',  border: 'border-orange-500'  },
+  { id: 'en_proceso_credito', label: 'En Proceso de Crédito', color: '#0284c7', bg: 'bg-sky-50',    border: 'border-sky-500'     },
+  { id: 'calificado',         label: 'Calificado',            color: '#1D9E75', bg: 'bg-emerald-50', border: 'border-emerald-600' },
   { id: 'demo',            label: 'Demo / Cita',        color: '#EF9F27', bg: 'bg-amber-50',   border: 'border-amber-500'   },
   { id: 'propuesta',       label: 'Propuesta',          color: '#534AB7', bg: 'bg-indigo-50',  border: 'border-indigo-600'  },
   { id: 'negociacion',     label: 'Negociación',        color: '#639922', bg: 'bg-lime-50',    border: 'border-lime-700'    },
@@ -25,7 +27,7 @@ export const ETAPAS: { id: EtapaVenta; label: string; color: string; bg: string;
 export const ETAPA_MAP = Object.fromEntries(ETAPAS.map(e => [e.id, e])) as Record<EtapaVenta, typeof ETAPAS[0]>
 
 export const ETAPAS_ACTIVAS: EtapaVenta[] = [
-  'nuevo_mensaje', 'nuevo', 'con_objecion', 'seguimiento', 'buscando_credito', 'calificado', 'demo', 'propuesta', 'negociacion',
+  'nuevo_mensaje', 'nuevo', 'con_objecion', 'seguimiento', 'buscando_credito', 'en_proceso_credito', 'calificado', 'demo', 'propuesta', 'negociacion',
 ]
 
 export const ETAPAS_POSVENTA: EtapaVenta[] = ['en_matricula', 'alistamiento', 'espera_entrega', 'entregada']
@@ -34,8 +36,9 @@ export const ETAPAS_POSVENTA: EtapaVenta[] = ['en_matricula', 'alistamiento', 'e
 export const ETAPA_ORDEN: Record<EtapaVenta, number> = {
   nuevo_mensaje: -1,
   nuevo: 0, con_objecion: 1, seguimiento: 2, buscando_credito: 3,
-  calificado: 4, demo: 5, propuesta: 6, negociacion: 7, ganado: 8,
-  en_matricula: 9, alistamiento: 10, espera_entrega: 11, entregada: 12, perdido: 13,
+  en_proceso_credito: 4,
+  calificado: 5, demo: 6, propuesta: 7, negociacion: 8, ganado: 9,
+  en_matricula: 10, alistamiento: 11, espera_entrega: 12, entregada: 13, perdido: 14,
 }
 
 export function formatCOP(value: number | null | undefined): string {
