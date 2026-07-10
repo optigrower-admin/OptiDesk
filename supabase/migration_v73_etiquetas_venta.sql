@@ -33,3 +33,7 @@ CREATE POLICY "tenant_clientes_etiquetas_all" ON clientes_etiquetas
   FOR ALL
   USING     (tenant_id = (SELECT tenant_id FROM usuarios WHERE id = auth.uid()))
   WITH CHECK(tenant_id = (SELECT tenant_id FROM usuarios WHERE id = auth.uid()));
+
+-- Grants explícitos (necesarios cuando la tabla se crea por SQL, no por el dashboard)
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.etiquetas_venta    TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.clientes_etiquetas TO anon, authenticated, service_role;
