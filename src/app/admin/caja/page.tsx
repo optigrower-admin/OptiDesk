@@ -972,6 +972,179 @@ async function construirMovimientos(
   return lista
 }
 
+function TransferirModal({ tenantId, usuarioId, esGerencia = false, onClose, onCreado }: {
+  tenantId: string; usuarioId: string; esGerencia?: boolean; onClose: () => void; onCreado: () => void
+}) {
+  const supabase = createClient()
+  const [cuentaOrigen, setCuentaOrigen] = useState('')
+  const [cuentaDestino, setCuentaDestino] = useState('')
+  const [monto, setMonto] = useState('')
+  const [descripcion, setDescripcion] = useState('')
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [fecha, setFecha] = useState(nowDatetimeLocal())
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).order('nombre')
+      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
+  }, [supabase, tenantId])
+
+  const opcionesCuentas = [
+    ...metodosPago.map(m => ({ value: m.id, label: m.nombre })),
+    { value: OPCION_CAJA_FUERTE, label: 'Caja fuerte' },
+  ]
+
+  const montoNum = parseInt(monto.replace(/\D/g, ''), 10) || 0
+  const valido = cuentaOrigen !== '' && cuentaDestino !== '' && cuentaOrigen !== cuentaDestino && montoNum > 0
+
+  const nombreCuenta = (id: string) =>
+    id === OPCION_CAJA_FUERTE ? 'Caja fuerte' : (metodosPago.find(m => m.id === id)?.nombre ?? id)
+
+  async function guardar() {
+    if (!valido) return
+    if (!confirm('¿Confirmar la transferencia?')) return
+    setGuardando(true); setError('')
+
+    const esCFOrigen = cuentaOrigen === OPCION_CAJA_FUERTE
+    const esCFDestino = cuentaDestino === OPCION_CAJA_FUERTE
+    const fechaPayload = esGerencia && fecha ? { fecha: new Date(fecha).toISOString() } : {}
+    const desc = descripcion.trim() || `Transferencia de ${nombreCuenta(cuentaOrigen)} a ${nombreCuenta(cuentaDestino)}`
+
+    try {
+      if (esCFDestino && !esCFOrigen) {
+        // Regular → Caja fuerte: gastos_caja con la descripción mágica que detecta saldoCajaFuerte
+        const { data, error: err } = await supabase.from('gastos_caja').insert({
+          tenant_id: tenantId,
+          descripcion: 'transferencia a caja fuerte',
+          monto: montoNum,
+          metodo_pago_id: cuentaOrigen,
+          registrado_por: usuarioId,
+          ...fechaPayload,
+        }).select('id').single()
+        if (err) throw new Error(err.message)
+        await registrarAuditoria(supabase, {
+          tenant_id: tenantId, tabla: 'gastos_caja',
+          registro_id: (data as { id: string }).id, tipo: 'movimiento',
+          valor_nuevo: { descripcion: 'transferencia a caja fuerte', monto: montoNum },
+          descripcion: `Transfirió ${formatCOP(montoNum)} de ${nombreCuenta(cuentaOrigen)} a Caja fuerte`,
+          usuario_id: usuarioId,
+        })
+      } else if (esCFOrigen && !esCFDestino) {
+        // Caja fuerte → Regular: ajuste negativo en CF + ingreso en destino
+        const [{ data: d1, error: e1 }, { data: d2, error: e2 }] = await Promise.all([
+          supabase.from('ajustes_caja').insert({
+            tenant_id: tenantId, descripcion: desc, monto: -montoNum,
+            metodo_pago_id: null, cuenta_especial: 'caja_fuerte',
+            registrado_por: usuarioId, ...fechaPayload,
+          }).select('id').single(),
+          supabase.from('ingresos_caja').insert({
+            tenant_id: tenantId, descripcion: desc, monto: montoNum,
+            metodo_pago_id: cuentaDestino, registrado_por: usuarioId, ...fechaPayload,
+          }).select('id').single(),
+        ])
+        if (e1) throw new Error(e1.message)
+        if (e2) throw new Error(e2.message)
+        await Promise.all([
+          registrarAuditoria(supabase, { tenant_id: tenantId, tabla: 'ajustes_caja', registro_id: (d1 as { id: string }).id, tipo: 'movimiento', valor_nuevo: { descripcion: desc, monto: -montoNum }, descripcion: `Salida de ${formatCOP(montoNum)} de Caja fuerte hacia ${nombreCuenta(cuentaDestino)}`, usuario_id: usuarioId }),
+          registrarAuditoria(supabase, { tenant_id: tenantId, tabla: 'ingresos_caja', registro_id: (d2 as { id: string }).id, tipo: 'movimiento', valor_nuevo: { descripcion: desc, monto: montoNum }, descripcion: `Ingreso de ${formatCOP(montoNum)} desde Caja fuerte a ${nombreCuenta(cuentaDestino)}`, usuario_id: usuarioId }),
+        ])
+      } else {
+        // Regular → Regular: gasto en origen + ingreso en destino
+        const [{ data: d1, error: e1 }, { data: d2, error: e2 }] = await Promise.all([
+          supabase.from('gastos_caja').insert({
+            tenant_id: tenantId, descripcion: desc, monto: montoNum,
+            metodo_pago_id: cuentaOrigen, registrado_por: usuarioId, ...fechaPayload,
+          }).select('id').single(),
+          supabase.from('ingresos_caja').insert({
+            tenant_id: tenantId, descripcion: desc, monto: montoNum,
+            metodo_pago_id: cuentaDestino, registrado_por: usuarioId, ...fechaPayload,
+          }).select('id').single(),
+        ])
+        if (e1) throw new Error(e1.message)
+        if (e2) throw new Error(e2.message)
+        await Promise.all([
+          registrarAuditoria(supabase, { tenant_id: tenantId, tabla: 'gastos_caja', registro_id: (d1 as { id: string }).id, tipo: 'movimiento', valor_nuevo: { descripcion: desc, monto: montoNum }, descripcion: `Salida de ${formatCOP(montoNum)} de ${nombreCuenta(cuentaOrigen)} hacia ${nombreCuenta(cuentaDestino)}`, usuario_id: usuarioId }),
+          registrarAuditoria(supabase, { tenant_id: tenantId, tabla: 'ingresos_caja', registro_id: (d2 as { id: string }).id, tipo: 'movimiento', valor_nuevo: { descripcion: desc, monto: montoNum }, descripcion: `Ingreso de ${formatCOP(montoNum)} desde ${nombreCuenta(cuentaOrigen)} a ${nombreCuenta(cuentaDestino)}`, usuario_id: usuarioId }),
+        ])
+      }
+      onCreado()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al registrar la transferencia')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h2 className="font-bold text-gray-900 mb-1">Transferir entre cuentas</h2>
+        <p className="text-xs text-gray-500 mb-4">Mueve dinero de una cuenta a otra. Los saldos se actualizan automáticamente.</p>
+        <div className="space-y-2">
+          {esGerencia && (
+            <div>
+              <label className="text-xs text-purple-700 font-semibold">Fecha y hora</label>
+              <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
+                className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 mt-0.5 bg-purple-50" />
+            </div>
+          )}
+          <div>
+            <label className="text-xs text-gray-500">De (cuenta origen)</label>
+            <select value={cuentaOrigen} onChange={e => { setCuentaOrigen(e.target.value); if (e.target.value === cuentaDestino) setCuentaDestino('') }}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mt-0.5 bg-white">
+              <option value="">Selecciona cuenta origen...</option>
+              {opcionesCuentas.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">A (cuenta destino)</label>
+            <select value={cuentaDestino} onChange={e => setCuentaDestino(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mt-0.5 bg-white">
+              <option value="">Selecciona cuenta destino...</option>
+              {opcionesCuentas.filter(o => o.value !== cuentaOrigen).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Descripción (opcional)</label>
+            <input value={descripcion} onChange={e => setDescripcion(e.target.value)}
+              placeholder={cuentaOrigen && cuentaDestino ? `Transferencia de ${nombreCuenta(cuentaOrigen)} a ${nombreCuenta(cuentaDestino)}` : 'Descripción...'}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mt-0.5" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Monto</label>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-400 bg-white mt-0.5">
+              <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-1.5">$</span>
+              <input type="text" inputMode="numeric"
+                value={monto ? Number(monto.replace(/\D/g, '')).toLocaleString('es-CO') : ''}
+                onChange={e => setMonto(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="flex-1 px-2 py-1.5 text-sm font-mono text-right focus:outline-none" />
+            </div>
+          </div>
+          {cuentaOrigen && cuentaDestino && montoNum > 0 && (
+            <p className="text-xs text-blue-700 bg-blue-50 rounded-lg px-3 py-2">
+              Sale <strong>{formatCOP(montoNum)}</strong> de <strong>{nombreCuenta(cuentaOrigen)}</strong> →
+              Entra <strong>{formatCOP(montoNum)}</strong> en <strong>{nombreCuenta(cuentaDestino)}</strong>
+            </p>
+          )}
+        </div>
+        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={!valido || guardando}
+            className="flex-1 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
+            {guardando ? 'Transfiriendo...' : 'Transferir'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function CajaPage() {
   const { profile } = useAuth()
   const supabase = createClient()
@@ -986,6 +1159,7 @@ export default function CajaPage() {
   const [busqueda, setBusqueda] = useState('')
   const [gastoModal, setGastoModal] = useState<{ titulo: string; descripcionInicial: string } | null>(null)
   const [ajusteOpen, setAjusteOpen] = useState<{ cuentaInicial?: string } | null>(null)
+  const [transferirOpen, setTransferirOpen] = useState(false)
   const [editAjuste, setEditAjuste] = useState<{ id: string; descripcion: string; fecha: string } | null>(null)
   const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
   const [ingresoModalOpen, setIngresoModalOpen] = useState(false)
@@ -1204,6 +1378,16 @@ export default function CajaPage() {
         />
       )}
 
+      {transferirOpen && profile?.tenant_id && profile?.id && (
+        <TransferirModal
+          tenantId={profile.tenant_id}
+          usuarioId={profile.id}
+          esGerencia={esGerencia}
+          onClose={() => setTransferirOpen(false)}
+          onCreado={cargar}
+        />
+      )}
+
       {editAjuste && profile?.tenant_id && profile?.id && (
         <EditarAjusteModal
           tenantId={profile.tenant_id}
@@ -1262,25 +1446,15 @@ export default function CajaPage() {
             className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors">
             + Ingreso a caja
           </button>
-          <button onClick={() => setGastoModal({ titulo: 'Transferir a profesional', descripcionInicial: 'Transferencia a profesional' })}
-            className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold transition-colors">
-            Transferir a profesional
-          </button>
-          <button onClick={() => setGastoModal({ titulo: 'Transferir a caja fuerte', descripcionInicial: 'Transferencia a caja fuerte' })}
-            className="px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-sm font-semibold transition-colors">
-            Transferir a caja fuerte
+          <button onClick={() => setTransferirOpen(true)}
+            className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold transition-colors">
+            Transferir
           </button>
           {esGerencia && (
-            <>
-              <button onClick={() => setAjusteOpen({})}
-                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-semibold transition-colors">
-                + Ajuste
-              </button>
-              <button onClick={() => setAjusteOpen({ cuentaInicial: OPCION_CAJA_FUERTE })}
-                className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-semibold transition-colors">
-                Ajuste caja fuerte
-              </button>
-            </>
+            <button onClick={() => setAjusteOpen({})}
+              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-semibold transition-colors">
+              + Ajuste
+            </button>
           )}
         </div>
       </div>
