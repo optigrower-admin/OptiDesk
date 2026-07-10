@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
+import SeguimientoModal from '@/components/SeguimientoModal'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,9 @@ export default function BandejaPage() {
   const [showInfo, setShowInfo]       = useState(false)
   const [editNombre, setEditNombre]   = useState('')
   const [savingNombre, setSavingNombre] = useState(false)
+
+  // Modal agregar a seguimiento
+  const [seguimientoOpen, setSeguimientoOpen] = useState(false)
 
   // Eliminar conversación
   const [confirmDeleteConv, setConfirmDeleteConv]   = useState(false)
@@ -888,8 +892,30 @@ export default function BandejaPage() {
                     {selectedConv.estado}
                   </span>
                 </div>
+
+                {/* Seguimiento de Ventas */}
+                <div className="pt-1 border-t border-gray-100">
+                  <p className="text-xs text-gray-400 mb-2">Seguimiento de Ventas</p>
+                  <button
+                    onClick={() => setSeguimientoOpen(true)}
+                    className="w-full py-2 px-3 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-semibold transition-colors">
+                    + Agregar / Vincular a Seguimiento
+                  </button>
+                </div>
               </div>
             </div>
+          )}
+
+          {seguimientoOpen && selectedConv && (
+            <SeguimientoModal
+              nombreInicial={selectedConv.clientes?.[0]?.nombre ?? editNombre}
+              celularInicial={selectedConv.canal === 'whatsapp' ? selectedConv.canal_contact_id : ''}
+              onSuccess={(_id, nombre) => {
+                setSeguimientoOpen(false)
+                toast(`✅ ${nombre || 'Cliente'} agregado a Seguimiento de Ventas`)
+              }}
+              onClose={() => setSeguimientoOpen(false)}
+            />
           )}
         </div>
       )}

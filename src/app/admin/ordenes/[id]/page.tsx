@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { ConsultaRepuestos } from '@/components/ConsultaRepuestos'
 import { MediaGallery } from '@/components/MediaGallery'
+import SeguimientoModal from '@/components/SeguimientoModal'
 import { OrderStatus } from '@/components/OrderStatus'
 import { PaymentStatus } from '@/components/PaymentStatus'
 import { Badge } from '@/components/ui/Badge'
@@ -236,6 +237,10 @@ export default function AdminOrdenDetallePage() {
   const [abiertoDatos, setAbiertoDatos] = useState(true)
   const [abiertoFotos, setAbiertoFotos] = useState(true)
   const [abiertoRepuestos, setAbiertoRepuestos] = useState(true)
+  // Modal agregar a seguimiento ventas
+  const [seguimientoOpen, setSeguimientoOpen] = useState(false)
+  const [seguimientoToast, setSeguimientoToast] = useState<string | null>(null)
+
   // Edición de datos del ingreso
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [editingOrden, setEditingOrden] = useState<'cliente' | 'descripcion' | 'categoria' | 'placa' | null>(null)
@@ -1566,6 +1571,18 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
 
   return (
     <>
+    {seguimientoOpen && orden && (
+      <SeguimientoModal
+        nombreInicial={orden.cliente}
+        celularInicial={orden.telefono ?? ''}
+        onSuccess={(_id, nombre) => {
+          setSeguimientoOpen(false)
+          setSeguimientoToast(`✅ ${nombre || 'Cliente'} agregado a Seguimiento de Ventas`)
+          setTimeout(() => setSeguimientoToast(null), 4000)
+        }}
+        onClose={() => setSeguimientoOpen(false)}
+      />
+    )}
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Dialog finalizar orden / marcar como pagada */}
       {finalizeDialogModo && (
@@ -2000,16 +2017,26 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-400">Cliente</p>
-                    <p className="text-sm font-semibold text-gray-900">{orden.cliente}</p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-400">Cliente</p>
+                      <p className="text-sm font-semibold text-gray-900">{orden.cliente}</p>
+                    </div>
+                    <button onClick={() => setEditingOrden('cliente')} className="text-gray-400 hover:text-blue-600 p-1">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
                   </div>
-                  <button onClick={() => setEditingOrden('cliente')} className="text-gray-400 hover:text-blue-600 p-1">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
+                  <button
+                    onClick={() => setSeguimientoOpen(true)}
+                    className="w-full py-1.5 px-3 border border-blue-300 text-blue-700 hover:bg-blue-50 rounded-lg text-xs font-semibold transition-colors">
+                    + Agregar / Vincular a Seguimiento de Ventas
                   </button>
+                  {seguimientoToast && (
+                    <p className="text-xs text-emerald-600 font-medium">{seguimientoToast}</p>
+                  )}
                 </div>
               )}
             </div>
