@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import type { EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS_NECESITAN_PLACA } from '@/lib/ventas/pipeline'
 import VentasClient from './VentasClient'
 import type { LeadData } from './components/LeadCard'
 
@@ -71,7 +72,7 @@ export default function VentasPage() {
         const ids = (raw ?? []).map((c) => c.id as string)
         const { data: extras } = await supabase
           .from('clientes')
-          .select('id, primer_apellido, numero_documento, email')
+          .select('id, primer_apellido, numero_documento, email, estado_aprobacion_matricula, placa')
           .in('id', ids)
         for (const e of extras ?? []) extraMap[e.id as string] = e
       }
@@ -172,6 +173,10 @@ export default function VentasPage() {
           etiquetas,
           tieneAlistamiento: (c.etapa_venta === 'espera_entrega' || c.etapa_venta === 'entregada')
             ? clientesConAlistamiento.has(c.id as string)
+            : undefined,
+          estadoAprobacionMatricula: ((ex.estado_aprobacion_matricula ?? 'pendiente') as 'pendiente' | 'aprobado' | 'rechazado'),
+          tienePlaca: (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(c.etapa_venta as EtapaVenta)
+            ? !!(ex.placa)
             : undefined,
         }
       })

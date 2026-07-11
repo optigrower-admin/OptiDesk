@@ -110,6 +110,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [confirmDelete, setConfirmDelete]   = useState(false)
   const [confirmDeleteInput, setConfirmDeleteInput] = useState('')
   const [deleting, setDeleting]             = useState(false)
+  const [aprobacionStatus, setAprobacionStatus] = useState<'pendiente' | 'aprobado' | 'rechazado'>(
+    lead.estadoAprobacionMatricula ?? 'pendiente'
+  )
 
   // Campos editables — tab Resumen
   const [etapa, setEtapa]         = useState<EtapaVenta>(lead.etapa_venta)
@@ -195,6 +198,15 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     onLeadUpdate?.(lead.id, { nombre, nombre_pendiente_aprobacion: false })
     setEditandoNombre(false)
     setSavingNombre(false)
+  }
+
+  const actualizarAprobacion = async (status: 'pendiente' | 'aprobado' | 'rechazado') => {
+    setAprobacionStatus(status)
+    await supabase
+      .from('clientes')
+      .update({ estado_aprobacion_matricula: status })
+      .eq('id', lead.id)
+      .eq('tenant_id', tenantId)
   }
 
   const handleEliminar = async () => {
@@ -336,6 +348,28 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
             </button>
           ))}
         </div>
+
+        {/* ── Aprobación para matrícula ── */}
+        {lead.etapa_venta === 'aprobado_matricula' && (
+          <div className="border-b px-4 py-3 bg-amber-50 flex-shrink-0">
+            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-2">Estado de aprobación para matrícula</p>
+            <div className="flex gap-2">
+              {([
+                { key: 'pendiente', label: '⏳ Pendiente',  activo: 'bg-amber-500 border-amber-500 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-amber-300'  },
+                { key: 'aprobado',  label: '✅ Aprobado',   activo: 'bg-green-600 border-green-600 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-green-300'  },
+                { key: 'rechazado', label: '❌ Rechazado',  activo: 'bg-red-600 border-red-600 text-white',      inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-red-300'    },
+              ] as const).map(({ key, label, activo, inactivo }) => (
+                <button key={key}
+                  onClick={() => actualizarAprobacion(key)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border-2 transition-colors ${
+                    aprobacionStatus === key ? activo : inactivo
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex flex-1 min-h-0">

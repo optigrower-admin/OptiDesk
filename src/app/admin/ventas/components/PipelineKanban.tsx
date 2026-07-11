@@ -67,13 +67,13 @@ function KanbanColumn({
   const { setNodeRef, isOver } = useDroppable({ id: etapaConfig.id })
 
   return (
-    <div className={`flex-shrink-0 w-64 rounded-2xl flex flex-col border transition-colors ${
+    <div className={`flex-shrink-0 w-64 rounded-2xl flex flex-col border-2 transition-colors ${
       isOver
         ? `${etapaConfig.border} ring-2 ring-offset-1`
-        : 'border-gray-200'
+        : etapaConfig.border
     } bg-white`}>
       {/* Header */}
-      <div className="px-3 pt-3 pb-2 border-b border-gray-100">
+      <div className={`px-3 pt-3 pb-2 border-b border-gray-100 rounded-t-2xl ${etapaConfig.bg}`}>
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: etapaConfig.color }} />
           <span className="font-semibold text-sm text-gray-800">{etapaConfig.label}</span>

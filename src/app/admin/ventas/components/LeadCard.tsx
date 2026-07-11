@@ -1,7 +1,7 @@
 'use client'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ETAPA_MAP, tiempoSinResponder, estadoSeguimiento, formatCOP, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPA_MAP, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, tiempoSinResponder, estadoSeguimiento, formatCOP, type EtapaVenta } from '@/lib/ventas/pipeline'
 
 export type ConvCanal = { id: string; canal: string; no_leidos_count: number }
 
@@ -27,6 +27,8 @@ export type LeadData = {
   todas_conversaciones: ConvCanal[]  // todas las conversaciones del cliente
   etiquetas: { id: string; nombre: string; color: string }[]
   tieneAlistamiento?: boolean
+  estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'
+  tienePlaca?: boolean
 }
 
 const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
@@ -63,6 +65,9 @@ export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
   const necesitaAlistamiento =
     (lead.etapa_venta === 'espera_entrega' || lead.etapa_venta === 'entregada') &&
     lead.tieneAlistamiento === false
+  const necesitaCelular = (ETAPAS_LEADS as EtapaVenta[]).includes(lead.etapa_venta) && !lead.cliente?.celular
+  const necesitaPlaca   = (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(lead.etapa_venta) && lead.tienePlaca === false
+  const esAprobado      = lead.etapa_venta === 'aprobado_matricula'
   const campana       = lead.leads_campana?.[0]?.utm_campaign
   const canales       = lead.todas_conversaciones.length > 0
     ? lead.todas_conversaciones
@@ -84,19 +89,48 @@ export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
       {...listeners}
       onClick={onClick}
       className={`rounded-xl border shadow-sm p-3 cursor-pointer select-none transition-shadow hover:shadow-md ${
-        necesitaAlistamiento
+        necesitaAlistamiento || necesitaPlaca
           ? 'bg-red-50 border-red-400 border-l-4 border-l-red-600'
-          : nombrePendiente
-            ? 'bg-amber-50 border-amber-300'
-            : esUrgente
-              ? 'bg-white border-l-4 border-l-red-500 border-r border-t border-b border-gray-200'
-              : 'bg-white border-gray-200'
+          : necesitaCelular
+            ? 'bg-orange-50 border-orange-300 border-l-4 border-l-orange-500'
+            : nombrePendiente
+              ? 'bg-amber-50 border-amber-300'
+              : esUrgente
+                ? 'bg-white border-l-4 border-l-red-500 border-r border-t border-b border-gray-200'
+                : 'bg-white border-gray-200'
       } ${overlay ? 'shadow-lg rotate-1' : ''}`}
     >
       {/* Banner FALTA ALISTAMIENTO */}
       {necesitaAlistamiento && (
         <div className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5">
           ⚠ FALTA ALISTAMIENTO
+        </div>
+      )}
+
+      {/* Banner SIN CELULAR */}
+      {necesitaCelular && (
+        <div className="bg-orange-500 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5">
+          ⚠ SIN NÚMERO DE CELULAR
+        </div>
+      )}
+
+      {/* Banner SIN PLACA */}
+      {necesitaPlaca && (
+        <div className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5">
+          ⚠ SIN PLACA ASIGNADA
+        </div>
+      )}
+
+      {/* Badge APROBADOS PARA MATRICULAR */}
+      {esAprobado && (
+        <div className={`text-center py-1.5 px-2 rounded-lg mb-2 text-sm font-black uppercase tracking-widest ${
+          lead.estadoAprobacionMatricula === 'aprobado'  ? 'bg-green-600 text-white'
+          : lead.estadoAprobacionMatricula === 'rechazado' ? 'bg-red-600 text-white'
+          : 'bg-amber-500 text-white'
+        }`}>
+          {lead.estadoAprobacionMatricula === 'aprobado'  ? '✅ APROBADO'
+           : lead.estadoAprobacionMatricula === 'rechazado' ? '❌ RECHAZADO'
+           : '⏳ PENDIENTE'}
         </div>
       )}
 
