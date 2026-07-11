@@ -144,6 +144,7 @@ interface OrdenDetalle {
   categoria_servicio_id: string | null
   subcategoria_servicio_id: string | null
   subcategoria_servicio_ids: string[] | null
+  cliente_id: string | null
   tenant_id: string
   created_at: string
   fecha_finalizacion: string | null
@@ -240,6 +241,7 @@ export default function AdminOrdenDetallePage() {
   // Modal agregar a seguimiento ventas
   const [seguimientoOpen, setSeguimientoOpen] = useState(false)
   const [seguimientoToast, setSeguimientoToast] = useState<string | null>(null)
+  const [clienteEnSeguimiento, setClienteEnSeguimiento] = useState(false)
 
   // Edición de datos del ingreso
   const [categorias, setCategorias] = useState<Categoria[]>([])
@@ -319,7 +321,7 @@ export default function AdminOrdenDetallePage() {
     if (!profile?.tenant_id) return
     const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }, { data: lmCfg }, { data: lmOrd }] = await Promise.all([
       supabase.from('ordenes')
-        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id,
+        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id, cliente_id,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
         .eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto, metodo_pago_id, created_at').eq('orden_id', ordenId),
@@ -370,6 +372,10 @@ export default function AdminOrdenDetallePage() {
         }
       }
       setOrden(ord)
+      if (ord.cliente_id) {
+        supabase.from('clientes').select('en_seguimiento_ventas').eq('id', ord.cliente_id).single()
+          .then(({ data: c }) => { if (c) setClienteEnSeguimiento(!!(c as { en_seguimiento_ventas: boolean | null }).en_seguimiento_ventas) })
+      }
       setEditCliente(ord.cliente)
       setEditPlaca(ord.placa ?? '')
       setEditDescripcion(ord.descripcion ?? '')
@@ -1579,6 +1585,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
         celularInicial={orden.telefono ?? ''}
         onSuccess={(_id, nombre) => {
           setSeguimientoOpen(false)
+          setClienteEnSeguimiento(true)
           setSeguimientoToast(`✅ ${nombre || 'Cliente'} agregado a Seguimiento de Ventas`)
           setTimeout(() => setSeguimientoToast(null), 4000)
         }}
@@ -2031,13 +2038,34 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       </svg>
                     </button>
                   </div>
-                  <button
-                    onClick={() => setSeguimientoOpen(true)}
-                    className="w-full py-1.5 px-3 border border-blue-300 text-blue-700 hover:bg-blue-50 rounded-lg text-xs font-semibold transition-colors">
-                    + Agregar / Vincular a Seguimiento de Ventas
-                  </button>
-                  {seguimientoToast && (
-                    <p className="text-xs text-emerald-600 font-medium">{seguimientoToast}</p>
+                  {clienteEnSeguimiento ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <svg className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="text-xs font-semibold text-emerald-700">Vinculado — Seguimiento Ventas</span>
+                      </div>
+                      <a
+                        href="/admin/ventas"
+                        className="flex items-center justify-center gap-1.5 w-full py-1.5 px-3 border border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs font-semibold transition-colors">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        Ver seguimiento cliente
+                      </a>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => setSeguimientoOpen(true)}
+                        className="w-full py-1.5 px-3 border border-blue-300 text-blue-700 hover:bg-blue-50 rounded-lg text-xs font-semibold transition-colors">
+                        + Agregar / Vincular a Seguimiento de Ventas
+                      </button>
+                      {seguimientoToast && (
+                        <p className="text-xs text-emerald-600 font-medium">{seguimientoToast}</p>
+                      )}
+                    </>
                   )}
                 </div>
               )}

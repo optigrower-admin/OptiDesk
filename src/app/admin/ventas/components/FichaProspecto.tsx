@@ -94,6 +94,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [tipoMsg, setTipoMsg]           = useState<'mensaje' | 'nota'>('mensaje')
   const [sending, setSending]           = useState(false)
   const [saving, setSaving]             = useState(false)
+  const [savedOk, setSavedOk]           = useState(false)
   const [tabDer, setTabDer]             = useState<TabDerecha>('resumen')
   const [vincularOpen, setVincularOpen] = useState(false)
   const [convActivaId, setConvActivaId] = useState(lead.todas_conversaciones[0]?.id ?? '')
@@ -171,6 +172,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         throw new Error(json.error ?? 'Error al guardar')
       }
       if (etapa !== lead.etapa_venta) onEtapaChange(lead.id, etapa)
+      setSavedOk(true)
+      setTimeout(() => setSavedOk(false), 2000)
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Error al guardar')
     } finally {
@@ -531,10 +534,22 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     </div>
                   </div>
 
-                  <button onClick={guardarVenta} disabled={saving}
-                    className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
-                    {saving ? 'Guardando...' : 'Guardar cambios'}
-                  </button>
+                  <div className="relative">
+                    <button onClick={guardarVenta} disabled={saving}
+                      className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
+                      {saving ? 'Guardando...' : 'Guardar cambios'}
+                    </button>
+                    {savedOk && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-green-600 rounded-xl pointer-events-none animate-pulse">
+                        <span className="text-white text-sm font-semibold flex items-center gap-1.5">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Cambios guardados
+                        </span>
+                      </div>
+                    )}
+                  </div>
 
                   <ResumenTab
                     clienteId={lead.id}
