@@ -1112,9 +1112,9 @@ export default function AdminOrdenDetallePage() {
   // siempre queden visibles juntas, sin depender de hover ni de que la tabla no haga scroll.
   const accionesRepuesto = (onEditar: () => void, onEliminar: () => void, fechaNode?: React.ReactNode) => {
     return (
-      <div className="flex items-center justify-end gap-2 flex-wrap">
+      <div className="flex items-center justify-end gap-1.5 flex-nowrap">
         {fechaNode}
-        <div className="flex gap-0.5">
+        <div className="flex gap-0.5 flex-shrink-0">
           <button onClick={onEditar} className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded p-1.5" title="Editar">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -2343,7 +2343,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               )}
 
               {lavaMotoOrdenes.length > 0 && (
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
                   <thead>
                     <tr className="text-xs text-gray-500 uppercase border-b bg-cyan-50">
                       <th className="text-left py-2 px-4 font-medium">Origen</th>
@@ -2351,7 +2352,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       <th className="text-left py-2 px-4 font-medium whitespace-nowrap">Método pago prov.</th>
                       <th className="text-right py-2 px-4 font-medium whitespace-nowrap">Precio proveedor</th>
                       <th className="text-right py-2 px-4 font-medium whitespace-nowrap">Precio venta</th>
-                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap">Fecha / Acciones</th>
+                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap min-w-[130px]">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2375,6 +2376,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </div>
@@ -2419,7 +2421,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               </div>
 
               {/* Lista de repuestos agregados (UMA / Externo / Insumo / Porta Placas) */}
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[580px] text-sm">
                 <thead>
                   <tr className="text-[11px] text-gray-500 uppercase border-b bg-blue-50">
                     <th className="text-left py-1 px-2 font-medium w-14">Origen</th>
@@ -2428,7 +2431,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     <th className="text-left py-1 px-2 font-medium w-24 hidden sm:table-cell">Método prov.</th>
                     <th className="text-right py-1 px-2 font-medium w-20 hidden sm:table-cell">Costo</th>
                     <th className="text-right py-1 px-2 font-medium w-20">P. venta</th>
-                    <th className="text-right py-1 px-2 font-medium w-20">Acciones</th>
+                    <th className="text-right py-1 px-2 font-medium min-w-[130px]">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2502,6 +2505,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                   })}
                 </tbody>
               </table>
+              </div>
 
               <div className="px-5 py-3 border-t space-y-1 text-sm font-semibold bg-blue-50">
                 <div className="flex justify-between">
@@ -2597,12 +2601,13 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               )}
 
               {manoObraItems.length > 0 && (
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[420px] text-sm">
                   <thead>
                     <tr className="text-xs text-gray-500 uppercase border-b bg-orange-50">
                       <th className="text-left py-2 px-4 font-medium">Descripción</th>
                       <th className="text-right py-2 px-4 font-medium">Valor</th>
-                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap">Fecha / Acciones</th>
+                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap min-w-[130px]">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2624,10 +2629,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                               className="w-full px-2 py-1.5 border border-orange-400 rounded-lg text-sm font-mono text-right focus:outline-none"
                             />
                           </td>
-                          <td className="py-2 px-3">
-                            <div className="flex items-center justify-end gap-2 flex-wrap">
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5 flex-nowrap">
                               {celdaFecha(item)}
-                              <div className="flex gap-1">
+                              <div className="flex gap-0.5 flex-shrink-0">
                                 <button onClick={handleEditItem} className="px-2 py-1 bg-orange-500 text-white rounded text-xs font-semibold">OK</button>
                                 <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
                               </div>
@@ -2644,6 +2649,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
 
             <div className="px-5 py-3 border-t text-sm font-semibold flex justify-between bg-orange-50">
