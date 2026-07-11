@@ -9,6 +9,21 @@ import { registrarAuditoria } from '@/lib/audit'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
 type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'gasto' | 'ajuste'
+type FiltroGrupo = 'todos' | 'servicios_tecnicos' | 'venta_repuestos' | 'ingreso_caja' | 'gastos_caja' | 'transferencias' | 'ajuste_caja'
+
+const FILTROS_GRUPO: { id: FiltroGrupo; label: string }[] = [
+  { id: 'todos',             label: 'Todos' },
+  { id: 'servicios_tecnicos', label: 'Servicios Técnicos' },
+  { id: 'venta_repuestos',   label: 'Venta Repuestos' },
+  { id: 'ingreso_caja',      label: 'Ingreso a Caja' },
+  { id: 'gastos_caja',       label: 'Gastos de Caja' },
+  { id: 'transferencias',    label: 'Transferencias' },
+  { id: 'ajuste_caja',       label: 'Ajuste de Caja' },
+]
+
+function esTransferenciaConcepto(concepto: string): boolean {
+  return concepto.trim().toLowerCase().startsWith('transferencia')
+}
 
 interface Movimiento {
   id: string
@@ -1155,7 +1170,7 @@ export default function CajaPage() {
   const [movimientos, setMovimientos] = useState<Movimiento[]>([])
   const [movimientosTotales, setMovimientosTotales] = useState<Movimiento[]>([])
   const [loading, setLoading] = useState(true)
-  const [catFiltro, setCatFiltro] = useState<Categoria | 'todos'>('todos')
+  const [catFiltro, setCatFiltro] = useState<FiltroGrupo>('todos')
   const [busqueda, setBusqueda] = useState('')
   const [gastoModal, setGastoModal] = useState<{ titulo: string; descripcionInicial: string } | null>(null)
   const [ajusteOpen, setAjusteOpen] = useState<{ cuentaInicial?: string } | null>(null)
@@ -1199,7 +1214,20 @@ export default function CajaPage() {
 
   const filtrados = useMemo(() => {
     let r = movimientos
-    if (catFiltro !== 'todos') r = r.filter(m => m.categoria === catFiltro)
+    if (catFiltro !== 'todos') {
+      r = r.filter(m => {
+        const esTransfer = esTransferenciaConcepto(m.concepto)
+        switch (catFiltro) {
+          case 'servicios_tecnicos': return m.categoria === 'ingreso_st'
+          case 'venta_repuestos':   return m.categoria === 'ingreso_venta' || m.categoria === 'ingreso_insumo' || m.categoria === 'ingreso_lavado' || m.categoria === 'ingreso_externo'
+          case 'ingreso_caja':      return m.categoria === 'ingreso_manual' && !esTransfer
+          case 'gastos_caja':       return (m.categoria === 'gasto' || m.categoria === 'costo_externo' || m.categoria === 'costo_lavado') && !esTransfer
+          case 'transferencias':    return esTransfer
+          case 'ajuste_caja':       return m.categoria === 'ajuste'
+          default:                  return true
+        }
+      })
+    }
     if (busqueda.trim()) {
       const q = busqueda.trim().toLowerCase()
       r = r.filter(m =>
@@ -1210,6 +1238,16 @@ export default function CajaPage() {
     }
     return r
   }, [movimientos, catFiltro, busqueda])
+
+  const totalesFiltrados = useMemo(() => {
+    let ingresos = 0
+    let egresos = 0
+    for (const m of filtrados) {
+      if (m.monto >= 0) ingresos += m.monto
+      else egresos += m.monto
+    }
+    return { ingresos, egresos, neto: ingresos + egresos }
+  }, [filtrados])
 
   // Saldo actual (histórico, no depende del período seleccionado) por cuenta y de
   // Caja fuerte — se calcula sobre movimientosTotales (todos los movimientos sin filtrar).
@@ -1566,31 +1604,40 @@ export default function CajaPage() {
       </div>
 
       {/* Filtros de lista */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <input
-          type="text"
-          value={busqueda}
-          onChange={e => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre, descripción o código..."
-          className="flex-1 min-w-48 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <select value={catFiltro} onChange={e => setCatFiltro(e.target.value as Categoria | 'todos')}
-          className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="todos">Todas las categorías</option>
-          {Object.entries(CATEGORIA_LABEL).map(([k, label]) => (
-            <option key={k} value={k}>{label}</option>
-          ))}
-        </select>
-        <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
-          {([
-            { id: 'item', label: 'Por ítem' },
-            { id: 'metodo', label: 'Por método de pago' },
-          ] as { id: 'item' | 'metodo'; label: string }[]).map(v => (
-            <button key={v.id} onClick={() => setVistaTabla(v.id)}
-              className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                vistaTabla === v.id ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          <input
+            type="text"
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            placeholder="Buscar por nombre, descripción o código..."
+            className="flex-1 min-w-48 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+            {([
+              { id: 'item', label: 'Por ítem' },
+              { id: 'metodo', label: 'Por método de pago' },
+            ] as { id: 'item' | 'metodo'; label: string }[]).map(v => (
+              <button key={v.id} onClick={() => setVistaTabla(v.id)}
+                className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  vistaTabla === v.id ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                }`}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {FILTROS_GRUPO.map(f => (
+            <button
+              key={f.id}
+              onClick={() => setCatFiltro(f.id)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                catFiltro === f.id
+                  ? 'bg-blue-700 text-white border-blue-700'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
               }`}>
-              {v.label}
+              {f.label}
             </button>
           ))}
         </div>
@@ -1763,6 +1810,29 @@ export default function CajaPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Barra de totales de la tabla filtrada */}
+      {!loading && filtrados.length > 0 && (
+        <div className="flex flex-wrap gap-4 items-center justify-end px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm">
+          <span className="text-gray-500 font-medium text-xs mr-auto">
+            {filtrados.length} movimiento{filtrados.length !== 1 ? 's' : ''}{catFiltro !== 'todos' ? ` · ${FILTROS_GRUPO.find(f => f.id === catFiltro)?.label}` : ''}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-400">Ingresos</span>
+            <span className="font-semibold font-mono text-emerald-700">+{formatCOP(totalesFiltrados.ingresos)}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-400">Egresos</span>
+            <span className="font-semibold font-mono text-red-600">{formatCOP(totalesFiltrados.egresos)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 pl-3 border-l border-gray-300">
+            <span className="text-xs text-gray-500 font-medium">Neto</span>
+            <span className={`font-bold font-mono ${totalesFiltrados.neto >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
+              {totalesFiltrados.neto >= 0 ? '+' : ''}{formatCOP(totalesFiltrados.neto)}
+            </span>
+          </div>
         </div>
       )}
     </div>
