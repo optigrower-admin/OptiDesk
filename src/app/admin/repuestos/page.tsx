@@ -35,6 +35,7 @@ interface ItemVenta {
   costo: number
   precio_venta: number
   created_at: string
+  repuestos_uma: { codigo: string; descripcion: string } | null
   ordenes: {
     id: string
     numero: number
@@ -46,6 +47,13 @@ interface ItemVenta {
     estado_pago: string | null
     created_at: string
   } | null
+}
+
+function nombreDisplayUMA(item: ItemVenta): string {
+  if (item.origen === 'uma' && item.repuestos_uma) {
+    return `${item.repuestos_uma.codigo} - ${item.repuestos_uma.descripcion}`
+  }
+  return item.descripcion
 }
 
 interface AuditEntry {
@@ -153,6 +161,7 @@ export default function AdminRepuestosPage() {
       .from('items_orden')
       .select(`
         id, descripcion, origen, cantidad, costo, precio_venta, created_at,
+        repuestos_uma(codigo, descripcion),
         ordenes!inner(id, numero, placa, cliente, cedula, celular, tipo_orden, estado_pago, created_at, tenant_id)
       `)
       .eq('ordenes.tenant_id', profile.tenant_id)
@@ -172,7 +181,7 @@ export default function AdminRepuestosPage() {
     if (busqueda) {
       const b = busqueda.toLowerCase()
       items = items.filter((i) =>
-        i.descripcion.toLowerCase().includes(b) ||
+        nombreDisplayUMA(i).toLowerCase().includes(b) ||
         i.ordenes?.placa?.toLowerCase().includes(b) ||
         i.ordenes?.cliente?.toLowerCase().includes(b) ||
         i.ordenes?.cedula?.toLowerCase().includes(b) ||
@@ -229,18 +238,22 @@ export default function AdminRepuestosPage() {
     if (!item.ordenes) return
     const { data: allItemsData } = await supabase
       .from('items_orden')
-      .select('descripcion, origen, cantidad, precio_venta')
+      .select('descripcion, origen, cantidad, precio_venta, repuestos_uma(codigo, descripcion)')
       .eq('orden_id', item.ordenes.id)
       .order('origen')
-    const allItems = (allItemsData ?? []) as { descripcion: string; origen: string; cantidad: number; precio_venta: number }[]
+    const allItems = (allItemsData ?? []) as unknown as { descripcion: string; origen: string; cantidad: number; precio_venta: number; repuestos_uma: { codigo: string; descripcion: string } | null }[]
+    const resolverNombre = (r: typeof allItems[0]) =>
+      r.origen === 'uma' && r.repuestos_uma
+        ? `${r.repuestos_uma.codigo} - ${r.repuestos_uma.descripcion}`
+        : r.descripcion
     const repItems = allItems.filter((i) => i.origen !== 'mano_obra')
     const moItems = allItems.filter((i) => i.origen === 'mano_obra')
     const total = allItems.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
     const o = item.ordenes
 
-    const rowsHtml = (rows: { descripcion: string; cantidad: number; precio_venta: number }[]) =>
+    const rowsHtml = (rows: typeof allItems) =>
       rows.map((r) => `<tr>
-        <td style="padding:6px 0;border-bottom:1px solid #f0f0f0;">${r.descripcion}${r.cantidad > 1 ? ' ×' + r.cantidad : ''}</td>
+        <td style="padding:6px 0;border-bottom:1px solid #f0f0f0;">${resolverNombre(r)}${r.cantidad > 1 ? ' ×' + r.cantidad : ''}</td>
         <td style="padding:6px 0;border-bottom:1px solid #f0f0f0;text-align:right;">${formatCOP(r.precio_venta * r.cantidad)}</td>
       </tr>`).join('')
 
@@ -289,7 +302,7 @@ export default function AdminRepuestosPage() {
         o ? String(o.numero) : '',
         o?.tipo_orden === 'venta_repuestos' ? 'Venta directa' : 'Servicio técnico',
         o?.placa ?? '', o?.cliente ?? '', o?.cedula ?? '', o?.celular ?? '',
-        item.descripcion,
+        nombreDisplayUMA(item),
         item.origen === 'uma' ? 'UMA' : item.origen === 'externo' ? 'Externo' : 'Mano de obra',
         String(item.cantidad), String(item.precio_venta), String(total), String(item.costo), String(margen),
         o?.estado_pago === 'pagado' ? 'Pagado' : 'Pendiente',
@@ -548,7 +561,7 @@ export default function AdminRepuestosPage() {
                           {formatFechaHora(item.created_at)}
                         </td>
                         <td className="py-2.5 px-3 max-w-[180px]">
-                          <span className={`block truncate ${esPendiente ? 'text-red-800 font-medium' : 'text-gray-800'}`} title={item.descripcion}>{item.descripcion}</span>
+                          <span className={`block truncate ${esPendiente ? 'text-red-800 font-medium' : 'text-gray-800'}`} title={nombreDisplayUMA(item)}>{nombreDisplayUMA(item)}</span>
                           {item.cantidad > 1 && <span className="text-xs text-gray-400">×{item.cantidad}</span>}
                         </td>
                         <td className="py-2.5 px-3">
