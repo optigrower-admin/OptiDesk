@@ -509,213 +509,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           </div>
         )}
 
-        {/* ── Sección: Placa ── */}
-        {enEtapaConPlaca && (
-          <div className={`border-b px-4 py-2 flex-shrink-0 ${placaActual ? 'bg-teal-50' : 'bg-red-50'}`}>
-            {placaActual && !editandoPlaca ? (
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-teal-700">🏍️ Placa asignada</p>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-teal-800 tracking-widest text-sm bg-white border border-teal-200 rounded-lg px-3 py-1">
-                    {placaActual}
-                  </span>
-                  {esGerencia && (
-                    <button onClick={() => setEditandoPlaca(true)} className="text-xs text-teal-600 hover:underline font-medium flex-shrink-0">
-                      ✏️ Editar
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs font-bold uppercase tracking-wide text-red-700">⚠ Sin placa asignada</p>
-              </div>
-            )}
-            {(!placaActual || editandoPlaca) && (
-              <>
-                {!placaActual && <p className="text-[11px] text-red-600 mb-2">Ingresa la placa de la moto entregada a este cliente.</p>}
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    value={placaInput}
-                    onChange={e => setPlacaInput(e.target.value.toUpperCase())}
-                    onKeyDown={e => { if (e.key === 'Enter') guardarPlaca() }}
-                    onBlur={guardarPlaca}
-                    placeholder="ABC123"
-                    className="flex-1 border border-red-300 bg-white rounded-xl px-3 py-2 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-red-400"
-                  />
-                  {savingPlaca && <span className="text-xs text-red-500 flex-shrink-0">Guardando...</span>}
-                  {editandoPlaca && !savingPlaca && (
-                    <button onClick={() => { setEditandoPlaca(false); setPlacaInput(placaActual) }}
-                      className="px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm hover:bg-gray-200 flex-shrink-0">
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ── Sección: Alistamiento ── */}
-        {enEtapaAlistamiento && (
-          <div className={`border-b px-4 py-2 flex-shrink-0 ${tieneAlistamientoFinal ? 'bg-green-50' : 'bg-red-50'}`}>
-            {tieneAlistamientoFinal ? (
-              alistamientoOrdenId ? (
-                /* Caso compacto: orden vinculada con ID conocido */
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-green-700">✅ Alistamiento vinculado</p>
-                  <div className="flex items-center gap-2">
-                    <a href={`/admin/ordenes/${alistamientoOrdenId}`}
-                      className="text-xs font-semibold text-green-700 underline hover:text-green-900 transition-colors">
-                      🔧 Ver orden →
-                    </a>
-                    {esGerencia && (
-                      <button onClick={desvincularAlistamiento} className="text-xs text-red-500 hover:underline flex-shrink-0">
-                        Desvincular
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                /* Auto-detectado sin ID: mostrar compacto con botón de carga */
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <p className="text-xs font-bold uppercase tracking-wide text-green-700">✅ Alistamiento vinculado</p>
-                    {esGerencia && (
-                      <button onClick={desvincularAlistamiento} className="text-xs text-red-500 hover:underline flex-shrink-0">
-                        Desvincular
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-green-600 mb-1">Detectada automáticamente en Servicio Técnico.</p>
-                  {!ordenesUMALoaded ? (
-                    <button onClick={cargarOrdenesUMA} disabled={loadingOrdenesUMA}
-                      className="text-xs font-semibold text-green-700 underline hover:text-green-900 disabled:opacity-60 transition-colors">
-                      {loadingOrdenesUMA ? '⏳ Cargando...' : '🔧 Ver en Servicio Técnico →'}
-                    </button>
-                  ) : (
-                    <div className="space-y-1">
-                      {ordenesUMA.length === 0 ? (
-                        <p className="text-xs text-gray-500">No se encontraron órdenes UMA para este cliente.</p>
-                      ) : ordenesUMA.map(o => (
-                        <a key={o.id} href={`/admin/ordenes/${o.id}`}
-                          className="flex items-center gap-1.5 text-xs font-semibold text-green-700 underline hover:text-green-900 transition-colors">
-                          🔧 Orden #{o.id.slice(-8).toUpperCase()} ({o.estado}) →
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            ) : (
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs font-bold uppercase tracking-wide text-red-700">⚠ Falta alistamiento</p>
-              </div>
-            )}
-            {!tieneAlistamientoFinal && (
-              <>
-                <p className="text-[11px] text-red-600 mb-2.5">No se encontró una orden UMA de alistamiento. Vincúlala o créala en Servicio Técnico.</p>
-                <div className="flex gap-2 flex-wrap">
-                  <button
-                    onClick={cargarOrdenesUMA}
-                    disabled={loadingOrdenesUMA}
-                    className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors">
-                    {loadingOrdenesUMA ? '⏳ Cargando...' : '📎 Ver órdenes UMA de este cliente'}
-                  </button>
-                  <a href="/admin/ordenes"
-                    className="flex-1 py-2 bg-white border border-red-300 text-red-600 rounded-xl text-sm font-bold text-center hover:bg-red-50 transition-colors">
-                    ➕ Crear en Servicio Técnico
-                  </a>
-                </div>
-                {ordenesUMALoaded && (
-                  <div className="mt-2.5 space-y-1.5">
-                    {ordenesUMA.length === 0 ? (
-                      <p className="text-xs text-red-400 text-center py-2">No hay órdenes UMA para este cliente.</p>
-                    ) : ordenesUMA.map(o => (
-                      <button key={o.id} onClick={() => vincularAlistamiento(o.id)}
-                        className="w-full flex items-center justify-between bg-white border border-red-200 hover:border-red-500 rounded-xl px-3 py-2 text-sm transition-colors text-left">
-                        <span className="font-mono text-xs text-gray-500">#{o.id.slice(-8).toUpperCase()}</span>
-                        <span className="text-xs text-gray-600">{new Date(o.created_at).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' })}</span>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${o.estado === 'finalizado' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                          {o.estado}
-                        </span>
-                        <span className="text-xs font-bold text-red-600">Vincular →</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ── Aprobación para matrícula ── */}
-        {lead.etapa_venta === 'aprobado_matricula' && (
-          <div className="border-b px-4 py-3 bg-amber-50 flex-shrink-0">
-            <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-2">Estado de aprobación para matrícula</p>
-            <div className="flex gap-2">
-              {([
-                { key: 'pendiente', label: '⏳ Pendiente',  activo: 'bg-amber-500 border-amber-500 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-amber-300'  },
-                { key: 'aprobado',  label: '✅ Aprobado',   activo: 'bg-green-600 border-green-600 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-green-300'  },
-                { key: 'rechazado', label: '❌ Rechazado',  activo: 'bg-red-600 border-red-600 text-white',      inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-red-300'    },
-              ] as const).map(({ key, label, activo, inactivo }) => (
-                <button key={key}
-                  onClick={() => actualizarAprobacion(key)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border-2 transition-colors ${
-                    aprobacionStatus === key ? activo : inactivo
-                  }`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Sección: Factura ── */}
-        {enEtapaFactura && (
-          <div className={`border-b px-4 py-2 flex-shrink-0 ${facturaActual ? 'bg-teal-50' : 'bg-orange-50'}`}>
-            {facturaActual && !editandoFactura ? (
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-teal-700">🧾 Factura de venta</p>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-teal-800 tracking-widest text-sm bg-white border border-teal-200 rounded-lg px-3 py-1">
-                    {facturaActual}
-                  </span>
-                  {esGerencia && (
-                    <button onClick={() => setEditandoFactura(true)} className="text-xs text-teal-600 hover:underline font-medium flex-shrink-0">
-                      ✏️ Editar
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-xs font-bold uppercase tracking-wide text-orange-700">⚠ Sin número de factura</p>
-                </div>
-                {!facturaActual && <p className="text-[11px] text-orange-600 mb-2">Ingresa el número de factura de esta venta.</p>}
-                <div className="flex gap-2 mt-1">
-                  <input
-                    value={facturaInput}
-                    onChange={e => setFacturaInput(e.target.value.toUpperCase())}
-                    onKeyDown={e => { if (e.key === 'Enter') guardarFactura() }}
-                    onBlur={guardarFactura}
-                    placeholder="Ej: FAC-00123"
-                    className="flex-1 border border-orange-300 bg-white rounded-xl px-3 py-2 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-400"
-                  />
-                  {savingFactura && <span className="text-xs text-orange-500 flex-shrink-0">Guardando...</span>}
-                  {editandoFactura && !savingFactura && (
-                    <button onClick={() => { setEditandoFactura(false); setFacturaInput(facturaActual) }}
-                      className="px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm hover:bg-gray-200 flex-shrink-0">
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
         {/* Body */}
         <div className="flex flex-1 min-h-0">
 
@@ -855,6 +648,166 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           </div>
 
           <div className={`flex-1 overflow-y-auto p-4 ${tabDer === 'chats' ? 'hidden' : ''}`}>
+
+            {/* ── Barra: Placa · Alistamiento · Factura · Aprobación ── */}
+            {(enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || lead.etapa_venta === 'aprobado_matricula') && (
+              <div className="mb-4 space-y-2">
+
+                {/* Fila de pills */}
+                <div className="flex flex-wrap gap-1.5">
+                  {enEtapaConPlaca && !editandoPlaca && (
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
+                      placaActual ? 'bg-teal-50 border-teal-200 text-teal-800' : 'bg-red-50 border-red-200 text-red-700'
+                    }`}>
+                      {placaActual ? `🏍️ ${placaActual}` : '⚠ Sin placa'}
+                      {esGerencia && (
+                        <button onClick={() => setEditandoPlaca(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
+                      )}
+                    </span>
+                  )}
+
+                  {enEtapaAlistamiento && (
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
+                      tieneAlistamientoFinal ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-700'
+                    }`}>
+                      {tieneAlistamientoFinal ? '✅ Alistamiento' : '⚠ Sin alistamiento'}
+                      {tieneAlistamientoFinal && alistamientoOrdenId && (
+                        <a href={`/admin/ordenes/${alistamientoOrdenId}`} className="hover:underline ml-0.5">→</a>
+                      )}
+                      {tieneAlistamientoFinal && !alistamientoOrdenId && (
+                        <button onClick={cargarOrdenesUMA} disabled={loadingOrdenesUMA}
+                          className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity text-[11px]">
+                          {loadingOrdenesUMA ? '⏳' : '🔧'}
+                        </button>
+                      )}
+                      {tieneAlistamientoFinal && esGerencia && (
+                        <button onClick={desvincularAlistamiento} className="ml-0.5 text-red-400 hover:text-red-600 transition-colors text-[11px]">✕</button>
+                      )}
+                    </span>
+                  )}
+
+                  {enEtapaFactura && !editandoFactura && (
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
+                      facturaActual ? 'bg-teal-50 border-teal-200 text-teal-800' : 'bg-orange-50 border-orange-200 text-orange-700'
+                    }`}>
+                      {facturaActual ? `🧾 ${facturaActual}` : '⚠ Sin factura'}
+                      {esGerencia && facturaActual && (
+                        <button onClick={() => setEditandoFactura(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
+                      )}
+                    </span>
+                  )}
+                </div>
+
+                {/* Formulario inline: Placa */}
+                {enEtapaConPlaca && (!placaActual || editandoPlaca) && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                    {!placaActual && <p className="text-[11px] text-red-600 mb-1.5">Ingresa la placa de la moto entregada a este cliente.</p>}
+                    <div className="flex gap-2">
+                      <input value={placaInput} onChange={e => setPlacaInput(e.target.value.toUpperCase())}
+                        onKeyDown={e => { if (e.key === 'Enter') guardarPlaca() }}
+                        onBlur={guardarPlaca}
+                        placeholder="ABC123"
+                        className="flex-1 border border-red-300 bg-white rounded-lg px-3 py-1.5 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-red-400" />
+                      {savingPlaca && <span className="text-xs text-red-500 self-center">Guardando...</span>}
+                      {editandoPlaca && !savingPlaca && (
+                        <button onClick={() => { setEditandoPlaca(false); setPlacaInput(placaActual) }}
+                          className="px-2.5 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">✕</button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Formulario inline: Alistamiento sin vincular */}
+                {enEtapaAlistamiento && !tieneAlistamientoFinal && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                    <p className="text-[11px] text-red-600 mb-2">No se encontró una orden UMA de alistamiento. Vincúlala o créala en Servicio Técnico.</p>
+                    <div className="flex gap-2 flex-wrap">
+                      <button onClick={cargarOrdenesUMA} disabled={loadingOrdenesUMA}
+                        className="flex-1 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold disabled:opacity-40 transition-colors">
+                        {loadingOrdenesUMA ? '⏳ Cargando...' : '📎 Ver órdenes UMA'}
+                      </button>
+                      <a href="/admin/ordenes"
+                        className="flex-1 py-1.5 bg-white border border-red-300 text-red-600 rounded-lg text-xs font-bold text-center hover:bg-red-50 transition-colors">
+                        ➕ Crear en Serv. Técnico
+                      </a>
+                    </div>
+                    {ordenesUMALoaded && (
+                      <div className="mt-2 space-y-1.5">
+                        {ordenesUMA.length === 0 ? (
+                          <p className="text-xs text-red-400 text-center py-1">No hay órdenes UMA para este cliente.</p>
+                        ) : ordenesUMA.map(o => (
+                          <button key={o.id} onClick={() => vincularAlistamiento(o.id)}
+                            className="w-full flex items-center justify-between bg-white border border-red-200 hover:border-red-500 rounded-lg px-2.5 py-1.5 text-xs transition-colors text-left">
+                            <span className="font-mono text-gray-500">#{o.id.slice(-8).toUpperCase()}</span>
+                            <span className="text-gray-600">{new Date(o.created_at).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' })}</span>
+                            <span className={`font-semibold px-1.5 py-0.5 rounded-full text-[10px] ${o.estado === 'finalizado' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                              {o.estado}
+                            </span>
+                            <span className="font-bold text-red-600">Vincular →</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Alistamiento auto-detectado: listado de órdenes cuando se expande */}
+                {enEtapaAlistamiento && tieneAlistamientoFinal && !alistamientoOrdenId && ordenesUMALoaded && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 space-y-1">
+                    {ordenesUMA.length === 0 ? (
+                      <p className="text-xs text-gray-500">No se encontraron órdenes UMA para este cliente.</p>
+                    ) : ordenesUMA.map(o => (
+                      <a key={o.id} href={`/admin/ordenes/${o.id}`}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-green-700 underline hover:text-green-900 transition-colors">
+                        🔧 Orden #{o.id.slice(-8).toUpperCase()} ({o.estado}) →
+                      </a>
+                    ))}
+                  </div>
+                )}
+
+                {/* Formulario inline: Factura */}
+                {enEtapaFactura && (!facturaActual || editandoFactura) && (
+                  <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2">
+                    {!facturaActual && <p className="text-[11px] text-orange-600 mb-1.5">Ingresa el número de factura de esta venta.</p>}
+                    <div className="flex gap-2">
+                      <input value={facturaInput} onChange={e => setFacturaInput(e.target.value.toUpperCase())}
+                        onKeyDown={e => { if (e.key === 'Enter') guardarFactura() }}
+                        onBlur={guardarFactura}
+                        placeholder="Ej: FAC-00123"
+                        className="flex-1 border border-orange-300 bg-white rounded-lg px-3 py-1.5 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      {savingFactura && <span className="text-xs text-orange-500 self-center">Guardando...</span>}
+                      {editandoFactura && !savingFactura && (
+                        <button onClick={() => { setEditandoFactura(false); setFacturaInput(facturaActual) }}
+                          className="px-2.5 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">✕</button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Aprobación para matrícula */}
+                {lead.etapa_venta === 'aprobado_matricula' && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1.5">Estado de aprobación para matrícula</p>
+                    <div className="flex gap-2">
+                      {([
+                        { key: 'pendiente', label: '⏳ Pendiente',  activo: 'bg-amber-500 border-amber-500 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-amber-300'  },
+                        { key: 'aprobado',  label: '✅ Aprobado',   activo: 'bg-green-600 border-green-600 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-green-300'  },
+                        { key: 'rechazado', label: '❌ Rechazado',  activo: 'bg-red-600 border-red-600 text-white',      inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-red-300'    },
+                      ] as const).map(({ key, label, activo, inactivo }) => (
+                        <button key={key}
+                          onClick={() => actualizarAprobacion(key)}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold border-2 transition-colors ${
+                            aprobacionStatus === key ? activo : inactivo
+                          }`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
 
               {tabDer === 'resumen' && (
                 <div className="space-y-4">
