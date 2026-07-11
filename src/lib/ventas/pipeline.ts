@@ -1,6 +1,6 @@
 export type EtapaVenta =
   // LEADS
-  | 'nuevo_mensaje' | 'nuevo' | 'con_objecion'
+  | 'nuevo_mensaje' | 'nuevo' | 'con_interes' | 'con_objecion'
   // PROSPECTOS
   | 'propuesta' | 'demo' | 'seguimiento' | 'buscando_credito' | 'en_proceso_credito'
   // CIERRE
@@ -21,6 +21,7 @@ export const ETAPAS: { id: EtapaVenta; label: string; color: string; bg: string;
   // ── Grupo Leads ──────────────────────────────────────────────────────────────── borde azul
   { id: 'nuevo_mensaje',      label: 'Nuevo Contacto - Mensaje',  color: '#0EA5E9', bg: 'bg-sky-50',      border: 'border-blue-500'    },
   { id: 'nuevo',              label: 'Nuevo',                     color: '#2563EB', bg: 'bg-blue-50',     border: 'border-blue-500'    },
+  { id: 'con_interes',        label: 'Con Interés',               color: '#0891B2', bg: 'bg-cyan-50',     border: 'border-blue-500'    },
   { id: 'con_objecion',       label: 'Con objeción',              color: '#DC2626', bg: 'bg-red-50',      border: 'border-blue-500'    },
 
   // ── Grupo Propuesta / Cita ───────────────────────────────────────────────────── borde violeta
@@ -55,7 +56,7 @@ export const ETAPAS: { id: EtapaVenta; label: string; color: string; bg: string;
 export const ETAPA_MAP = Object.fromEntries(ETAPAS.map(e => [e.id, e])) as Record<EtapaVenta, typeof ETAPAS[0]>
 
 export const ETAPAS_ACTIVAS: EtapaVenta[] = [
-  'nuevo_mensaje', 'nuevo', 'con_objecion',
+  'nuevo_mensaje', 'nuevo', 'con_interes', 'con_objecion',
   'propuesta', 'demo', 'seguimiento', 'buscando_credito', 'en_proceso_credito',
   'negociacion',
 ]
@@ -66,7 +67,7 @@ export const ETAPAS_POSVENTA: EtapaVenta[] = [
 ]
 
 // Leads: necesitan celular registrado
-export const ETAPAS_LEADS: EtapaVenta[] = ['nuevo_mensaje', 'nuevo', 'con_objecion']
+export const ETAPAS_LEADS: EtapaVenta[] = ['nuevo_mensaje', 'nuevo', 'con_interes', 'con_objecion']
 
 // Desde alistamiento en adelante: necesitan placa asignada
 export const ETAPAS_NECESITAN_PLACA: EtapaVenta[] = [
@@ -85,23 +86,24 @@ export const ETAPA_ORDEN: Record<EtapaVenta, number> = {
   perdido:            -2,
   nuevo_mensaje:      -1,
   nuevo:               0,
-  con_objecion:        1,
-  propuesta:           2,
-  demo:                3,
-  seguimiento:         4,
-  buscando_credito:    5,
-  en_proceso_credito:  6,
-  negociacion:         7,
-  ganado:              8,
-  aprobado_matricula:  9,
-  en_matricula:       10,
-  alistamiento:       11,
-  espera_entrega:     12,
-  entregada:          13,
-  primera_revision:   14,
-  segunda_revision:   15,
-  tercera_revision:   16,
-  proceso_finalizado: 17,
+  con_interes:         1,
+  con_objecion:        2,
+  propuesta:           3,
+  demo:                4,
+  seguimiento:         5,
+  buscando_credito:    6,
+  en_proceso_credito:  7,
+  negociacion:         8,
+  ganado:              9,
+  aprobado_matricula: 10,
+  en_matricula:       11,
+  alistamiento:       12,
+  espera_entrega:     13,
+  entregada:          14,
+  primera_revision:   15,
+  segunda_revision:   16,
+  tercera_revision:   17,
+  proceso_finalizado: 18,
 }
 
 export function formatCOP(value: number | null | undefined): string {
