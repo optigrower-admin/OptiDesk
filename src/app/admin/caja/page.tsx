@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
+import PlanillaWorldOfficeModal from '@/components/PlanillaWorldOfficeModal'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
 type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'gasto' | 'ajuste' | 'porta_placas'
@@ -1181,6 +1182,7 @@ export default function CajaPage() {
   const [gastoModal, setGastoModal] = useState<{ titulo: string; descripcionInicial: string } | null>(null)
   const [ajusteOpen, setAjusteOpen] = useState<{ cuentaInicial?: string } | null>(null)
   const [transferirOpen, setTransferirOpen] = useState(false)
+  const [planillaOpen, setPlanillaOpen] = useState(false)
   const [editAjuste, setEditAjuste] = useState<{ id: string; descripcion: string; fecha: string } | null>(null)
   const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
   const [ingresoModalOpen, setIngresoModalOpen] = useState(false)
@@ -1435,6 +1437,13 @@ export default function CajaPage() {
         />
       )}
 
+      {planillaOpen && profile?.tenant_id && (
+        <PlanillaWorldOfficeModal
+          tenantId={profile.tenant_id}
+          onClose={() => setPlanillaOpen(false)}
+        />
+      )}
+
       {editAjuste && profile?.tenant_id && profile?.id && (
         <EditarAjusteModal
           tenantId={profile.tenant_id}
@@ -1503,6 +1512,17 @@ export default function CajaPage() {
               + Ajuste
             </button>
           )}
+        </div>
+        <div className="mt-3">
+          <button
+            onClick={() => setPlanillaOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Generar Planilla WorldOffice
+          </button>
         </div>
       </div>
 
