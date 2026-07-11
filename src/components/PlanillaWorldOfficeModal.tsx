@@ -11,7 +11,12 @@ interface Props {
 export default function PlanillaWorldOfficeModal({ tenantId, onClose }: Props) {
   const storageKey = STORAGE_KEY_PREFIX + tenantId
 
-  const hoy = new Date().toISOString().slice(0, 10)
+  // Fecha local del navegador (evita desfase UTC en zonas horarias negativas)
+  const hoy = (() => {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  })()
 
   const [fechaInicio, setFechaInicio] = useState(hoy)
   const [fechaFin,    setFechaFin]    = useState(hoy)
