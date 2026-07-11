@@ -2343,16 +2343,15 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               )}
 
               {lavaMotoOrdenes.length > 0 && (
-                <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] text-sm">
+                <table className="w-full table-fixed text-sm">
                   <thead>
                     <tr className="text-xs text-gray-500 uppercase border-b bg-cyan-50">
-                      <th className="text-left py-2 px-4 font-medium">Origen</th>
-                      <th className="text-left py-2 px-4 font-medium">Descripción</th>
-                      <th className="text-left py-2 px-4 font-medium whitespace-nowrap">Método pago prov.</th>
-                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap">Precio proveedor</th>
-                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap">Precio venta</th>
-                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap min-w-[130px]">Acciones</th>
+                      <th className="text-left py-2 px-3 font-medium w-16">Origen</th>
+                      <th className="text-left py-2 px-3 font-medium">Descripción</th>
+                      <th className="text-left py-2 px-3 font-medium w-28">Método prov.</th>
+                      <th className="text-right py-2 px-3 font-medium w-24">P. proveedor</th>
+                      <th className="text-right py-2 px-3 font-medium w-24">P. venta</th>
+                      <th className="text-right py-2 px-3 font-medium w-36">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2365,18 +2364,17 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         </tr>
                       ) : (
                         <tr key={lm.id} className="border-b hover:bg-gray-50">
-                          <td className="py-2 px-4"><Badge variant="teal">Lavado</Badge></td>
-                          <td className="py-2 px-4 text-gray-800">Lavado de moto{lm.cantidad > 1 ? ` ×${lm.cantidad}` : ''}</td>
-                          <td className="py-2 px-4 text-gray-500">{lm.metodos_pago?.nombre ?? '—'}</td>
-                          <td className="py-2 px-4 text-right text-gray-500 whitespace-nowrap">{formatCOP(lm.costo_unitario * lm.cantidad)}</td>
-                          <td className="py-2 px-4 text-right font-semibold whitespace-nowrap">{formatCOP(lm.precio_venta_unitario * lm.cantidad)}</td>
-                          <td className="py-2 px-4">{accionesRepuesto(() => iniciarEditarLavado(lm), () => handleDeleteLavaMoto(lm.id), celdaFechaLavado(lm))}</td>
+                          <td className="py-2 px-3"><Badge variant="teal">Lavado</Badge></td>
+                          <td className="py-2 px-3 text-gray-800 truncate">Lavado de moto{lm.cantidad > 1 ? ` ×${lm.cantidad}` : ''}</td>
+                          <td className="py-2 px-3 text-gray-500 text-xs truncate">{lm.metodos_pago?.nombre ?? '—'}</td>
+                          <td className="py-2 px-3 text-right text-gray-500 text-sm">{formatCOP(lm.costo_unitario * lm.cantidad)}</td>
+                          <td className="py-2 px-3 text-right font-semibold">{formatCOP(lm.precio_venta_unitario * lm.cantidad)}</td>
+                          <td className="py-2 px-3">{accionesRepuesto(() => iniciarEditarLavado(lm), () => handleDeleteLavaMoto(lm.id), celdaFechaLavado(lm))}</td>
                         </tr>
                       )
                     ))}
                   </tbody>
                 </table>
-                </div>
               )}
             </div>
           </div>
@@ -2421,17 +2419,16 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               </div>
 
               {/* Lista de repuestos agregados (UMA / Externo / Insumo / Porta Placas) */}
-              <div className="overflow-x-auto">
-              <table className="w-full min-w-[580px] text-sm">
+              <table className="w-full table-fixed text-sm">
                 <thead>
                   <tr className="text-[11px] text-gray-500 uppercase border-b bg-blue-50">
                     <th className="text-left py-1 px-2 font-medium w-14">Origen</th>
-                    <th className="text-left py-1 px-2 font-medium w-24"># Ref.</th>
+                    <th className="text-left py-1 px-2 font-medium w-20"># Ref.</th>
                     <th className="text-left py-1 px-2 font-medium">Descripción</th>
                     <th className="text-left py-1 px-2 font-medium w-24 hidden sm:table-cell">Método prov.</th>
                     <th className="text-right py-1 px-2 font-medium w-20 hidden sm:table-cell">Costo</th>
                     <th className="text-right py-1 px-2 font-medium w-20">P. venta</th>
-                    <th className="text-right py-1 px-2 font-medium min-w-[130px]">Acciones</th>
+                    <th className="text-right py-1 px-2 font-medium w-36">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2495,7 +2492,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       <tr key={item.id} className="border-b hover:bg-gray-50">
                         <td className="py-1.5 px-2 whitespace-nowrap"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
                         <td className="py-1.5 px-2 text-[11px] font-mono text-gray-400 whitespace-nowrap">{refCode}</td>
-                        <td className="py-1.5 px-2 text-gray-800 max-w-[160px] truncate" title={descClean}>{descClean}</td>
+                        <td className="py-1.5 px-2 text-gray-800 truncate" title={descClean}>{descClean}</td>
                         <td className="py-1.5 px-2 text-gray-500 text-xs hidden sm:table-cell">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
                         <td className="py-1.5 px-2 text-right text-gray-500 hidden sm:table-cell">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
                         <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>
@@ -2505,7 +2502,6 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                   })}
                 </tbody>
               </table>
-              </div>
 
               <div className="px-5 py-3 border-t space-y-1 text-sm font-semibold bg-blue-50">
                 <div className="flex justify-between">
@@ -2601,13 +2597,12 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               )}
 
               {manoObraItems.length > 0 && (
-                <div className="overflow-x-auto">
-                <table className="w-full min-w-[420px] text-sm">
+                <table className="w-full table-fixed text-sm">
                   <thead>
                     <tr className="text-xs text-gray-500 uppercase border-b bg-orange-50">
                       <th className="text-left py-2 px-4 font-medium">Descripción</th>
-                      <th className="text-right py-2 px-4 font-medium">Valor</th>
-                      <th className="text-right py-2 px-4 font-medium whitespace-nowrap min-w-[130px]">Acciones</th>
+                      <th className="text-right py-2 px-4 font-medium w-24">Valor</th>
+                      <th className="text-right py-2 px-4 font-medium w-36">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2629,7 +2624,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                               className="w-full px-2 py-1.5 border border-orange-400 rounded-lg text-sm font-mono text-right focus:outline-none"
                             />
                           </td>
-                          <td className="py-2 px-3 whitespace-nowrap">
+                          <td className="py-2 px-3">
                             <div className="flex items-center justify-end gap-1.5 flex-nowrap">
                               {celdaFecha(item)}
                               <div className="flex gap-0.5 flex-shrink-0">
@@ -2641,7 +2636,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         </tr>
                       ) : (
                         <tr key={item.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-4 text-gray-800">{item.descripcion}</td>
+                          <td className="py-3 px-4 text-gray-800 truncate" title={item.descripcion}>{item.descripcion}</td>
                           <td className="py-3 px-4 text-right font-semibold">{formatCOP(item.precio_venta)}</td>
                           <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
                         </tr>
@@ -2649,7 +2644,6 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     ))}
                   </tbody>
                 </table>
-                </div>
               )}
 
             <div className="px-5 py-3 border-t text-sm font-semibold flex justify-between bg-orange-50">
