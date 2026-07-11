@@ -8,17 +8,20 @@ import { formatCOP } from '@/lib/utils'
 import { registrarAuditoria } from '@/lib/audit'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
-type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'gasto' | 'ajuste'
-type FiltroGrupo = 'todos' | 'servicios_tecnicos' | 'venta_repuestos' | 'ingreso_caja' | 'gastos_caja' | 'transferencias' | 'ajuste_caja'
+type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'gasto' | 'ajuste' | 'porta_placas'
+type FiltroGrupo = 'todos' | 'servicios_tecnicos' | 'venta_repuestos' | 'ingreso_caja' | 'gastos_caja' | 'transferencias' | 'ajuste_caja' | 'costos_externos' | 'costos_lavado' | 'porta_placas'
 
 const FILTROS_GRUPO: { id: FiltroGrupo; label: string }[] = [
-  { id: 'todos',             label: 'Todos' },
+  { id: 'todos',              label: 'Todos' },
   { id: 'servicios_tecnicos', label: 'Servicios Técnicos' },
-  { id: 'venta_repuestos',   label: 'Venta Repuestos' },
-  { id: 'ingreso_caja',      label: 'Ingreso a Caja' },
-  { id: 'gastos_caja',       label: 'Gastos de Caja' },
-  { id: 'transferencias',    label: 'Transferencias' },
-  { id: 'ajuste_caja',       label: 'Ajuste de Caja' },
+  { id: 'venta_repuestos',    label: 'Venta Repuestos' },
+  { id: 'porta_placas',       label: 'Porta Placas' },
+  { id: 'ingreso_caja',       label: 'Ingreso a Caja' },
+  { id: 'gastos_caja',        label: 'Gastos de Caja' },
+  { id: 'costos_externos',    label: 'Costo Ext./Terceros' },
+  { id: 'costos_lavado',      label: 'Costo Serv. Lavado' },
+  { id: 'transferencias',     label: 'Transferencias' },
+  { id: 'ajuste_caja',        label: 'Ajuste de Caja' },
 ]
 
 function esTransferenciaConcepto(concepto: string): boolean {
@@ -51,6 +54,7 @@ const CATEGORIA_LABEL: Record<Categoria, string> = {
   costo_lavado:    'Costo Servicio de Lavado',
   gasto:           'Gastos de Caja',
   ajuste:          'Ajuste de Caja',
+  porta_placas:    'Porta Placas',
 }
 
 const CATEGORIA_BADGE: Record<Categoria, string> = {
@@ -64,6 +68,7 @@ const CATEGORIA_BADGE: Record<Categoria, string> = {
   costo_lavado:    'bg-teal-200 text-teal-800',
   gasto:           'bg-red-100 text-red-700',
   ajuste:          'bg-gray-700 text-white',
+  porta_placas:    'bg-orange-100 text-orange-700',
 }
 
 function grupoOrden(ord: { numero: number; placa: string; cliente: string } | null): string {
@@ -933,11 +938,12 @@ async function construirMovimientos(
     // Igual que con repuestos externos: si la orden es Servicio Técnico, este ingreso
     // ya está incluido en el pago total de la orden — no se cuenta aparte.
     if (ord?.tipo_orden === 'servicio') continue
+    const esPortaPlacas = it.descripcion === 'Porta Placas'
     lista.push({
       id: `insumo_${it.id}`,
       rawId: it.id,
       fecha: it.created_at,
-      categoria: 'ingreso_insumo',
+      categoria: esPortaPlacas ? 'porta_placas' : 'ingreso_insumo',
       concepto,
       nombre: ord?.cliente ?? null,
       codigo: ord?.placa ?? null,
@@ -1220,8 +1226,11 @@ export default function CajaPage() {
         switch (catFiltro) {
           case 'servicios_tecnicos': return m.categoria === 'ingreso_st'
           case 'venta_repuestos':   return m.categoria === 'ingreso_venta' || m.categoria === 'ingreso_insumo' || m.categoria === 'ingreso_lavado' || m.categoria === 'ingreso_externo'
+          case 'porta_placas':      return m.categoria === 'porta_placas'
           case 'ingreso_caja':      return m.categoria === 'ingreso_manual' && !esTransfer
-          case 'gastos_caja':       return (m.categoria === 'gasto' || m.categoria === 'costo_externo' || m.categoria === 'costo_lavado') && !esTransfer
+          case 'gastos_caja':       return m.categoria === 'gasto' && !esTransfer
+          case 'costos_externos':   return m.categoria === 'costo_externo'
+          case 'costos_lavado':     return m.categoria === 'costo_lavado'
           case 'transferencias':    return esTransfer
           case 'ajuste_caja':       return m.categoria === 'ajuste'
           default:                  return true
