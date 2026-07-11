@@ -222,6 +222,7 @@ export async function POST(req: NextRequest) {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': 'attachment; filename="Planilla_Venta_Rep_UMA.xlsx"',
+      'X-Next-Consecutivo': String(nextC),
     },
   })
 }

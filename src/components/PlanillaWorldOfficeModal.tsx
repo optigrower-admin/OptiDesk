@@ -53,6 +53,10 @@ export default function PlanillaWorldOfficeModal({ tenantId, onClose }: Props) {
         return
       }
 
+      // Leer el próximo consecutivo ANTES de consumir el body
+      const nextConsecStr = res.headers.get('X-Next-Consecutivo')
+      const nextConsec = nextConsecStr ? parseInt(nextConsecStr, 10) : null
+
       const blob = await res.blob()
 
       // Nombre del archivo con rango de fechas en DDMMYY
@@ -71,15 +75,10 @@ export default function PlanillaWorldOfficeModal({ tenantId, onClose }: Props) {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
 
-      // Guardar próximo consecutivo (último usado + número de entradas generadas)
-      // No sabemos exactamente cuántas entradas se generaron desde aquí,
-      // así que guardamos consec + 1000 como tope conservador; el usuario puede editarlo.
-      // En realidad guardamos el consecutivo al que se empezó +1 para la siguiente generación,
-      // pero lo correcto es leer la respuesta. Por ahora lo dejamos editable y guardamos el inicio.
-      // El usuario ajustará según lo que generó.
-      // Para simplicidad: no guardamos automático — el usuario siempre puede editar el campo.
-      // Guardamos el valor que se usó para que la próxima apertura muestre el mismo.
-      try { localStorage.setItem(storageKey, String(consec)) } catch { /* ignore */ }
+      // Guardar próximo consecutivo (el que devuelve la API = último usado + 1)
+      const valorAGuardar = nextConsec ?? consec
+      try { localStorage.setItem(storageKey, String(valorAGuardar)) } catch { /* ignore */ }
+      setConsec(valorAGuardar)
 
       onClose()
     } catch (err) {
