@@ -30,18 +30,51 @@ const TIPOS_DOCUMENTO = [
 ]
 
 function NuevoClienteModal({ onClose }: { onClose: () => void }) {
-  const [primerNombre, setPrimerNombre]     = useState('')
-  const [segundoNombre, setSegundoNombre]   = useState('')
-  const [primerApellido, setPrimerApellido] = useState('')
+  const supabase = createClient()
+  const [primerNombre, setPrimerNombre]       = useState('')
+  const [segundoNombre, setSegundoNombre]     = useState('')
+  const [primerApellido, setPrimerApellido]   = useState('')
   const [segundoApellido, setSegundoApellido] = useState('')
-  const [tipoDocumento, setTipoDocumento]   = useState('CC')
+  const [tipoDocumento, setTipoDocumento]     = useState('CC')
   const [numeroDocumento, setNumeroDocumento] = useState('') // solo dígitos
-  const [celular, setCelular] = useState('')
-  const [email, setEmail]     = useState('')
+  const [celular, setCelular]     = useState('')
+  const [email, setEmail]         = useState('')
   const [guardando, setGuardando] = useState(false)
-  const [error, setError]     = useState('')
+  const [error, setError]         = useState('')
 
+  // Detección de duplicados
+  const [dupCelular, setDupCelular]       = useState<string | null>(null)
+  const [dupDocumento, setDupDocumento]   = useState<string | null>(null)
+  const [buscandoDup, setBuscandoDup]     = useState(false)
+
+  const hayDuplicado = !!(dupCelular || dupDocumento)
   const valido = primerNombre.trim() !== '' && celular.trim() !== ''
+
+  async function verificarCelular(val: string) {
+    if (!val.trim()) { setDupCelular(null); return }
+    setBuscandoDup(true)
+    const { data } = await supabase
+      .from('clientes')
+      .select('nombre')
+      .eq('celular', val.trim())
+      .limit(1)
+      .maybeSingle()
+    setDupCelular(data?.nombre ?? null)
+    setBuscandoDup(false)
+  }
+
+  async function verificarDocumento(val: string) {
+    if (!val.trim()) { setDupDocumento(null); return }
+    setBuscandoDup(true)
+    const { data } = await supabase
+      .from('clientes')
+      .select('nombre')
+      .eq('cedula', val.trim())
+      .limit(1)
+      .maybeSingle()
+    setDupDocumento(data?.nombre ?? null)
+    setBuscandoDup(false)
+  }
 
   async function crear() {
     if (!valido) return
@@ -87,8 +120,15 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
             <input value={segundoApellido} onChange={e => setSegundoApellido(e.target.value)} placeholder="Segundo apellido (opcional)"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-          <input value={celular} onChange={e => setCelular(e.target.value)} placeholder="Celular *"
-            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <input
+            value={celular}
+            onChange={e => { setCelular(e.target.value); setDupCelular(null) }}
+            onBlur={e => verificarCelular(e.target.value)}
+            placeholder="Celular *"
+            className={`w-full border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 ${
+              dupCelular ? 'border-amber-400 focus:ring-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
+            }`}
+          />
           <div className="grid grid-cols-[auto,1fr] gap-2">
             <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}
               className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -96,13 +136,41 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
             </select>
             <input
               value={numeroDocumento ? Number(numeroDocumento).toLocaleString('es-CO') : ''}
-              onChange={e => setNumeroDocumento(e.target.value.replace(/\D/g, ''))}
+              onChange={e => { setNumeroDocumento(e.target.value.replace(/\D/g, '')); setDupDocumento(null) }}
+              onBlur={e => verificarDocumento(e.target.value.replace(/\D/g, ''))}
               inputMode="numeric" placeholder="Número de documento (opcional)"
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className={`w-full border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 ${
+                dupDocumento ? 'border-amber-400 focus:ring-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
+              }`}
+            />
           </div>
           <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Correo electrónico (opcional)" type="email"
             className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
+
+        {/* Avisos de duplicado */}
+        {buscandoDup && <p className="text-xs text-gray-400 mt-2">Verificando duplicados...</p>}
+        {dupCelular && (
+          <div className="mt-3 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">
+            <p className="text-xs font-bold text-amber-800">⚠ Celular ya registrado</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              El número <span className="font-semibold">{celular}</span> ya pertenece a{' '}
+              <span className="font-semibold">{dupCelular}</span>.
+              Si continúas, se actualizará ese cliente en Seguimiento Ventas.
+            </p>
+          </div>
+        )}
+        {dupDocumento && (
+          <div className="mt-3 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">
+            <p className="text-xs font-bold text-amber-800">⚠ Cédula ya registrada</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              La cédula <span className="font-semibold">{Number(numeroDocumento).toLocaleString('es-CO')}</span> ya pertenece a{' '}
+              <span className="font-semibold">{dupDocumento}</span>.
+              Si continúas, se actualizará ese cliente en Seguimiento Ventas.
+            </p>
+          </div>
+        )}
+
         <p className="text-xs text-gray-400 mt-2">* Solo el primer nombre y el celular son obligatorios.</p>
         {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
         <div className="flex gap-2 mt-4">
@@ -110,8 +178,10 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
             Cancelar
           </button>
           <button onClick={crear} disabled={!valido || guardando}
-            className="flex-1 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
-            {guardando ? 'Creando...' : 'Crear'}
+            className={`flex-1 py-2 text-white rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors ${
+              hayDuplicado ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-700 hover:bg-blue-800'
+            }`}>
+            {guardando ? 'Guardando...' : hayDuplicado ? 'Continuar de todas formas' : 'Crear'}
           </button>
         </div>
       </div>
