@@ -112,6 +112,11 @@ function NuevaVentaContent() {
   const [savedOk, setSavedOk] = useState(false)
   const [deletingOrden, setDeletingOrden] = useState(false)
 
+  // ─── Modal salida con saldo pendiente ────────────────────────────────────
+  const [showSaldoModal, setShowSaldoModal] = useState(false)
+  const [navTarget, setNavTarget] = useState<string | null>(null)
+  const saldoPendienteRef = useRef(0)
+
   // Repuestos
   const [showAgregarRepuesto, setShowAgregarRepuesto] = useState(false)
   const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; costo: string; precio: string; metodo_pago_id: string } | null>(null)
@@ -185,6 +190,26 @@ function NuevaVentaContent() {
   }, [ordenId, profile?.tenant_id])
 
   useEffect(() => { if (ordenId) cargar() }, [ordenId, cargar])
+
+  // Sincronizar ref de saldo para el beforeunload (sin triggear re-renders)
+  useEffect(() => {
+    const total = items.reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
+    const pagado = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+    saldoPendienteRef.current = total - pagado
+  }, [items, pagosOrden])
+
+  // Guard de cierre/recarga de pestaña cuando hay saldo pendiente
+  useEffect(() => {
+    if (!ordenId) return
+    const handler = (e: BeforeUnloadEvent) => {
+      if (saldoPendienteRef.current > 0) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [ordenId])
 
   // ─── Historial de placa (solo modo creación) ──────────────────────────────
   const buscarHistorialPlaca = useCallback(async (placaNorm: string) => {
@@ -354,16 +379,6 @@ function NuevaVentaContent() {
   }) => {
     if (!ordenId || !orden) return
 
-    // Si no hay ningún pago positivo registrado, confirmar antes de agregar
-    const hayPago = pagosOrden.some(p => p.monto > 0)
-    if (!hayPago) {
-      const ok = window.confirm(
-        '⚠ Esta venta no tiene ningún pago registrado.\n\n' +
-        '¿Estás seguro de agregar el repuesto y dejarlo pendiente de cobro?\n\n' +
-        'Recuerda registrar el pago de la venta directa antes de cerrar.'
-      )
-      if (!ok) return
-    }
     const { data, error: insError } = await supabase.from('items_orden').insert({
       orden_id: ordenId,
       ...item,
@@ -744,7 +759,16 @@ function NuevaVentaContent() {
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={() => router.push('/admin/repuestos')} className="text-gray-400 hover:text-gray-600">
+        <button
+          onClick={() => {
+            if (ordenId && saldoPendiente > 0) {
+              setNavTarget('/admin/repuestos')
+              setShowSaldoModal(true)
+            } else {
+              router.push('/admin/repuestos')
+            }
+          }}
+          className="text-gray-400 hover:text-gray-600"
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
@@ -1138,6 +1162,24 @@ function NuevaVentaContent() {
                           </tr>
                         )
                       })}
+                      {saldoPendiente < 0 && orden && (
+                        <tr className="border-b bg-amber-50/70">
+                          <td className="py-1.5 px-2">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-200 text-amber-800 whitespace-nowrap">
+                              Excedente
+                            </span>
+                          </td>
+                          <td className="py-1.5 px-2 text-amber-800 font-medium text-sm truncate">
+                            {orden.cliente} — saldo a favor
+                          </td>
+                          <td className="py-1.5 px-2 hidden sm:table-cell" />
+                          <td className="py-1.5 px-2 hidden sm:table-cell" />
+                          <td className="py-1.5 px-2 text-right font-bold text-amber-700 whitespace-nowrap">
+                            {formatCOP(-saldoPendiente)}
+                          </td>
+                          <td className="py-1.5 px-2" />
+                        </tr>
+                      )}
                     </tbody>
                   </table>
 
@@ -1155,6 +1197,11 @@ function NuevaVentaContent() {
                         <>
                           <span className="text-red-600">Saldo pendiente</span>
                           <span className="text-red-600">{formatCOP(saldoPendiente)}</span>
+                        </>
+                      ) : saldoPendiente < 0 ? (
+                        <>
+                          <span className="text-amber-600">Excedente a favor</span>
+                          <span className="text-amber-600">{formatCOP(-saldoPendiente)}</span>
                         </>
                       ) : (
                         <>
@@ -1194,6 +1241,10 @@ function NuevaVentaContent() {
                     <span className="text-xs font-semibold px-2.5 py-1 rounded-full border bg-red-100 text-red-700 border-red-200">
                       Saldo pendiente
                     </span>
+                  ) : saldoPendiente < 0 ? (
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full border bg-amber-100 text-amber-700 border-amber-200">
+                      Excedente
+                    </span>
                   ) : (
                     <span className="text-xs font-semibold px-2.5 py-1 rounded-full border bg-green-100 text-green-700 border-green-200">
                       Pagado
@@ -1210,10 +1261,14 @@ function NuevaVentaContent() {
                     <span>Total pagado</span>
                     <span className="font-semibold text-green-700">{formatCOP(totalPagadoCliente)}</span>
                   </div>
-                  {saldoPendiente > 0 && (
+                  {saldoPendiente !== 0 && (
                     <div className="flex justify-between text-xs font-semibold border-t border-gray-200 pt-1.5">
-                      <span className="text-red-600">Saldo pendiente</span>
-                      <span className="text-red-600">{formatCOP(saldoPendiente)}</span>
+                      <span className={saldoPendiente > 0 ? 'text-red-600' : 'text-amber-600'}>
+                        {saldoPendiente > 0 ? 'Saldo pendiente' : 'Excedente a favor'}
+                      </span>
+                      <span className={saldoPendiente > 0 ? 'text-red-600' : 'text-amber-600'}>
+                        {formatCOP(Math.abs(saldoPendiente))}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -1347,6 +1402,44 @@ function NuevaVentaContent() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Modal: salida con saldo pendiente */}
+      {showSaldoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
+            <div className="bg-red-50 px-5 py-4 flex items-start gap-3 border-b border-red-100">
+              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm">Venta sin pago completo</h3>
+                <p className="text-sm text-gray-600 mt-0.5">
+                  Quedan <span className="font-bold text-red-600">{formatCOP(saldoPendiente)}</span> pendientes de cobro.
+                </p>
+              </div>
+            </div>
+            <div className="p-5 space-y-2.5">
+              <button
+                onClick={() => setShowSaldoModal(false)}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-colors"
+              >
+                Registrar Pagos
+              </button>
+              <button
+                onClick={() => {
+                  setShowSaldoModal(false)
+                  if (navTarget) router.push(navTarget)
+                }}
+                className="w-full py-2.5 bg-white border-2 border-red-400 text-red-600 hover:bg-red-50 rounded-xl text-sm font-bold transition-colors"
+              >
+                Dejar en pago pendiente
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
