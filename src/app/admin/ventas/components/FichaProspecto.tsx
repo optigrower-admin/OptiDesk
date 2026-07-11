@@ -133,6 +133,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   // Alistamiento manual
   const [alistamientoOrdenId, setAlistamientoOrdenId] = useState<string | null>(lead.alistamientoOrdenId ?? null)
+  const [editandoAlistamiento, setEditandoAlistamiento] = useState(false)
   const [ordenesUMA, setOrdenesUMA]           = useState<{ id: string; created_at: string; estado: string }[]>([])
   const [loadingOrdenesUMA, setLoadingOrdenesUMA] = useState(false)
   const [ordenesUMALoaded, setOrdenesUMALoaded]   = useState(false)
@@ -338,6 +339,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     await supabase.from('clientes').update({ alistamiento_orden_id: null }).eq('id', lead.id).eq('tenant_id', tenantId)
     setAlistamientoOrdenId(null)
     setOrdenesUMALoaded(false)
+    setEditandoAlistamiento(false)
   }
 
   const actualizarAprobacion = async (status: 'pendiente' | 'aprobado' | 'rechazado') => {
@@ -681,7 +683,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                         </button>
                       )}
                       {tieneAlistamientoFinal && esGerencia && (
-                        <button onClick={desvincularAlistamiento} className="ml-0.5 text-red-400 hover:text-red-600 transition-colors text-[11px]">✕</button>
+                        <button onClick={() => { setEditandoAlistamiento(true); cargarOrdenesUMA() }}
+                          className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
                       )}
                     </span>
                   )}
@@ -752,7 +755,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 )}
 
                 {/* Alistamiento auto-detectado: listado de órdenes cuando se expande */}
-                {enEtapaAlistamiento && tieneAlistamientoFinal && !alistamientoOrdenId && ordenesUMALoaded && (
+                {enEtapaAlistamiento && tieneAlistamientoFinal && !alistamientoOrdenId && ordenesUMALoaded && !editandoAlistamiento && (
                   <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 space-y-1">
                     {ordenesUMA.length === 0 ? (
                       <p className="text-xs text-gray-500">No se encontraron órdenes UMA para este cliente.</p>
@@ -762,6 +765,41 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                         🔧 Orden #{o.id.slice(-8).toUpperCase()} ({o.estado}) →
                       </a>
                     ))}
+                  </div>
+                )}
+
+                {/* Panel edición de alistamiento — solo gerencia */}
+                {enEtapaAlistamiento && tieneAlistamientoFinal && esGerencia && editandoAlistamiento && (
+                  <div className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-green-800">✏️ Editar alistamiento</p>
+                      <button onClick={() => setEditandoAlistamiento(false)}
+                        className="text-xs text-gray-400 hover:text-gray-600 transition-colors">✕ Cerrar</button>
+                    </div>
+                    <button onClick={desvincularAlistamiento}
+                      className="w-full py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors">
+                      🗑 Desvincular alistamiento actual
+                    </button>
+                    <p className="text-[11px] text-green-700 font-semibold">O vincular a otra orden UMA:</p>
+                    {loadingOrdenesUMA ? (
+                      <p className="text-xs text-gray-500">⏳ Cargando órdenes...</p>
+                    ) : ordenesUMA.length === 0 ? (
+                      <p className="text-xs text-gray-500">No se encontraron órdenes UMA para este cliente.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {ordenesUMA.map(o => (
+                          <button key={o.id} onClick={() => { vincularAlistamiento(o.id); setEditandoAlistamiento(false) }}
+                            className="w-full flex items-center justify-between bg-white border border-green-200 hover:border-green-500 rounded-lg px-2.5 py-1.5 text-xs transition-colors text-left">
+                            <span className="font-mono text-gray-500">#{o.id.slice(-8).toUpperCase()}</span>
+                            <span className="text-gray-600">{new Date(o.created_at).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' })}</span>
+                            <span className={`font-semibold px-1.5 py-0.5 rounded-full text-[10px] ${o.estado === 'finalizado' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                              {o.estado}
+                            </span>
+                            <span className="font-bold text-green-700">Vincular →</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
