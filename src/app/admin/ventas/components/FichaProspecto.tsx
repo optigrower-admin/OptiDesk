@@ -511,22 +511,27 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
         {/* ── Sección: Placa ── */}
         {enEtapaConPlaca && (
-          <div className={`border-b px-4 py-3 flex-shrink-0 ${placaActual ? 'bg-teal-50' : 'bg-red-50'}`}>
-            <div className="flex items-center justify-between mb-1">
-              <p className={`text-xs font-bold uppercase tracking-wide ${placaActual ? 'text-teal-700' : 'text-red-700'}`}>
-                {placaActual ? '🏍️ Placa asignada' : '⚠ Sin placa asignada'}
-              </p>
-              {placaActual && esGerencia && !editandoPlaca && (
-                <button onClick={() => setEditandoPlaca(true)} className="text-xs text-teal-600 hover:underline font-medium">
-                  ✏️ Editar
-                </button>
-              )}
-            </div>
+          <div className={`border-b px-4 py-2 flex-shrink-0 ${placaActual ? 'bg-teal-50' : 'bg-red-50'}`}>
             {placaActual && !editandoPlaca ? (
-              <p className="text-4xl font-black text-teal-800 tracking-[0.2em] text-center py-2 bg-white rounded-xl border border-teal-200">
-                {placaActual}
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-teal-700">🏍️ Placa asignada</p>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-teal-800 tracking-widest text-sm bg-white border border-teal-200 rounded-lg px-3 py-1">
+                    {placaActual}
+                  </span>
+                  {esGerencia && (
+                    <button onClick={() => setEditandoPlaca(true)} className="text-xs text-teal-600 hover:underline font-medium flex-shrink-0">
+                      ✏️ Editar
+                    </button>
+                  )}
+                </div>
+              </div>
             ) : (
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-bold uppercase tracking-wide text-red-700">⚠ Sin placa asignada</p>
+              </div>
+            )}
+            {(!placaActual || editandoPlaca) && (
               <>
                 {!placaActual && <p className="text-[11px] text-red-600 mb-2">Ingresa la placa de la moto entregada a este cliente.</p>}
                 <div className="flex items-center gap-2 mt-1">
@@ -553,29 +558,39 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
         {/* ── Sección: Alistamiento ── */}
         {enEtapaAlistamiento && (
-          <div className={`border-b px-4 py-3 flex-shrink-0 ${tieneAlistamientoFinal ? 'bg-green-50' : 'bg-red-50'}`}>
-            <div className="flex items-center justify-between mb-1">
-              <p className={`text-xs font-bold uppercase tracking-wide ${tieneAlistamientoFinal ? 'text-green-700' : 'text-red-700'}`}>
-                {tieneAlistamientoFinal ? '✅ Alistamiento vinculado' : '⚠ Falta alistamiento'}
-              </p>
-              {tieneAlistamientoFinal && esGerencia && (
-                <button onClick={desvincularAlistamiento} className="text-xs text-red-500 hover:underline">
-                  Desvincular
-                </button>
-              )}
-            </div>
+          <div className={`border-b px-4 py-2 flex-shrink-0 ${tieneAlistamientoFinal ? 'bg-green-50' : 'bg-red-50'}`}>
             {tieneAlistamientoFinal ? (
               alistamientoOrdenId ? (
-                <a href={`/admin/ordenes/${alistamientoOrdenId}`}
-                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-green-700 underline hover:text-green-900 transition-colors">
-                  🔧 Ver orden de alistamiento #{alistamientoOrdenId.slice(-8).toUpperCase()} →
-                </a>
+                /* Caso compacto: orden vinculada con ID conocido */
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-green-700">✅ Alistamiento vinculado</p>
+                  <div className="flex items-center gap-2">
+                    <a href={`/admin/ordenes/${alistamientoOrdenId}`}
+                      className="text-xs font-semibold text-green-700 underline hover:text-green-900 transition-colors">
+                      🔧 Ver orden →
+                    </a>
+                    {esGerencia && (
+                      <button onClick={desvincularAlistamiento} className="text-xs text-red-500 hover:underline flex-shrink-0">
+                        Desvincular
+                      </button>
+                    )}
+                  </div>
+                </div>
               ) : (
+                /* Auto-detectado sin ID: mostrar compacto con botón de carga */
                 <div>
-                  <p className="text-[11px] text-green-600 mb-1.5">Detectada automáticamente en Servicio Técnico.</p>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="text-xs font-bold uppercase tracking-wide text-green-700">✅ Alistamiento vinculado</p>
+                    {esGerencia && (
+                      <button onClick={desvincularAlistamiento} className="text-xs text-red-500 hover:underline flex-shrink-0">
+                        Desvincular
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-green-600 mb-1">Detectada automáticamente en Servicio Técnico.</p>
                   {!ordenesUMALoaded ? (
                     <button onClick={cargarOrdenesUMA} disabled={loadingOrdenesUMA}
-                      className="text-sm font-semibold text-green-700 underline hover:text-green-900 disabled:opacity-60 transition-colors">
+                      className="text-xs font-semibold text-green-700 underline hover:text-green-900 disabled:opacity-60 transition-colors">
                       {loadingOrdenesUMA ? '⏳ Cargando...' : '🔧 Ver en Servicio Técnico →'}
                     </button>
                   ) : (
@@ -584,7 +599,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                         <p className="text-xs text-gray-500">No se encontraron órdenes UMA para este cliente.</p>
                       ) : ordenesUMA.map(o => (
                         <a key={o.id} href={`/admin/ordenes/${o.id}`}
-                          className="flex items-center gap-1.5 text-sm font-semibold text-green-700 underline hover:text-green-900 transition-colors">
+                          className="flex items-center gap-1.5 text-xs font-semibold text-green-700 underline hover:text-green-900 transition-colors">
                           🔧 Orden #{o.id.slice(-8).toUpperCase()} ({o.estado}) →
                         </a>
                       ))}
@@ -593,6 +608,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 </div>
               )
             ) : (
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-bold uppercase tracking-wide text-red-700">⚠ Falta alistamiento</p>
+              </div>
+            )}
+            {!tieneAlistamientoFinal && (
               <>
                 <p className="text-[11px] text-red-600 mb-2.5">No se encontró una orden UMA de alistamiento. Vincúlala o créala en Servicio Técnico.</p>
                 <div className="flex gap-2 flex-wrap">
@@ -653,23 +673,26 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
         {/* ── Sección: Factura ── */}
         {enEtapaFactura && (
-          <div className={`border-b px-4 py-3 flex-shrink-0 ${facturaActual ? 'bg-teal-50' : 'bg-orange-50'}`}>
-            <div className="flex items-center justify-between mb-1">
-              <p className={`text-xs font-bold uppercase tracking-wide ${facturaActual ? 'text-teal-700' : 'text-orange-700'}`}>
-                {facturaActual ? '🧾 Factura de venta' : '⚠ Sin número de factura'}
-              </p>
-              {facturaActual && esGerencia && !editandoFactura && (
-                <button onClick={() => setEditandoFactura(true)} className="text-xs text-teal-600 hover:underline font-medium">
-                  ✏️ Editar
-                </button>
-              )}
-            </div>
+          <div className={`border-b px-4 py-2 flex-shrink-0 ${facturaActual ? 'bg-teal-50' : 'bg-orange-50'}`}>
             {facturaActual && !editandoFactura ? (
-              <p className="text-3xl font-black text-teal-800 tracking-[0.15em] text-center py-2 bg-white rounded-xl border border-teal-200">
-                {facturaActual}
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-teal-700">🧾 Factura de venta</p>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-teal-800 tracking-widest text-sm bg-white border border-teal-200 rounded-lg px-3 py-1">
+                    {facturaActual}
+                  </span>
+                  {esGerencia && (
+                    <button onClick={() => setEditandoFactura(true)} className="text-xs text-teal-600 hover:underline font-medium flex-shrink-0">
+                      ✏️ Editar
+                    </button>
+                  )}
+                </div>
+              </div>
             ) : (
               <>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-bold uppercase tracking-wide text-orange-700">⚠ Sin número de factura</p>
+                </div>
                 {!facturaActual && <p className="text-[11px] text-orange-600 mb-2">Ingresa el número de factura de esta venta.</p>}
                 <div className="flex gap-2 mt-1">
                   <input
