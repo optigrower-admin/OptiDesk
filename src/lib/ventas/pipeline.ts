@@ -15,38 +15,40 @@ export type EtapaVenta =
   | 'perdido'
 
 export const ETAPAS: { id: EtapaVenta; label: string; color: string; bg: string; border: string }[] = [
-  // ── Perdido ──────────────────────────────────────────────────────────────
-  { id: 'perdido',            label: 'Cliente Perdido',           color: '#9CA3AF', bg: 'bg-gray-100',    border: 'border-gray-300'    },
+  // ── Perdido ──────────────────────────────────────────────────────────────────── borde gris
+  { id: 'perdido',            label: 'Cliente Perdido',           color: '#9CA3AF', bg: 'bg-gray-100',    border: 'border-gray-400'    },
 
-  // ── Leads ────────────────────────────────────────────────────────────────
-  { id: 'nuevo_mensaje',      label: 'Nuevo Contacto - Mensaje',  color: '#0284C7', bg: 'bg-sky-50',      border: 'border-sky-400'     },
-  { id: 'nuevo',              label: 'Nuevo',                     color: '#1D4ED8', bg: 'bg-blue-50',     border: 'border-blue-500'    },
-  { id: 'con_objecion',       label: 'Con objeción',              color: '#DC2626', bg: 'bg-red-50',      border: 'border-red-400'     },
+  // ── Grupo Leads ──────────────────────────────────────────────────────────────── borde azul
+  { id: 'nuevo_mensaje',      label: 'Nuevo Contacto - Mensaje',  color: '#0EA5E9', bg: 'bg-sky-50',      border: 'border-blue-500'    },
+  { id: 'nuevo',              label: 'Nuevo',                     color: '#2563EB', bg: 'bg-blue-50',     border: 'border-blue-500'    },
+  { id: 'con_objecion',       label: 'Con objeción',              color: '#DC2626', bg: 'bg-red-50',      border: 'border-blue-500'    },
 
-  // ── Prospectos ───────────────────────────────────────────────────────────
-  { id: 'propuesta',          label: 'Propuesta',                 color: '#7C3AED', bg: 'bg-violet-50',   border: 'border-violet-400'  },
-  { id: 'demo',               label: 'Cita',                      color: '#6D28D9', bg: 'bg-violet-50',   border: 'border-violet-500'  },
-  { id: 'seguimiento',        label: 'Seguimiento',               color: '#5B21B6', bg: 'bg-purple-50',   border: 'border-purple-500'  },
-  { id: 'buscando_credito',   label: 'Buscando Crédito',          color: '#7E22CE', bg: 'bg-purple-50',   border: 'border-purple-600'  },
-  { id: 'en_proceso_credito', label: 'En Proceso de Crédito',     color: '#6B21A8', bg: 'bg-purple-100',  border: 'border-purple-700'  },
+  // ── Grupo Propuesta / Cita ───────────────────────────────────────────────────── borde violeta
+  { id: 'propuesta',          label: 'Propuesta',                 color: '#7C3AED', bg: 'bg-violet-50',   border: 'border-violet-500'  },
+  { id: 'demo',               label: 'Cita',                      color: '#6D28D9', bg: 'bg-violet-100',  border: 'border-violet-500'  },
 
-  // ── Cierre ───────────────────────────────────────────────────────────────
-  { id: 'negociacion',        label: 'Negociación',               color: '#D97706', bg: 'bg-amber-50',    border: 'border-amber-400'   },
-  { id: 'ganado',             label: 'Vendida',                   color: '#16A34A', bg: 'bg-green-50',    border: 'border-green-500'   },
+  // ── Grupo Seguimiento ────────────────────────────────────────────────────────── borde púrpura
+  { id: 'seguimiento',        label: 'Seguimiento',               color: '#7E22CE', bg: 'bg-purple-50',   border: 'border-purple-600'  },
+  { id: 'buscando_credito',   label: 'Buscando Crédito',          color: '#6B21A8', bg: 'bg-purple-50',   border: 'border-purple-600'  },
+  { id: 'en_proceso_credito', label: 'En Proceso de Crédito',     color: '#581C87', bg: 'bg-purple-100',  border: 'border-purple-600'  },
 
-  // ── Proceso interno ──────────────────────────────────────────────────────
-  { id: 'aprobado_matricula', label: 'Aprobados para Matricular', color: '#B45309', bg: 'bg-amber-100',   border: 'border-amber-600'   },
-  { id: 'en_matricula',       label: 'En matrícula',              color: '#0F766E', bg: 'bg-teal-50',     border: 'border-teal-500'    },
-  { id: 'alistamiento',       label: 'Alistamiento',              color: '#0E7490', bg: 'bg-cyan-50',     border: 'border-cyan-500'    },
-  { id: 'espera_entrega',     label: 'Espera entrega',            color: '#0369A1', bg: 'bg-sky-100',     border: 'border-sky-600'     },
-  { id: 'entregada',          label: 'Entregada',                 color: '#15803D', bg: 'bg-emerald-50',  border: 'border-emerald-600' },
+  // ── Calificado (solo) ────────────────────────────────────────────────────────── borde ámbar
+  { id: 'negociacion',        label: 'Calificado',                color: '#D97706', bg: 'bg-amber-50',    border: 'border-amber-500'   },
 
-  // ── Posventa ─────────────────────────────────────────────────────────────
-  { id: 'primera_revision',   label: '1mera Revisión',            color: '#4338CA', bg: 'bg-indigo-50',   border: 'border-indigo-400'  },
-  { id: 'segunda_revision',   label: '2da Revisión',              color: '#3730A3', bg: 'bg-indigo-50',   border: 'border-indigo-600'  },
-  { id: 'tercera_revision',   label: '3cera Revisión',            color: '#312E81', bg: 'bg-indigo-100',  border: 'border-indigo-700'  },
+  // ── Grupo Proceso de venta ───────────────────────────────────────────────────── borde verde
+  { id: 'ganado',             label: 'Vendida',                   color: '#16A34A', bg: 'bg-green-50',    border: 'border-green-600'   },
+  { id: 'aprobado_matricula', label: 'Aprobados para Matricular', color: '#B45309', bg: 'bg-amber-50',    border: 'border-green-600'   },
+  { id: 'en_matricula',       label: 'En matrícula',              color: '#0F766E', bg: 'bg-teal-50',     border: 'border-green-600'   },
+  { id: 'alistamiento',       label: 'Alistamiento',              color: '#0E7490', bg: 'bg-cyan-50',     border: 'border-green-600'   },
+  { id: 'espera_entrega',     label: 'Espera entrega',            color: '#0369A1', bg: 'bg-sky-100',     border: 'border-green-600'   },
+  { id: 'entregada',          label: 'Entregada',                 color: '#15803D', bg: 'bg-emerald-50',  border: 'border-green-600'   },
 
-  // ── Finalizado ───────────────────────────────────────────────────────────
+  // ── Grupo Revisiones ─────────────────────────────────────────────────────────── borde índigo
+  { id: 'primera_revision',   label: '1mera Revisión',            color: '#4338CA', bg: 'bg-indigo-50',   border: 'border-indigo-600'  },
+  { id: 'segunda_revision',   label: '2da Revisión',              color: '#3730A3', bg: 'bg-indigo-100',  border: 'border-indigo-600'  },
+  { id: 'tercera_revision',   label: '3cera Revisión',            color: '#312E81', bg: 'bg-indigo-200',  border: 'border-indigo-600'  },
+
+  // ── Proceso Finalizado (solo) ────────────────────────────────────────────────── borde esmeralda
   { id: 'proceso_finalizado', label: 'Proceso Finalizado',        color: '#065F46', bg: 'bg-emerald-100', border: 'border-emerald-700' },
 ]
 
