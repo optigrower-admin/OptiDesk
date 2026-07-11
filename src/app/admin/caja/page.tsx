@@ -11,6 +11,14 @@ import PlanillaWorldOfficeModal from '@/components/PlanillaWorldOfficeModal'
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
 type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'gasto' | 'ajuste' | 'porta_placas'
 type FiltroGrupo = 'todos' | 'servicios_tecnicos' | 'venta_repuestos' | 'ingreso_caja' | 'gastos_caja' | 'transferencias' | 'ajuste_caja' | 'costos_externos' | 'costos_lavado' | 'porta_placas'
+type FiltroMetodo = 'todos' | 'efectivo' | 'nequi' | 'caja_fuerte'
+
+const FILTROS_METODO: { id: FiltroMetodo; label: string; color: string; activeColor: string }[] = [
+  { id: 'todos',       label: 'Todas las cuentas', color: 'bg-white text-gray-600 border-gray-200 hover:border-gray-400',          activeColor: 'bg-gray-700 text-white border-gray-700' },
+  { id: 'efectivo',    label: '💵 Efectivo',        color: 'bg-white text-green-700 border-green-200 hover:border-green-500',       activeColor: 'bg-green-600 text-white border-green-600' },
+  { id: 'nequi',       label: '📲 Nequi',           color: 'bg-white text-yellow-700 border-yellow-300 hover:border-yellow-500',    activeColor: 'bg-yellow-500 text-white border-yellow-500' },
+  { id: 'caja_fuerte', label: '🔒 Caja Fuerte',     color: 'bg-white text-gray-600 border-gray-300 hover:border-gray-500',         activeColor: 'bg-gray-500 text-white border-gray-500' },
+]
 
 const FILTROS_GRUPO: { id: FiltroGrupo; label: string }[] = [
   { id: 'todos',              label: 'Todos' },
@@ -1178,6 +1186,7 @@ export default function CajaPage() {
   const [movimientosTotales, setMovimientosTotales] = useState<Movimiento[]>([])
   const [loading, setLoading] = useState(true)
   const [catFiltro, setCatFiltro] = useState<FiltroGrupo>('todos')
+  const [filtroMetodo, setFiltroMetodo] = useState<FiltroMetodo>('todos')
   const [busqueda, setBusqueda] = useState('')
   const [gastoModal, setGastoModal] = useState<{ titulo: string; descripcionInicial: string } | null>(null)
   const [ajusteOpen, setAjusteOpen] = useState<{ cuentaInicial?: string } | null>(null)
@@ -1239,6 +1248,17 @@ export default function CajaPage() {
         }
       })
     }
+    if (filtroMetodo !== 'todos') {
+      r = r.filter(m => {
+        const mp = m.metodoPago?.trim().toLowerCase() ?? ''
+        switch (filtroMetodo) {
+          case 'efectivo':    return mp === 'efectivo'
+          case 'nequi':       return mp === 'nequi'
+          case 'caja_fuerte': return m.cuentaEspecial === 'caja_fuerte' || mp === 'caja fuerte'
+          default:            return true
+        }
+      })
+    }
     if (busqueda.trim()) {
       const q = busqueda.trim().toLowerCase()
       r = r.filter(m =>
@@ -1248,7 +1268,7 @@ export default function CajaPage() {
       )
     }
     return r
-  }, [movimientos, catFiltro, busqueda])
+  }, [movimientos, catFiltro, filtroMetodo, busqueda])
 
   const totalesFiltrados = useMemo(() => {
     let ingresos = 0
@@ -1665,6 +1685,18 @@ export default function CajaPage() {
                 catFiltro === f.id
                   ? 'bg-blue-700 text-white border-blue-700'
                   : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+              }`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1.5 pt-1 border-t border-gray-100">
+          {FILTROS_METODO.map(f => (
+            <button
+              key={f.id}
+              onClick={() => setFiltroMetodo(f.id)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                filtroMetodo === f.id ? f.activeColor : f.color
               }`}>
               {f.label}
             </button>
