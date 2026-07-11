@@ -19,6 +19,19 @@ const TIPOS_DOCUMENTO = [
   { value: 'PEP', label: 'Permiso especial de permanencia' },
 ]
 
+const TIPOS_CONTRATO = [
+  { value: '', label: '— Sin especificar —' },
+  { value: 'indefinido',    label: 'Empleado término indefinido' },
+  { value: 'fijo',          label: 'Empleado término fijo' },
+  { value: 'prestacion',    label: 'Prestación de servicios' },
+  { value: 'obra_labor',    label: 'Obra o labor' },
+  { value: 'independiente', label: 'Independiente / Cuenta propia' },
+  { value: 'pensionado',    label: 'Pensionado / Jubilado' },
+  { value: 'estudiante',    label: 'Estudiante' },
+  { value: 'sin_contrato',  label: 'Sin contrato' },
+  { value: 'otro',          label: 'Otro' },
+]
+
 type Campos = {
   primer_nombre: string
   segundo_nombre: string
@@ -33,12 +46,17 @@ type Campos = {
   ciudad: string
   descuentos: string
   lugar_matricula: string
+  ocupacion: string
+  tipo_contrato: string
+  ingresos_mensuales: string
+  gastos_mensuales: string
 }
 
 const VACIO: Campos = {
   primer_nombre: '', segundo_nombre: '', primer_apellido: '', segundo_apellido: '',
   tipo_documento: 'CC', cedula: '', email: '', celular: '', direccion: '', municipio: '', ciudad: '',
   descuentos: '', lugar_matricula: '',
+  ocupacion: '', tipo_contrato: '', ingresos_mensuales: '', gastos_mensuales: '',
 }
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
@@ -81,8 +99,10 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
       const nombreCompleto = [campos.primer_nombre, campos.segundo_nombre, campos.primer_apellido, campos.segundo_apellido]
         .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
 
-      const update: Record<string, string | null> = { ...campos }
+      const update: Record<string, string | number | null> = { ...campos }
       if (nombreCompleto) update.nombre = nombreCompleto
+      update.ingresos_mensuales = campos.ingresos_mensuales ? parseInt(campos.ingresos_mensuales, 10) : null
+      update.gastos_mensuales   = campos.gastos_mensuales   ? parseInt(campos.gastos_mensuales,   10) : null
 
       const { error } = await supabase.from('clientes').update(update).eq('id', clienteId)
       if (error) throw new Error(error.message)
@@ -148,6 +168,36 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-2">Otros</p>
       <Field label="Descuentos que le aplican" value={campos.descuentos} onChange={v => set('descuentos', v)} />
       <Field label="Lugar de matrícula de la moto" value={campos.lugar_matricula} onChange={v => set('lugar_matricula', v)} />
+
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-2">Información financiera</p>
+      <Field label="Ocupación" value={campos.ocupacion} onChange={v => set('ocupacion', v)} />
+      <div>
+        <label className="text-xs text-gray-500">Tipo de contrato</label>
+        <select value={campos.tipo_contrato} onChange={e => set('tipo_contrato', e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5">
+          {TIPOS_CONTRATO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-gray-500">Ingresos mensuales ($)</label>
+          <input
+            value={campos.ingresos_mensuales ? Number(campos.ingresos_mensuales).toLocaleString('es-CO') : ''}
+            onChange={e => set('ingresos_mensuales', e.target.value.replace(/\D/g, ''))}
+            inputMode="numeric"
+            placeholder="Ej: 2.000.000"
+            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">Gastos mensuales ($)</label>
+          <input
+            value={campos.gastos_mensuales ? Number(campos.gastos_mensuales).toLocaleString('es-CO') : ''}
+            onChange={e => set('gastos_mensuales', e.target.value.replace(/\D/g, ''))}
+            inputMode="numeric"
+            placeholder="Ej: 800.000"
+            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+        </div>
+      </div>
 
       <button onClick={guardar} disabled={saving}
         className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 mt-2">
