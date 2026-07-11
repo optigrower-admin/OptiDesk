@@ -1112,8 +1112,8 @@ export default function AdminOrdenDetallePage() {
   // siempre queden visibles juntas, sin depender de hover ni de que la tabla no haga scroll.
   const accionesRepuesto = (onEditar: () => void, onEliminar: () => void, fechaNode?: React.ReactNode) => {
     return (
-      <div className="flex items-center justify-end gap-1.5 flex-nowrap">
-        {fechaNode}
+      <div className="flex flex-col items-end gap-0.5">
+        {fechaNode && <div className="flex-shrink-0">{fechaNode}</div>}
         <div className="flex gap-0.5 flex-shrink-0">
           <button onClick={onEditar} className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded p-1.5" title="Editar">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2351,7 +2351,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       <th className="text-left py-2 px-3 font-medium w-28">Método prov.</th>
                       <th className="text-right py-2 px-3 font-medium w-24">P. proveedor</th>
                       <th className="text-right py-2 px-3 font-medium w-24">P. venta</th>
-                      <th className="text-right py-2 px-3 font-medium w-36">Acciones</th>
+                      <th className="text-right py-2 px-3 font-medium w-24">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2427,7 +2427,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     <th className="text-left py-1 px-2 font-medium w-24 hidden sm:table-cell">Método prov.</th>
                     <th className="text-right py-1 px-2 font-medium w-20 hidden sm:table-cell">Costo</th>
                     <th className="text-right py-1 px-2 font-medium w-20">P. venta</th>
-                    <th className="text-right py-1 px-2 font-medium w-28">Acciones</th>
+                    <th className="text-right py-1 px-2 font-medium w-24">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2609,7 +2609,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     <tr className="text-xs text-gray-500 uppercase border-b bg-orange-50">
                       <th className="text-left py-2 px-4 font-medium">Descripción</th>
                       <th className="text-right py-2 px-4 font-medium w-24">Valor</th>
-                      <th className="text-right py-2 px-4 font-medium w-36">Acciones</th>
+                      <th className="text-right py-2 px-4 font-medium w-24">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
