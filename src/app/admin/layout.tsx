@@ -15,6 +15,7 @@ type NavItem = {
   rolesPermitidos?: ('gerencia' | 'dueno')[]
   defaultOrden: number
   external?: boolean
+  exactMatch?: boolean
 }
 
 type NavGroup = {
@@ -50,9 +51,10 @@ const NAV_GROUPS: NavGroup[] = [
     key: 'ventas',
     label: 'Ventas',
     items: [
-      { href: '/admin/ventas',        label: 'Seguimiento Ventas', seccion: 'ventas',        soloGerencia: false, defaultOrden: 55 },
-      { href: '/admin/lista-precios', label: 'Lista de Motos',     seccion: 'lista_motos',    soloGerencia: false, defaultOrden: 56 },
-      { href: '/admin/config-ventas', label: 'Config Ventas',      seccion: 'config_ventas',  soloGerencia: true,  defaultOrden: 57 },
+      { href: '/admin/ventas',             label: 'Seguimiento Ventas',       seccion: 'ventas',        soloGerencia: false, defaultOrden: 55, exactMatch: true },
+      { href: '/admin/ventas/actividades', label: 'Seguimiento Actividades',  seccion: 'ventas',        soloGerencia: false, defaultOrden: 56 },
+      { href: '/admin/lista-precios',      label: 'Lista de Motos',           seccion: 'lista_motos',    soloGerencia: false, defaultOrden: 57 },
+      { href: '/admin/config-ventas',      label: 'Config Ventas',            seccion: 'config_ventas',  soloGerencia: true,  defaultOrden: 58 },
     ],
   },
   {
@@ -576,7 +578,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                           onClick={() => setMobileNavOpen(false)}
                           className={cn(
                             'flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-colors',
-                            pathname.startsWith(item.href)
+                            (item.exactMatch ? pathname === item.href : pathname.startsWith(item.href))
                               ? 'bg-blue-50 text-blue-700 font-semibold'
                               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                           )}

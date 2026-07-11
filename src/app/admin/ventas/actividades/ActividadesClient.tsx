@@ -1,0 +1,597 @@
+'use client'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { createClient } from '@/lib/supabase/client'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+type Vista = 'lista' | 'calendario'
+type Filtro = 'todas' | 'pendientes' | 'completadas'
+
+type ClienteResumen = {
+  id: string
+  nombre: string | null
+  celular: string | null
+  cedula: string | null
+  placa: string | null
+  numero_factura: string | null
+  assigned_to: string | null
+  etapa_venta: string | null
+  moto: string | null
+}
+
+type Actividad = {
+  id: string
+  tipo: 'recordatorio' | 'paso'
+  descripcion: string
+  fecha: string | null
+  completado: boolean
+  clienteId: string
+  clienteNombre: string
+  clienteCelular: string | null
+  clienteCedula: string | null
+  clientePlaca: string | null
+  clienteFactura: string | null
+  clienteMoto: string | null
+  asignadoId: string | null
+  asignadoNombre: string | null
+}
+
+interface Props {
+  tenantId: string
+  usuarioId: string
+  rol: string
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function fmtFecha(iso: string) {
+  return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+function fmtDia(iso: string) {
+  return new Date(iso).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })
+}
+function soloFecha(iso: string) {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function hoy() { return soloFecha(new Date().toISOString()) }
+function estaSemanaDe(iso: string) {
+  const d = new Date(iso); const h = new Date()
+  const diff = (d.getTime() - h.getTime()) / 86400000
+  return diff >= 0 && diff < 7
+}
+function esVencida(iso: string) {
+  return soloFecha(iso) < hoy()
+}
+
+// ─── Pequeño CalendarioMes ─────────────────────────────────────────────────────
+function CalendarioMes({
+  anio, mes, actividadesPorDia, diaSeleccionado, onSelectDia,
+}: {
+  anio: number; mes: number; actividadesPorDia: Map<string, Actividad[]>
+  diaSeleccionado: string | null; onSelectDia: (d: string | null) => void
+}) {
+  const primerDia = new Date(anio, mes, 1).getDay() // 0=Dom
+  const diasEnMes = new Date(anio, mes + 1, 0).getDate()
+  const celdas: (number | null)[] = Array(primerDia).fill(null)
+  for (let i = 1; i <= diasEnMes; i++) celdas.push(i)
+  while (celdas.length % 7 !== 0) celdas.push(null)
+
+  const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
+  return (
+    <div>
+      <div className="grid grid-cols-7 mb-1">
+        {diasSemana.map(d => (
+          <div key={d} className="text-center text-xs font-semibold text-gray-400 py-1">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-px bg-gray-100 border border-gray-100 rounded-xl overflow-hidden">
+        {celdas.map((dia, idx) => {
+          if (!dia) return <div key={idx} className="bg-white h-16 sm:h-20" />
+          const key = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
+          const acts = actividadesPorDia.get(key) ?? []
+          const isHoy = key === hoy()
+          const isSel = key === diaSeleccionado
+          const pendientes = acts.filter(a => !a.completado)
+          const completadas = acts.filter(a => a.completado)
+          return (
+            <button
+              key={idx}
+              onClick={() => onSelectDia(isSel ? null : key)}
+              className={`bg-white h-16 sm:h-20 flex flex-col items-start p-1 sm:p-1.5 text-left transition-colors hover:bg-blue-50 relative ${
+                isSel ? 'ring-2 ring-inset ring-blue-500' : ''
+              }`}
+            >
+              <span className={`text-xs font-semibold mb-0.5 w-5 h-5 flex items-center justify-center rounded-full ${
+                isHoy ? 'bg-blue-600 text-white' : 'text-gray-700'
+              }`}>
+                {dia}
+              </span>
+              <div className="flex flex-col gap-0.5 w-full min-w-0">
+                {pendientes.length > 0 && (
+                  <div className="text-[10px] leading-tight bg-orange-100 text-orange-700 rounded px-1 font-medium truncate">
+                    {pendientes.length} pend.
+                  </div>
+                )}
+                {completadas.length > 0 && (
+                  <div className="text-[10px] leading-tight bg-green-100 text-green-700 rounded px-1 font-medium truncate">
+                    {completadas.length} hecha{completadas.length > 1 ? 's' : ''}
+                  </div>
+                )}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Fila de actividad ─────────────────────────────────────────────────────────
+function FilaActividad({
+  act, onToggle, saving,
+}: {
+  act: Actividad; onToggle: (a: Actividad) => void; saving: boolean
+}) {
+  const vencida = act.fecha && !act.completado && esVencida(act.fecha)
+  return (
+    <div className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
+      act.completado
+        ? 'bg-gray-50 border-gray-100'
+        : vencida
+          ? 'bg-red-50 border-red-200'
+          : 'bg-white border-gray-200'
+    }`}>
+      <button
+        onClick={() => onToggle(act)}
+        disabled={saving}
+        className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+          act.completado
+            ? 'bg-green-500 border-green-500 text-white'
+            : 'border-gray-300 hover:border-blue-500'
+        }`}
+      >
+        {act.completado && (
+          <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+      </button>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div className="min-w-0">
+            <a
+              href={`/admin/ventas?abrir=${act.clienteId}`}
+              className="text-sm font-semibold text-blue-700 hover:underline"
+            >
+              {act.clienteNombre}
+            </a>
+            {act.asignadoNombre && (
+              <span className="ml-2 text-xs text-gray-500">· {act.asignadoNombre}</span>
+            )}
+          </div>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
+            act.tipo === 'recordatorio'
+              ? 'bg-blue-100 text-blue-700'
+              : 'bg-purple-100 text-purple-700'
+          }`}>
+            {act.tipo === 'recordatorio' ? '🔔 Recordatorio' : '✅ Paso'}
+          </span>
+        </div>
+
+        <p className={`text-sm mt-0.5 ${act.completado ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+          {act.descripcion}
+        </p>
+
+        {act.fecha && (
+          <p className={`text-xs mt-0.5 font-medium ${
+            act.completado ? 'text-gray-400' : vencida ? 'text-red-600' : 'text-gray-500'
+          }`}>
+            {vencida && !act.completado ? '⏰ Vencida · ' : '📅 '}{fmtFecha(act.fecha)}
+          </p>
+        )}
+
+        <div className="flex gap-2 mt-0.5 flex-wrap">
+          {act.clienteMoto && (
+            <span className="text-[10px] text-gray-400">{act.clienteMoto}</span>
+          )}
+          {act.clientePlaca && (
+            <span className="text-[10px] bg-teal-50 text-teal-700 px-1.5 py-0.5 rounded font-mono">
+              {act.clientePlaca.toUpperCase()}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Principal ────────────────────────────────────────────────────────────────
+export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
+  const supabase = createClient()
+  const [actividades, setActividades] = useState<Actividad[]>([])
+  const [loading, setLoading] = useState(true)
+  const [vista, setVista] = useState<Vista>('lista')
+  const [filtro, setFiltro] = useState<Filtro>('pendientes')
+  const [busqueda, setBusqueda] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Calendario
+  const ahora = new Date()
+  const [mesVista, setMesVista] = useState(ahora.getMonth())
+  const [anioVista, setAnioVista] = useState(ahora.getFullYear())
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null)
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+
+    // 1. Clientes en seguimiento
+    const { data: clientes } = await supabase
+      .from('clientes')
+      .select(`
+        id, nombre, celular, cedula, placa, numero_factura, assigned_to, etapa_venta,
+        clientes_motos_interes(motos_catalogo(referencia))
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('en_seguimiento_ventas', true)
+
+    if (!clientes || clientes.length === 0) { setActividades([]); setLoading(false); return }
+
+    // 2. Usuarios para nombres de asesores
+    const { data: usuarios } = await supabase
+      .from('usuarios')
+      .select('id, nombre')
+      .eq('tenant_id', tenantId)
+
+    const usuarioMap = new Map((usuarios ?? []).map(u => [u.id as string, u.nombre as string]))
+
+    const clienteMap = new Map<string, ClienteResumen>()
+    for (const c of clientes) {
+      const misInt = Array.isArray(c.clientes_motos_interes) ? c.clientes_motos_interes : []
+      const primerInt = misInt[0]
+      const mc = primerInt ? (Array.isArray(primerInt.motos_catalogo) ? primerInt.motos_catalogo[0] : primerInt.motos_catalogo) : null
+      clienteMap.set(c.id as string, {
+        id: c.id as string,
+        nombre: c.nombre as string | null,
+        celular: c.celular as string | null,
+        cedula: c.cedula as string | null,
+        placa: c.placa as string | null,
+        numero_factura: c.numero_factura as string | null,
+        assigned_to: c.assigned_to as string | null,
+        etapa_venta: c.etapa_venta as string | null,
+        moto: (mc as { referencia?: string } | null)?.referencia ?? null,
+      })
+    }
+
+    const ids = [...clienteMap.keys()]
+
+    // 3. Recordatorios y pasos en paralelo
+    const [{ data: recs }, { data: pasos }] = await Promise.all([
+      supabase.from('recordatorios')
+        .select('id, nota, fecha_recordatorio, completado, cliente_id')
+        .in('cliente_id', ids)
+        .order('fecha_recordatorio', { ascending: true }),
+      supabase.from('clientes_pasos')
+        .select('id, descripcion, completado, orden, cliente_id')
+        .in('cliente_id', ids)
+        .order('orden', { ascending: true }),
+    ])
+
+    const actsRec: Actividad[] = (recs ?? []).map(r => {
+      const c = clienteMap.get(r.cliente_id as string)
+      return {
+        id: `rec-${r.id}`,
+        tipo: 'recordatorio',
+        descripcion: r.nota ?? '(sin nota)',
+        fecha: r.fecha_recordatorio as string,
+        completado: !!r.completado,
+        clienteId: r.cliente_id as string,
+        clienteNombre: c?.nombre ?? 'Cliente',
+        clienteCelular: c?.celular ?? null,
+        clienteCedula: c?.cedula ?? null,
+        clientePlaca: c?.placa ?? null,
+        clienteFactura: c?.numero_factura ?? null,
+        clienteMoto: c?.moto ?? null,
+        asignadoId: c?.assigned_to ?? null,
+        asignadoNombre: c?.assigned_to ? (usuarioMap.get(c.assigned_to) ?? null) : null,
+      }
+    })
+
+    const actsPaso: Actividad[] = (pasos ?? []).map(p => {
+      const c = clienteMap.get(p.cliente_id as string)
+      return {
+        id: `paso-${p.id}`,
+        tipo: 'paso',
+        descripcion: p.descripcion as string,
+        fecha: null,
+        completado: !!p.completado,
+        clienteId: p.cliente_id as string,
+        clienteNombre: c?.nombre ?? 'Cliente',
+        clienteCelular: c?.celular ?? null,
+        clienteCedula: c?.cedula ?? null,
+        clientePlaca: c?.placa ?? null,
+        clienteFactura: c?.numero_factura ?? null,
+        clienteMoto: c?.moto ?? null,
+        asignadoId: c?.assigned_to ?? null,
+        asignadoNombre: c?.assigned_to ? (usuarioMap.get(c.assigned_to) ?? null) : null,
+      }
+    })
+
+    setActividades([...actsRec, ...actsPaso])
+    setLoading(false)
+  }, [tenantId, supabase])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  async function toggleActividad(act: Actividad) {
+    setSaving(true)
+    const nuevoEstado = !act.completado
+    const rawId = act.id.replace(/^(rec|paso)-/, '')
+
+    if (act.tipo === 'recordatorio') {
+      await supabase.from('recordatorios').update({
+        completado: nuevoEstado,
+        completado_at: nuevoEstado ? new Date().toISOString() : null,
+      }).eq('id', rawId)
+      // Sincronizar proxima_accion en el cliente
+      if (nuevoEstado) {
+        const { data: prox } = await supabase.from('recordatorios')
+          .select('nota, fecha_recordatorio')
+          .eq('cliente_id', act.clienteId).eq('completado', false)
+          .order('fecha_recordatorio', { ascending: true }).limit(1).maybeSingle()
+        await supabase.from('clientes').update({
+          proxima_accion: prox?.nota ?? null,
+          proxima_accion_fecha: prox?.fecha_recordatorio ?? null,
+        }).eq('id', act.clienteId)
+      }
+    } else {
+      await supabase.from('clientes_pasos').update({
+        completado: nuevoEstado,
+        completado_por: nuevoEstado ? usuarioId : null,
+        completado_at: nuevoEstado ? new Date().toISOString() : null,
+      }).eq('id', rawId)
+    }
+
+    setActividades(prev => prev.map(a => a.id === act.id ? { ...a, completado: nuevoEstado } : a))
+    setSaving(false)
+  }
+
+  // ─── Búsqueda y filtro ────────────────────────────────────────────────────
+  const filtradas = useMemo(() => {
+    let lista = actividades
+    if (filtro === 'pendientes') lista = lista.filter(a => !a.completado)
+    if (filtro === 'completadas') lista = lista.filter(a => a.completado)
+    if (busqueda.trim()) {
+      const q = busqueda.toLowerCase().trim()
+      lista = lista.filter(a =>
+        a.clienteNombre.toLowerCase().includes(q) ||
+        a.clienteCelular?.includes(q) ||
+        a.clienteCedula?.includes(q) ||
+        a.clienteMoto?.toLowerCase().includes(q) ||
+        a.clientePlaca?.toLowerCase().includes(q) ||
+        a.clienteFactura?.toLowerCase().includes(q) ||
+        a.descripcion.toLowerCase().includes(q)
+      )
+    }
+    return lista
+  }, [actividades, filtro, busqueda])
+
+  // ─── Lista agrupada ────────────────────────────────────────────────────────
+  const grupos = useMemo(() => {
+    const conFecha = filtradas.filter(a => a.fecha)
+    const sinFecha = filtradas.filter(a => !a.fecha)
+    const vencidas = conFecha.filter(a => !a.completado && esVencida(a.fecha!))
+      .sort((a, b) => a.fecha!.localeCompare(b.fecha!))
+    const hoyActs = conFecha.filter(a => soloFecha(a.fecha!) === hoy())
+    const semana = conFecha.filter(a => soloFecha(a.fecha!) > hoy() && estaSemanaDe(a.fecha!))
+    const despues = conFecha.filter(a => {
+      const sf = soloFecha(a.fecha!)
+      return sf > hoy() && !estaSemanaDe(a.fecha!)
+    })
+    const completadasConFecha = conFecha.filter(a => a.completado)
+    return [
+      { label: '⏰ Vencidas', items: vencidas, accent: 'text-red-600' },
+      { label: '📅 Hoy', items: hoyActs, accent: 'text-blue-700' },
+      { label: '📆 Esta semana', items: semana, accent: 'text-indigo-600' },
+      { label: '🗓 Más adelante', items: despues, accent: 'text-gray-600' },
+      { label: '✅ Sin fecha (pasos)', items: sinFecha.filter(a => !a.completado), accent: 'text-purple-600' },
+      { label: '✓ Completadas', items: [...completadasConFecha, ...sinFecha.filter(a => a.completado)], accent: 'text-gray-400' },
+    ].filter(g => g.items.length > 0)
+  }, [filtradas])
+
+  // ─── Calendario: actividades por día ──────────────────────────────────────
+  const actividadesPorDia = useMemo(() => {
+    const map = new Map<string, Actividad[]>()
+    for (const a of filtradas) {
+      if (!a.fecha) continue
+      const key = soloFecha(a.fecha)
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(a)
+    }
+    return map
+  }, [filtradas])
+
+  const actsDiaSeleccionado = diaSeleccionado ? (actividadesPorDia.get(diaSeleccionado) ?? []) : []
+
+  const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
+  function prevMes() {
+    if (mesVista === 0) { setMesVista(11); setAnioVista(y => y - 1) }
+    else setMesVista(m => m - 1)
+    setDiaSeleccionado(null)
+  }
+  function nextMes() {
+    if (mesVista === 11) { setMesVista(0); setAnioVista(y => y + 1) }
+    else setMesVista(m => m + 1)
+    setDiaSeleccionado(null)
+  }
+
+  const pendientesTotal = actividades.filter(a => !a.completado).length
+  const vencidasTotal = actividades.filter(a => !a.completado && a.fecha && esVencida(a.fecha)).length
+
+  return (
+    <div className="p-5 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Seguimiento de Actividades</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {pendientesTotal} pendiente{pendientesTotal !== 1 ? 's' : ''}
+            {vencidasTotal > 0 && (
+              <span className="ml-2 text-red-600 font-medium">· ⏰ {vencidasTotal} vencida{vencidasTotal !== 1 ? 's' : ''}</span>
+            )}
+          </p>
+        </div>
+
+        {/* Toggle vista */}
+        <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+          {([
+            { id: 'lista', label: 'Lista' },
+            { id: 'calendario', label: 'Calendario' },
+          ] as { id: Vista; label: string }[]).map(v => (
+            <button
+              key={v.id}
+              onClick={() => setVista(v.id)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                vista === v.id ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Buscador + filtro */}
+      <div className="flex gap-3 mb-4 flex-wrap items-center">
+        <div className="relative flex-1 min-w-52 max-w-sm">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+          <input
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            placeholder="Buscar por cliente, cédula, celular, moto, placa o factura..."
+            className="w-full pl-8 pr-8 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          />
+          {busqueda && (
+            <button onClick={() => setBusqueda('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">
+              ×
+            </button>
+          )}
+        </div>
+
+        <div className="flex gap-1.5">
+          {([
+            { id: 'pendientes', label: 'Pendientes' },
+            { id: 'todas', label: 'Todas' },
+            { id: 'completadas', label: 'Realizadas' },
+          ] as { id: Filtro; label: string }[]).map(f => (
+            <button
+              key={f.id}
+              onClick={() => setFiltro(f.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                filtro === f.id
+                  ? 'bg-blue-700 text-white border-blue-700'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading && (
+        <div className="text-center py-16 text-gray-400 text-sm">Cargando actividades...</div>
+      )}
+
+      {!loading && filtradas.length === 0 && (
+        <div className="text-center py-16 text-gray-400 text-sm">
+          {busqueda.trim() ? 'Sin resultados para esa búsqueda.' : filtro === 'pendientes' ? 'Sin actividades pendientes.' : 'Sin actividades.'}
+        </div>
+      )}
+
+      {/* ── LISTA ── */}
+      {!loading && vista === 'lista' && filtradas.length > 0 && (
+        <div className="space-y-6">
+          {grupos.map(g => (
+            <div key={g.label}>
+              <p className={`text-xs font-semibold uppercase tracking-wide mb-2 ${g.accent}`}>{g.label}</p>
+              <div className="space-y-2">
+                {g.items.map(act => (
+                  <FilaActividad key={act.id} act={act} onToggle={toggleActividad} saving={saving} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── CALENDARIO ── */}
+      {!loading && vista === 'calendario' && (
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr,360px] gap-6">
+          <div>
+            {/* Nav mes */}
+            <div className="flex items-center justify-between mb-3">
+              <button onClick={prevMes} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h2 className="font-semibold text-gray-800">
+                {MESES[mesVista]} {anioVista}
+              </h2>
+              <button onClick={nextMes} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+
+            <CalendarioMes
+              anio={anioVista}
+              mes={mesVista}
+              actividadesPorDia={actividadesPorDia}
+              diaSeleccionado={diaSeleccionado}
+              onSelectDia={setDiaSeleccionado}
+            />
+
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              Solo los recordatorios aparecen en el calendario (tienen fecha). Los pasos sin fecha están en la vista Lista.
+            </p>
+          </div>
+
+          {/* Panel lateral del día */}
+          <div>
+            {diaSeleccionado ? (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-gray-800 capitalize">
+                    {fmtDia(diaSeleccionado + 'T12:00:00')}
+                  </p>
+                  <button onClick={() => setDiaSeleccionado(null)}
+                    className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+                {actsDiaSeleccionado.length === 0 ? (
+                  <p className="text-sm text-gray-400 bg-gray-50 rounded-xl px-4 py-6 text-center">
+                    Sin actividades este día
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {actsDiaSeleccionado.map(act => (
+                      <FilaActividad key={act.id} act={act} onToggle={toggleActividad} saving={saving} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-gray-50 rounded-2xl px-6 py-10 text-center">
+                <p className="text-gray-400 text-sm">Selecciona un día para ver sus actividades</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
