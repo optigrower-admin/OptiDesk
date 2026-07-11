@@ -218,7 +218,12 @@ export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
 
       {/* Asesor asignado */}
       {asignado && (
-        <p className="text-xs text-gray-400 mb-1.5 truncate">👤 {asignado}</p>
+        <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1 mb-1.5">
+          <div className="w-5 h-5 rounded-full bg-blue-600 text-white text-[9px] font-black flex items-center justify-center flex-shrink-0">
+            {asignado.charAt(0).toUpperCase()}
+          </div>
+          <span className="text-xs font-semibold text-blue-700 truncate">{asignado}</span>
+        </div>
       )}
 
       {/* Indicadores de urgencia */}
