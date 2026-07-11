@@ -65,11 +65,12 @@ const ROL_LABEL: Record<string, string> = {
   admin: 'Admin', superadmin: 'SuperAdmin', mecanico: 'Mecánico', gerencia: 'Gerencia', control_total: 'Control total',
 }
 
-type TabDerecha = 'resumen' | 'datos' | 'motos' | 'cotizacion' | 'pago' | 'archivos' | 'comentarios' | 'pasos' | 'recordatorios' | 'historial' | 'visibilidad'
+type TabDerecha = 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizacion' | 'pago' | 'archivos' | 'comentarios' | 'pasos' | 'recordatorios' | 'historial' | 'visibilidad'
 
 const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'resumen',       label: 'Resumen',       icon: '📋' },
   { id: 'datos',         label: 'Datos',         icon: '🪪' },
+  { id: 'chats',         label: 'Chats',         icon: '📱' },
   { id: 'motos',         label: 'Motos',         icon: '🏍️' },
   { id: 'cotizacion',    label: 'Cotización',    icon: '📄' },
   { id: 'pago',          label: 'Pago',          icon: '💳' },
@@ -320,11 +321,27 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           />
         </div>
 
+        {/* ── Tabs en fila única ── */}
+        <div className="flex border-b flex-shrink-0 overflow-x-auto">
+          {[...TABS, ...(esGerencia ? TABS_GERENCIA : [])].map(t => (
+            <button key={t.id} onClick={() => setTabDer(t.id)}
+              className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-2 text-[10px] font-semibold whitespace-nowrap border-b-2 transition-colors ${
+                tabDer === t.id
+                  ? (t.id === 'historial' || t.id === 'visibilidad'
+                      ? 'border-purple-500 bg-purple-50 text-purple-700'
+                      : 'border-blue-600 bg-blue-50 text-blue-700')
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}>
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+
         {/* Body */}
         <div className="flex flex-1 min-h-0">
 
-          {/* ── Chat (45%) ── */}
-          <div className="w-[45%] flex flex-col border-r">
+          {/* ── Chat ── */}
+          <div className={`flex-1 flex flex-col ${tabDer !== 'chats' ? 'hidden' : ''}`}>
 
             {lead.todas_conversaciones.length > 0 && (
               <div className="flex border-b bg-gray-50 px-2 pt-1.5 gap-0.5 flex-shrink-0 overflow-x-auto">
@@ -347,15 +364,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     )}
                   </button>
                 ))}
-              </div>
-            )}
-
-            {lead.todas_conversaciones.length === 0 && (
-              <div className="flex-1 flex items-center justify-center bg-gray-50">
-                <p className="text-sm text-gray-400 text-center px-6">
-                  Este cliente no tiene chat en ningún canal todavía.<br />
-                  El seguimiento se está haciendo en persona / por teléfono.
-                </p>
               </div>
             )}
 
@@ -467,25 +475,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
             )}
           </div>
 
-          {/* ── Panel derecho (55%) ── */}
-          <div className="w-[55%] flex flex-col min-h-0">
-            <div className="grid grid-cols-3 flex-shrink-0">
-              {[...TABS, ...(esGerencia ? TABS_GERENCIA : [])].map(t => (
-                <button key={t.id} onClick={() => setTabDer(t.id)}
-                  className={`py-2 border-b border-r border-gray-100 text-[10px] font-semibold transition-colors flex flex-col items-center gap-0.5 ${
-                    tabDer === t.id
-                      ? (t.id === 'historial' || t.id === 'visibilidad'
-                          ? 'bg-purple-50 text-purple-700'
-                          : 'bg-blue-50 text-blue-700')
-                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-                  }`}>
-                  <span className="text-sm leading-none">{t.icon}</span>
-                  <span className="leading-tight">{t.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4">
+          <div className={`flex-1 overflow-y-auto p-4 ${tabDer === 'chats' ? 'hidden' : ''}`}>
 
               {tabDer === 'resumen' && (
                 <div className="space-y-4">
@@ -602,7 +592,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               {tabDer === 'recordatorios' && <RecordatoriosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={clienteEmail} onProximaAccionChange={(proxAccion, proxFecha) => onLeadUpdate?.(lead.id, { proxima_accion: proxAccion, proxima_accion_fecha: proxFecha })} />}
               {tabDer === 'historial'     && <HistorialTab clienteId={lead.id} />}
               {tabDer === 'visibilidad' && esGerencia && <VisibilidadTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
-            </div>
           </div>
         </div>
       </div>
