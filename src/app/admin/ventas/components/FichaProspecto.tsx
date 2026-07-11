@@ -192,30 +192,59 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     } finally { setSending(false) }
   }
 
-  const guardarVenta = async () => {
+  // Registra cualquier cambio en historial (defensivo: no rompe si la tabla aún no existe)
+  const logCambio = useCallback(async (campo: string, valorAnterior: string | null, valorNuevo: string) => {
+    try {
+      await supabase.from('historial_cambios_cliente').insert({
+        cliente_id: lead.id,
+        tenant_id: tenantId,
+        usuario_id: profile?.id ?? null,
+        campo,
+        valor_anterior: valorAnterior ?? null,
+        valor_nuevo: valorNuevo,
+      })
+    } catch { /* tabla aún no existe — ignorar */ }
+  }, [lead.id, tenantId, profile?.id, supabase])
+
+  const mostrarGuardado = useCallback(() => {
+    setSavedOk(true)
+    setTimeout(() => setSavedOk(false), 2000)
+  }, [])
+
+  // Auto-guarda etapa al cambiarla en el select
+  const autoSaveEtapa = async (newEtapa: EtapaVenta) => {
+    const prev = etapa
+    setEtapa(newEtapa)
     setSaving(true)
     try {
       const res = await fetch('/api/admin/ventas/guardar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cliente_id:  lead.id,
-          etapa_venta: etapa,
-          ...(esGerencia ? { assigned_to: assignedTo || null } : {}),
-        }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cliente_id: lead.id, etapa_venta: newEtapa }),
       })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(json.error ?? 'Error al guardar')
+      if (res.ok) {
+        onEtapaChange(lead.id, newEtapa)
+        mostrarGuardado()
+        await logCambio('etapa', ETAPA_MAP[prev]?.label ?? prev, ETAPA_MAP[newEtapa]?.label ?? newEtapa)
       }
-      if (etapa !== lead.etapa_venta) onEtapaChange(lead.id, etapa)
-      setSavedOk(true)
-      setTimeout(() => setSavedOk(false), 2000)
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Error al guardar')
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
+  }
+
+  // Auto-guarda asesor al cambiarlo en el select (solo gerencia)
+  const autoSaveAssigned = async (newId: string) => {
+    const prevNombre = usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'
+    setAssignedTo(newId)
+    setSaving(true)
+    try {
+      const res = await fetch('/api/admin/ventas/guardar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cliente_id: lead.id, assigned_to: newId || null }),
+      })
+      if (res.ok) {
+        mostrarGuardado()
+        const newNombre = usuarios.find(u => u.id === newId)?.nombre ?? 'Sin asignar'
+        await logCambio('asignado_a', prevNombre, newNombre)
+      }
+    } finally { setSaving(false) }
   }
 
   const handleRenombrar = async () => {
@@ -232,36 +261,57 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   const guardarCelular = async () => {
     const cel = celularInput.trim()
-    if (!cel) return
+    if (!cel || cel === celularActual) return
     setSavingCelular(true)
-    await supabase.from('clientes').update({ celular: cel }).eq('id', lead.id).eq('tenant_id', tenantId)
-    setCelularActual(cel)
+    const { error } = await supabase.from('clientes').update({ celular: cel }).eq('id', lead.id).eq('tenant_id', tenantId)
+    if (error) {
+      alert(`No se pudo guardar el celular: ${error.message}`)
+      setCelularInput(celularActual)
+    } else {
+      await logCambio('celular', celularActual || null, cel)
+      setCelularActual(cel)
+      onLeadUpdate?.(lead.id, { celular: cel })
+      mostrarGuardado()
+    }
     setSavingCelular(false)
-    onLeadUpdate?.(lead.id, { celular: cel })
   }
 
   const guardarPlaca = async () => {
     const pl = placaInput.trim().toUpperCase()
-    if (!pl) return
+    if (!pl || pl === placaActual) { setEditandoPlaca(false); return }
     setSavingPlaca(true)
-    await supabase.from('clientes').update({ placa: pl }).eq('id', lead.id).eq('tenant_id', tenantId)
-    setPlacaActual(pl)
-    setPlacaInput(pl)
-    setEditandoPlaca(false)
+    const { error } = await supabase.from('clientes').update({ placa: pl }).eq('id', lead.id).eq('tenant_id', tenantId)
+    if (error) {
+      alert(`No se pudo guardar la placa: ${error.message}`)
+      setPlacaInput(placaActual)
+    } else {
+      await logCambio('placa', placaActual || null, pl)
+      setPlacaActual(pl)
+      setPlacaInput(pl)
+      setEditandoPlaca(false)
+      onLeadUpdate?.(lead.id, { placa: pl })
+      mostrarGuardado()
+    }
     setSavingPlaca(false)
-    onLeadUpdate?.(lead.id, { placa: pl })
   }
 
   const guardarFactura = async () => {
     const fac = facturaInput.trim().toUpperCase()
-    if (!fac) return
+    if (!fac || fac === facturaActual) { setEditandoFactura(false); return }
     setSavingFactura(true)
-    await supabase.from('clientes').update({ numero_factura: fac }).eq('id', lead.id).eq('tenant_id', tenantId)
-    setFacturaActual(fac)
-    setFacturaInput(fac)
-    setEditandoFactura(false)
+    const { error } = await supabase.from('clientes').update({ numero_factura: fac }).eq('id', lead.id).eq('tenant_id', tenantId)
+    if (error) {
+      alert(`No se pudo guardar la factura: ${error.message}`)
+      setFacturaInput(facturaActual)
+    } else {
+      await logCambio('factura', facturaActual || null, fac)
+      setFacturaActual(fac)
+      setFacturaInput(fac)
+      setEditandoFactura(false)
+      onLeadUpdate?.(lead.id, { numero_factura: fac })
+      mostrarGuardado()
+    }
     setSavingFactura(false)
-    onLeadUpdate?.(lead.id, { numero_factura: fac })
   }
 
   const cargarOrdenesUMA = async () => {
@@ -444,19 +494,17 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           <div className="border-b px-4 py-3 bg-orange-50 flex-shrink-0">
             <p className="text-xs font-bold text-orange-700 uppercase tracking-wide mb-1">⚠ Sin número de celular</p>
             <p className="text-[11px] text-orange-600 mb-2.5">Este lead no tiene celular registrado. Agrégalo para poder contactarlo.</p>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <input
                 value={celularInput}
                 onChange={e => setCelularInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') guardarCelular() }}
+                onBlur={guardarCelular}
                 placeholder="Ej: 3001234567"
                 type="tel"
                 className="flex-1 border border-orange-300 bg-white rounded-xl px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-400"
               />
-              <button onClick={guardarCelular} disabled={!celularInput.trim() || savingCelular}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors">
-                {savingCelular ? '...' : '📱 Agregar celular'}
-              </button>
+              {savingCelular && <span className="text-xs text-orange-500 flex-shrink-0">Guardando...</span>}
             </div>
           </div>
         )}
@@ -481,21 +529,19 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
             ) : (
               <>
                 {!placaActual && <p className="text-[11px] text-red-600 mb-2">Ingresa la placa de la moto entregada a este cliente.</p>}
-                <div className="flex gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1">
                   <input
                     value={placaInput}
                     onChange={e => setPlacaInput(e.target.value.toUpperCase())}
                     onKeyDown={e => { if (e.key === 'Enter') guardarPlaca() }}
+                    onBlur={guardarPlaca}
                     placeholder="ABC123"
                     className="flex-1 border border-red-300 bg-white rounded-xl px-3 py-2 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-red-400"
                   />
-                  <button onClick={guardarPlaca} disabled={!placaInput.trim() || savingPlaca}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors">
-                    {savingPlaca ? '...' : placaActual ? 'Guardar' : '🔗 Asignar placa'}
-                  </button>
-                  {editandoPlaca && (
+                  {savingPlaca && <span className="text-xs text-red-500 flex-shrink-0">Guardando...</span>}
+                  {editandoPlaca && !savingPlaca && (
                     <button onClick={() => { setEditandoPlaca(false); setPlacaInput(placaActual) }}
-                      className="px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm hover:bg-gray-200">
+                      className="px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm hover:bg-gray-200 flex-shrink-0">
                       ✕
                     </button>
                   )}
@@ -630,16 +676,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     value={facturaInput}
                     onChange={e => setFacturaInput(e.target.value.toUpperCase())}
                     onKeyDown={e => { if (e.key === 'Enter') guardarFactura() }}
+                    onBlur={guardarFactura}
                     placeholder="Ej: FAC-00123"
                     className="flex-1 border border-orange-300 bg-white rounded-xl px-3 py-2 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-400"
                   />
-                  <button onClick={guardarFactura} disabled={!facturaInput.trim() || savingFactura}
-                    className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors">
-                    {savingFactura ? '...' : facturaActual ? 'Guardar' : '🧾 Asignar'}
-                  </button>
-                  {editandoFactura && (
+                  {savingFactura && <span className="text-xs text-orange-500 flex-shrink-0">Guardando...</span>}
+                  {editandoFactura && !savingFactura && (
                     <button onClick={() => { setEditandoFactura(false); setFacturaInput(facturaActual) }}
-                      className="px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm hover:bg-gray-200">
+                      className="px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm hover:bg-gray-200 flex-shrink-0">
                       ✕
                     </button>
                   )}
@@ -809,20 +853,33 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   </div>
 
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Datos de la venta</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Datos de la venta</p>
+                      {saving && <span className="text-[10px] text-gray-400">Guardando...</span>}
+                      {savedOk && !saving && (
+                        <span className="text-[10px] text-green-600 font-semibold flex items-center gap-0.5">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Guardado
+                        </span>
+                      )}
+                    </div>
                     <div className="space-y-2">
                       <div>
                         <label className="text-xs text-gray-500">Etapa</label>
-                        <select value={etapa} onChange={e => setEtapa(e.target.value as EtapaVenta)}
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5">
+                        <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)}
+                          disabled={saving}
+                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5 disabled:opacity-60">
                           {ETAPAS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="text-xs text-gray-500">Asignado a</label>
                         {esGerencia ? (
-                          <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5">
+                          <select value={assignedTo} onChange={e => autoSaveAssigned(e.target.value)}
+                            disabled={saving}
+                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5 disabled:opacity-60">
                             <option value="">Sin asignar</option>
                             {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                           </select>
@@ -834,23 +891,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                         )}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="relative">
-                    <button onClick={guardarVenta} disabled={saving}
-                      className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
-                      {saving ? 'Guardando...' : 'Guardar cambios'}
-                    </button>
-                    {savedOk && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-green-600 rounded-xl pointer-events-none animate-pulse">
-                        <span className="text-white text-sm font-semibold flex items-center gap-1.5">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Cambios guardados
-                        </span>
-                      </div>
-                    )}
                   </div>
 
                   <ResumenTab

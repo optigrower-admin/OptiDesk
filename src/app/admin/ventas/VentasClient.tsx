@@ -151,22 +151,22 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
         {/* Avisos de duplicado */}
         {buscandoDup && <p className="text-xs text-gray-400 mt-2">Verificando duplicados...</p>}
         {dupCelular && (
-          <div className="mt-3 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">
-            <p className="text-xs font-bold text-amber-800">⚠ Celular ya registrado</p>
-            <p className="text-xs text-amber-700 mt-0.5">
+          <div className="mt-3 bg-red-50 border border-red-300 rounded-xl px-3 py-2.5">
+            <p className="text-xs font-bold text-red-700">🚫 Celular ya registrado</p>
+            <p className="text-xs text-red-600 mt-0.5">
               El número <span className="font-semibold">{celular}</span> ya pertenece a{' '}
               <span className="font-semibold">{dupCelular}</span>.
-              Si continúas, se actualizará ese cliente en Seguimiento Ventas.
+              No se puede crear un nuevo cliente con ese número.
             </p>
           </div>
         )}
         {dupDocumento && (
-          <div className="mt-3 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5">
-            <p className="text-xs font-bold text-amber-800">⚠ Cédula ya registrada</p>
-            <p className="text-xs text-amber-700 mt-0.5">
+          <div className="mt-3 bg-red-50 border border-red-300 rounded-xl px-3 py-2.5">
+            <p className="text-xs font-bold text-red-700">🚫 Cédula ya registrada</p>
+            <p className="text-xs text-red-600 mt-0.5">
               La cédula <span className="font-semibold">{Number(numeroDocumento).toLocaleString('es-CO')}</span> ya pertenece a{' '}
               <span className="font-semibold">{dupDocumento}</span>.
-              Si continúas, se actualizará ese cliente en Seguimiento Ventas.
+              No se puede crear un nuevo cliente con esa cédula.
             </p>
           </div>
         )}
@@ -177,11 +177,9 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
             Cancelar
           </button>
-          <button onClick={crear} disabled={!valido || guardando}
-            className={`flex-1 py-2 text-white rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors ${
-              hayDuplicado ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-700 hover:bg-blue-800'
-            }`}>
-            {guardando ? 'Guardando...' : hayDuplicado ? 'Continuar de todas formas' : 'Crear'}
+          <button onClick={crear} disabled={!valido || guardando || hayDuplicado}
+            className="flex-1 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors">
+            {guardando ? 'Creando...' : 'Crear'}
           </button>
         </div>
       </div>
@@ -378,10 +376,10 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} />
       )}
       {tab === 'hoy' && (
-        <VistaHoy leads={activos} tenantId={tenantId} />
+        <VistaHoy leads={leadsFiltrados} tenantId={tenantId} />
       )}
       {tab === 'lista' && (
-        <VistaLista leads={leadsIniciales} tenantId={tenantId} />
+        <VistaLista leads={leadsFiltrados} tenantId={tenantId} />
       )}
     </div>
   )
