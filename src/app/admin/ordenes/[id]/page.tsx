@@ -2422,24 +2422,29 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-[11px] text-gray-500 uppercase border-b bg-blue-50">
-                    <th className="text-left py-1 px-2 font-medium w-16">Origen</th>
+                    <th className="text-left py-1 px-2 font-medium w-14">Origen</th>
+                    <th className="text-left py-1 px-2 font-medium w-24"># Ref.</th>
                     <th className="text-left py-1 px-2 font-medium">Descripción</th>
                     <th className="text-left py-1 px-2 font-medium w-24 hidden sm:table-cell">Método prov.</th>
                     <th className="text-right py-1 px-2 font-medium w-20 hidden sm:table-cell">Costo</th>
-                    <th className="text-right py-1 px-2 font-medium w-24">P. venta</th>
-                    <th className="text-right py-1 px-2 font-medium w-24">Acciones</th>
+                    <th className="text-right py-1 px-2 font-medium w-20">P. venta</th>
+                    <th className="text-right py-1 px-2 font-medium w-20">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {repuestosItems.length === 0 && (
-                    <tr><td colSpan={6} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
+                    <tr><td colSpan={7} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
                   )}
                   {repuestosItems.map((item) => {
                     const tipoLabel = item.origen === 'uma' ? 'UMA' : item.origen === 'externo' ? 'Externo' : item.descripcion === 'Porta Placas' ? 'Porta Placas' : 'Insumo'
                     const tipoColor = item.origen === 'uma' ? 'blue' : item.origen === 'externo' ? 'amber' : 'purple'
+                    const sepIdx = item.descripcion.indexOf(' - ')
+                    const refCode = item.origen === 'externo' ? 'REPEXT' : item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(0, sepIdx) : '—'
+                    const descClean = item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(sepIdx + 3) : item.descripcion
                     return editingItem?.id === item.id ? (
                       <tr key={item.id} className="border-b bg-blue-50/40">
                         <td className="py-1 px-2"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
+                        <td className="py-1 px-2 text-[11px] font-mono text-gray-400 whitespace-nowrap">{refCode}</td>
                         <td className="py-1 px-2">
                           <input
                             value={editingItem.descripcion}
@@ -2485,11 +2490,12 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       </tr>
                     ) : (
                       <tr key={item.id} className="border-b hover:bg-gray-50">
-                        <td className="py-1.5 px-2"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
-                        <td className="py-1.5 px-2 text-gray-800 truncate max-w-[120px]" title={item.descripcion}>{item.descripcion}</td>
-                        <td className="py-1.5 px-2 text-gray-500 hidden sm:table-cell">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
+                        <td className="py-1.5 px-2 whitespace-nowrap"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
+                        <td className="py-1.5 px-2 text-[11px] font-mono text-gray-400 whitespace-nowrap">{refCode}</td>
+                        <td className="py-1.5 px-2 text-gray-800 max-w-[160px] truncate" title={descClean}>{descClean}</td>
+                        <td className="py-1.5 px-2 text-gray-500 text-xs hidden sm:table-cell">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
                         <td className="py-1.5 px-2 text-right text-gray-500 hidden sm:table-cell">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
-                        <td className="py-1.5 px-2 text-right font-semibold">{formatCOP(item.precio_venta)}</td>
+                        <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>
                         <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
                       </tr>
                     )
