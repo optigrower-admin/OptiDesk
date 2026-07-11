@@ -222,7 +222,7 @@ export default function AdminOrdenDetallePage() {
   // (modal ConsultaRepuestos), quedan en una lista (varios por orden) y se guardan
   // de inmediato, sin esperar a "Guardar cambios".
   const [showAgregarRepuesto, setShowAgregarRepuesto] = useState(false)
-  const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; costo: string; precio: string; metodo_pago_id: string } | null>(null)
+  const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; codigoPrefix: string; costo: string; precio: string; metodo_pago_id: string } | null>(null)
 
   // Lavado de moto — botón "+ Agregar lavado" en la tarjeta de Pagos, con envío explícito
   // (igual a Mano de obra), no autoguardado al perder el foco.
@@ -839,8 +839,11 @@ export default function AdminOrdenDetallePage() {
     const itemActual = items.find((i) => i.id === editingItem.id)
     const precio = parseInt(editingItem.precio.replace(/\D/g, ''), 10) || 0
     const costo = itemActual?.origen === 'externo' ? (parseInt(editingItem.costo.replace(/\D/g, ''), 10) || 0) : 0
+    const descripcionFinal = editingItem.codigoPrefix
+      ? `${editingItem.codigoPrefix} - ${editingItem.descripcion.trim()}`
+      : editingItem.descripcion.trim()
     await actualizarItemRepuesto(editingItem.id, {
-      descripcion: editingItem.descripcion.trim(),
+      descripcion: descripcionFinal,
       precio_venta: precio,
       costo,
       metodo_pago_id: itemActual?.origen === 'externo' ? (editingItem.metodo_pago_id || null) : null,
@@ -849,13 +852,19 @@ export default function AdminOrdenDetallePage() {
     await cargar()
   }
 
-  const iniciarEditarItem = (item: ItemOrden) => setEditingItem({
-    id: item.id,
-    descripcion: item.descripcion,
-    costo: String(item.costo),
-    precio: String(item.precio_venta),
-    metodo_pago_id: item.metodo_pago_id ?? '',
-  })
+  const iniciarEditarItem = (item: ItemOrden) => {
+    const sepIdx = item.descripcion.indexOf(' - ')
+    const codigoPrefix = item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(0, sepIdx) : ''
+    const descripcion = item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(sepIdx + 3) : item.descripcion
+    setEditingItem({
+      id: item.id,
+      descripcion,
+      codigoPrefix,
+      costo: String(item.costo),
+      precio: String(item.precio_venta),
+      metodo_pago_id: item.metodo_pago_id ?? '',
+    })
+  }
 
   // Actualiza un ítem de repuesto ya guardado (UMA/Externo/Insumo/Porta) y recalcula
   // el valor_total de la orden con el cambio ya aplicado.
@@ -2506,12 +2515,27 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                           </div>
                         </td>
                         <td className="py-1 px-2">
-                          <input
-                            value={editingItem.descripcion}
-                            onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
-                            autoFocus
-                            className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
-                          />
+                          {editingItem.codigoPrefix ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs font-mono font-semibold text-gray-500 bg-gray-100 px-1.5 py-1 rounded border border-gray-200 whitespace-nowrap flex-shrink-0">
+                                {editingItem.codigoPrefix} —
+                              </span>
+                              <input
+                                value={editingItem.descripcion}
+                                onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
+                                autoFocus
+                                placeholder="Nombre del repuesto"
+                                className="flex-1 min-w-0 px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <input
+                              value={editingItem.descripcion}
+                              onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
+                              autoFocus
+                              className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
+                            />
+                          )}
                         </td>
                         <td className="py-1 px-2 hidden sm:table-cell">
                           {item.origen === 'externo' ? (
