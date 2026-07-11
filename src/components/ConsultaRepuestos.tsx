@@ -121,6 +121,48 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const provDebRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const umaDebRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  /* ══ EXTERNO — MODO MASIVO ══════════════════════════ */
+  type MasivoRow = { desc: string; costo: number; proveedor: string; precio: number; valida: boolean }
+  const [externoModo, setExternoModo] = useState<'individual' | 'masivo'>('individual')
+  const [masivoPaste, setMasivoPaste] = useState('')
+  const [masivoRows, setMasivoRows] = useState<MasivoRow[]>([])
+  const [masivoMetodoPago, setMasivoMetodoPago] = useState('')
+
+  function parseMasivoText(text: string): MasivoRow[] {
+    return text.split('\n')
+      .map(l => l.trim())
+      .filter(Boolean)
+      .map(l => {
+        const cols = l.split('\t')
+        const desc = cols[0]?.trim() ?? ''
+        const costoRaw = cols[1]?.trim() ?? ''
+        const proveedor = cols[2]?.trim() ?? ''
+        const precioRaw = cols[3]?.trim() ?? ''
+        const costo = parseInt(costoRaw.replace(/[^\d]/g, ''), 10) || 0
+        const precio = parseInt(precioRaw.replace(/[^\d]/g, ''), 10) || 0
+        return { desc, costo, proveedor, precio, valida: !!desc && precio > 0 }
+      })
+  }
+
+  function onMasivoPaste(text: string) {
+    setMasivoPaste(text)
+    setMasivoRows(parseMasivoText(text))
+  }
+
+  function confirmarMasivo() {
+    const validas = masivoRows.filter(r => r.valida)
+    validas.forEach(r => onAdd({
+      descripcion: r.desc,
+      origen: 'externo',
+      cantidad: 1,
+      costo: r.costo,
+      precio_venta: r.precio,
+      metodo_pago_id: masivoMetodoPago || null,
+    }))
+    setMasivoPaste(''); setMasivoRows([]); setMasivoMetodoPago('')
+    onClose()
+  }
+
   /* ── Reset al abrir ── */
   useEffect(() => {
     if (open) {
@@ -131,6 +173,8 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       setInsumoValor('10000')
       setPortaPlacasValor('25000')
       setUmaSimpleDesc(''); setUmaSimpleValor('')
+      setExternoModo('individual')
+      setMasivoPaste(''); setMasivoRows([]); setMasivoMetodoPago('')
     }
   }, [open])
 
@@ -552,7 +596,146 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       {tab === 'externo' && (
         <div className="space-y-3">
 
-          {/* ── Formulario nuevo externo (única vista, sin buscador) ── */}
+          {/* Sub-toggle: Uno por uno / Carga masiva */}
+          <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">
+            <button type="button" onClick={() => setExternoModo('individual')}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                externoModo === 'individual' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+              }`}>
+              Uno por uno
+            </button>
+            <button type="button" onClick={() => setExternoModo('masivo')}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                externoModo === 'masivo' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+              }`}>
+              📋 Carga masiva
+            </button>
+          </div>
+
+          {/* ════ MODO MASIVO ════ */}
+          {externoModo === 'masivo' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-4">
+              <div>
+                <h3 className="font-semibold text-blue-900">Carga masiva de externos</h3>
+                <p className="text-xs text-blue-600 mt-1">Copia y pega directamente desde Excel. Se agregan a esta orden sin guardar en el catálogo.</p>
+              </div>
+
+              {/* Indicador de columnas */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border border-blue-200 rounded-lg overflow-hidden">
+                  <thead>
+                    <tr className="bg-blue-600 text-white">
+                      <th className="text-left px-3 py-1.5 font-semibold">A — Descripción *</th>
+                      <th className="text-left px-3 py-1.5 font-semibold">B — Costo</th>
+                      <th className="text-left px-3 py-1.5 font-semibold">C — Proveedor</th>
+                      <th className="text-left px-3 py-1.5 font-semibold">D — Precio Venta *</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="bg-blue-50 text-blue-700">
+                      <td className="px-3 py-1 font-mono">Filtro de aire</td>
+                      <td className="px-3 py-1 font-mono">15000</td>
+                      <td className="px-3 py-1 font-mono">Proveedor XYZ</td>
+                      <td className="px-3 py-1 font-mono">25000</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Textarea pegado */}
+              <div>
+                <label className="text-xs font-medium text-blue-800 block mb-1">
+                  Pegar desde Excel <span className="text-blue-400">(Ctrl+V aquí)</span>
+                </label>
+                <textarea
+                  value={masivoPaste}
+                  onChange={e => onMasivoPaste(e.target.value)}
+                  onPaste={e => {
+                    e.preventDefault()
+                    const text = e.clipboardData.getData('text')
+                    onMasivoPaste(text)
+                  }}
+                  placeholder={'Descripción\tCosto\tProveedor\tPrecioVenta\nFiltro de aire\t15000\tXYZ\t25000'}
+                  rows={5}
+                  className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white resize-y"
+                />
+                {masivoPaste && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    {masivoRows.filter(r => r.valida).length} filas válidas
+                    {masivoRows.some(r => !r.valida) && ` · ${masivoRows.filter(r => !r.valida).length} inválidas (sin descripción o precio)`}
+                  </p>
+                )}
+              </div>
+
+              {/* Preview tabla */}
+              {masivoRows.length > 0 && (
+                <div className="rounded-xl border border-blue-200 overflow-hidden">
+                  <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 260 }}>
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0">
+                        <tr className="bg-blue-600 text-white">
+                          <th className="text-left px-3 py-2 font-semibold">#</th>
+                          <th className="text-left px-3 py-2 font-semibold">Descripción</th>
+                          <th className="text-right px-3 py-2 font-semibold">Costo</th>
+                          <th className="text-left px-3 py-2 font-semibold">Proveedor</th>
+                          <th className="text-right px-3 py-2 font-semibold">Precio Venta</th>
+                          <th className="px-3 py-2" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {masivoRows.map((r, i) => (
+                          <tr key={i} className={`border-t border-blue-100 ${r.valida ? 'bg-white' : 'bg-red-50'}`}>
+                            <td className="px-3 py-1.5 text-gray-400">{i + 1}</td>
+                            <td className="px-3 py-1.5 text-gray-900 max-w-[180px] truncate">{r.desc || <span className="text-red-400 italic">sin descripción</span>}</td>
+                            <td className="px-3 py-1.5 text-right text-gray-500 font-mono">{r.costo ? r.costo.toLocaleString('es-CO') : '—'}</td>
+                            <td className="px-3 py-1.5 text-gray-500 max-w-[100px] truncate">{r.proveedor || '—'}</td>
+                            <td className={`px-3 py-1.5 text-right font-semibold font-mono ${r.precio ? 'text-gray-900' : 'text-red-400'}`}>
+                              {r.precio ? r.precio.toLocaleString('es-CO') : '⚠ falta'}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <button onClick={() => {
+                                const newRows = masivoRows.filter((_, idx) => idx !== i)
+                                setMasivoRows(newRows)
+                                setMasivoPaste(newRows.map(r => `${r.desc}\t${r.costo}\t${r.proveedor}\t${r.precio}`).join('\n'))
+                              }} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Método de pago global */}
+              <div>
+                <label className="text-xs font-medium text-blue-800 block mb-1">
+                  Método de pago al proveedor <span className="text-blue-400">(aplica a todos)</span>
+                </label>
+                <select value={masivoMetodoPago} onChange={e => setMasivoMetodoPago(e.target.value)}
+                  className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+                  <option value="">Sin método (opcional)</option>
+                  {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                </select>
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => { setMasivoPaste(''); setMasivoRows([]) }}
+                  className="px-4 py-2 text-sm text-gray-500 hover:text-gray-800 transition-colors">
+                  Limpiar
+                </button>
+                <button
+                  onClick={confirmarMasivo}
+                  disabled={masivoRows.filter(r => r.valida).length === 0}
+                  className="px-5 py-2 bg-blue-700 hover:bg-blue-800 disabled:bg-blue-300 text-white rounded-lg text-sm font-semibold transition-colors">
+                  + Agregar {masivoRows.filter(r => r.valida).length > 0 ? `${masivoRows.filter(r => r.valida).length} repuesto${masivoRows.filter(r => r.valida).length !== 1 ? 's' : ''}` : 'repuestos'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ════ MODO INDIVIDUAL ════ */}
+          {externoModo === 'individual' && (
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-4">
               <h3 className="font-semibold text-gray-900">Nuevo repuesto externo</h3>
 
@@ -725,6 +908,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                 </button>
               </div>
           </div>
+          )}
         </div>
       )}
 
