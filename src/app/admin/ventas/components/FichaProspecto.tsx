@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { ETAPAS, ETAPA_MAP, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS, ETAPA_MAP, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import VincularClienteModal from './VincularClienteModal'
 import EtiquetasPicker, { type Etiqueta } from './EtiquetasPicker'
@@ -114,6 +114,29 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     lead.estadoAprobacionMatricula ?? 'pendiente'
   )
 
+  // Celular
+  const [celularActual, setCelularActual]   = useState(lead.cliente?.celular ?? '')
+  const [celularInput, setCelularInput]     = useState(lead.cliente?.celular ?? '')
+  const [savingCelular, setSavingCelular]   = useState(false)
+
+  // Placa
+  const [placaActual, setPlacaActual]       = useState(lead.cliente?.placa ?? '')
+  const [placaInput, setPlacaInput]         = useState(lead.cliente?.placa ?? '')
+  const [editandoPlaca, setEditandoPlaca]   = useState(false)
+  const [savingPlaca, setSavingPlaca]       = useState(false)
+
+  // Alistamiento manual
+  const [alistamientoOrdenId, setAlistamientoOrdenId] = useState<string | null>(lead.alistamientoOrdenId ?? null)
+  const [ordenesUMA, setOrdenesUMA]           = useState<{ id: string; created_at: string; estado: string }[]>([])
+  const [loadingOrdenesUMA, setLoadingOrdenesUMA] = useState(false)
+  const [ordenesUMALoaded, setOrdenesUMALoaded]   = useState(false)
+
+  // Derivados de alerta
+  const sinCelular          = (ETAPAS_LEADS as EtapaVenta[]).includes(lead.etapa_venta) && !celularActual
+  const enEtapaConPlaca     = (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(lead.etapa_venta)
+  const enEtapaAlistamiento = lead.etapa_venta === 'espera_entrega' || lead.etapa_venta === 'entregada'
+  const tieneAlistamientoFinal = lead.tieneAlistamiento === true || !!alistamientoOrdenId
+
   // Campos editables — tab Resumen
   const [etapa, setEtapa]         = useState<EtapaVenta>(lead.etapa_venta)
   const [assignedTo, setAssignedTo] = useState('')
@@ -198,6 +221,52 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     onLeadUpdate?.(lead.id, { nombre, nombre_pendiente_aprobacion: false })
     setEditandoNombre(false)
     setSavingNombre(false)
+  }
+
+  const guardarCelular = async () => {
+    const cel = celularInput.trim()
+    if (!cel) return
+    setSavingCelular(true)
+    await supabase.from('clientes').update({ celular: cel }).eq('id', lead.id).eq('tenant_id', tenantId)
+    setCelularActual(cel)
+    setSavingCelular(false)
+  }
+
+  const guardarPlaca = async () => {
+    const pl = placaInput.trim().toUpperCase()
+    if (!pl) return
+    setSavingPlaca(true)
+    await supabase.from('clientes').update({ placa: pl }).eq('id', lead.id).eq('tenant_id', tenantId)
+    setPlacaActual(pl)
+    setPlacaInput(pl)
+    setEditandoPlaca(false)
+    setSavingPlaca(false)
+  }
+
+  const cargarOrdenesUMA = async () => {
+    if (ordenesUMALoaded) return
+    setLoadingOrdenesUMA(true)
+    const { data } = await supabase
+      .from('ordenes')
+      .select('id, created_at, estado')
+      .eq('cliente_id', lead.id)
+      .eq('tenant_id', tenantId)
+      .eq('tipo_servicio', 'uma')
+      .order('created_at', { ascending: false })
+    setOrdenesUMA((data ?? []) as { id: string; created_at: string; estado: string }[])
+    setOrdenesUMALoaded(true)
+    setLoadingOrdenesUMA(false)
+  }
+
+  const vincularAlistamiento = async (ordenId: string) => {
+    await supabase.from('clientes').update({ alistamiento_orden_id: ordenId }).eq('id', lead.id).eq('tenant_id', tenantId)
+    setAlistamientoOrdenId(ordenId)
+  }
+
+  const desvincularAlistamiento = async () => {
+    await supabase.from('clientes').update({ alistamiento_orden_id: null }).eq('id', lead.id).eq('tenant_id', tenantId)
+    setAlistamientoOrdenId(null)
+    setOrdenesUMALoaded(false)
   }
 
   const actualizarAprobacion = async (status: 'pendiente' | 'aprobado' | 'rechazado') => {
@@ -348,6 +417,128 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
             </button>
           ))}
         </div>
+
+        {/* ── Alerta: Sin celular ── */}
+        {sinCelular && (
+          <div className="border-b px-4 py-3 bg-orange-50 flex-shrink-0">
+            <p className="text-xs font-bold text-orange-700 uppercase tracking-wide mb-1">⚠ Sin número de celular</p>
+            <p className="text-[11px] text-orange-600 mb-2.5">Este lead no tiene celular registrado. Agrégalo para poder contactarlo.</p>
+            <div className="flex gap-2">
+              <input
+                value={celularInput}
+                onChange={e => setCelularInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') guardarCelular() }}
+                placeholder="Ej: 3001234567"
+                type="tel"
+                className="flex-1 border border-orange-300 bg-white rounded-xl px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-400"
+              />
+              <button onClick={guardarCelular} disabled={!celularInput.trim() || savingCelular}
+                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors">
+                {savingCelular ? '...' : '📱 Agregar celular'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Sección: Placa ── */}
+        {enEtapaConPlaca && (
+          <div className={`border-b px-4 py-3 flex-shrink-0 ${placaActual ? 'bg-teal-50' : 'bg-red-50'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <p className={`text-xs font-bold uppercase tracking-wide ${placaActual ? 'text-teal-700' : 'text-red-700'}`}>
+                {placaActual ? '🏍️ Placa asignada' : '⚠ Sin placa asignada'}
+              </p>
+              {placaActual && esGerencia && !editandoPlaca && (
+                <button onClick={() => setEditandoPlaca(true)} className="text-xs text-teal-600 hover:underline font-medium">
+                  ✏️ Editar
+                </button>
+              )}
+            </div>
+            {placaActual && !editandoPlaca ? (
+              <p className="text-4xl font-black text-teal-800 tracking-[0.2em] text-center py-2 bg-white rounded-xl border border-teal-200">
+                {placaActual}
+              </p>
+            ) : (
+              <>
+                {!placaActual && <p className="text-[11px] text-red-600 mb-2">Ingresa la placa de la moto entregada a este cliente.</p>}
+                <div className="flex gap-2 mt-1">
+                  <input
+                    value={placaInput}
+                    onChange={e => setPlacaInput(e.target.value.toUpperCase())}
+                    onKeyDown={e => { if (e.key === 'Enter') guardarPlaca() }}
+                    placeholder="ABC123"
+                    className="flex-1 border border-red-300 bg-white rounded-xl px-3 py-2 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-red-400"
+                  />
+                  <button onClick={guardarPlaca} disabled={!placaInput.trim() || savingPlaca}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors">
+                    {savingPlaca ? '...' : placaActual ? 'Guardar' : '🔗 Asignar placa'}
+                  </button>
+                  {editandoPlaca && (
+                    <button onClick={() => { setEditandoPlaca(false); setPlacaInput(placaActual) }}
+                      className="px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm hover:bg-gray-200">
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Sección: Alistamiento ── */}
+        {enEtapaAlistamiento && (
+          <div className={`border-b px-4 py-3 flex-shrink-0 ${tieneAlistamientoFinal ? 'bg-green-50' : 'bg-red-50'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <p className={`text-xs font-bold uppercase tracking-wide ${tieneAlistamientoFinal ? 'text-green-700' : 'text-red-700'}`}>
+                {tieneAlistamientoFinal ? '✅ Alistamiento vinculado' : '⚠ Falta alistamiento'}
+              </p>
+              {tieneAlistamientoFinal && esGerencia && (
+                <button onClick={desvincularAlistamiento} className="text-xs text-red-500 hover:underline">
+                  Desvincular
+                </button>
+              )}
+            </div>
+            {tieneAlistamientoFinal ? (
+              <p className="text-[11px] text-green-600">
+                {alistamientoOrdenId
+                  ? `Orden vinculada manualmente: ${alistamientoOrdenId.slice(-8).toUpperCase()}`
+                  : 'Orden de alistamiento detectada automáticamente en Servicio Técnico.'}
+              </p>
+            ) : (
+              <>
+                <p className="text-[11px] text-red-600 mb-2.5">No se encontró una orden UMA de alistamiento. Vincúlala o créala en Servicio Técnico.</p>
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={cargarOrdenesUMA}
+                    disabled={loadingOrdenesUMA}
+                    className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors">
+                    {loadingOrdenesUMA ? '⏳ Cargando...' : '📎 Ver órdenes UMA de este cliente'}
+                  </button>
+                  <a href="/admin/ordenes"
+                    className="flex-1 py-2 bg-white border border-red-300 text-red-600 rounded-xl text-sm font-bold text-center hover:bg-red-50 transition-colors">
+                    ➕ Crear en Servicio Técnico
+                  </a>
+                </div>
+                {ordenesUMALoaded && (
+                  <div className="mt-2.5 space-y-1.5">
+                    {ordenesUMA.length === 0 ? (
+                      <p className="text-xs text-red-400 text-center py-2">No hay órdenes UMA para este cliente.</p>
+                    ) : ordenesUMA.map(o => (
+                      <button key={o.id} onClick={() => vincularAlistamiento(o.id)}
+                        className="w-full flex items-center justify-between bg-white border border-red-200 hover:border-red-500 rounded-xl px-3 py-2 text-sm transition-colors text-left">
+                        <span className="font-mono text-xs text-gray-500">#{o.id.slice(-8).toUpperCase()}</span>
+                        <span className="text-xs text-gray-600">{new Date(o.created_at).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' })}</span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${o.estado === 'finalizado' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                          {o.estado}
+                        </span>
+                        <span className="text-xs font-bold text-red-600">Vincular →</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* ── Aprobación para matrícula ── */}
         {lead.etapa_venta === 'aprobado_matricula' && (

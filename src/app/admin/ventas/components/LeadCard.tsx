@@ -18,7 +18,8 @@ export type LeadData = {
   no_leidos_count: number       // total sumado de todas las conversaciones
   sin_respuesta_asesor_desde: string | null
   assigned_to: string | null
-  cliente: { id: string; nombre: string | null; celular: string | null } | null
+  cliente: { id: string; nombre: string | null; celular: string | null; placa?: string | null } | null
+  alistamientoOrdenId?: string | null
   cliente_apellido: string | null
   cliente_documento: string | null
   cliente_email: string | null

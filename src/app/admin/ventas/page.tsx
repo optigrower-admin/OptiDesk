@@ -39,6 +39,7 @@ export default function VentasPage() {
           sin_respuesta_asesor_desde,
           assigned_to,
           nombre_pendiente_aprobacion,
+          alistamiento_orden_id,
           conversaciones ( id, canal, no_leidos_count )
         `)
         .eq('tenant_id', profile.tenant_id)
@@ -99,6 +100,11 @@ export default function VentasPage() {
 
       // Alistamiento check: clientes en espera_entrega/entregada sin orden UMA+Alistamiento → rojo
       const clientesConAlistamiento = new Set<string>()
+      // Los que tienen vinculación manual directa cuentan como "con alistamiento"
+      for (const c of (raw ?? [])) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((c as any).alistamiento_orden_id) clientesConAlistamiento.add(c.id as string)
+      }
       const idsEnEspera = (raw ?? [])
         .filter(c => c.etapa_venta === 'espera_entrega' || c.etapa_venta === 'entregada')
         .map(c => c.id as string)
@@ -163,7 +169,8 @@ export default function VentasPage() {
           no_leidos_count:            noLeidos,
           sin_respuesta_asesor_desde: (c.sin_respuesta_asesor_desde ?? null) as string | null,
           assigned_to:                (c.assigned_to ?? null) as string | null,
-          cliente:                      { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null },
+          cliente:                      { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null, placa: (ex.placa ?? null) as string | null },
+          alistamientoOrdenId:          ((c as Record<string, unknown>).alistamiento_orden_id ?? null) as string | null,
           cliente_apellido:             (ex.primer_apellido ?? null) as string | null,
           cliente_documento:            (ex.numero_documento ?? null) as string | null,
           cliente_email:                (ex.email ?? null) as string | null,
