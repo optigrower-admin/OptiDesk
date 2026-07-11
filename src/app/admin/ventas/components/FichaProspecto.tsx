@@ -50,7 +50,7 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_factura?: string | null }) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_factura?: string | null; assigned_to?: string | null }) => void
   onLeadDelete?: (id: string) => void
 }
 
@@ -242,6 +242,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       })
       if (res.ok) {
         mostrarGuardado()
+        onLeadUpdate?.(lead.id, { assigned_to: newId || null })
         const newNombre = usuarios.find(u => u.id === newId)?.nombre ?? 'Sin asignar'
         await logCambio('asignado_a', prevNombre, newNombre)
       }

@@ -225,6 +225,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     placa?: string | null
     celular?: string | null
     numero_factura?: string | null
+    assigned_to?: string | null
   }) {
     setLeads(prev => prev.map(l => {
       if (l.id !== id) return l
@@ -239,6 +240,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
         ...(updates.nombre_pendiente_aprobacion !== undefined ? { nombre_pendiente_aprobacion: updates.nombre_pendiente_aprobacion } : {}),
         ...(updates.etiquetas               !== undefined ? { etiquetas: updates.etiquetas }                                   : {}),
         ...(updates.numero_factura          !== undefined ? { numero_factura: updates.numero_factura }                         : {}),
+        ...(updates.assigned_to             !== undefined ? { assigned_to: updates.assigned_to }                               : {}),
         ...(updates.placa !== undefined ? { tienePlaca: !!updates.placa } : {}),
         ...(l.cliente && Object.keys(clientePatch).length > 0 ? { cliente: { ...l.cliente, ...clientePatch } } : {}),
       }
