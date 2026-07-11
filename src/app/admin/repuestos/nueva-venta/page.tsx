@@ -353,6 +353,17 @@ function NuevaVentaContent() {
     metodo_pago_id?: string | null;
   }) => {
     if (!ordenId || !orden) return
+
+    // Si no hay ningún pago positivo registrado, confirmar antes de agregar
+    const hayPago = pagosOrden.some(p => p.monto > 0)
+    if (!hayPago) {
+      const ok = window.confirm(
+        '⚠ Esta venta no tiene ningún pago registrado.\n\n' +
+        '¿Estás seguro de agregar el repuesto y dejarlo pendiente de cobro?\n\n' +
+        'Recuerda registrar el pago de la venta directa antes de cerrar.'
+      )
+      if (!ok) return
+    }
     const { data, error: insError } = await supabase.from('items_orden').insert({
       orden_id: ordenId,
       ...item,
