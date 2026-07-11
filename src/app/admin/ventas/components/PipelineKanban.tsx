@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
   PointerSensor, useSensor, useSensors, closestCenter,
@@ -16,6 +16,7 @@ interface Props {
   leadsIniciales: LeadData[]
   tenantId: string
   usuarios?: { id: string; nombre: string }[]
+  abrirClienteId?: string
 }
 
 function ConfirmMoveModal({
@@ -103,12 +104,20 @@ function KanbanColumn({
   )
 }
 
-export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [] }: Props) {
+export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId }: Props) {
   const [leads, setLeads]             = useState<LeadData[]>(leadsIniciales)
   const [activeId, setActiveId]       = useState<string | null>(null)
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [perdidaId, setPerdidaId]     = useState<string | null>(null)
   const [pendingMove, setPendingMove] = useState<{ leadId: string; targetEtapa: typeof ETAPAS[0] } | null>(null)
+
+  useEffect(() => {
+    if (abrirClienteId && leads.some(l => l.id === abrirClienteId)) {
+      setFichaId(abrirClienteId)
+    }
+  // Solo en mount o cuando llegue el param
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrirClienteId])
 
   const usuariosMap = Object.fromEntries(usuarios.map(u => [u.id, u.nombre]))
 

@@ -2047,13 +2047,20 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <span className="text-xs font-semibold text-emerald-700">Vinculado — Seguimiento Ventas</span>
                       </div>
                       <a
-                        href="/admin/ventas"
+                        href={`/admin/ventas${orden.cliente_id ? `?abrir=${orden.cliente_id}` : ''}`}
                         className="flex items-center justify-center gap-1.5 w-full py-1.5 px-3 border border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs font-semibold transition-colors">
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
                         Ver seguimiento cliente
                       </a>
+                      {esGerencia && (
+                        <button
+                          onClick={() => setSeguimientoOpen(true)}
+                          className="w-full py-1.5 px-3 border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-lg text-xs font-medium transition-colors">
+                          ✏️ Editar vinculación
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <>

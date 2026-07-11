@@ -15,6 +15,7 @@ type MotoCatalogo = { id: string; referencia: string; precio: number; costo_docu
 type Seleccion = { id: string; disponibilidad: 'inventario' | 'pedir'; motos_catalogo: MotoCatalogo | null }
 type Recordatorio = { id: string; nota: string | null; fecha_recordatorio: string; completado: boolean }
 type Paso = { id: string; descripcion: string; completado: boolean; orden: number }
+type OrdenResumen = { id: string; numero: string | null; created_at: string; estado: string; descripcion_problema: string | null }
 
 function formatDateHour(d: string) {
   return new Date(d).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -28,12 +29,14 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
   const [cuotaInicial, setCuotaInicial] = useState<number | null>(null)
   const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([])
   const [pasos, setPasos] = useState<Paso[]>([])
+  const [ordenesST, setOrdenesST] = useState<OrdenResumen[]>([])
+  const [ordenesRep, setOrdenesRep] = useState<OrdenResumen[]>([])
   const [loading, setLoading] = useState(true)
   const [confirmUncheckPasoId, setConfirmUncheckPasoId] = useState<string | null>(null)
   const [confirmUncheckRecId, setConfirmUncheckRecId] = useState<string | null>(null)
 
   const cargar = useCallback(async () => {
-    const [{ data: sel }, { data: cliente }, { data: recs }, { data: pasosData }] = await Promise.all([
+    const [{ data: sel }, { data: cliente }, { data: recs }, { data: pasosData }, { data: stData }, { data: repData }] = await Promise.all([
       supabase.from('clientes_motos_interes')
         .select('id, disponibilidad, motos_catalogo(id, referencia, precio, costo_documentos, costo_prenda)')
         .eq('cliente_id', clienteId),
@@ -48,6 +51,16 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
         .select('id, descripcion, completado, orden')
         .eq('cliente_id', clienteId)
         .order('orden'),
+      supabase.from('ordenes')
+        .select('id, numero, created_at, estado, descripcion_problema')
+        .eq('cliente_id', clienteId)
+        .eq('tipo_orden', 'servicio')
+        .order('created_at', { ascending: false }),
+      supabase.from('ordenes')
+        .select('id, numero, created_at, estado, descripcion_problema')
+        .eq('cliente_id', clienteId)
+        .eq('tipo_orden', 'venta_repuestos')
+        .order('created_at', { ascending: false }),
     ])
     setSeleccion((sel ?? []).map(s => ({
       ...s,
@@ -58,6 +71,8 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
     setCuotaInicial(cliente?.cuota_inicial ?? null)
     setRecordatorios((recs ?? []) as Recordatorio[])
     setPasos((pasosData ?? []) as Paso[])
+    setOrdenesST((stData ?? []) as OrdenResumen[])
+    setOrdenesRep((repData ?? []) as OrdenResumen[])
     setLoading(false)
   }, [clienteId])
 
@@ -278,6 +293,54 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
             )
           })}
         </div>
+      </div>
+
+      {/* Servicios técnicos realizados */}
+      <div className="border-t pt-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Servicio técnico</p>
+        {ordenesST.length === 0 ? (
+          <p className="text-sm text-gray-400 bg-gray-50 rounded-lg px-3 py-3 text-center">Sin órdenes de servicio técnico</p>
+        ) : (
+          <div className="space-y-1.5">
+            {ordenesST.map(o => (
+              <a key={o.id} href={`/admin/ordenes/${o.id}`}
+                className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 hover:bg-blue-100 transition-colors group">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-blue-800">
+                    {o.numero ? `#${o.numero}` : 'Sin número'} · {new Date(o.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                  {o.descripcion_problema && (
+                    <p className="text-xs text-blue-600 truncate mt-0.5">{o.descripcion_problema}</p>
+                  )}
+                </div>
+                <span className="flex-shrink-0 text-blue-400 group-hover:text-blue-600 ml-2 text-xs">→</span>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Repuestos comprados */}
+      <div className="border-t pt-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Repuestos comprados</p>
+        {ordenesRep.length === 0 ? (
+          <p className="text-sm text-gray-400 bg-gray-50 rounded-lg px-3 py-3 text-center">Sin compras de repuestos</p>
+        ) : (
+          <div className="space-y-1.5">
+            {ordenesRep.map(o => (
+              <a key={o.id} href={`/admin/repuestos/nueva-venta?ordenId=${o.id}`}
+                className="flex items-center justify-between bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 hover:bg-amber-100 transition-colors group">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-amber-800">
+                    {o.numero ? `#${o.numero}` : 'Sin número'} · {new Date(o.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                  <p className="text-xs text-amber-600 mt-0.5">{o.estado}</p>
+                </div>
+                <span className="flex-shrink-0 text-amber-400 group-hover:text-amber-600 ml-2 text-xs">→</span>
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

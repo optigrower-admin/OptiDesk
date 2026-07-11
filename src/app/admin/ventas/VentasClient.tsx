@@ -126,6 +126,16 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [usuarios, setUsuarios] = useState<UsuarioFiltro[]>([])
   const [usuarioFiltro, setUsuarioFiltro] = useState<string | null>(null) // null = todos
+  const [abrirClienteId, setAbrirClienteId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const abrir = params.get('abrir')
+    if (abrir) {
+      setAbrirClienteId(abrir)
+      window.history.replaceState({}, '', '/admin/ventas')
+    }
+  }, [])
 
   useEffect(() => {
     supabase
@@ -258,7 +268,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
 
       {/* Content */}
       {tab === 'kanban' && (
-        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} />
+        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} />
       )}
       {tab === 'hoy' && (
         <VistaHoy leads={activos} tenantId={tenantId} />

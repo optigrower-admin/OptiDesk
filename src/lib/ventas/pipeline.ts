@@ -3,42 +3,51 @@ export type EtapaVenta =
   | 'en_proceso_credito'
   | 'calificado' | 'demo' | 'propuesta' | 'negociacion' | 'ganado'
   | 'en_matricula' | 'alistamiento' | 'espera_entrega' | 'entregada'
+  | 'primera_revision' | 'segunda_revision' | 'tercera_revision'
   | 'perdido'
 
 export const ETAPAS: { id: EtapaVenta; label: string; color: string; bg: string; border: string }[] = [
-  { id: 'nuevo_mensaje',   label: 'Nuevo Contacto - Mensaje', color: '#0891b2', bg: 'bg-cyan-50',   border: 'border-cyan-500'    },
-  { id: 'nuevo',           label: 'Nuevo',                    color: '#378ADD', bg: 'bg-blue-50',   border: 'border-blue-500'    },
-  { id: 'con_objecion',    label: 'Con objeción',             color: '#DC2626', bg: 'bg-red-50',    border: 'border-red-600'     },
-  { id: 'seguimiento',     label: 'Seguimiento',        color: '#7C3AED', bg: 'bg-violet-50',  border: 'border-violet-600'  },
-  { id: 'buscando_credito',   label: 'Buscando Crédito',      color: '#D97706', bg: 'bg-orange-50',  border: 'border-orange-500'  },
-  { id: 'en_proceso_credito', label: 'En Proceso de Crédito', color: '#0284c7', bg: 'bg-sky-50',    border: 'border-sky-500'     },
-  { id: 'calificado',         label: 'Calificado',            color: '#1D9E75', bg: 'bg-emerald-50', border: 'border-emerald-600' },
-  { id: 'demo',            label: 'Demo / Cita',        color: '#EF9F27', bg: 'bg-amber-50',   border: 'border-amber-500'   },
-  { id: 'propuesta',       label: 'Propuesta',          color: '#534AB7', bg: 'bg-indigo-50',  border: 'border-indigo-600'  },
-  { id: 'negociacion',     label: 'Negociación',        color: '#639922', bg: 'bg-lime-50',    border: 'border-lime-700'    },
-  { id: 'ganado',          label: 'Vendida',            color: '#3B6D11', bg: 'bg-green-50',   border: 'border-green-700'   },
-  { id: 'en_matricula',    label: 'En matrícula',       color: '#0F766E', bg: 'bg-teal-50',    border: 'border-teal-700'    },
-  { id: 'alistamiento',    label: 'Alistamiento',       color: '#1D4ED8', bg: 'bg-blue-50',    border: 'border-blue-700'    },
-  { id: 'espera_entrega',  label: 'Espera entrega',     color: '#A16207', bg: 'bg-yellow-50',  border: 'border-yellow-700'  },
-  { id: 'entregada',       label: 'Entregada',          color: '#15803D', bg: 'bg-green-50',   border: 'border-green-800'   },
-  { id: 'perdido',         label: 'Perdido',            color: '#888780', bg: 'bg-gray-50',    border: 'border-gray-400'    },
+  { id: 'perdido',          label: 'Cliente Perdido',          color: '#888780', bg: 'bg-gray-50',    border: 'border-gray-400'    },
+  { id: 'nuevo_mensaje',    label: 'Nuevo Contacto - Mensaje', color: '#0891b2', bg: 'bg-cyan-50',    border: 'border-cyan-500'    },
+  { id: 'nuevo',            label: 'Nuevo',                    color: '#378ADD', bg: 'bg-blue-50',    border: 'border-blue-500'    },
+  { id: 'con_objecion',     label: 'Con objeción',             color: '#DC2626', bg: 'bg-red-50',     border: 'border-red-600'     },
+  { id: 'propuesta',        label: 'Propuesta',                color: '#534AB7', bg: 'bg-indigo-50',  border: 'border-indigo-600'  },
+  { id: 'demo',             label: 'Cita',                     color: '#EF9F27', bg: 'bg-amber-50',   border: 'border-amber-500'   },
+  { id: 'seguimiento',      label: 'Seguimiento',              color: '#7C3AED', bg: 'bg-violet-50',  border: 'border-violet-600'  },
+  { id: 'buscando_credito',    label: 'Buscando Crédito',      color: '#D97706', bg: 'bg-orange-50',  border: 'border-orange-500'  },
+  { id: 'en_proceso_credito',  label: 'En Proceso de Crédito', color: '#0284c7', bg: 'bg-sky-50',     border: 'border-sky-500'     },
+  { id: 'calificado',          label: 'Calificado',            color: '#1D9E75', bg: 'bg-emerald-50', border: 'border-emerald-600' },
+  { id: 'negociacion',      label: 'Negociación',              color: '#639922', bg: 'bg-lime-50',    border: 'border-lime-700'    },
+  { id: 'ganado',           label: 'Vendida',                  color: '#3B6D11', bg: 'bg-green-50',   border: 'border-green-700'   },
+  { id: 'en_matricula',     label: 'En matrícula',             color: '#0F766E', bg: 'bg-teal-50',    border: 'border-teal-700'    },
+  { id: 'alistamiento',     label: 'Alistamiento',             color: '#1D4ED8', bg: 'bg-blue-50',    border: 'border-blue-700'    },
+  { id: 'espera_entrega',   label: 'Espera entrega',           color: '#A16207', bg: 'bg-yellow-50',  border: 'border-yellow-700'  },
+  { id: 'entregada',        label: 'Entregada',                color: '#15803D', bg: 'bg-green-50',   border: 'border-green-800'   },
+  { id: 'primera_revision', label: '1mera Revisión',           color: '#0891B2', bg: 'bg-cyan-50',    border: 'border-cyan-600'    },
+  { id: 'segunda_revision', label: '2da Revisión',             color: '#0369A1', bg: 'bg-sky-50',     border: 'border-sky-600'     },
+  { id: 'tercera_revision', label: '3cera Revisión',           color: '#4338CA', bg: 'bg-indigo-50',  border: 'border-indigo-600'  },
 ]
 
 export const ETAPA_MAP = Object.fromEntries(ETAPAS.map(e => [e.id, e])) as Record<EtapaVenta, typeof ETAPAS[0]>
 
 export const ETAPAS_ACTIVAS: EtapaVenta[] = [
-  'nuevo_mensaje', 'nuevo', 'con_objecion', 'seguimiento', 'buscando_credito', 'en_proceso_credito', 'calificado', 'demo', 'propuesta', 'negociacion',
+  'nuevo_mensaje', 'nuevo', 'con_objecion', 'propuesta', 'demo', 'seguimiento', 'buscando_credito', 'en_proceso_credito', 'calificado', 'negociacion',
 ]
 
-export const ETAPAS_POSVENTA: EtapaVenta[] = ['en_matricula', 'alistamiento', 'espera_entrega', 'entregada']
+export const ETAPAS_POSVENTA: EtapaVenta[] = [
+  'en_matricula', 'alistamiento', 'espera_entrega', 'entregada', 'primera_revision', 'segunda_revision', 'tercera_revision',
+]
 
 // Numeric order for comparing etapa priority (higher = more advanced)
 export const ETAPA_ORDEN: Record<EtapaVenta, number> = {
-  nuevo_mensaje: -1,
-  nuevo: 0, con_objecion: 1, seguimiento: 2, buscando_credito: 3,
-  en_proceso_credito: 4,
-  calificado: 5, demo: 6, propuesta: 7, negociacion: 8, ganado: 9,
-  en_matricula: 10, alistamiento: 11, espera_entrega: 12, entregada: 13, perdido: 14,
+  perdido:          -2,
+  nuevo_mensaje:    -1,
+  nuevo:             0, con_objecion:  1, propuesta: 2, demo: 3, seguimiento: 4,
+  buscando_credito: 5,
+  en_proceso_credito: 6,
+  calificado: 7, negociacion: 8, ganado: 9,
+  en_matricula: 10, alistamiento: 11, espera_entrega: 12, entregada: 13,
+  primera_revision: 14, segunda_revision: 15, tercera_revision: 16,
 }
 
 export function formatCOP(value: number | null | undefined): string {
