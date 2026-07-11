@@ -41,7 +41,7 @@ interface OrdenPlaca {
 interface ItemOrden {
   id: string
   descripcion: string
-  origen: 'uma' | 'externo' | 'insumo' | 'excedente'
+  origen: 'uma' | 'externo' | 'insumo'
   cantidad: number
   costo: number
   precio_venta: number
@@ -416,45 +416,13 @@ function NuevaVentaContent() {
     }
   }
 
-  const handleRegistrarExcedente = async () => {
-    if (!ordenId || !orden || saldoPendiente >= 0) return
-    const montoExcedente = -saldoPendiente
-    const { data, error: insError } = await supabase.from('items_orden').insert({
-      orden_id: ordenId,
-      descripcion: `Excedente - ${orden.cliente}`,
-      origen: 'excedente',
-      cantidad: 1,
-      costo: 0,
-      precio_venta: montoExcedente,
-      repuesto_uma_id: null,
-      repuesto_externo_id: null,
-      metodo_pago_id: null,
-    }).select('*').single()
-    if (insError) { alert(`No se pudo guardar el excedente: ${insError.message}`); return }
-    if (data) {
-      const nuevoTotal = [...items, data as unknown as ItemOrden].reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-      await Promise.all([
-        supabase.from('ordenes').update({ valor_total: nuevoTotal, estado_pago: 'pagado', estado: 'pagado' }).eq('id', ordenId),
-        registrarAuditoria(supabase, {
-          tenant_id: orden.tenant_id,
-          tabla: 'items_orden',
-          registro_id: (data as { id: string }).id,
-          tipo: 'movimiento',
-          descripcion: `Registró excedente ${formatCOP(montoExcedente)} en caja | venta directa #${orden.numero}`,
-          usuario_id: profile?.id,
-        }),
-      ])
-      await cargar()
-    }
-  }
-
   const handleDeleteItem = async (item: ItemOrden) => {
     if (!ordenId || !orden || !esGerencia) return
     if (!confirm(`¿Eliminar "${item.descripcion}"?`)) return
     await supabase.from('items_orden').delete().eq('id', item.id)
     const nuevoTotal = items.filter((i) => i.id !== item.id).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
     await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
-    if (item.origen !== 'excedente') await registrarDevolucion(supabase, {
+    await registrarDevolucion(supabase, {
       tenantId: orden.tenant_id,
       repuesto_uma_id: item.repuesto_uma_id ?? undefined,
       cantidad: item.cantidad,
@@ -1117,7 +1085,7 @@ function NuevaVentaContent() {
                         <tr><td colSpan={6} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
                       )}
                       {items.map((item) => {
-                        const tipoLabel = item.origen === 'uma' ? 'UMA' : item.origen === 'excedente' ? 'Excedente' : 'Externo'
+                        const tipoLabel = item.origen === 'uma' ? 'UMA' : 'Externo'
                         const tipoColor = item.origen === 'uma' ? 'blue' : 'amber'
                         const sepIdx = item.descripcion.indexOf(' - ')
                         const refCode = item.origen === 'externo' ? 'REPEXT' : item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(0, sepIdx) : '—'
@@ -1194,6 +1162,24 @@ function NuevaVentaContent() {
                           </tr>
                         )
                       })}
+                      {saldoPendiente < 0 && orden && (
+                        <tr className="border-b bg-amber-50">
+                          <td className="py-1.5 px-2">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-200 text-amber-800 whitespace-nowrap">
+                              Excedente
+                            </span>
+                          </td>
+                          <td className="py-1.5 px-2 text-amber-800 text-sm font-medium truncate">
+                            {orden.cliente} — saldo a favor
+                          </td>
+                          <td className="py-1.5 px-2 hidden sm:table-cell" />
+                          <td className="py-1.5 px-2 hidden sm:table-cell" />
+                          <td className="py-1.5 px-2 text-right font-bold text-amber-700 whitespace-nowrap">
+                            {formatCOP(-saldoPendiente)}
+                          </td>
+                          <td className="py-1.5 px-2" />
+                        </tr>
+                      )}
                     </tbody>
                   </table>
 
@@ -1212,6 +1198,11 @@ function NuevaVentaContent() {
                           <span className="text-red-600">Saldo pendiente</span>
                           <span className="text-red-600">{formatCOP(saldoPendiente)}</span>
                         </>
+                      ) : saldoPendiente < 0 ? (
+                        <>
+                          <span className="text-amber-600">Excedente en caja</span>
+                          <span className="text-amber-600">{formatCOP(-saldoPendiente)}</span>
+                        </>
                       ) : (
                         <>
                           <span />
@@ -1219,20 +1210,6 @@ function NuevaVentaContent() {
                         </>
                       )}
                     </div>
-                    {saldoPendiente < 0 && (
-                      <div className="flex items-center justify-between pt-2 border-t border-amber-200 mt-1">
-                        <div>
-                          <span className="text-xs font-semibold text-amber-700">Excedente en caja</span>
-                          <span className="ml-2 text-sm font-bold text-amber-700">{formatCOP(-saldoPendiente)}</span>
-                        </div>
-                        <button
-                          onClick={handleRegistrarExcedente}
-                          className="text-xs px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold transition-colors whitespace-nowrap"
-                        >
-                          Guardar excedente
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
