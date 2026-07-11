@@ -2445,7 +2445,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <td className="py-1 px-2">
                           <div className="flex flex-col gap-0.5">
                             <Badge variant={tipoColor}>{tipoLabel}</Badge>
-                            {refCode !== '—' && <span className="text-[10px] font-mono text-gray-400 leading-none">{refCode}</span>}
+                            {refCode !== '—' && <span className="text-xs font-mono font-semibold text-gray-600 leading-none">{refCode}</span>}
                           </div>
                         </td>
                         <td className="py-1 px-2">
@@ -2496,7 +2496,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <td className="py-1.5 px-2">
                           <div className="flex flex-col gap-0.5">
                             <Badge variant={tipoColor}>{tipoLabel}</Badge>
-                            {refCode !== '—' && <span className="text-[10px] font-mono text-gray-400 leading-none">{refCode}</span>}
+                            {refCode !== '—' && <span className="text-xs font-mono font-semibold text-gray-600 leading-none">{refCode}</span>}
                           </div>
                         </td>
                         <td className="py-1.5 px-2 text-gray-800 truncate" title={descClean}>{descClean}</td>
