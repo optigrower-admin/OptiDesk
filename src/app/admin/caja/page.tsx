@@ -935,10 +935,10 @@ async function construirMovimientos(
   for (const it of (insumos ?? []) as unknown as { id: string; descripcion: string; precio_venta: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
     const ord = it.ordenes
     const concepto = `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
-    // Igual que con repuestos externos: si la orden es Servicio Técnico, este ingreso
-    // ya está incluido en el pago total de la orden — no se cuenta aparte.
-    if (ord?.tipo_orden === 'servicio') continue
     const esPortaPlacas = it.descripcion === 'Porta Placas'
+    // Insumos de servicio técnico ya están en el pago total (ingreso_st); se
+    // omiten para no duplicar. Porta Placas es excepción: se muestra por separado.
+    if (ord?.tipo_orden === 'servicio' && !esPortaPlacas) continue
     lista.push({
       id: `insumo_${it.id}`,
       rawId: it.id,
