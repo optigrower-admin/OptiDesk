@@ -1073,8 +1073,8 @@ export default function AdminOrdenDetallePage() {
       )
     }
     return (
-      <span className="flex items-center gap-1 whitespace-nowrap text-gray-400">
-        {new Date(fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: '2-digit' })}
+      <span className="flex items-center gap-0.5 whitespace-nowrap text-[10px] text-gray-400 leading-none">
+        {new Date(fecha).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: '2-digit' })}
         {esGerencia && (
           <button onClick={onAbrir} className="text-gray-300 hover:text-purple-600 p-0.5" title="Editar fecha (gerencia)">
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2367,8 +2367,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                           <td className="py-2 px-3"><Badge variant="teal">Lavado</Badge></td>
                           <td className="py-2 px-3 text-gray-800 truncate">Lavado de moto{lm.cantidad > 1 ? ` ×${lm.cantidad}` : ''}</td>
                           <td className="py-2 px-3 text-gray-500 text-xs truncate">{lm.metodos_pago?.nombre ?? '—'}</td>
-                          <td className="py-2 px-3 text-right text-gray-500 text-sm">{formatCOP(lm.costo_unitario * lm.cantidad)}</td>
-                          <td className="py-2 px-3 text-right font-semibold">{formatCOP(lm.precio_venta_unitario * lm.cantidad)}</td>
+                          <td className="py-2 px-3 text-right text-gray-500 text-sm whitespace-nowrap">{formatCOP(lm.costo_unitario * lm.cantidad)}</td>
+                          <td className="py-2 px-3 text-right font-semibold whitespace-nowrap">{formatCOP(lm.precio_venta_unitario * lm.cantidad)}</td>
                           <td className="py-2 px-3">{accionesRepuesto(() => iniciarEditarLavado(lm), () => handleDeleteLavaMoto(lm.id), celdaFechaLavado(lm))}</td>
                         </tr>
                       )
@@ -2501,7 +2501,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         </td>
                         <td className="py-1.5 px-2 text-gray-800 truncate" title={descClean}>{descClean}</td>
                         <td className="py-1.5 px-2 text-gray-500 text-xs hidden sm:table-cell">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
-                        <td className="py-1.5 px-2 text-right text-gray-500 hidden sm:table-cell">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
+                        <td className="py-1.5 px-2 text-right text-gray-500 whitespace-nowrap hidden sm:table-cell">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
                         <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>
                         <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
                       </tr>
