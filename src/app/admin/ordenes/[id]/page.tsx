@@ -2515,27 +2515,13 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                           </div>
                         </td>
                         <td className="py-1 px-2">
-                          {editingItem.codigoPrefix ? (
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs font-mono font-semibold text-gray-500 bg-gray-100 px-1.5 py-1 rounded border border-gray-200 whitespace-nowrap flex-shrink-0">
-                                {editingItem.codigoPrefix} —
-                              </span>
-                              <input
-                                value={editingItem.descripcion}
-                                onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
-                                autoFocus
-                                placeholder="Nombre del repuesto"
-                                className="flex-1 min-w-0 px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
-                              />
-                            </div>
-                          ) : (
-                            <input
-                              value={editingItem.descripcion}
-                              onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
-                              autoFocus
-                              className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
-                            />
-                          )}
+                          <input
+                            value={editingItem.descripcion}
+                            onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
+                            autoFocus
+                            placeholder="Nombre del repuesto"
+                            className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
+                          />
                         </td>
                         <td className="py-1 px-2 hidden sm:table-cell">
                           {item.origen === 'externo' ? (
