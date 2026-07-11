@@ -12,6 +12,7 @@ interface RepuestoUMA {
   subgrupo: string | null
   unidad_empaque: number
   precio_publico_iva: number
+  tipo: 'repuesto' | 'lubricante'
 }
 
 interface Proveedor {
@@ -86,7 +87,6 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const [portaPlacasValor, setPortaPlacasValor] = useState('25000')
 
   /* ══ UMA ══════════════════════════════════════════ */
-  const [umaFuente, setUmaFuente] = useState<'repuesto' | 'lubricante'>('repuesto')
   const [umaQuery, setUmaQuery] = useState('')
   const [umaRows, setUmaRows] = useState<RepuestoUMA[]>([])
   const [umaLoading, setUmaLoading] = useState(false)
@@ -124,7 +124,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   /* ── Reset al abrir ── */
   useEffect(() => {
     if (open) {
-      setUmaSelId(null); setUmaErrPrecio(''); setUmaFuente('repuesto')
+      setUmaSelId(null); setUmaErrPrecio('')
       setUmaQuery(''); setUmaRows([]); setUmaBuscado(false)
       setFError(''); setFSinDatos(true); setFCantidad(1); setFMetodoPago('')
       setConfirmPrecioBajo(false)
@@ -141,8 +141,9 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
   }, [open, supabase, tenantId])
 
-  /* ══ Búsqueda UMA — un solo campo, busca en código / subgrupo / descripción ══ */
-  const buscarUMA = useCallback(async (q: string, fuente?: 'repuesto' | 'lubricante') => {
+  /* ══ Búsqueda UMA — un solo campo, busca en código / subgrupo / descripción
+        en AMBOS catálogos (repuestos y lubricantes) simultáneamente ══ */
+  const buscarUMA = useCallback(async (q: string) => {
     const query = q.trim()
     if (!query) { setUmaRows([]); setUmaBuscado(false); return }
     setUmaLoading(true); setUmaBuscado(true)
@@ -150,15 +151,16 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       const like = `%${query}%`
       const { data } = await supabase
         .from('repuestos_uma')
-        .select('id, codigo, descripcion, subgrupo, unidad_empaque, precio_publico_iva')
-        .eq('tenant_id', tenantId).eq('activo', true).eq('tipo', fuente ?? umaFuente)
+        .select('id, codigo, descripcion, subgrupo, unidad_empaque, precio_publico_iva, tipo')
+        .eq('tenant_id', tenantId).eq('activo', true)
+        .in('tipo', ['repuesto', 'lubricante'])
         .or(`codigo.ilike.${like},subgrupo.ilike.${like},descripcion.ilike.${like}`)
-        .order('descripcion').limit(501)
+        .order('tipo').order('descripcion').limit(501)
       const rows = (data as RepuestoUMA[]) ?? []
       setUmaTruncado(rows.length > 500)
       setUmaRows(rows.slice(0, 500))
     } finally { setUmaLoading(false) }
-  }, [supabase, tenantId, umaFuente])
+  }, [supabase, tenantId])
 
   /* ── Autocomplete proveedor ── */
   const buscarProveedores = useCallback(async (q: string) => {
@@ -400,25 +402,6 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       {tab === 'uma' && !umaModoSimple && (
         <div className="space-y-3">
 
-          {/* Toggle Repuestos / Lubricantes */}
-          <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">
-            {(['repuesto', 'lubricante'] as const).map((f) => (
-              <button key={f}
-                onClick={() => {
-                  setUmaFuente(f); setUmaSelId(null); setUmaRows([]); setUmaBuscado(false)
-                  if (umaQuery.trim()) {
-                    if (umaDebRef.current) clearTimeout(umaDebRef.current)
-                    buscarUMA(umaQuery.trim(), f)
-                  }
-                }}
-                className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                  umaFuente === f ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-                }`}>
-                {f === 'repuesto' ? 'Repuestos' : 'Lubricantes'}
-              </button>
-            ))}
-          </div>
-
           {/* Búsqueda unificada */}
           <div className="flex gap-2 items-center">
             <div className="relative flex-1">
@@ -431,7 +414,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                   if (umaDebRef.current) clearTimeout(umaDebRef.current)
                   if (v.trim()) {
                     const captured = v.trim()
-                    umaDebRef.current = setTimeout(() => buscarUMA(captured), 400)
+                    umaDebRef.current = setTimeout(() => buscarUMA(captured), 350)
                   } else {
                     setUmaRows([]); setUmaBuscado(false)
                   }
@@ -461,8 +444,8 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
 
           {/* Estado */}
           {!umaBuscado
-            ? <p className="text-xs text-gray-400 py-2">Escribe para buscar por referencia, subtipo o nombre</p>
-            : <p className="text-xs text-gray-400">{umaRows.length} repuesto{umaRows.length !== 1 ? 's' : ''}{umaTruncado ? ' (mostrando primeros 500 — refina la búsqueda)' : ''}</p>
+            ? <p className="text-xs text-gray-400 py-2">Busca en repuestos y lubricantes por # referencia, subtipo o nombre</p>
+            : <p className="text-xs text-gray-400">{umaRows.length} resultado{umaRows.length !== 1 ? 's' : ''}{umaTruncado ? ' (mostrando primeros 500 — refina la búsqueda)' : ''}</p>
           }
 
           {/* Tabla */}
@@ -487,7 +470,16 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                         <Fragment key={r.id}>
                           <tr
                             className={`border-t border-gray-100 transition-colors ${isSel ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                            <td className="py-2.5 px-3 font-mono text-gray-500 text-xs whitespace-nowrap">{r.codigo}</td>
+                            <td className="py-2.5 px-3 text-xs whitespace-nowrap">
+                              <p className="font-mono text-gray-500">{r.codigo}</p>
+                              <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold leading-none ${
+                                r.tipo === 'lubricante'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {r.tipo === 'lubricante' ? 'Lub.' : 'Rep.'}
+                              </span>
+                            </td>
                             <td className="py-2.5 px-3 text-gray-500 text-xs max-w-[120px] truncate">{r.subgrupo ?? '—'}</td>
                             <td className="py-2.5 px-3 text-gray-900 max-w-[240px]">{r.descripcion}</td>
                             <td className="py-2.5 px-3 text-center text-gray-500">{r.unidad_empaque ?? 1}</td>
