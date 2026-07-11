@@ -2519,7 +2519,6 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               tenantId={profile.tenant_id}
               onAdd={handleAddItem}
               permitirInsumos
-              umaModoSimple
             />
           )}
 
