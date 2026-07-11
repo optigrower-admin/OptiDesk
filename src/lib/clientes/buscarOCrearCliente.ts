@@ -21,6 +21,25 @@ interface BuscarCrearParams {
   supabaseClient?: SupabaseClient<any, any, any>
 }
 
+// Actualiza campos vacíos en un cliente existente con datos frescos del canal
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function rellenarCamposVacios(supabase: SupabaseClient<any, any, any>, existente: Record<string, unknown>, params: BuscarCrearParams) {
+  const { canal, contactId, celular, nombre } = params
+  const updates: Record<string, string> = {}
+
+  if (celular && !existente.celular)
+    updates.celular = celular
+  if (nombre && nombre !== 'Contacto nuevo' && (!existente.nombre || existente.nombre === 'Contacto nuevo'))
+    updates.nombre = nombre
+  if (canal === 'whatsapp'  && contactId && !existente.whatsapp_number) updates.whatsapp_number = contactId
+  if (canal === 'messenger' && contactId && !existente.messenger_id)    updates.messenger_id    = contactId
+  if (canal === 'instagram' && contactId && !existente.instagram_id)    updates.instagram_id    = contactId
+
+  if (Object.keys(updates).length === 0) return existente
+  const { data: actualizado } = await supabase.from('clientes').update(updates).eq('id', existente.id as string).select('*').single()
+  return actualizado ?? existente
+}
+
 export async function buscarOCrearCliente(params: BuscarCrearParams) {
   // Usar el cliente inyectado si está disponible (para evitar re-crear el cliente en contextos donde ya existe)
   const supabase = params.supabaseClient ?? createAdminClient()
@@ -38,7 +57,7 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
       .eq('tenant_id', tenantId)
       .eq('cedula', cedula)
       .maybeSingle()
-    if (data) return { cliente: data, creado: false }
+    if (data) return { cliente: await rellenarCamposVacios(supabase, data, params), creado: false }
   }
 
   // 2. Buscar por canal (whatsapp_number, messenger_id, instagram_id)
@@ -54,7 +73,7 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
         .eq('tenant_id', tenantId)
         .eq(campo, contactId)
         .maybeSingle()
-      if (data) return { cliente: data, creado: false }
+      if (data) return { cliente: await rellenarCamposVacios(supabase, data, params), creado: false }
     }
   }
 
@@ -66,7 +85,7 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
       .eq('tenant_id', tenantId)
       .eq('celular', celular)
       .maybeSingle()
-    if (data) return { cliente: data, creado: false }
+    if (data) return { cliente: await rellenarCamposVacios(supabase, data, params), creado: false }
   }
 
   // 4. Crear nuevo registro único
