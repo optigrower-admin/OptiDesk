@@ -498,11 +498,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               )}
             </div>
             {tieneAlistamientoFinal ? (
-              <p className="text-[11px] text-green-600">
-                {alistamientoOrdenId
-                  ? `Orden vinculada manualmente: ${alistamientoOrdenId.slice(-8).toUpperCase()}`
-                  : 'Orden de alistamiento detectada automáticamente en Servicio Técnico.'}
-              </p>
+              alistamientoOrdenId ? (
+                <a href={`/admin/ordenes/${alistamientoOrdenId}`}
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-green-700 underline hover:text-green-900 transition-colors">
+                  🔧 Ver orden de alistamiento #{alistamientoOrdenId.slice(-8).toUpperCase()} →
+                </a>
+              ) : (
+                <p className="text-[11px] text-green-600">Orden de alistamiento detectada automáticamente en Servicio Técnico.</p>
+              )
             ) : (
               <>
                 <p className="text-[11px] text-red-600 mb-2.5">No se encontró una orden UMA de alistamiento. Vincúlala o créala en Servicio Técnico.</p>
