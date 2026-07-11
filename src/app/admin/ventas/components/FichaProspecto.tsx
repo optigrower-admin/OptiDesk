@@ -77,7 +77,10 @@ const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'comentarios',   label: 'Comentarios',   icon: '💬' },
   { id: 'pasos',         label: 'Pasos',         icon: '✅' },
   { id: 'recordatorios', label: 'Recordatorios', icon: '⏰' },
-  { id: 'historial',     label: 'Historial',     icon: '📅' },
+]
+const TABS_GERENCIA: { id: TabDerecha; label: string; icon: string }[] = [
+  { id: 'historial',   label: 'Historial',   icon: '📅' },
+  { id: 'visibilidad', label: 'Visibilidad', icon: '🔒' },
 ]
 
 export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange, onLeadUpdate, onLeadDelete }: Props) {
@@ -466,23 +469,20 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
           {/* ── Panel derecho (55%) ── */}
           <div className="w-[55%] flex flex-col min-h-0">
-            <div className="flex border-b flex-shrink-0 overflow-x-auto">
-              {TABS.map(t => (
+            <div className="grid grid-cols-3 flex-shrink-0">
+              {[...TABS, ...(esGerencia ? TABS_GERENCIA : [])].map(t => (
                 <button key={t.id} onClick={() => setTabDer(t.id)}
-                  className={`flex-shrink-0 px-3 py-2.5 text-xs font-semibold transition-colors whitespace-nowrap ${
-                    tabDer === t.id ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'
+                  className={`py-2 border-b border-r border-gray-100 text-[10px] font-semibold transition-colors flex flex-col items-center gap-0.5 ${
+                    tabDer === t.id
+                      ? (t.id === 'historial' || t.id === 'visibilidad'
+                          ? 'bg-purple-50 text-purple-700'
+                          : 'bg-blue-50 text-blue-700')
+                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
                   }`}>
-                  {t.icon} {t.label}
+                  <span className="text-sm leading-none">{t.icon}</span>
+                  <span className="leading-tight">{t.label}</span>
                 </button>
               ))}
-              {esGerencia && (
-                <button onClick={() => setTabDer('visibilidad')}
-                  className={`flex-shrink-0 px-3 py-2.5 text-xs font-semibold transition-colors whitespace-nowrap ${
-                    tabDer === 'visibilidad' ? 'bg-purple-50 text-purple-700 border-b-2 border-purple-600' : 'text-gray-500 hover:text-gray-700'
-                  }`}>
-                  🔒 Visibilidad
-                </button>
-              )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">

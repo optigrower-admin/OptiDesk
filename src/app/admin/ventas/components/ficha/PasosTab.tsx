@@ -15,6 +15,7 @@ export default function PasosTab({ clienteId, tenantId, usuarioId }: Props) {
   const [pasos, setPasos]   = useState<Paso[]>([])
   const [nuevo, setNuevo]   = useState('')
   const [loading, setLoading] = useState(true)
+  const [confirmUncheckId, setConfirmUncheckId] = useState<string | null>(null)
 
   const cargar = useCallback(async () => {
     const { data } = await supabase.from('clientes_pasos')
@@ -36,11 +37,26 @@ export default function PasosTab({ clienteId, tenantId, usuarioId }: Props) {
   }
 
   async function toggle(p: Paso) {
+    if (p.completado) {
+      setConfirmUncheckId(p.id)
+      return
+    }
     await supabase.from('clientes_pasos').update({
-      completado: !p.completado,
-      completado_por: !p.completado ? usuarioId : null,
-      completado_at: !p.completado ? new Date().toISOString() : null,
+      completado: true,
+      completado_por: usuarioId,
+      completado_at: new Date().toISOString(),
     }).eq('id', p.id)
+    cargar()
+  }
+
+  async function confirmarUncheck() {
+    if (!confirmUncheckId) return
+    await supabase.from('clientes_pasos').update({
+      completado: false,
+      completado_por: null,
+      completado_at: null,
+    }).eq('id', confirmUncheckId)
+    setConfirmUncheckId(null)
     cargar()
   }
 
@@ -70,12 +86,33 @@ export default function PasosTab({ clienteId, tenantId, usuarioId }: Props) {
 
       <div className="space-y-1.5">
         {pasos.map(p => (
-          <div key={p.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-            <input type="checkbox" checked={p.completado} onChange={() => toggle(p)} className="flex-shrink-0" />
-            <span className={`flex-1 text-sm ${p.completado ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-              {p.descripcion}
-            </span>
-            <button onClick={() => eliminar(p.id)} className="text-red-400 hover:text-red-600 text-xs flex-shrink-0">✕</button>
+          <div key={p.id}>
+            <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${
+              confirmUncheckId === p.id ? 'bg-red-50 border border-red-200 rounded-b-none' : 'bg-gray-50'
+            }`}>
+              <input type="checkbox" checked={p.completado} onChange={() => toggle(p)} className="flex-shrink-0" />
+              <span className={`flex-1 text-sm ${p.completado ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                {p.descripcion}
+              </span>
+              {confirmUncheckId !== p.id && (
+                <button onClick={() => eliminar(p.id)} className="text-red-400 hover:text-red-600 text-xs flex-shrink-0">✕</button>
+              )}
+            </div>
+            {confirmUncheckId === p.id && (
+              <div className="bg-red-50 border border-red-200 border-t-0 rounded-b-lg px-3 py-2 text-xs text-red-700">
+                <p className="font-semibold mb-2">¿Estás seguro? Saldrá como si no se hubiera completado.</p>
+                <div className="flex gap-2">
+                  <button onClick={confirmarUncheck}
+                    className="flex-1 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold">
+                    Sí, desmarcar
+                  </button>
+                  <button onClick={() => setConfirmUncheckId(null)}
+                    className="flex-1 py-1.5 border border-gray-300 text-gray-600 hover:bg-gray-100 rounded-lg text-xs font-semibold">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

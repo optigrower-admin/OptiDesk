@@ -96,6 +96,51 @@ export default function VentasPage() {
         }
       }
 
+      // Alistamiento check: clientes en espera_entrega/entregada sin orden UMA+Alistamiento → rojo
+      const clientesConAlistamiento = new Set<string>()
+      const idsEnEspera = (raw ?? [])
+        .filter(c => c.etapa_venta === 'espera_entrega' || c.etapa_venta === 'entregada')
+        .map(c => c.id as string)
+      if (idsEnEspera.length > 0) {
+        try {
+          const { data: subcats } = await supabase
+            .from('subcategorias_servicio')
+            .select('id')
+            .ilike('nombre', '%alistamiento%')
+          const subcatIds = (subcats ?? []).map(s => s.id as string)
+          if (subcatIds.length > 0) {
+            const { data: ords } = await supabase
+              .from('ordenes')
+              .select('cliente_id')
+              .eq('tenant_id', profile.tenant_id)
+              .eq('tipo_servicio', 'uma')
+              .in('cliente_id', idsEnEspera)
+              .in('subcategoria_servicio_id', subcatIds)
+              .not('cliente_id', 'is', null)
+            for (const o of ords ?? []) if (o.cliente_id) clientesConAlistamiento.add(o.cliente_id as string)
+          } else {
+            // Fallback: buscar por nombre de categoría principal
+            const { data: cats } = await supabase
+              .from('categorias_servicio')
+              .select('id')
+              .eq('tenant_id', profile.tenant_id)
+              .ilike('nombre', '%alistamiento%')
+            const catIds = (cats ?? []).map(c => c.id as string)
+            if (catIds.length > 0) {
+              const { data: ords } = await supabase
+                .from('ordenes')
+                .select('cliente_id')
+                .eq('tenant_id', profile.tenant_id)
+                .eq('tipo_servicio', 'uma')
+                .in('cliente_id', idsEnEspera)
+                .in('categoria_servicio_id', catIds)
+                .not('cliente_id', 'is', null)
+              for (const o of ords ?? []) if (o.cliente_id) clientesConAlistamiento.add(o.cliente_id as string)
+            }
+          }
+        } catch { /* non-critical */ }
+      }
+
       const mapped: LeadData[] = (raw ?? []).map((c) => {
         const convs = (c.conversaciones as { id: string; canal: string; no_leidos_count: number }[] | null) ?? []
         const motosInteres = (c.motos_interes_resumen as unknown as { motos_catalogo: { referencia: string } | null }[] | null) ?? []
@@ -125,6 +170,9 @@ export default function VentasPage() {
           leads_campana:                [],
           todas_conversaciones:       convs.map(cv => ({ id: cv.id, canal: cv.canal, no_leidos_count: cv.no_leidos_count ?? 0 })),
           etiquetas,
+          tieneAlistamiento: (c.etapa_venta === 'espera_entrega' || c.etapa_venta === 'entregada')
+            ? clientesConAlistamiento.has(c.id as string)
+            : undefined,
         }
       })
 

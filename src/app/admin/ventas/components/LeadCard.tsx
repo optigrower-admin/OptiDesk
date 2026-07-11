@@ -26,6 +26,7 @@ export type LeadData = {
   leads_campana: { utm_campaign: string | null }[] | null
   todas_conversaciones: ConvCanal[]  // todas las conversaciones del cliente
   etiquetas: { id: string; nombre: string; color: string }[]
+  tieneAlistamiento?: boolean
 }
 
 const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
@@ -59,6 +60,9 @@ export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
   const seguimiento      = estadoSeguimiento(lead.proxima_accion_fecha)
   const esUrgente        = sinResponder.urgente || seguimiento === 'vencido'
   const nombrePendiente  = lead.nombre_pendiente_aprobacion === true
+  const necesitaAlistamiento =
+    (lead.etapa_venta === 'espera_entrega' || lead.etapa_venta === 'entregada') &&
+    lead.tieneAlistamiento === false
   const campana       = lead.leads_campana?.[0]?.utm_campaign
   const canales       = lead.todas_conversaciones.length > 0
     ? lead.todas_conversaciones
@@ -80,13 +84,22 @@ export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
       {...listeners}
       onClick={onClick}
       className={`rounded-xl border shadow-sm p-3 cursor-pointer select-none transition-shadow hover:shadow-md ${
-        nombrePendiente
-          ? 'bg-amber-50 border-amber-300'
-          : esUrgente
-            ? 'bg-white border-l-4 border-l-red-500 border-r border-t border-b border-gray-200'
-            : 'bg-white border-gray-200'
+        necesitaAlistamiento
+          ? 'bg-red-50 border-red-400 border-l-4 border-l-red-600'
+          : nombrePendiente
+            ? 'bg-amber-50 border-amber-300'
+            : esUrgente
+              ? 'bg-white border-l-4 border-l-red-500 border-r border-t border-b border-gray-200'
+              : 'bg-white border-gray-200'
       } ${overlay ? 'shadow-lg rotate-1' : ''}`}
     >
+      {/* Banner FALTA ALISTAMIENTO */}
+      {necesitaAlistamiento && (
+        <div className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5">
+          ⚠ FALTA ALISTAMIENTO
+        </div>
+      )}
+
       {/* Aviso nombre pendiente de aprobación */}
       {nombrePendiente && (
         <p className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full mb-1.5 inline-block">
