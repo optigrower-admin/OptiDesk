@@ -73,7 +73,7 @@ export default function VentasPage() {
         const ids = (raw ?? []).map((c) => c.id as string)
         const { data: extras } = await supabase
           .from('clientes')
-          .select('id, primer_apellido, numero_documento, email, estado_aprobacion_matricula, placa')
+          .select('id, primer_apellido, numero_documento, email, estado_aprobacion_matricula, placa, numero_factura')
           .in('id', ids)
         for (const e of extras ?? []) extraMap[e.id as string] = e
       }
@@ -185,6 +185,7 @@ export default function VentasPage() {
           tienePlaca: (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(c.etapa_venta as EtapaVenta)
             ? !!(ex.placa)
             : undefined,
+          numero_factura: (ex.numero_factura ?? null) as string | null,
         }
       })
 

@@ -30,6 +30,7 @@ export type LeadData = {
   tieneAlistamiento?: boolean
   estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'
   tienePlaca?: boolean
+  numero_factura?: string | null
 }
 
 const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> = {

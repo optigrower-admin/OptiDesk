@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { ETAPAS, ETAPA_MAP, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS, ETAPA_MAP, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, ETAPAS_NECESITAN_FACTURA, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import VincularClienteModal from './VincularClienteModal'
 import EtiquetasPicker, { type Etiqueta } from './EtiquetasPicker'
@@ -50,7 +50,7 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[] }) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_factura?: string | null }) => void
   onLeadDelete?: (id: string) => void
 }
 
@@ -125,6 +125,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [editandoPlaca, setEditandoPlaca]   = useState(false)
   const [savingPlaca, setSavingPlaca]       = useState(false)
 
+  // Factura
+  const [facturaActual, setFacturaActual]   = useState(lead.numero_factura ?? '')
+  const [facturaInput, setFacturaInput]     = useState(lead.numero_factura ?? '')
+  const [editandoFactura, setEditandoFactura] = useState(false)
+  const [savingFactura, setSavingFactura]   = useState(false)
+
   // Alistamiento manual
   const [alistamientoOrdenId, setAlistamientoOrdenId] = useState<string | null>(lead.alistamientoOrdenId ?? null)
   const [ordenesUMA, setOrdenesUMA]           = useState<{ id: string; created_at: string; estado: string }[]>([])
@@ -136,6 +142,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const enEtapaConPlaca     = (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(lead.etapa_venta)
   const enEtapaAlistamiento = lead.etapa_venta === 'espera_entrega' || lead.etapa_venta === 'entregada'
   const tieneAlistamientoFinal = lead.tieneAlistamiento === true || !!alistamientoOrdenId
+  const enEtapaFactura      = (ETAPAS_NECESITAN_FACTURA as EtapaVenta[]).includes(lead.etapa_venta)
 
   // Campos editables — tab Resumen
   const [etapa, setEtapa]         = useState<EtapaVenta>(lead.etapa_venta)
@@ -230,6 +237,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     await supabase.from('clientes').update({ celular: cel }).eq('id', lead.id).eq('tenant_id', tenantId)
     setCelularActual(cel)
     setSavingCelular(false)
+    onLeadUpdate?.(lead.id, { celular: cel })
   }
 
   const guardarPlaca = async () => {
@@ -241,6 +249,19 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setPlacaInput(pl)
     setEditandoPlaca(false)
     setSavingPlaca(false)
+    onLeadUpdate?.(lead.id, { placa: pl })
+  }
+
+  const guardarFactura = async () => {
+    const fac = facturaInput.trim().toUpperCase()
+    if (!fac) return
+    setSavingFactura(true)
+    await supabase.from('clientes').update({ numero_factura: fac }).eq('id', lead.id).eq('tenant_id', tenantId)
+    setFacturaActual(fac)
+    setFacturaInput(fac)
+    setEditandoFactura(false)
+    setSavingFactura(false)
+    onLeadUpdate?.(lead.id, { numero_factura: fac })
   }
 
   const cargarOrdenesUMA = async () => {
@@ -504,7 +525,26 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   🔧 Ver orden de alistamiento #{alistamientoOrdenId.slice(-8).toUpperCase()} →
                 </a>
               ) : (
-                <p className="text-[11px] text-green-600">Orden de alistamiento detectada automáticamente en Servicio Técnico.</p>
+                <div>
+                  <p className="text-[11px] text-green-600 mb-1.5">Detectada automáticamente en Servicio Técnico.</p>
+                  {!ordenesUMALoaded ? (
+                    <button onClick={cargarOrdenesUMA} disabled={loadingOrdenesUMA}
+                      className="text-sm font-semibold text-green-700 underline hover:text-green-900 disabled:opacity-60 transition-colors">
+                      {loadingOrdenesUMA ? '⏳ Cargando...' : '🔧 Ver en Servicio Técnico →'}
+                    </button>
+                  ) : (
+                    <div className="space-y-1">
+                      {ordenesUMA.length === 0 ? (
+                        <p className="text-xs text-gray-500">No se encontraron órdenes UMA para este cliente.</p>
+                      ) : ordenesUMA.map(o => (
+                        <a key={o.id} href={`/admin/ordenes/${o.id}`}
+                          className="flex items-center gap-1.5 text-sm font-semibold text-green-700 underline hover:text-green-900 transition-colors">
+                          🔧 Orden #{o.id.slice(-8).toUpperCase()} ({o.estado}) →
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )
             ) : (
               <>
@@ -562,6 +602,50 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ── Sección: Factura ── */}
+        {enEtapaFactura && (
+          <div className={`border-b px-4 py-3 flex-shrink-0 ${facturaActual ? 'bg-teal-50' : 'bg-orange-50'}`}>
+            <div className="flex items-center justify-between mb-1">
+              <p className={`text-xs font-bold uppercase tracking-wide ${facturaActual ? 'text-teal-700' : 'text-orange-700'}`}>
+                {facturaActual ? '🧾 Factura de venta' : '⚠ Sin número de factura'}
+              </p>
+              {facturaActual && esGerencia && !editandoFactura && (
+                <button onClick={() => setEditandoFactura(true)} className="text-xs text-teal-600 hover:underline font-medium">
+                  ✏️ Editar
+                </button>
+              )}
+            </div>
+            {facturaActual && !editandoFactura ? (
+              <p className="text-3xl font-black text-teal-800 tracking-[0.15em] text-center py-2 bg-white rounded-xl border border-teal-200">
+                {facturaActual}
+              </p>
+            ) : (
+              <>
+                {!facturaActual && <p className="text-[11px] text-orange-600 mb-2">Ingresa el número de factura de esta venta.</p>}
+                <div className="flex gap-2 mt-1">
+                  <input
+                    value={facturaInput}
+                    onChange={e => setFacturaInput(e.target.value.toUpperCase())}
+                    onKeyDown={e => { if (e.key === 'Enter') guardarFactura() }}
+                    placeholder="Ej: FAC-00123"
+                    className="flex-1 border border-orange-300 bg-white rounded-xl px-3 py-2 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                  <button onClick={guardarFactura} disabled={!facturaInput.trim() || savingFactura}
+                    className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold disabled:opacity-40 transition-colors">
+                    {savingFactura ? '...' : facturaActual ? 'Guardar' : '🧾 Asignar'}
+                  </button>
+                  {editandoFactura && (
+                    <button onClick={() => { setEditandoFactura(false); setFacturaInput(facturaActual) }}
+                      className="px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm hover:bg-gray-200">
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 

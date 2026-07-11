@@ -74,6 +74,12 @@ export const ETAPAS_NECESITAN_PLACA: EtapaVenta[] = [
   'primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado',
 ]
 
+// Desde Vendida en adelante: necesitan número de factura
+export const ETAPAS_NECESITAN_FACTURA: EtapaVenta[] = [
+  'ganado', 'aprobado_matricula', 'en_matricula', 'alistamiento', 'espera_entrega', 'entregada',
+  'primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado',
+]
+
 // Numeric order for comparing etapa priority (higher = more advanced)
 export const ETAPA_ORDEN: Record<EtapaVenta, number> = {
   perdido:            -2,

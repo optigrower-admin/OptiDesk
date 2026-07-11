@@ -216,16 +216,31 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     moverLead(id, etapa)
   }
 
-  function handleLeadUpdate(id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: { id: string; nombre: string; color: string }[] }) {
+  function handleLeadUpdate(id: string, updates: {
+    proxima_accion?: string | null
+    proxima_accion_fecha?: string | null
+    nombre?: string
+    nombre_pendiente_aprobacion?: boolean | null
+    etiquetas?: { id: string; nombre: string; color: string }[]
+    placa?: string | null
+    celular?: string | null
+    numero_factura?: string | null
+  }) {
     setLeads(prev => prev.map(l => {
       if (l.id !== id) return l
+      const clientePatch: Record<string, unknown> = {}
+      if (updates.nombre  !== undefined) clientePatch.nombre  = updates.nombre
+      if (updates.celular !== undefined) clientePatch.celular = updates.celular
+      if (updates.placa   !== undefined) clientePatch.placa   = updates.placa
       return {
         ...l,
-        ...(updates.proxima_accion !== undefined ? { proxima_accion: updates.proxima_accion } : {}),
-        ...(updates.proxima_accion_fecha !== undefined ? { proxima_accion_fecha: updates.proxima_accion_fecha } : {}),
-        ...(updates.nombre !== undefined && l.cliente ? { cliente: { ...l.cliente, nombre: updates.nombre } } : {}),
+        ...(updates.proxima_accion          !== undefined ? { proxima_accion: updates.proxima_accion }                         : {}),
+        ...(updates.proxima_accion_fecha    !== undefined ? { proxima_accion_fecha: updates.proxima_accion_fecha }             : {}),
         ...(updates.nombre_pendiente_aprobacion !== undefined ? { nombre_pendiente_aprobacion: updates.nombre_pendiente_aprobacion } : {}),
-        ...(updates.etiquetas !== undefined ? { etiquetas: updates.etiquetas } : {}),
+        ...(updates.etiquetas               !== undefined ? { etiquetas: updates.etiquetas }                                   : {}),
+        ...(updates.numero_factura          !== undefined ? { numero_factura: updates.numero_factura }                         : {}),
+        ...(updates.placa !== undefined ? { tienePlaca: !!updates.placa } : {}),
+        ...(l.cliente && Object.keys(clientePatch).length > 0 ? { cliente: { ...l.cliente, ...clientePatch } } : {}),
       }
     }))
   }
