@@ -87,9 +87,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
 
   /* ══ UMA ══════════════════════════════════════════ */
   const [umaFuente, setUmaFuente] = useState<'repuesto' | 'lubricante'>('repuesto')
-  const [umaRef, setUmaRef] = useState('')
-  const [umaSub, setUmaSub] = useState('')
-  const [umaDesc, setUmaDesc] = useState('')
+  const [umaQuery, setUmaQuery] = useState('')
   const [umaRows, setUmaRows] = useState<RepuestoUMA[]>([])
   const [umaLoading, setUmaLoading] = useState(false)
   const [umaBuscado, setUmaBuscado] = useState(false)
@@ -121,11 +119,13 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const [showProvDrop, setShowProvDrop] = useState(false)
   const [provExistente, setProvExistente] = useState<Proveedor | null>(null)
   const provDebRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const umaDebRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   /* ── Reset al abrir ── */
   useEffect(() => {
     if (open) {
       setUmaSelId(null); setUmaErrPrecio(''); setUmaFuente('repuesto')
+      setUmaQuery(''); setUmaRows([]); setUmaBuscado(false)
       setFError(''); setFSinDatos(true); setFCantidad(1); setFMetodoPago('')
       setConfirmPrecioBajo(false)
       setInsumoValor('10000')
@@ -141,23 +141,24 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
   }, [open, supabase, tenantId])
 
-  /* ══ Búsqueda UMA (manual) ══════════════════════════ */
-  const buscarUMA = useCallback(async () => {
+  /* ══ Búsqueda UMA — un solo campo, busca en código / subgrupo / descripción ══ */
+  const buscarUMA = useCallback(async (q: string, fuente?: 'repuesto' | 'lubricante') => {
+    const query = q.trim()
+    if (!query) { setUmaRows([]); setUmaBuscado(false); return }
     setUmaLoading(true); setUmaBuscado(true)
     try {
-      let q = supabase
+      const like = `%${query}%`
+      const { data } = await supabase
         .from('repuestos_uma')
         .select('id, codigo, descripcion, subgrupo, unidad_empaque, precio_publico_iva')
-        .eq('tenant_id', tenantId).eq('activo', true).eq('tipo', umaFuente)
-      if (umaRef) q = q.ilike('codigo', `%${umaRef}%`)
-      if (umaSub) q = q.ilike('subgrupo', `%${umaSub}%`)
-      if (umaDesc) q = q.ilike('descripcion', `%${umaDesc}%`)
-      const { data } = await q.order('descripcion').limit(501)
+        .eq('tenant_id', tenantId).eq('activo', true).eq('tipo', fuente ?? umaFuente)
+        .or(`codigo.ilike.${like},subgrupo.ilike.${like},descripcion.ilike.${like}`)
+        .order('descripcion').limit(501)
       const rows = (data as RepuestoUMA[]) ?? []
       setUmaTruncado(rows.length > 500)
       setUmaRows(rows.slice(0, 500))
     } finally { setUmaLoading(false) }
-  }, [supabase, tenantId, umaFuente, umaRef, umaSub, umaDesc])
+  }, [supabase, tenantId, umaFuente])
 
   /* ── Autocomplete proveedor ── */
   const buscarProveedores = useCallback(async (q: string) => {
@@ -403,7 +404,13 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
           <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">
             {(['repuesto', 'lubricante'] as const).map((f) => (
               <button key={f}
-                onClick={() => { setUmaFuente(f); setUmaSelId(null); setUmaRows([]); setUmaBuscado(false) }}
+                onClick={() => {
+                  setUmaFuente(f); setUmaSelId(null); setUmaRows([]); setUmaBuscado(false)
+                  if (umaQuery.trim()) {
+                    if (umaDebRef.current) clearTimeout(umaDebRef.current)
+                    buscarUMA(umaQuery.trim(), f)
+                  }
+                }}
                 className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
                   umaFuente === f ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-800'
                 }`}>
@@ -412,39 +419,50 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
             ))}
           </div>
 
-          {/* Filtros + botón buscar */}
-          <div className="flex gap-2 flex-wrap items-center">
-            <input value={umaRef} onChange={(e) => setUmaRef(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && buscarUMA()}
-              placeholder="# Referencia"
-              className="w-36 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            <input value={umaSub} onChange={(e) => setUmaSub(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && buscarUMA()}
-              placeholder="Sub-Grupo"
-              className="w-44 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            <input value={umaDesc} onChange={(e) => setUmaDesc(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && buscarUMA()}
-              placeholder="Descripción..."
-              className="flex-1 min-w-[180px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              autoFocus />
-            <button onClick={buscarUMA} disabled={umaLoading}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:bg-blue-300 text-white rounded-lg text-sm font-semibold transition-colors">
-              {umaLoading
-                ? <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-              }
-              Buscar
-            </button>
-            {(umaRef || umaSub || umaDesc) && (
-              <button onClick={() => { setUmaRef(''); setUmaSub(''); setUmaDesc(''); setUmaSelId(null) }}
-                className="text-xs text-gray-400 hover:text-red-500 px-2">Limpiar</button>
+          {/* Búsqueda unificada */}
+          <div className="flex gap-2 items-center">
+            <div className="relative flex-1">
+              <input
+                value={umaQuery}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setUmaQuery(v)
+                  setUmaSelId(null)
+                  if (umaDebRef.current) clearTimeout(umaDebRef.current)
+                  if (v.trim()) {
+                    const captured = v.trim()
+                    umaDebRef.current = setTimeout(() => buscarUMA(captured), 400)
+                  } else {
+                    setUmaRows([]); setUmaBuscado(false)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (umaDebRef.current) clearTimeout(umaDebRef.current)
+                    buscarUMA(umaQuery)
+                  }
+                }}
+                placeholder="Buscar por # Referencia, Subtipo o Nombre..."
+                autoFocus
+                className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              {umaLoading && (
+                <svg className="animate-spin w-4 h-4 text-blue-500 absolute right-2.5 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+              )}
+            </div>
+            {umaQuery && (
+              <button onClick={() => { setUmaQuery(''); setUmaRows([]); setUmaBuscado(false); setUmaSelId(null) }}
+                className="text-xs text-gray-400 hover:text-red-500 px-2 whitespace-nowrap">Limpiar</button>
             )}
           </div>
 
           {/* Estado */}
           {!umaBuscado
-            ? <p className="text-xs text-gray-400 py-2">Ingresa filtros y presiona Buscar para ver repuestos</p>
-            : <p className="text-xs text-gray-400">{umaRows.length} repuesto{umaRows.length !== 1 ? 's' : ''}{umaTruncado ? ' (mostrando primeros 500 — refina los filtros)' : ''}</p>
+            ? <p className="text-xs text-gray-400 py-2">Escribe para buscar por referencia, subtipo o nombre</p>
+            : <p className="text-xs text-gray-400">{umaRows.length} repuesto{umaRows.length !== 1 ? 's' : ''}{umaTruncado ? ' (mostrando primeros 500 — refina la búsqueda)' : ''}</p>
           }
 
           {/* Tabla */}
@@ -454,11 +472,11 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                 <table className="w-full text-sm">
                   <thead className="sticky top-0">
                     <tr className="bg-blue-600 text-white">
-                      <th className="text-left py-2.5 px-3 font-semibold text-xs whitespace-nowrap"># Ref.</th>
-                      <th className="text-left py-2.5 px-3 font-semibold text-xs">Sub-Grupo</th>
-                      <th className="text-left py-2.5 px-3 font-semibold text-xs">Descripción</th>
+                      <th className="text-left py-2.5 px-3 font-semibold text-xs whitespace-nowrap"># Referencia</th>
+                      <th className="text-left py-2.5 px-3 font-semibold text-xs">Subtipo</th>
+                      <th className="text-left py-2.5 px-3 font-semibold text-xs">Nombre</th>
                       <th className="text-center py-2.5 px-3 font-semibold text-xs">U.Emp</th>
-                      <th className="text-right py-2.5 px-3 font-semibold text-xs whitespace-nowrap">Precio c/IVA</th>
+                      <th className="text-right py-2.5 px-3 font-semibold text-xs whitespace-nowrap">P. Venta</th>
                       <th className="py-2.5 px-3 w-24" />
                     </tr>
                   </thead>
@@ -492,7 +510,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
                                 <div className="flex gap-3 items-end flex-wrap">
                                   <div>
                                     <label className="text-xs text-gray-600 block mb-1">
-                                      Precio al cliente <span className="text-gray-400">(mín. {formatCOP(r.precio_publico_iva)})</span>
+                                      P. Venta <span className="text-gray-400">(mín. {formatCOP(r.precio_publico_iva)})</span>
                                     </label>
                                     <div className={`flex items-center border rounded-lg overflow-hidden bg-white ${umaErrPrecio ? 'border-red-400' : 'border-gray-300 focus-within:ring-2 focus-within:ring-blue-400'}`}>
                                       <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-1.5">$</span>
