@@ -687,7 +687,29 @@ export default function AdminOrdenDetallePage() {
         setUploadError(err.error ?? 'Error al preparar la subida')
         return
       }
-      const { url, key, nombreArchivo, contentType } = await presignRes.json()
+      const presignData = await presignRes.json()
+
+      // Si el tenant usa Google Drive para imágenes → subir vía FormData al endpoint de Drive
+      if (presignData.mode === 'drive') {
+        if (file.size === 0) throw new Error('El archivo parece vacío (0 bytes).')
+        setUploadStage('subiendo')
+        setUploadProgress(30)
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('orden_id', ordenId)
+        fd.append('tipo', tipo)
+        const driveRes = await fetch('/api/upload/drive', { method: 'POST', body: fd })
+        setUploadProgress(100)
+        if (driveRes.ok) {
+          await cargar()
+        } else {
+          const err = await driveRes.json().catch(() => ({}))
+          setUploadError(err.error ?? 'Error al subir la foto a Google Drive')
+        }
+        return
+      }
+
+      const { url, key, nombreArchivo, contentType } = presignData
 
       // Validar tamaño mínimo — OPPO a veces devuelve File vacío si el content:// no es accesible
       if (file.size === 0) {
