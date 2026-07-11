@@ -523,8 +523,8 @@ function NuevaVentaContent() {
       )
     }
     return (
-      <span className="flex items-center gap-1 whitespace-nowrap text-gray-400">
-        {new Date(fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: '2-digit' })}
+      <span className="flex items-center gap-0.5 whitespace-nowrap text-[10px] text-gray-400 leading-none">
+        {new Date(fecha).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: '2-digit' })}
         {esGerencia && (
           <button onClick={onAbrir} className="text-gray-300 hover:text-purple-600 p-0.5" title="Editar fecha (gerencia)">
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -549,9 +549,9 @@ function NuevaVentaContent() {
 
   const accionesRepuesto = (onEditar: () => void, onEliminar: () => void, fechaNode?: React.ReactNode) => {
     return (
-      <div className="flex items-center justify-end gap-2 flex-wrap">
-        {fechaNode}
-        <div className="flex gap-0.5">
+      <div className="flex flex-col items-end gap-0.5">
+        {fechaNode && <div className="flex-shrink-0">{fechaNode}</div>}
+        <div className="flex gap-0.5 flex-shrink-0">
           <button onClick={onEditar} className="text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded p-1.5" title="Editar">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -1034,90 +1034,101 @@ function NuevaVentaContent() {
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-[11px] text-gray-500 uppercase border-b bg-blue-50">
-                          <th className="text-left py-1 px-2 font-medium">Origen</th>
-                          <th className="text-left py-1 px-2 font-medium">Descripción</th>
-                          <th className="text-left py-1 px-2 font-medium whitespace-nowrap">Método pago prov.</th>
-                          <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio proveedor</th>
-                          <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Precio venta</th>
-                          <th className="text-right py-1 px-2 font-medium whitespace-nowrap">Fecha / Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.length === 0 && (
-                          <tr><td colSpan={6} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
-                        )}
-                        {items.map((item) => {
-                          const tipoLabel = item.origen === 'uma' ? 'UMA' : item.origen === 'externo' ? 'Externo' : item.descripcion === 'Porta Placas' ? 'Porta Placas' : 'Insumo'
-                          const tipoColor = item.origen === 'uma' ? 'blue' : item.origen === 'externo' ? 'amber' : 'purple'
-                          return editingItem?.id === item.id ? (
-                            <tr key={item.id} className="border-b bg-blue-50/40">
-                              <td className="py-1 px-2"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
-                              <td className="py-1 px-2">
-                                <input
-                                  value={editingItem.descripcion}
-                                  onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
-                                  autoFocus
-                                  className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
-                                />
-                              </td>
-                              <td className="py-1 px-2">
-                                {item.origen === 'externo' ? (
-                                  <select
-                                    value={editingItem.metodo_pago_id}
-                                    onChange={(e) => setEditingItem({ ...editingItem, metodo_pago_id: e.target.value })}
-                                    className="w-full px-1.5 py-1 border border-blue-300 rounded-lg text-xs focus:outline-none bg-white"
-                                  >
-                                    <option value="">—</option>
-                                    {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                                  </select>
-                                ) : <span className="text-gray-300">—</span>}
-                              </td>
-                              <td className="py-1 px-2">
-                                {item.origen === 'externo' ? (
-                                  <input
-                                    type="text" inputMode="numeric"
-                                    value={editingItem.costo ? '$' + parseInt(editingItem.costo.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
-                                    onChange={(e) => setEditingItem({ ...editingItem, costo: e.target.value.replace(/\D/g, '') })}
-                                    className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
-                                  />
-                                ) : <span className="text-gray-300 block text-center">—</span>}
-                              </td>
-                              <td className="py-1 px-2">
+                  <table className="w-full table-fixed text-sm">
+                    <thead>
+                      <tr className="text-[11px] text-gray-500 uppercase border-b bg-blue-50">
+                        <th className="text-left py-1 px-2 font-medium w-28">Origen / Ref.</th>
+                        <th className="text-left py-1 px-2 font-medium">Descripción</th>
+                        <th className="text-left py-1 px-2 font-medium w-24 hidden sm:table-cell">Método prov.</th>
+                        <th className="text-right py-1 px-2 font-medium w-20 hidden sm:table-cell">Costo</th>
+                        <th className="text-right py-1 px-2 font-medium w-20">P. venta</th>
+                        <th className="text-right py-1 px-2 font-medium w-24">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.length === 0 && (
+                        <tr><td colSpan={6} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
+                      )}
+                      {items.map((item) => {
+                        const tipoLabel = item.origen === 'uma' ? 'UMA' : 'Externo'
+                        const tipoColor = item.origen === 'uma' ? 'blue' : 'amber'
+                        const sepIdx = item.descripcion.indexOf(' - ')
+                        const refCode = item.origen === 'externo' ? 'REPEXT' : item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(0, sepIdx) : '—'
+                        const descClean = item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(sepIdx + 3) : item.descripcion
+                        return editingItem?.id === item.id ? (
+                          <tr key={item.id} className="border-b bg-blue-50/40">
+                            <td className="py-1 px-2">
+                              <div className="flex flex-col gap-0.5">
+                                <Badge variant={tipoColor}>{tipoLabel}</Badge>
+                                {refCode !== '—' && <span className="text-xs font-mono font-semibold text-gray-600 leading-none">{refCode}</span>}
+                              </div>
+                            </td>
+                            <td className="py-1 px-2">
+                              <input
+                                value={editingItem.descripcion}
+                                onChange={(e) => setEditingItem({ ...editingItem, descripcion: e.target.value })}
+                                autoFocus
+                                className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
+                              />
+                            </td>
+                            <td className="py-1 px-2 hidden sm:table-cell">
+                              {item.origen === 'externo' ? (
+                                <select
+                                  value={editingItem.metodo_pago_id}
+                                  onChange={(e) => setEditingItem({ ...editingItem, metodo_pago_id: e.target.value })}
+                                  className="w-full px-1.5 py-1 border border-blue-300 rounded-lg text-xs focus:outline-none bg-white"
+                                >
+                                  <option value="">—</option>
+                                  {metodosPago.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                                </select>
+                              ) : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="py-1 px-2 hidden sm:table-cell">
+                              {item.origen === 'externo' ? (
                                 <input
                                   type="text" inputMode="numeric"
-                                  value={editingItem.precio ? '$' + parseInt(editingItem.precio.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
-                                  onChange={(e) => setEditingItem({ ...editingItem, precio: e.target.value.replace(/\D/g, '') })}
+                                  value={editingItem.costo ? '$' + parseInt(editingItem.costo.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                                  onChange={(e) => setEditingItem({ ...editingItem, costo: e.target.value.replace(/\D/g, '') })}
                                   className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
                                 />
-                              </td>
-                              <td className="py-1 px-2">
-                                <div className="flex items-center justify-end gap-2 flex-wrap">
-                                  {celdaFecha(item)}
-                                  <div className="flex gap-1">
-                                    <button onClick={handleEditItem} className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-semibold">OK</button>
-                                    <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
-                                  </div>
+                              ) : <span className="text-gray-300 block text-center">—</span>}
+                            </td>
+                            <td className="py-1 px-2">
+                              <input
+                                type="text" inputMode="numeric"
+                                value={editingItem.precio ? '$' + parseInt(editingItem.precio.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                                onChange={(e) => setEditingItem({ ...editingItem, precio: e.target.value.replace(/\D/g, '') })}
+                                className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
+                              />
+                            </td>
+                            <td className="py-1 px-2">
+                              <div className="flex flex-col items-end gap-0.5">
+                                {celdaFecha(item)}
+                                <div className="flex gap-0.5 flex-shrink-0">
+                                  <button onClick={handleEditItem} className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-semibold">OK</button>
+                                  <button onClick={() => setEditingItem(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
                                 </div>
-                              </td>
-                            </tr>
-                          ) : (
-                            <tr key={item.id} className="border-b hover:bg-gray-50">
-                              <td className="py-1.5 px-2"><Badge variant={tipoColor}>{tipoLabel}</Badge></td>
-                              <td className="py-1.5 px-2 text-gray-800 max-w-[200px] truncate" title={item.descripcion}>{item.descripcion}</td>
-                              <td className="py-1.5 px-2 text-gray-500">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
-                              <td className="py-1.5 px-2 text-right text-gray-500 whitespace-nowrap">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
-                              <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>
-                              <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr key={item.id} className="border-b hover:bg-gray-50">
+                            <td className="py-1.5 px-2">
+                              <div className="flex flex-col gap-0.5">
+                                <Badge variant={tipoColor}>{tipoLabel}</Badge>
+                                {refCode !== '—' && <span className="text-xs font-mono font-semibold text-gray-600 leading-none">{refCode}</span>}
+                              </div>
+                            </td>
+                            <td className="py-1.5 px-2 text-gray-800 truncate" title={descClean}>{descClean}</td>
+                            <td className="py-1.5 px-2 text-gray-500 text-xs hidden sm:table-cell">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
+                            <td className="py-1.5 px-2 text-right text-gray-500 whitespace-nowrap hidden sm:table-cell">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
+                            <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>
+                            <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
 
                   <div className="px-5 py-3 border-t space-y-1 text-sm font-semibold bg-blue-50">
                     <div className="flex justify-between">
@@ -1151,8 +1162,6 @@ function NuevaVentaContent() {
                   onClose={() => setShowAgregarRepuesto(false)}
                   tenantId={profile.tenant_id}
                   onAdd={handleAddItem}
-                  permitirInsumos
-                  umaModoSimple
                 />
               )}
 
