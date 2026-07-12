@@ -41,7 +41,11 @@ const FASES_KANBAN: {
   },
   {
     id: 'finalizado', label: 'Finalizado', color: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB',
-    etapas: ['proceso_finalizado', 'perdido'],
+    etapas: ['proceso_finalizado'],
+  },
+  {
+    id: 'perdido', label: 'Perdido', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA',
+    etapas: ['perdido'],
   },
 ]
 

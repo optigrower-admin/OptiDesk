@@ -7,12 +7,11 @@ import type { LeadData } from './components/LeadCard'
 import PipelineKanban from './components/PipelineKanban'
 import VistaHoy from './components/VistaHoy'
 import VistaLista from './components/VistaLista'
-import VistaResumen from './components/VistaResumen'
 import VistaBandeja from './VistaBandeja'
 import { ImportadorExcel } from '@/components/ImportadorExcel'
 import { importarSeguimientoVentas, previsualizarSeguimientoVentas } from '@/lib/bulkImport'
 
-type Tab = 'resumen' | 'kanban' | 'bandeja' | 'hoy' | 'lista'
+type Tab = 'kanban' | 'bandeja' | 'hoy' | 'lista'
 
 interface Props {
   leadsIniciales: LeadData[]
@@ -192,7 +191,7 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
 export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const { profile } = useAuth()
   const supabase = createClient()
-  const [tab, setTab] = useState<Tab>('resumen')
+  const [tab, setTab] = useState<Tab>('kanban')
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [usuarios, setUsuarios] = useState<UsuarioFiltro[]>([])
   const [usuarioFiltro, setUsuarioFiltro] = useState<string | null>(null) // null = todos
@@ -272,11 +271,10 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
           {/* Tabs */}
           <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
             {([
-              { id: 'resumen',  label: '📊 Resumen' },
-              { id: 'kanban',   label: 'Kanban' },
-              { id: 'bandeja',  label: '📥 Bandeja' },
-              { id: 'hoy',      label: 'Hoy' },
-              { id: 'lista',    label: 'Lista' },
+              { id: 'kanban',  label: 'Kanban' },
+              { id: 'bandeja', label: '📥 Bandeja' },
+              { id: 'hoy',     label: 'Hoy' },
+              { id: 'lista',   label: 'Lista' },
             ] as { id: Tab; label: string }[]).map(t => (
               <button
                 key={t.id}
@@ -378,9 +376,6 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       )}
 
       {/* Content */}
-      {tab === 'resumen' && (
-        <VistaResumen leads={leadsIniciales} tenantId={tenantId} usuarios={usuarios} />
-      )}
       {tab === 'kanban' && (
         <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} />
       )}
