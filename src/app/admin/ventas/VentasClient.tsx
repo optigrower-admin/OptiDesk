@@ -110,15 +110,15 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
         <p className="text-xs text-gray-500 mb-4">Para clientes que se gestionan en persona, sin chat previo.</p>
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
-            <input value={primerNombre} onChange={e => setPrimerNombre(e.target.value)} placeholder="Primer nombre *"
+            <input value={primerNombre} onChange={e => setPrimerNombre(e.target.value.toUpperCase())} placeholder="Primer nombre *"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={segundoNombre} onChange={e => setSegundoNombre(e.target.value)} placeholder="Segundo nombre (opcional)"
+            <input value={segundoNombre} onChange={e => setSegundoNombre(e.target.value.toUpperCase())} placeholder="Segundo nombre (opcional)"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <input value={primerApellido} onChange={e => setPrimerApellido(e.target.value)} placeholder="Primer apellido (opcional)"
+            <input value={primerApellido} onChange={e => setPrimerApellido(e.target.value.toUpperCase())} placeholder="Primer apellido (opcional)"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={segundoApellido} onChange={e => setSegundoApellido(e.target.value)} placeholder="Segundo apellido (opcional)"
+            <input value={segundoApellido} onChange={e => setSegundoApellido(e.target.value.toUpperCase())} placeholder="Segundo apellido (opcional)"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <input
@@ -145,7 +145,7 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
               }`}
             />
           </div>
-          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Correo electrónico (opcional)" type="email"
+          <input value={email} onChange={e => setEmail(e.target.value.toLowerCase())} placeholder="Correo electrónico (opcional)" type="email"
             className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
 

@@ -89,8 +89,13 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId])
 
+  const NOMBRE_FIELDS: (keyof Campos)[] = ['primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido']
+
   function set<K extends keyof Campos>(k: K, v: string) {
-    setCampos(p => ({ ...p, [k]: v }))
+    const transformed = NOMBRE_FIELDS.includes(k) ? v.toUpperCase()
+      : k === 'email' ? v.toLowerCase()
+      : v
+    setCampos(p => ({ ...p, [k]: transformed }))
   }
 
   async function guardar() {

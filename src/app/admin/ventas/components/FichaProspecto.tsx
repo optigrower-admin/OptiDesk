@@ -259,7 +259,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const handleRenombrar = async () => {
-    const nombre = nuevoNombre.trim()
+    const nombre = nuevoNombre.trim().toUpperCase()
     if (!nombre || !lead.cliente?.id) return
     setSavingNombre(true)
     await supabase.from('clientes')
