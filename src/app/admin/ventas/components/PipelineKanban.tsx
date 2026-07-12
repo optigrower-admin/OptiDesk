@@ -106,17 +106,17 @@ function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuar
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: etapaConfig.id })
   return (
-    <div className={`flex-shrink-0 w-60 rounded-2xl flex flex-col border-2 transition-colors bg-white ${
+    <div className={`flex-shrink-0 w-60 rounded-2xl flex flex-col border-2 transition-colors bg-white h-full ${
       isOver ? `${etapaConfig.border} ring-2 ring-offset-1` : etapaConfig.border
     }`}>
-      <div className={`px-3 pt-3 pb-2 border-b border-gray-100 rounded-t-2xl ${etapaConfig.bg}`}>
+      <div className={`px-3 pt-3 pb-2 border-b border-gray-100 rounded-t-2xl flex-shrink-0 ${etapaConfig.bg}`}>
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: etapaConfig.color }} />
           <span className="font-semibold text-xs text-gray-800 truncate">{etapaConfig.label}</span>
           <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium ml-auto">{leads.length}</span>
         </div>
       </div>
-      <div ref={setNodeRef} className="flex-1 p-2 space-y-2 overflow-y-auto" style={{ minHeight: 60 }}>
+      <div ref={setNodeRef} className="flex-1 p-2 space-y-2 overflow-y-auto min-h-0">
         <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
           {leads.length === 0 && (
             <div className={`h-12 border-2 border-dashed rounded-xl flex items-center justify-center transition-colors ${
@@ -327,6 +327,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     etiquetas?: { id: string; nombre: string; color: string }[]
     placa?: string | null; celular?: string | null
     numero_factura?: string | null; assigned_to?: string | null
+    alistamientoOrdenId?: string | null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: any
   }) {
@@ -338,12 +339,13 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
       if (updates.placa   !== undefined) clientePatch.placa   = updates.placa
       return {
         ...l,
-        ...(updates.proxima_accion           !== undefined ? { proxima_accion: updates.proxima_accion }                         : {}),
-        ...(updates.proxima_accion_fecha     !== undefined ? { proxima_accion_fecha: updates.proxima_accion_fecha }             : {}),
-        ...(updates.nombre_pendiente_aprobacion !== undefined ? { nombre_pendiente_aprobacion: updates.nombre_pendiente_aprobacion } : {}),
-        ...(updates.etiquetas                !== undefined ? { etiquetas: updates.etiquetas }                                   : {}),
-        ...(updates.numero_factura           !== undefined ? { numero_factura: updates.numero_factura }                         : {}),
-        ...(updates.assigned_to             !== undefined ? { assigned_to: updates.assigned_to }                               : {}),
+        ...(updates.proxima_accion              !== undefined ? { proxima_accion: updates.proxima_accion }                             : {}),
+        ...(updates.proxima_accion_fecha        !== undefined ? { proxima_accion_fecha: updates.proxima_accion_fecha }                 : {}),
+        ...(updates.nombre_pendiente_aprobacion !== undefined ? { nombre_pendiente_aprobacion: updates.nombre_pendiente_aprobacion }   : {}),
+        ...(updates.etiquetas                   !== undefined ? { etiquetas: updates.etiquetas }                                       : {}),
+        ...(updates.numero_factura              !== undefined ? { numero_factura: updates.numero_factura }                             : {}),
+        ...(updates.assigned_to                 !== undefined ? { assigned_to: updates.assigned_to }                                   : {}),
+        ...(updates.alistamientoOrdenId         !== undefined ? { alistamientoOrdenId: updates.alistamientoOrdenId, tieneAlistamiento: updates.alistamientoOrdenId !== null } : {}),
         ...(updates.placa !== undefined ? { tienePlaca: !!updates.placa } : {}),
         ...(l.cliente && Object.keys(clientePatch).length > 0 ? { cliente: { ...l.cliente, ...clientePatch } } : {}),
       }
@@ -415,16 +417,16 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
       )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="flex gap-3 overflow-x-auto pb-4 min-h-[calc(100vh-220px)] items-start">
+        <div className="flex gap-3 overflow-x-auto pb-4 h-[calc(100vh-200px)]">
           {FASES_KANBAN.map(fase => {
             const leadsEnFase  = leads.filter(l => fase.etapas.includes(l.etapa_venta))
             const expandida    = fasesExpandidas.has(fase.id)
 
             if (expandida) {
               return (
-                <div key={fase.id} className="flex-shrink-0 flex flex-col gap-2">
+                <div key={fase.id} className="flex-shrink-0 flex flex-col gap-2 h-full">
                   {/* Barra de fase expandida */}
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border"
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border flex-shrink-0"
                     style={{ background: fase.bg, borderColor: fase.border }}>
                     <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: fase.color }} />
                     <span className="font-bold text-xs" style={{ color: fase.color }}>{fase.label}</span>
@@ -436,7 +438,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
                     </button>
                   </div>
                   {/* Columnas individuales */}
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 flex-1 min-h-0">
                     {fase.etapas.map(etapa => (
                       <KanbanColumn
                         key={etapa}

@@ -116,7 +116,7 @@ function PanelCRM({ lead, tenantId, usuarios, onLeadUpdate }: {
   const etapaConfig = ETAPA_MAP[etapa]
 
   return (
-    <div className="h-full flex flex-col bg-[#141D31] text-white overflow-y-auto">
+    <div className="h-full flex flex-col bg-[#1a2235] text-white overflow-y-auto">
       {/* Badge guardado */}
       {savedOk && (
         <div className="absolute top-3 right-3 z-10 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
@@ -439,7 +439,7 @@ export default function VistaBandeja({ leads, tenantId, usuarios }: Props) {
             onLeadUpdate={handleLeadUpdate}
           />
         ) : (
-          <div className="h-full bg-[#141D31] flex items-center justify-center">
+          <div className="h-full bg-[#1a2235] flex items-center justify-center">
             <p className="text-xs text-white/30 text-center px-4">Selecciona un cliente para ver el panel CRM</p>
           </div>
         )}

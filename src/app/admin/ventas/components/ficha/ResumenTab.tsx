@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCOP } from '@/lib/ventas/pipeline'
 import ComentariosTab from './ComentariosTab'
+import PagoTab from './PagoTab'
 
 interface Props {
   clienteId: string
@@ -24,9 +25,6 @@ function formatDateHour(d: string) {
 export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAccionChange }: Props) {
   const supabase = createClient()
   const [seleccion, setSeleccion] = useState<Seleccion[]>([])
-  const [formaPago, setFormaPago] = useState<'contado' | 'credito' | ''>('')
-  const [cuotaInicialSi, setCuotaInicialSi] = useState(false)
-  const [cuotaInicial, setCuotaInicial] = useState<number | null>(null)
   const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([])
   const [pasos, setPasos] = useState<Paso[]>([])
   const [ordenesST, setOrdenesST] = useState<OrdenResumen[]>([])
@@ -36,13 +34,10 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
   const [confirmUncheckRecId, setConfirmUncheckRecId] = useState<string | null>(null)
 
   const cargar = useCallback(async () => {
-    const [{ data: sel }, { data: cliente }, { data: recs }, { data: pasosData }, { data: stData }, { data: repData }] = await Promise.all([
+    const [{ data: sel }, { data: recs }, { data: pasosData }, { data: stData }, { data: repData }] = await Promise.all([
       supabase.from('clientes_motos_interes')
         .select('id, disponibilidad, motos_catalogo(id, referencia, precio, costo_documentos, costo_prenda)')
         .eq('cliente_id', clienteId),
-      supabase.from('clientes')
-        .select('forma_pago, credito_tiene_cuota_inicial, cuota_inicial')
-        .eq('id', clienteId).single(),
       supabase.from('recordatorios')
         .select('id, nota, fecha_recordatorio, completado')
         .eq('cliente_id', clienteId)
@@ -66,9 +61,6 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
       ...s,
       motos_catalogo: Array.isArray(s.motos_catalogo) ? s.motos_catalogo[0] ?? null : s.motos_catalogo,
     })) as Seleccion[])
-    setFormaPago((cliente?.forma_pago ?? '') as 'contado' | 'credito' | '')
-    setCuotaInicialSi(!!cliente?.credito_tiene_cuota_inicial)
-    setCuotaInicial(cliente?.cuota_inicial ?? null)
     setRecordatorios((recs ?? []) as Recordatorio[])
     setPasos((pasosData ?? []) as Paso[])
     setOrdenesST((stData ?? []) as OrdenResumen[])
@@ -164,18 +156,11 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
           )
         })}
 
-        <div className="bg-gray-50 rounded-lg px-3 py-2 mt-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Forma de pago</p>
-          {!formaPago && <p className="text-sm text-gray-500">No sabe todavía</p>}
-          {formaPago === 'contado' && <p className="text-sm text-gray-800">Contado</p>}
-          {formaPago === 'credito' && (
-            <p className="text-sm text-gray-800">
-              Crédito{cuotaInicialSi
-                ? ` — con cuota inicial${cuotaInicial ? ` de ${formatCOP(cuotaInicial)}` : ''}`
-                : ' — sin cuota inicial'}
-            </p>
-          )}
-        </div>
+      </div>
+
+      {/* Pago */}
+      <div className="border-t pt-3">
+        <PagoTab clienteId={clienteId} tenantId={tenantId} usuarioId={usuarioId} />
       </div>
 
       <div className="border-t pt-3">

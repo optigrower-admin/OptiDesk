@@ -50,7 +50,7 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_factura?: string | null; assigned_to?: string | null }) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_factura?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null }) => void
   onLeadDelete?: (id: string) => void
 }
 
@@ -65,7 +65,7 @@ const ROL_LABEL: Record<string, string> = {
   admin: 'Admin', superadmin: 'SuperAdmin', mecanico: 'Mecánico', gerencia: 'Gerencia', control_total: 'Control total',
 }
 
-type TabDerecha = 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizacion' | 'pago' | 'archivos' | 'pasos' | 'historial' | 'visibilidad'
+type TabDerecha = 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizacion' | 'archivos' | 'pasos' | 'historial' | 'visibilidad'
 
 const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'resumen',    label: 'Resumen',    icon: '📋' },
@@ -73,7 +73,6 @@ const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'chats',      label: 'Chats',      icon: '📱' },
   { id: 'motos',      label: 'Motos',      icon: '🏍️' },
   { id: 'cotizacion', label: 'Cotización', icon: '📄' },
-  { id: 'pago',       label: 'Pago',       icon: '💳' },
   { id: 'archivos',   label: 'Archivos',   icon: '📎' },
   { id: 'pasos',      label: 'Pasos',      icon: '✅' },
 ]
@@ -344,6 +343,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const vincularAlistamiento = async (ordenId: string) => {
     await supabase.from('clientes').update({ alistamiento_orden_id: ordenId }).eq('id', lead.id).eq('tenant_id', tenantId)
     setAlistamientoOrdenId(ordenId)
+    onLeadUpdate?.(lead.id, { alistamientoOrdenId: ordenId })
   }
 
   const desvincularAlistamiento = async () => {
@@ -351,6 +351,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setAlistamientoOrdenId(null)
     setOrdenesUMALoaded(false)
     setEditandoAlistamiento(false)
+    onLeadUpdate?.(lead.id, { alistamientoOrdenId: null })
   }
 
   const actualizarAprobacion = async (status: 'pendiente' | 'aprobado' | 'rechazado') => {
@@ -516,20 +517,20 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         {/* Body con panel izquierdo */}
         <div className="flex flex-1 min-h-0">
 
-          {/* ── Panel izquierdo ── */}
-          <div className="w-64 flex-shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col overflow-y-auto">
+          {/* ── Panel izquierdo oscuro ── */}
+          <div className="w-64 flex-shrink-0 bg-[#1a2235] border-r border-[#2a3550] flex flex-col overflow-y-auto">
             {/* Saved toast */}
             {savedPanel && (
               <div className="absolute top-3 left-16 z-10 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">✓ Guardado</div>
             )}
 
-            <div className="flex-1 px-3 py-3 space-y-3 text-gray-900">
+            <div className="flex-1 px-3 py-3 space-y-3">
 
               {/* Etapa */}
               <div>
-                <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Etapa</label>
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Etapa</label>
                 <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)} disabled={saving}
-                  className="w-full text-xs rounded-lg px-2 py-1.5 font-bold text-white border border-gray-200 focus:outline-none disabled:opacity-60"
+                  className="w-full text-xs rounded-lg px-2 py-1.5 font-bold text-white border border-[#2a3550] focus:outline-none disabled:opacity-60"
                   style={{ background: etapaActual.color }}>
                   {ETAPAS.map(e => (
                     <option key={e.id} value={e.id} style={{ background: e.color }}>{e.label}</option>
@@ -539,44 +540,44 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
               {/* Asesor */}
               <div>
-                <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Asesor</label>
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Asesor</label>
                 {esGerencia ? (
                   <select value={assignedTo} onChange={e => autoSaveAssigned(e.target.value)} disabled={saving}
-                    className="w-full text-xs bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none disabled:opacity-60">
+                    className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none disabled:opacity-60">
                     <option value="">Sin asignar</option>
                     {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                   </select>
                 ) : (
-                  <p className="text-xs text-gray-700">{usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'}</p>
+                  <p className="text-xs text-slate-300">{usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'}</p>
                 )}
               </div>
 
-              <div className="border-t border-gray-200" />
+              <div className="border-t border-[#2a3550]" />
 
               {/* Próxima acción */}
               <div>
-                <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Próxima acción</label>
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Próxima acción</label>
                 <input value={proximaAccion} onChange={e => setProximaAccion(e.target.value)}
                   placeholder="Acción a seguir..."
-                  className="w-full text-xs bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1" />
+                  className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1" />
                 <input type="datetime-local" value={proximaFecha} onChange={e => setProximaFecha(e.target.value)}
-                  className="w-full text-[10px] bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1" />
+                  className="w-full text-[10px] bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1" />
                 <button onClick={guardarProximaAccionPanel} disabled={savingPanel}
-                  className="w-full py-1 text-[10px] font-bold bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-40">
+                  className="w-full py-1 text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-40">
                   {savingPanel ? '...' : 'Guardar acción'}
                 </button>
               </div>
 
-              <div className="border-t border-gray-200" />
+              <div className="border-t border-[#2a3550]" />
 
               {/* Nota rápida */}
               <div>
-                <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Nota rápida</label>
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Nota rápida</label>
                 <textarea value={notaRapida} onChange={e => setNotaRapida(e.target.value)}
                   rows={2} placeholder="Nota interna..."
-                  className="w-full text-xs bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none mb-1" />
+                  className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none mb-1" />
                 <button onClick={guardarNotaRapidaPanel} disabled={savingPanel || !notaRapida.trim()}
-                  className="w-full py-1 text-[10px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors disabled:opacity-40">
+                  className="w-full py-1 text-[10px] font-bold bg-[#2a3550] hover:bg-[#334466] text-slate-200 rounded-lg transition-colors disabled:opacity-40">
                   💬 Guardar nota
                 </button>
               </div>
@@ -584,18 +585,18 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               {/* Recordatorio */}
               <div>
                 <button onClick={() => setShowReminder(v => !v)}
-                  className="w-full py-1 text-[10px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg transition-colors">
+                  className="w-full py-1 text-[10px] font-bold bg-amber-900/40 hover:bg-amber-900/60 text-amber-400 border border-amber-800/50 rounded-lg transition-colors">
                   ⏰ {showReminder ? 'Cancelar' : 'Recordatorio'}
                 </button>
                 {showReminder && (
                   <div className="mt-1.5 space-y-1">
                     <input type="datetime-local" value={reminderFecha} onChange={e => setReminderFecha(e.target.value)}
-                      className="w-full text-[10px] bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none" />
+                      className="w-full text-[10px] bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none" />
                     <input type="text" value={reminderNota} onChange={e => setReminderNota(e.target.value)}
                       placeholder="Nota del recordatorio"
-                      className="w-full text-xs bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 placeholder:text-gray-400 focus:outline-none" />
+                      className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none" />
                     <button onClick={guardarReminderPanel} disabled={savingPanel || !reminderFecha}
-                      className="w-full py-1 text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors disabled:opacity-40">
+                      className="w-full py-1 text-[10px] font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-40">
                       Crear recordatorio
                     </button>
                   </div>
@@ -606,25 +607,25 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               <div className="space-y-1 pt-1">
                 {sinCelular && (
                   <button onClick={() => setTabDer('datos')}
-                    className="w-full text-left text-[9px] font-bold text-orange-700 bg-orange-100 border border-orange-200 rounded-lg px-2 py-1.5 hover:bg-orange-200 transition-colors">
+                    className="w-full text-left text-[9px] font-bold text-orange-300 bg-orange-900/30 border border-orange-700/40 rounded-lg px-2 py-1.5 hover:bg-orange-900/50 transition-colors">
                     ⚠ Sin celular → Datos
                   </button>
                 )}
                 {enEtapaConPlaca && !placaActual && (
                   <button onClick={() => setTabDer('resumen')}
-                    className="w-full text-left text-[9px] font-bold text-red-700 bg-red-100 border border-red-200 rounded-lg px-2 py-1.5 hover:bg-red-200 transition-colors">
+                    className="w-full text-left text-[9px] font-bold text-red-300 bg-red-900/30 border border-red-700/40 rounded-lg px-2 py-1.5 hover:bg-red-900/50 transition-colors">
                     ⚠ Sin placa → Resumen
                   </button>
                 )}
                 {enEtapaAlistamiento && !tieneAlistamientoFinal && (
                   <button onClick={() => setTabDer('resumen')}
-                    className="w-full text-left text-[9px] font-bold text-red-700 bg-red-100 border border-red-200 rounded-lg px-2 py-1.5 hover:bg-red-200 transition-colors">
+                    className="w-full text-left text-[9px] font-bold text-red-300 bg-red-900/30 border border-red-700/40 rounded-lg px-2 py-1.5 hover:bg-red-900/50 transition-colors">
                     ⚠ Sin alistamiento → Resumen
                   </button>
                 )}
                 {enEtapaFactura && !facturaActual && (
                   <button onClick={() => setTabDer('resumen')}
-                    className="w-full text-left text-[9px] font-bold text-yellow-700 bg-yellow-100 border border-yellow-200 rounded-lg px-2 py-1.5 hover:bg-yellow-200 transition-colors">
+                    className="w-full text-left text-[9px] font-bold text-yellow-300 bg-yellow-900/30 border border-yellow-700/40 rounded-lg px-2 py-1.5 hover:bg-yellow-900/50 transition-colors">
                     ⚠ Sin factura → Resumen
                   </button>
                 )}
@@ -633,9 +634,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
             {/* Footer panel: eliminar */}
             {profile?.rol === 'gerencia' && (
-              <div className="px-3 py-3 border-t border-gray-200 flex-shrink-0">
+              <div className="px-3 py-3 border-t border-[#2a3550] flex-shrink-0">
                 <button onClick={() => { setConfirmDeleteInput(''); setConfirmDelete(true) }}
-                  className="w-full py-1.5 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors">
+                  className="w-full py-1.5 text-[10px] font-bold text-red-400 bg-red-900/30 hover:bg-red-900/50 border border-red-700/40 rounded-lg transition-colors">
                   🗑 Sacar de seguimiento
                 </button>
               </div>
@@ -1076,7 +1077,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               {tabDer === 'datos'      && <DatosClienteTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'motos'      && <MotosInteresTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'cotizacion' && <CotizacionTab clienteId={lead.id} tenantId={tenantId} clienteNombre={lead.cliente?.nombre ?? ''} clienteCelular={lead.cliente?.celular ?? ''} />}
-              {tabDer === 'pago'       && <PagoTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'archivos'   && <ArchivosTab clienteId={lead.id} />}
               {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'historial'  && <HistorialTab clienteId={lead.id} />}
