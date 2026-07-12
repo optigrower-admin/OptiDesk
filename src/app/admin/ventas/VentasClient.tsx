@@ -8,10 +8,11 @@ import PipelineKanban from './components/PipelineKanban'
 import VistaHoy from './components/VistaHoy'
 import VistaLista from './components/VistaLista'
 import VistaResumen from './components/VistaResumen'
+import VistaBandeja from './VistaBandeja'
 import { ImportadorExcel } from '@/components/ImportadorExcel'
 import { importarSeguimientoVentas, previsualizarSeguimientoVentas } from '@/lib/bulkImport'
 
-type Tab = 'resumen' | 'kanban' | 'hoy' | 'lista'
+type Tab = 'resumen' | 'kanban' | 'bandeja' | 'hoy' | 'lista'
 
 interface Props {
   leadsIniciales: LeadData[]
@@ -271,10 +272,11 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
           {/* Tabs */}
           <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
             {([
-              { id: 'resumen', label: '📊 Resumen' },
-              { id: 'kanban',  label: 'Kanban' },
-              { id: 'hoy',     label: 'Hoy' },
-              { id: 'lista',   label: 'Lista' },
+              { id: 'resumen',  label: '📊 Resumen' },
+              { id: 'kanban',   label: 'Kanban' },
+              { id: 'bandeja',  label: '📥 Bandeja' },
+              { id: 'hoy',      label: 'Hoy' },
+              { id: 'lista',    label: 'Lista' },
             ] as { id: Tab; label: string }[]).map(t => (
               <button
                 key={t.id}
@@ -293,7 +295,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       </div>
 
       {/* Filtro por usuario */}
-      {usuarios.length > 1 && (
+      {tab !== 'bandeja' && usuarios.length > 1 && (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="text-xs text-gray-500 font-medium">Asesor:</span>
           <button
@@ -323,30 +325,32 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       )}
 
       {/* Buscador */}
-      <div className="mb-4">
-        <div className="relative max-w-sm">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-          <input
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar por nombre, cédula, celular, placa o factura..."
-            className="w-full pl-8 pr-8 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          />
-          {busqueda && (
-            <button onClick={() => setBusqueda('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">
-              ×
-            </button>
+      {tab !== 'bandeja' && (
+        <div className="mb-4">
+          <div className="relative max-w-sm">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+            <input
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              placeholder="Buscar por nombre, cédula, celular, placa o factura..."
+              className="w-full pl-8 pr-8 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            />
+            {busqueda && (
+              <button onClick={() => setBusqueda('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">
+                ×
+              </button>
+            )}
+          </div>
+          {busqueda.trim() && (
+            <p className="text-xs text-gray-500 mt-1.5 ml-1">
+              {leadsFiltrados.length === 0
+                ? 'Sin resultados para esta búsqueda.'
+                : `${leadsFiltrados.length} cliente${leadsFiltrados.length === 1 ? '' : 's'} encontrado${leadsFiltrados.length === 1 ? '' : 's'}`}
+            </p>
           )}
         </div>
-        {busqueda.trim() && (
-          <p className="text-xs text-gray-500 mt-1.5 ml-1">
-            {leadsFiltrados.length === 0
-              ? 'Sin resultados para esta búsqueda.'
-              : `${leadsFiltrados.length} cliente${leadsFiltrados.length === 1 ? '' : 's'} encontrado${leadsFiltrados.length === 1 ? '' : 's'}`}
-          </p>
-        )}
-      </div>
+      )}
 
       {(profile?.rol === 'gerencia' || profile?.rol === 'admin') && (
         <div className="mb-4">
@@ -379,6 +383,9 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       )}
       {tab === 'kanban' && (
         <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} />
+      )}
+      {tab === 'bandeja' && (
+        <VistaBandeja leads={leadsIniciales} tenantId={tenantId} usuarios={usuarios} />
       )}
       {tab === 'hoy' && (
         <VistaHoy leads={leadsFiltrados} tenantId={tenantId} />

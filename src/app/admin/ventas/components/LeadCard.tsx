@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ETAPA_MAP, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, tiempoSinResponder, estadoSeguimiento, formatCOP, type EtapaVenta } from '@/lib/ventas/pipeline'
@@ -49,10 +50,23 @@ interface Props {
   onClick: () => void
   overlay?: boolean
   asignado?: string
+  tenantId?: string
+  usuarioId?: string
+  onQuickDone?: () => void
+  onQuickNote?: (text: string) => void
+  onQuickReminder?: (nota: string, fecha: string) => void
+  onQuickNext?: () => void
 }
 
-export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
+export default function LeadCard({ lead, onClick, overlay, asignado, onQuickDone, onQuickNote, onQuickReminder, onQuickNext }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: lead.id })
+  const [hovered,         setHovered]         = useState(false)
+  const [showNote,        setShowNote]        = useState(false)
+  const [noteText,        setNoteText]        = useState('')
+  const [showReminder,    setShowReminder]    = useState(false)
+  const [reminderNota,    setReminderNota]    = useState('')
+  const [reminderFecha,   setReminderFecha]   = useState('')
+  const [savingQuick,     setSavingQuick]     = useState(false)
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -83,6 +97,20 @@ export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
     lead.cliente_email
   )
 
+  async function submitNote() {
+    if (!noteText.trim()) return
+    setSavingQuick(true)
+    await onQuickNote?.(noteText.trim())
+    setNoteText(''); setShowNote(false); setSavingQuick(false)
+  }
+
+  async function submitReminder() {
+    if (!reminderFecha) return
+    setSavingQuick(true)
+    await onQuickReminder?.(reminderNota, reminderFecha)
+    setReminderNota(''); setReminderFecha(''); setShowReminder(false); setSavingQuick(false)
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -90,6 +118,8 @@ export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
       {...attributes}
       {...listeners}
       onClick={onClick}
+      onMouseEnter={() => !overlay && setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setShowNote(false); setShowReminder(false) }}
       className={`rounded-xl border shadow-sm p-3 cursor-pointer select-none transition-shadow hover:shadow-md ${
         necesitaAlistamiento || necesitaPlaca
           ? 'bg-red-50 border-red-400 border-l-4 border-l-red-600'
@@ -248,6 +278,95 @@ export default function LeadCard({ lead, onClick, overlay, asignado }: Props) {
       )}
       {!sinResponder.urgente && seguimiento === 'sin_accion' && (
         <p className="text-xs text-gray-400">Sin seguimiento programado</p>
+      )}
+
+      {/* ── Acciones rápidas (hover) ── */}
+      {hovered && !overlay && (
+        <div className="mt-2 pt-2 border-t border-gray-100" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+          <div className="flex gap-1">
+            {lead.proxima_accion_fecha && (
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); onQuickDone?.() }}
+                className="flex-1 py-1 text-[10px] font-bold bg-green-50 text-green-700 rounded-lg border border-green-200 hover:bg-green-100 transition-colors"
+                title="Marcar acción como hecha">
+                ✓ Hecho
+              </button>
+            )}
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => { e.stopPropagation(); setShowNote(v => !v); setShowReminder(false) }}
+              className="flex-1 py-1 text-[10px] font-bold bg-blue-50 text-blue-700 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors"
+              title="Nota rápida">
+              💬
+            </button>
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => { e.stopPropagation(); setShowReminder(v => !v); setShowNote(false) }}
+              className="flex-1 py-1 text-[10px] font-bold bg-amber-50 text-amber-700 rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors"
+              title="Recordatorio">
+              ⏰
+            </button>
+            {onQuickNext && (
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); onQuickNext() }}
+                className="flex-1 py-1 text-[10px] font-bold bg-purple-50 text-purple-700 rounded-lg border border-purple-200 hover:bg-purple-100 transition-colors"
+                title="Avanzar etapa">
+                →
+              </button>
+            )}
+          </div>
+
+          {/* Nota rápida inline */}
+          {showNote && (
+            <div className="mt-1.5 space-y-1" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+              <textarea
+                autoFocus
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                placeholder="Escribe una nota..."
+                rows={2}
+                className="w-full text-xs border border-blue-200 rounded-lg p-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
+                onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) submitNote() }}
+              />
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); submitNote() }}
+                disabled={savingQuick || !noteText.trim()}
+                className="w-full py-1 text-[10px] font-bold bg-blue-600 text-white rounded-lg disabled:opacity-40">
+                {savingQuick ? 'Guardando...' : 'Guardar nota'}
+              </button>
+            </div>
+          )}
+
+          {/* Recordatorio inline */}
+          {showReminder && (
+            <div className="mt-1.5 space-y-1" onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+              <input
+                autoFocus
+                type="datetime-local"
+                value={reminderFecha}
+                onChange={e => setReminderFecha(e.target.value)}
+                className="w-full text-[10px] border border-amber-200 rounded-lg p-1.5 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              />
+              <input
+                type="text"
+                value={reminderNota}
+                onChange={e => setReminderNota(e.target.value)}
+                placeholder="Nota del recordatorio (opcional)"
+                className="w-full text-xs border border-amber-200 rounded-lg p-1.5 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              />
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); submitReminder() }}
+                disabled={savingQuick || !reminderFecha}
+                className="w-full py-1 text-[10px] font-bold bg-amber-500 text-white rounded-lg disabled:opacity-40">
+                {savingQuick ? 'Guardando...' : 'Crear recordatorio'}
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

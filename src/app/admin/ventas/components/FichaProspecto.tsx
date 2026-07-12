@@ -65,19 +65,17 @@ const ROL_LABEL: Record<string, string> = {
   admin: 'Admin', superadmin: 'SuperAdmin', mecanico: 'Mecánico', gerencia: 'Gerencia', control_total: 'Control total',
 }
 
-type TabDerecha = 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizacion' | 'pago' | 'archivos' | 'comentarios' | 'pasos' | 'recordatorios' | 'historial' | 'visibilidad'
+type TabDerecha = 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizacion' | 'pago' | 'archivos' | 'pasos' | 'historial' | 'visibilidad'
 
 const TABS: { id: TabDerecha; label: string; icon: string }[] = [
-  { id: 'resumen',       label: 'Resumen',       icon: '📋' },
-  { id: 'datos',         label: 'Datos',         icon: '🪪' },
-  { id: 'chats',         label: 'Chats',         icon: '📱' },
-  { id: 'motos',         label: 'Motos',         icon: '🏍️' },
-  { id: 'cotizacion',    label: 'Cotización',    icon: '📄' },
-  { id: 'pago',          label: 'Pago',          icon: '💳' },
-  { id: 'archivos',      label: 'Archivos',      icon: '📎' },
-  { id: 'comentarios',   label: 'Comentarios',   icon: '💬' },
-  { id: 'pasos',         label: 'Pasos',         icon: '✅' },
-  { id: 'recordatorios', label: 'Recordatorios', icon: '⏰' },
+  { id: 'chats',      label: 'Chats',      icon: '📱' },
+  { id: 'resumen',    label: 'Resumen',    icon: '📋' },
+  { id: 'datos',      label: 'Datos',      icon: '🪪' },
+  { id: 'motos',      label: 'Motos',      icon: '🏍️' },
+  { id: 'cotizacion', label: 'Cotización', icon: '📄' },
+  { id: 'pago',       label: 'Pago',       icon: '💳' },
+  { id: 'archivos',   label: 'Archivos',   icon: '📎' },
+  { id: 'pasos',      label: 'Pasos',      icon: '✅' },
 ]
 const TABS_GERENCIA: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'historial',   label: 'Historial',   icon: '📅' },
@@ -99,7 +97,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [sending, setSending]           = useState(false)
   const [saving, setSaving]             = useState(false)
   const [savedOk, setSavedOk]           = useState(false)
-  const [tabDer, setTabDer]             = useState<TabDerecha>('resumen')
+  const [tabDer, setTabDer]             = useState<TabDerecha>('chats')
   const [vincularOpen, setVincularOpen] = useState(false)
   const [convActivaId, setConvActivaId] = useState(lead.todas_conversaciones[0]?.id ?? '')
 
@@ -113,6 +111,18 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [aprobacionStatus, setAprobacionStatus] = useState<'pendiente' | 'aprobado' | 'rechazado'>(
     lead.estadoAprobacionMatricula ?? 'pendiente'
   )
+
+  // Panel lateral izquierdo
+  const [proximaAccion,   setProximaAccion]   = useState(lead.proxima_accion ?? '')
+  const [proximaFecha,    setProximaFecha]     = useState(
+    lead.proxima_accion_fecha ? lead.proxima_accion_fecha.slice(0, 16) : ''
+  )
+  const [notaRapida,      setNotaRapida]       = useState('')
+  const [reminderNota,    setReminderNota]     = useState('')
+  const [reminderFecha,   setReminderFecha]    = useState('')
+  const [showReminder,    setShowReminder]     = useState(false)
+  const [savingPanel,     setSavingPanel]      = useState(false)
+  const [savedPanel,      setSavedPanel]       = useState(false)
 
   // Celular
   const [celularActual, setCelularActual]   = useState(lead.cliente?.celular ?? '')
@@ -365,6 +375,37 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     onClose()
   }
 
+  const panelToast = useCallback(() => { setSavedPanel(true); setTimeout(() => setSavedPanel(false), 2000) }, [])
+
+  const guardarProximaAccionPanel = async () => {
+    const fecha = proximaFecha ? new Date(proximaFecha).toISOString() : null
+    setSavingPanel(true)
+    await supabase.from('clientes').update({ proxima_accion: proximaAccion || null, proxima_accion_fecha: fecha }).eq('id', lead.id)
+    onLeadUpdate?.(lead.id, { proxima_accion: proximaAccion || null, proxima_accion_fecha: fecha })
+    setSavingPanel(false); panelToast()
+  }
+
+  const guardarNotaRapidaPanel = async () => {
+    if (!notaRapida.trim() || !profile?.id) return
+    setSavingPanel(true)
+    await supabase.from('comentarios').insert({
+      cliente_id: lead.cliente?.id ?? lead.id, tenant_id: tenantId,
+      usuario_id: profile.id, contenido: notaRapida.trim(), tipo: 'nota_interna',
+    })
+    setNotaRapida(''); setSavingPanel(false); panelToast()
+  }
+
+  const guardarReminderPanel = async () => {
+    if (!reminderFecha || !profile?.id) return
+    setSavingPanel(true)
+    await supabase.from('recordatorios').insert({
+      cliente_id: lead.cliente?.id ?? lead.id, tenant_id: tenantId,
+      asignado_a: profile.id, nota: reminderNota || null,
+      fecha_recordatorio: new Date(reminderFecha).toISOString(), completado: false,
+    })
+    setReminderNota(''); setReminderFecha(''); setShowReminder(false); setSavingPanel(false); panelToast()
+  }
+
   const etapaActual = ETAPA_MAP[etapa]
 
   return (
@@ -456,12 +497,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {profile?.rol === 'gerencia' && (
-              <button onClick={() => { setConfirmDeleteInput(''); setConfirmDelete(true) }}
-                className="text-xs text-red-400 hover:text-red-600 font-medium px-2 py-1 hover:bg-red-50 rounded-lg transition-colors">
-                🗑 Eliminar
-              </button>
-            )}
+            {saving && <span className="text-[10px] text-gray-400">Guardando...</span>}
+            {savedOk && !saving && <span className="text-[10px] text-green-600 font-semibold">✓ Guardado</span>}
             <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
           </div>
         </div>
@@ -476,44 +513,160 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           />
         </div>
 
-        {/* ── Tabs en fila única ── */}
-        <div className="flex border-b flex-shrink-0 overflow-x-auto">
-          {[...TABS, ...(esGerencia ? TABS_GERENCIA : [])].map(t => (
-            <button key={t.id} onClick={() => setTabDer(t.id)}
-              className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-2 text-[10px] font-semibold whitespace-nowrap border-b-2 transition-colors ${
-                tabDer === t.id
-                  ? (t.id === 'historial' || t.id === 'visibilidad'
-                      ? 'border-purple-500 bg-purple-50 text-purple-700'
-                      : 'border-blue-600 bg-blue-50 text-blue-700')
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}>
-              {t.icon} {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Alerta: Sin celular ── */}
-        {sinCelular && (
-          <div className="border-b px-4 py-3 bg-orange-50 flex-shrink-0">
-            <p className="text-xs font-bold text-orange-700 uppercase tracking-wide mb-1">⚠ Sin número de celular</p>
-            <p className="text-[11px] text-orange-600 mb-2.5">Este lead no tiene celular registrado. Agrégalo para poder contactarlo.</p>
-            <div className="flex items-center gap-2">
-              <input
-                value={celularInput}
-                onChange={e => setCelularInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') guardarCelular() }}
-                onBlur={guardarCelular}
-                placeholder="Ej: 3001234567"
-                type="tel"
-                className="flex-1 border border-orange-300 bg-white rounded-xl px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-400"
-              />
-              {savingCelular && <span className="text-xs text-orange-500 flex-shrink-0">Guardando...</span>}
-            </div>
-          </div>
-        )}
-
-        {/* Body */}
+        {/* Body con panel izquierdo */}
         <div className="flex flex-1 min-h-0">
+
+          {/* ── Panel izquierdo oscuro ── */}
+          <div className="w-64 flex-shrink-0 bg-[#141D31] border-r border-slate-800 flex flex-col overflow-y-auto">
+            {/* Saved toast */}
+            {savedPanel && (
+              <div className="absolute top-3 left-16 z-10 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">✓ Guardado</div>
+            )}
+
+            <div className="flex-1 px-3 py-3 space-y-3 text-white">
+
+              {/* Etapa */}
+              <div>
+                <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block mb-1">Etapa</label>
+                <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)} disabled={saving}
+                  className="w-full text-xs rounded-lg px-2 py-1.5 font-bold text-white border border-white/10 focus:outline-none disabled:opacity-60"
+                  style={{ background: etapaActual.color }}>
+                  {ETAPAS.map(e => (
+                    <option key={e.id} value={e.id} style={{ background: e.color }}>{e.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Asesor */}
+              <div>
+                <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block mb-1">Asesor</label>
+                {esGerencia ? (
+                  <select value={assignedTo} onChange={e => autoSaveAssigned(e.target.value)} disabled={saving}
+                    className="w-full text-xs bg-white/10 border border-white/10 rounded-lg px-2 py-1.5 text-white focus:outline-none disabled:opacity-60">
+                    <option value="">Sin asignar</option>
+                    {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                  </select>
+                ) : (
+                  <p className="text-xs text-white/70">{usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'}</p>
+                )}
+              </div>
+
+              <div className="border-t border-white/10" />
+
+              {/* Próxima acción */}
+              <div>
+                <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block mb-1">Próxima acción</label>
+                <input value={proximaAccion} onChange={e => setProximaAccion(e.target.value)}
+                  placeholder="Acción a seguir..."
+                  className="w-full text-xs bg-white/10 border border-white/10 rounded-lg px-2 py-1.5 text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1" />
+                <input type="datetime-local" value={proximaFecha} onChange={e => setProximaFecha(e.target.value)}
+                  className="w-full text-[10px] bg-white/10 border border-white/10 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1" />
+                <button onClick={guardarProximaAccionPanel} disabled={savingPanel}
+                  className="w-full py-1 text-[10px] font-bold bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors disabled:opacity-40">
+                  {savingPanel ? '...' : 'Guardar acción'}
+                </button>
+              </div>
+
+              <div className="border-t border-white/10" />
+
+              {/* Nota rápida */}
+              <div>
+                <label className="text-[9px] font-bold text-white/40 uppercase tracking-widest block mb-1">Nota rápida</label>
+                <textarea value={notaRapida} onChange={e => setNotaRapida(e.target.value)}
+                  rows={2} placeholder="Nota interna..."
+                  className="w-full text-xs bg-white/10 border border-white/10 rounded-lg px-2 py-1.5 text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none mb-1" />
+                <button onClick={guardarNotaRapidaPanel} disabled={savingPanel || !notaRapida.trim()}
+                  className="w-full py-1 text-[10px] font-bold bg-white/10 hover:bg-white/20 rounded-lg transition-colors disabled:opacity-40">
+                  💬 Guardar nota
+                </button>
+              </div>
+
+              {/* Recordatorio */}
+              <div>
+                <button onClick={() => setShowReminder(v => !v)}
+                  className="w-full py-1 text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg transition-colors">
+                  ⏰ {showReminder ? 'Cancelar' : 'Recordatorio'}
+                </button>
+                {showReminder && (
+                  <div className="mt-1.5 space-y-1">
+                    <input type="datetime-local" value={reminderFecha} onChange={e => setReminderFecha(e.target.value)}
+                      className="w-full text-[10px] bg-white/10 border border-white/10 rounded-lg px-2 py-1.5 text-white focus:outline-none" />
+                    <input type="text" value={reminderNota} onChange={e => setReminderNota(e.target.value)}
+                      placeholder="Nota del recordatorio"
+                      className="w-full text-xs bg-white/10 border border-white/10 rounded-lg px-2 py-1.5 text-white placeholder:text-white/30 focus:outline-none" />
+                    <button onClick={guardarReminderPanel} disabled={savingPanel || !reminderFecha}
+                      className="w-full py-1 text-[10px] font-bold bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-40">
+                      Crear recordatorio
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Alertas */}
+              <div className="space-y-1 pt-1">
+                {sinCelular && (
+                  <div className="text-[9px] font-bold text-orange-300 bg-orange-500/20 rounded-lg px-2 py-1.5">⚠ Sin celular</div>
+                )}
+                {enEtapaConPlaca && !placaActual && (
+                  <div className="text-[9px] font-bold text-red-300 bg-red-500/20 rounded-lg px-2 py-1.5">⚠ Sin placa</div>
+                )}
+                {enEtapaAlistamiento && !tieneAlistamientoFinal && (
+                  <div className="text-[9px] font-bold text-red-300 bg-red-500/20 rounded-lg px-2 py-1.5">⚠ Sin alistamiento</div>
+                )}
+                {enEtapaFactura && !facturaActual && (
+                  <div className="text-[9px] font-bold text-yellow-300 bg-yellow-500/20 rounded-lg px-2 py-1.5">⚠ Sin factura</div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer panel: eliminar */}
+            {profile?.rol === 'gerencia' && (
+              <div className="px-3 py-3 border-t border-white/10 flex-shrink-0">
+                <button onClick={() => { setConfirmDeleteInput(''); setConfirmDelete(true) }}
+                  className="w-full py-1.5 text-[10px] font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors">
+                  🗑 Sacar de seguimiento
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ── Panel derecho: tabs + contenido ── */}
+          <div className="flex-1 flex flex-col min-w-0">
+
+          {/* ── Tabs en fila única ── */}
+          <div className="flex border-b flex-shrink-0 overflow-x-auto">
+            {[...TABS, ...(esGerencia ? TABS_GERENCIA : [])].map(t => (
+              <button key={t.id} onClick={() => setTabDer(t.id)}
+                className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-2 text-[10px] font-semibold whitespace-nowrap border-b-2 transition-colors ${
+                  tabDer === t.id
+                    ? (t.id === 'historial' || t.id === 'visibilidad'
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-blue-600 bg-blue-50 text-blue-700')
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Alerta: Sin celular (en header de la zona derecha) ── */}
+          {sinCelular && (
+            <div className="border-b px-4 py-2.5 bg-orange-50 flex-shrink-0">
+              <p className="text-xs font-bold text-orange-700 mb-1">⚠ Sin número de celular</p>
+              <div className="flex items-center gap-2">
+                <input
+                  value={celularInput}
+                  onChange={e => setCelularInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') guardarCelular() }}
+                  onBlur={guardarCelular}
+                  placeholder="Ej: 3001234567"
+                  type="tel"
+                  className="flex-1 border border-orange-300 bg-white rounded-xl px-3 py-1.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-400"
+                />
+                {savingCelular && <span className="text-xs text-orange-500 flex-shrink-0">Guardando...</span>}
+              </div>
+            </div>
+          )}
 
           {/* ── Chat ── */}
           <div className={`flex-1 flex flex-col ${tabDer !== 'chats' ? 'hidden' : ''}`}>
@@ -867,47 +1020,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     )}
                   </div>
 
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Datos de la venta</p>
-                      {saving && <span className="text-[10px] text-gray-400">Guardando...</span>}
-                      {savedOk && !saving && (
-                        <span className="text-[10px] text-green-600 font-semibold flex items-center gap-0.5">
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Guardado
-                        </span>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <div>
-                        <label className="text-xs text-gray-500">Etapa</label>
-                        <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)}
-                          disabled={saving}
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5 disabled:opacity-60">
-                          {ETAPAS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-500">Asignado a</label>
-                        {esGerencia ? (
-                          <select value={assignedTo} onChange={e => autoSaveAssigned(e.target.value)}
-                            disabled={saving}
-                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5 disabled:opacity-60">
-                            <option value="">Sin asignar</option>
-                            {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                          </select>
-                        ) : (
-                          <p className="text-sm text-gray-700 mt-0.5">
-                            {usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'}
-                            <span className="text-xs text-gray-400 ml-1">(solo Gerencia puede cambiarlo)</span>
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
                   <ResumenTab
                     clienteId={lead.id}
                     tenantId={tenantId}
@@ -952,15 +1064,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               {tabDer === 'datos'      && <DatosClienteTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'motos'      && <MotosInteresTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'cotizacion' && <CotizacionTab clienteId={lead.id} tenantId={tenantId} clienteNombre={lead.cliente?.nombre ?? ''} clienteCelular={lead.cliente?.celular ?? ''} />}
-              {tabDer === 'pago'          && <PagoTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
-              {tabDer === 'archivos'      && <ArchivosTab clienteId={lead.id} />}
-              {tabDer === 'comentarios'   && <ComentariosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
-              {tabDer === 'pasos'         && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
-              {tabDer === 'recordatorios' && <RecordatoriosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={clienteEmail} onProximaAccionChange={(proxAccion, proxFecha) => onLeadUpdate?.(lead.id, { proxima_accion: proxAccion, proxima_accion_fecha: proxFecha })} />}
-              {tabDer === 'historial'     && <HistorialTab clienteId={lead.id} />}
+              {tabDer === 'pago'       && <PagoTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
+              {tabDer === 'archivos'   && <ArchivosTab clienteId={lead.id} />}
+              {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
+              {tabDer === 'historial'  && <HistorialTab clienteId={lead.id} />}
               {tabDer === 'visibilidad' && esGerencia && <VisibilidadTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
           </div>
-        </div>
+          </div>{/* /right panel */}
+        </div>{/* /body */}
       </div>
     </div>
     </>
