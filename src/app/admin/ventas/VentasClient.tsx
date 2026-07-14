@@ -199,6 +199,8 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [abrirClienteId, setAbrirClienteId] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
   const [whatsappOpen, setWhatsappOpen] = useState(false)
+  const [idsExtraSearch, setIdsExtraSearch] = useState<Set<string>>(new Set())
+  const [buscandoExtra, setBuscandoExtra] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -224,6 +226,35 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
 
+  // Búsqueda extendida: comentarios + recordatorios (debounced, server-side)
+  useEffect(() => {
+    const q = busqueda.trim()
+    if (q.length < 2) {
+      setIdsExtraSearch(new Set())
+      setBuscandoExtra(false)
+      return
+    }
+    setBuscandoExtra(true)
+    const timer = setTimeout(async () => {
+      try {
+        const [{ data: comCliente }, { data: comGeneral }, { data: reminders }] = await Promise.all([
+          supabase.from('comentarios_cliente').select('cliente_id').eq('tenant_id', tenantId).ilike('texto', `%${q}%`),
+          supabase.from('comentarios').select('cliente_id').eq('tenant_id', tenantId).ilike('contenido', `%${q}%`),
+          supabase.from('recordatorios').select('cliente_id').eq('tenant_id', tenantId).ilike('nota', `%${q}%`),
+        ])
+        const ids = new Set<string>()
+        for (const r of comCliente  ?? []) if (r.cliente_id) ids.add(r.cliente_id as string)
+        for (const r of comGeneral  ?? []) if (r.cliente_id) ids.add(r.cliente_id as string)
+        for (const r of reminders   ?? []) if (r.cliente_id) ids.add(r.cliente_id as string)
+        setIdsExtraSearch(ids)
+      } finally {
+        setBuscandoExtra(false)
+      }
+    }, 350)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busqueda, tenantId])
+
   const activos = useMemo(
     () => leadsIniciales.filter(l => ETAPAS_ACTIVAS.includes(l.etapa_venta as typeof ETAPAS_ACTIVAS[0])),
     [leadsIniciales]
@@ -238,11 +269,13 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         l.cliente?.celular?.includes(q) ||
         l.cliente_documento?.includes(q) ||
         l.cliente?.placa?.toLowerCase().includes(q) ||
-        l.numero_factura?.toLowerCase().includes(q)
+        l.numero_factura?.toLowerCase().includes(q) ||
+        l.cliente_email?.toLowerCase().includes(q) ||
+        idsExtraSearch.has(l.id)
       )
     }
     return lista
-  }, [leadsIniciales, usuarioFiltro, busqueda])
+  }, [leadsIniciales, usuarioFiltro, busqueda, idsExtraSearch])
 
   const sinSeguim = activos.filter(l => !l.proxima_accion_fecha).length
 
@@ -338,7 +371,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
             <input
               value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
-              placeholder="Buscar por nombre, cédula, celular, placa o factura..."
+              placeholder="Nombre, cédula, celular, placa, correo, comentarios, recordatorios..."
               className="w-full pl-8 pr-8 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             />
             {busqueda && (
@@ -350,9 +383,11 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
           </div>
           {busqueda.trim() && (
             <p className="text-xs text-gray-500 mt-1.5 ml-1">
-              {leadsFiltrados.length === 0
-                ? 'Sin resultados para esta búsqueda.'
-                : `${leadsFiltrados.length} cliente${leadsFiltrados.length === 1 ? '' : 's'} encontrado${leadsFiltrados.length === 1 ? '' : 's'}`}
+              {buscandoExtra
+                ? 'Buscando en comentarios y recordatorios...'
+                : leadsFiltrados.length === 0
+                  ? 'Sin resultados para esta búsqueda.'
+                  : `${leadsFiltrados.length} cliente${leadsFiltrados.length === 1 ? '' : 's'} encontrado${leadsFiltrados.length === 1 ? '' : 's'}`}
             </p>
           )}
         </div>

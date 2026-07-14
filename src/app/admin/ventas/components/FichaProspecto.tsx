@@ -123,6 +123,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [savingPanel,     setSavingPanel]      = useState(false)
   const [savedPanel,      setSavedPanel]       = useState(false)
 
+  // Actividad (registro + cambios de etapa)
+  type EtapaMovimiento = { etapa_anterior: string | null; etapa_nueva: string; created_at: string }
+  const [historialEtapas, setHistorialEtapas]         = useState<EtapaMovimiento[]>([])
+  const [clienteRegistradoEn, setClienteRegistradoEn] = useState<string | null>(null)
+
   // Celular
   const [celularActual, setCelularActual]   = useState(lead.cliente?.celular ?? '')
   const [celularInput, setCelularInput]     = useState(lead.cliente?.celular ?? '')
@@ -159,7 +164,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [assignedTo, setAssignedTo] = useState('')
 
   const cargar = useCallback(async () => {
-    const [{ data: msgs }, { data: ords }, { data: us }, { data: cliente }] = await Promise.all([
+    const [{ data: msgs }, { data: ords }, { data: us }, { data: cliente }, { data: etapasHist }] = await Promise.all([
       convActivaId
         ? supabase.from('mensajes')
             .select('id,direccion,tipo,contenido,created_at,estado_envio,enviado_por,usuarios(nombre,email,rol)')
@@ -168,13 +173,20 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       supabase.from('ordenes').select('id,created_at,estado,descripcion_problema')
         .eq('cliente_id', lead.id).order('created_at', { ascending: false }).limit(5),
       supabase.from('usuarios').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true),
-      supabase.from('clientes').select('email, assigned_to').eq('id', lead.id).single(),
+      supabase.from('clientes').select('email, assigned_to, created_at').eq('id', lead.id).single(),
+      supabase.from('historial_etapas_cliente')
+        .select('etapa_anterior, etapa_nueva, created_at')
+        .eq('cliente_id', lead.id)
+        .order('created_at', { ascending: false })
+        .limit(20),
     ])
     setMensajes((msgs ?? []) as unknown as Mensaje[])
     setOrdenes((ords ?? []) as Orden[])
     setUsuarios((us ?? []) as { id: string; nombre: string }[])
     setClienteEmail(cliente?.email ?? null)
     setAssignedTo(cliente?.assigned_to ?? '')
+    setClienteRegistradoEn(cliente?.created_at ?? null)
+    setHistorialEtapas((etapasHist ?? []) as EtapaMovimiento[])
   }, [lead.id, convActivaId, tenantId])
 
   useEffect(() => { cargar() }, [cargar])
@@ -1038,6 +1050,59 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   </div>
 
                   <ComentariosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />
+
+                  {/* ── Actividad: registro + cambios de etapa ── */}
+                  {(clienteRegistradoEn || historialEtapas.length > 0) && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Actividad</p>
+                        <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-bold">
+                          {historialEtapas.length + (clienteRegistradoEn ? 1 : 0)}
+                        </span>
+                      </div>
+                      <div className="relative pl-4 border-l-2 border-gray-200 space-y-2">
+                        {historialEtapas.map((e, i) => {
+                          const nuevaConf = ETAPA_MAP[e.etapa_nueva as EtapaVenta]
+                          const prevConf  = e.etapa_anterior ? ETAPA_MAP[e.etapa_anterior as EtapaVenta] : null
+                          return (
+                            <div key={i} className="relative">
+                              <div className="absolute -left-5 w-3 h-3 rounded-full border-2 border-white mt-0.5"
+                                style={{ background: nuevaConf?.color ?? '#888' }} />
+                              <div className="bg-white border border-gray-100 rounded-xl px-3 py-2">
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {prevConf && (
+                                    <>
+                                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-white"
+                                        style={{ background: prevConf.color }}>{prevConf.label}</span>
+                                      <span className="text-gray-400 text-[10px]">→</span>
+                                    </>
+                                  )}
+                                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-white"
+                                    style={{ background: nuevaConf?.color ?? '#888' }}>
+                                    {nuevaConf?.label ?? e.etapa_nueva}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {new Date(e.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        {clienteRegistradoEn && (
+                          <div className="relative">
+                            <div className="absolute -left-5 w-3 h-3 rounded-full border-2 border-white mt-0.5 bg-indigo-500" />
+                            <div className="bg-white border border-gray-100 rounded-xl px-3 py-2">
+                              <p className="text-xs font-semibold text-indigo-700">🆕 Registrado en seguimiento</p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                {new Date(clienteRegistradoEn).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   <ResumenTab
                     clienteId={lead.id}
