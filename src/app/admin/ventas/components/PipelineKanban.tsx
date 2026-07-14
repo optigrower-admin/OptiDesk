@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
   PointerSensor, useSensor, useSensors, closestCenter,
@@ -236,8 +236,8 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [perdidaId, setPerdidaId]     = useState<string | null>(null)
   const [pendingMove, setPendingMove] = useState<{ leadId: string; targetEtapa: typeof ETAPAS[0] } | null>(null)
-  // Por defecto, todas las fases expandidas para que el DnD funcione
-  const [fasesExpandidas, setFasesExpandidas] = useState<Set<string>>(new Set(FASES_KANBAN.map(f => f.id)))
+  const [fasesExpandidas, setFasesExpandidas] = useState<Set<string>>(new Set())
+  const fasesPreDragRef = useRef<Set<string> | null>(null)
 
   useEffect(() => {
     if (abrirClienteId && leads.some(l => l.id === abrirClienteId)) setFichaId(abrirClienteId)
@@ -276,10 +276,18 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     }
   }
 
-  function onDragStart({ active }: DragStartEvent) { setActiveId(active.id as string) }
+  function onDragStart({ active }: DragStartEvent) {
+    setActiveId(active.id as string)
+    fasesPreDragRef.current = new Set(fasesExpandidas)
+    setFasesExpandidas(new Set(FASES_KANBAN.map(f => f.id)))
+  }
 
   function onDragEnd({ active, over }: DragEndEvent) {
     setActiveId(null)
+    if (fasesPreDragRef.current !== null) {
+      setFasesExpandidas(fasesPreDragRef.current)
+      fasesPreDragRef.current = null
+    }
     if (!over) return
     const leadId = active.id as string
     const overId = over.id as string

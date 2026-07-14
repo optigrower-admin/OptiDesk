@@ -1037,6 +1037,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     )}
                   </div>
 
+                  <ComentariosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />
+
                   <ResumenTab
                     clienteId={lead.id}
                     tenantId={tenantId}
