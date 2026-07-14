@@ -236,8 +236,8 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [perdidaId, setPerdidaId]     = useState<string | null>(null)
   const [pendingMove, setPendingMove] = useState<{ leadId: string; targetEtapa: typeof ETAPAS[0] } | null>(null)
-  // Por defecto, todas las fases colapsadas
-  const [fasesExpandidas, setFasesExpandidas] = useState<Set<string>>(new Set())
+  // Por defecto, todas las fases expandidas para que el DnD funcione
+  const [fasesExpandidas, setFasesExpandidas] = useState<Set<string>>(new Set(FASES_KANBAN.map(f => f.id)))
 
   useEffect(() => {
     if (abrirClienteId && leads.some(l => l.id === abrirClienteId)) setFichaId(abrirClienteId)
@@ -263,7 +263,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   }
 
   async function persistirEtapa(id: string, etapa: EtapaVenta, motivoPerdida?: string, detallePerdida?: string) {
-    const body: Record<string, unknown> = { cliente_id: id, etapa_venta: etapa }
+    const body: Record<string, unknown> = { cliente_id: id, etapa_venta: etapa, etapa_venta_orden: ETAPA_ORDEN[etapa] }
     if (etapa === 'perdido' && motivoPerdida) body.motivo_perdida = motivoPerdida + (detallePerdida ? ` — ${detallePerdida}` : '')
     const res = await fetch('/api/admin/ventas/guardar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

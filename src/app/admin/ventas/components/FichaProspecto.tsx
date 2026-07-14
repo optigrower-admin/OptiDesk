@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { ETAPAS, ETAPA_MAP, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, ETAPAS_NECESITAN_FACTURA, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, ETAPAS_NECESITAN_FACTURA, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import VincularClienteModal from './VincularClienteModal'
 import EtiquetasPicker, { type Etiqueta } from './EtiquetasPicker'
@@ -229,13 +229,17 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     try {
       const res = await fetch('/api/admin/ventas/guardar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cliente_id: lead.id, etapa_venta: newEtapa }),
+        body: JSON.stringify({ cliente_id: lead.id, etapa_venta: newEtapa, etapa_venta_orden: ETAPA_ORDEN[newEtapa] }),
       })
       if (res.ok) {
         onEtapaChange(lead.id, newEtapa)
         mostrarGuardado()
         await logCambio('etapa', ETAPA_MAP[prev]?.label ?? prev, ETAPA_MAP[newEtapa]?.label ?? newEtapa)
+      } else {
+        setEtapa(prev)  // revertir si el API falla
       }
+    } catch {
+      setEtapa(prev)
     } finally { setSaving(false) }
   }
 

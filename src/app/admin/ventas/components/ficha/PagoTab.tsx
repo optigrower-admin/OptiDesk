@@ -108,23 +108,22 @@ export default function PagoTab({ clienteId, tenantId, usuarioId }: Props) {
   const totalFinal = useMemo(() => totalMotos * (1 + recargo / 100), [totalMotos, recargo])
   const totalPagado = useMemo(() => pagos.reduce((s, p) => s + (p.monto ?? 0), 0), [pagos])
 
-  /* ── Guardar forma de pago ── */
-  async function guardar() {
+  /* ── Auto-guardar forma de pago ── */
+  async function guardarFormaPago(nueva: FormaPago) {
     setSaving(true)
     try {
-      const { error } = await supabase.from('clientes').update({
-        forma_pago:    formaPago || null,
-        cuota_inicial: cuotaInicial ? parseFloat(cuotaInicial) : null,
-        cuota_deseada: (formaPago === 'credito' || formaPago === 'credito_ci') && cuotaDeseada ? parseFloat(cuotaDeseada) : null,
-        credito_tiene_cuota_inicial: formaPago === 'credito_ci' ? true : null,
+      await supabase.from('clientes').update({
+        forma_pago: nueva || null,
+        credito_tiene_cuota_inicial: nueva === 'credito_ci' ? true : null,
       }).eq('id', clienteId)
-      if (error) throw new Error(error.message)
-      await cargar()
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Error al guardar')
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
+  }
+
+  async function guardarCuotas() {
+    await supabase.from('clientes').update({
+      cuota_inicial: cuotaInicial ? parseFloat(cuotaInicial) : null,
+      cuota_deseada: (formaPago === 'credito' || formaPago === 'credito_ci') && cuotaDeseada ? parseFloat(cuotaDeseada) : null,
+    }).eq('id', clienteId)
   }
 
   /* ── Estudios de crédito ── */
@@ -184,10 +183,14 @@ export default function PagoTab({ clienteId, tenantId, usuarioId }: Props) {
 
       {/* ── FORMA DE PAGO ── */}
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Forma de pago</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+          Forma de pago
+          {saving && <span className="ml-2 text-blue-400 font-normal normal-case text-[10px]">Guardando...</span>}
+        </p>
         <div className="flex gap-2 flex-wrap">
           {FORMA_OPCIONES.map(opt => (
-            <button key={opt.value} onClick={() => setFormaPago(opt.value)}
+            <button key={opt.value}
+              onClick={() => { setFormaPago(opt.value); guardarFormaPago(opt.value) }}
               className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${
                 formaPago === opt.value ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}>
@@ -206,6 +209,7 @@ export default function PagoTab({ clienteId, tenantId, usuarioId }: Props) {
           <div>
             <label className="text-xs text-gray-500">Valor total a pagar de contado (COP)</label>
             <input type="number" value={cuotaInicial} onChange={e => setCuotaInicial(e.target.value)}
+              onBlur={guardarCuotas}
               placeholder={totalMotos > 0 ? String(totalMotos) : '0'}
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
           </div>
@@ -219,51 +223,51 @@ export default function PagoTab({ clienteId, tenantId, usuarioId }: Props) {
             <div>
               <label className="text-xs text-gray-500">Monto cuota inicial (COP)</label>
               <input type="number" value={cuotaInicial} onChange={e => setCuotaInicial(e.target.value)}
+                onBlur={guardarCuotas}
                 className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
             </div>
           )}
           <div>
             <label className="text-xs text-gray-500">Cuota mensual deseada (COP)</label>
             <input type="number" value={cuotaDeseada} onChange={e => setCuotaDeseada(e.target.value)}
+              onBlur={guardarCuotas}
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
           </div>
-
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-2">Estudio de crédito por entidad</p>
-          {entidades.length === 0 && <p className="text-xs text-gray-400">No hay entidades configuradas (Config Ventas → Entidades financieras).</p>}
-          {entidades.map(ent => {
-            const est = estudios.find(e => e.entidad_id === ent.id)
-            const estado = est?.estado ?? 'sin_iniciar'
-            return (
-              <div key={ent.id} className="bg-gray-50 rounded-lg p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-gray-800">{ent.nombre}</p>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTADO_COLOR[estado]}`}>{ESTADO_LABEL[estado]}</span>
-                </div>
-                <div className="flex gap-1 mt-1.5 flex-wrap">
-                  {(['sin_iniciar', 'en_estudio', 'aprobado', 'rechazado'] as const).map(opt => (
-                    <button key={opt} onClick={() => cambiarEstado(ent.id, opt)}
-                      className={`text-xs px-2 py-0.5 rounded-full transition-colors ${
-                        estado === opt ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}>
-                      {ESTADO_LABEL[opt]}
-                    </button>
-                  ))}
-                </div>
-                {estado === 'aprobado' && (
-                  <input type="number" placeholder="Monto aprobado" defaultValue={est?.monto_aprobado ?? ''}
-                    onBlur={e => setMonto(ent.id, e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs mt-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                )}
-              </div>
-            )
-          })}
         </div>
       )}
 
-      <button onClick={guardar} disabled={saving}
-        className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
-        {saving ? 'Guardando...' : 'Guardar forma de pago'}
-      </button>
+      {/* ── ESTUDIO DE CRÉDITO POR ENTIDAD (siempre visible) ── */}
+      <div className="border border-gray-200 rounded-xl p-3 space-y-2">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Estudio de crédito por entidad</p>
+        {entidades.length === 0 && <p className="text-xs text-gray-400">No hay entidades configuradas (Config Ventas → Entidades financieras).</p>}
+        {entidades.map(ent => {
+          const est = estudios.find(e => e.entidad_id === ent.id)
+          const estado = est?.estado ?? 'sin_iniciar'
+          return (
+            <div key={ent.id} className="bg-gray-50 rounded-lg p-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-gray-800">{ent.nombre}</p>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTADO_COLOR[estado]}`}>{ESTADO_LABEL[estado]}</span>
+              </div>
+              <div className="flex gap-1 mt-1.5 flex-wrap">
+                {(['sin_iniciar', 'en_estudio', 'aprobado', 'rechazado'] as const).map(opt => (
+                  <button key={opt} onClick={() => cambiarEstado(ent.id, opt)}
+                    className={`text-xs px-2 py-0.5 rounded-full transition-colors ${
+                      estado === opt ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}>
+                    {ESTADO_LABEL[opt]}
+                  </button>
+                ))}
+              </div>
+              {estado === 'aprobado' && (
+                <input type="number" placeholder="Monto aprobado" defaultValue={est?.monto_aprobado ?? ''}
+                  onBlur={e => setMonto(ent.id, e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs mt-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              )}
+            </div>
+          )
+        })}
+      </div>
 
       {/* ── PAGOS REGISTRADOS ── */}
       <div className="border-t border-gray-100 pt-4">

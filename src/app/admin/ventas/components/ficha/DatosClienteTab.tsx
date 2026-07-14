@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { registrarAuditoria } from '@/lib/audit'
 
@@ -59,11 +59,12 @@ const VACIO: Campos = {
   ocupacion: '', tipo_contrato: '', ingresos_mensuales: '', gastos_mensuales: '',
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function Field({ label, value, onChange, onBlur }: { label: string; value: string; onChange: (v: string) => void; onBlur?: () => void }) {
   return (
     <div>
       <label className="text-xs text-gray-500">{label}</label>
       <input value={value} onChange={e => onChange(e.target.value)}
+        onBlur={onBlur}
         className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
     </div>
   )
@@ -71,10 +72,11 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 
 export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Props) {
   const supabase = createClient()
-  const [campos, setCampos]   = useState<Campos>(VACIO)
+  const [campos, setCampos]     = useState<Campos>(VACIO)
   const [original, setOriginal] = useState<Campos>(VACIO)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving]   = useState(false)
+  const [loading, setLoading]   = useState(true)
+  const [saving, setSaving]     = useState(false)
+  const camposRef               = useRef<Campos>(VACIO)
 
   useEffect(() => {
     supabase.from('clientes').select(Object.keys(VACIO).join(',')).eq('id', clienteId).single()
@@ -84,6 +86,7 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
         for (const k of Object.keys(VACIO) as (keyof Campos)[]) c[k] = d[k] ?? (k === 'tipo_documento' ? 'CC' : '')
         setCampos(c)
         setOriginal(c)
+        camposRef.current = c
         setLoading(false)
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,19 +98,24 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
     const transformed = NOMBRE_FIELDS.includes(k) ? v.toUpperCase()
       : k === 'email' ? v.toLowerCase()
       : v
-    setCampos(p => ({ ...p, [k]: transformed }))
+    setCampos(p => {
+      const next = { ...p, [k]: transformed }
+      camposRef.current = next
+      return next
+    })
   }
 
   async function guardar() {
+    const c = camposRef.current
     setSaving(true)
     try {
-      const nombreCompleto = [campos.primer_nombre, campos.segundo_nombre, campos.primer_apellido, campos.segundo_apellido]
+      const nombreCompleto = [c.primer_nombre, c.segundo_nombre, c.primer_apellido, c.segundo_apellido]
         .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
 
-      const update: Record<string, string | number | null> = { ...campos }
+      const update: Record<string, string | number | null> = { ...c }
       if (nombreCompleto) update.nombre = nombreCompleto
-      update.ingresos_mensuales = campos.ingresos_mensuales ? parseInt(campos.ingresos_mensuales, 10) : null
-      update.gastos_mensuales   = campos.gastos_mensuales   ? parseInt(campos.gastos_mensuales,   10) : null
+      update.ingresos_mensuales = c.ingresos_mensuales ? parseInt(c.ingresos_mensuales, 10) : null
+      update.gastos_mensuales   = c.gastos_mensuales   ? parseInt(c.gastos_mensuales,   10) : null
 
       const { error } = await supabase.from('clientes').update(update).eq('id', clienteId)
       if (error) throw new Error(error.message)
@@ -118,13 +126,13 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
         registro_id: clienteId,
         tipo: 'edicion',
         valor_anterior: original,
-        valor_nuevo: campos,
+        valor_nuevo: c,
         descripcion: 'Actualizó los datos del cliente desde Seguimiento Ventas',
         usuario_id: usuarioId,
       })
-      setOriginal(campos)
+      setOriginal(c)
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Error al guardar')
+      console.error(e)
     } finally {
       setSaving(false)
     }
@@ -134,17 +142,20 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
 
   return (
     <div className="space-y-3">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Identificación</p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Identificación</p>
+        {saving && <span className="text-[10px] text-blue-400 font-medium">Guardando...</span>}
+      </div>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Primer nombre" value={campos.primer_nombre} onChange={v => set('primer_nombre', v)} />
-        <Field label="Segundo nombre" value={campos.segundo_nombre} onChange={v => set('segundo_nombre', v)} />
-        <Field label="Primer apellido" value={campos.primer_apellido} onChange={v => set('primer_apellido', v)} />
-        <Field label="Segundo apellido" value={campos.segundo_apellido} onChange={v => set('segundo_apellido', v)} />
+        <Field label="Primer nombre"   value={campos.primer_nombre}   onChange={v => set('primer_nombre', v)}   onBlur={guardar} />
+        <Field label="Segundo nombre"  value={campos.segundo_nombre}  onChange={v => set('segundo_nombre', v)}  onBlur={guardar} />
+        <Field label="Primer apellido" value={campos.primer_apellido} onChange={v => set('primer_apellido', v)} onBlur={guardar} />
+        <Field label="Segundo apellido" value={campos.segundo_apellido} onChange={v => set('segundo_apellido', v)} onBlur={guardar} />
       </div>
       <div className="grid grid-cols-[auto,1fr] gap-2">
         <div>
           <label className="text-xs text-gray-500">Tipo doc.</label>
-          <select value={campos.tipo_documento} onChange={e => set('tipo_documento', e.target.value)}
+          <select value={campos.tipo_documento} onChange={e => set('tipo_documento', e.target.value)} onBlur={guardar}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5">
             {TIPOS_DOCUMENTO.map(t => <option key={t.value} value={t.value}>{t.value}</option>)}
           </select>
@@ -154,31 +165,32 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
           <input
             value={campos.cedula.replace(/\D/g, '') ? Number(campos.cedula.replace(/\D/g, '')).toLocaleString('es-CO') : campos.cedula}
             onChange={e => set('cedula', e.target.value.replace(/\D/g, ''))}
+            onBlur={guardar}
             inputMode="numeric"
             className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Celular" value={campos.celular} onChange={v => set('celular', v)} />
-        <Field label="Correo electrónico" value={campos.email} onChange={v => set('email', v)} />
+        <Field label="Celular" value={campos.celular} onChange={v => set('celular', v)} onBlur={guardar} />
+        <Field label="Correo electrónico" value={campos.email} onChange={v => set('email', v)} onBlur={guardar} />
       </div>
 
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-2">Ubicación</p>
-      <Field label="Dirección" value={campos.direccion} onChange={v => set('direccion', v)} />
+      <Field label="Dirección" value={campos.direccion} onChange={v => set('direccion', v)} onBlur={guardar} />
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Municipio" value={campos.municipio} onChange={v => set('municipio', v)} />
-        <Field label="Ciudad / Pueblo" value={campos.ciudad} onChange={v => set('ciudad', v)} />
+        <Field label="Municipio" value={campos.municipio} onChange={v => set('municipio', v)} onBlur={guardar} />
+        <Field label="Ciudad / Pueblo" value={campos.ciudad} onChange={v => set('ciudad', v)} onBlur={guardar} />
       </div>
 
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-2">Otros</p>
-      <Field label="Descuentos que le aplican" value={campos.descuentos} onChange={v => set('descuentos', v)} />
-      <Field label="Lugar de matrícula de la moto" value={campos.lugar_matricula} onChange={v => set('lugar_matricula', v)} />
+      <Field label="Descuentos que le aplican" value={campos.descuentos} onChange={v => set('descuentos', v)} onBlur={guardar} />
+      <Field label="Lugar de matrícula de la moto" value={campos.lugar_matricula} onChange={v => set('lugar_matricula', v)} onBlur={guardar} />
 
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-2">Información financiera</p>
-      <Field label="Ocupación" value={campos.ocupacion} onChange={v => set('ocupacion', v)} />
+      <Field label="Ocupación" value={campos.ocupacion} onChange={v => set('ocupacion', v)} onBlur={guardar} />
       <div>
         <label className="text-xs text-gray-500">Tipo de contrato</label>
-        <select value={campos.tipo_contrato} onChange={e => set('tipo_contrato', e.target.value)}
+        <select value={campos.tipo_contrato} onChange={e => set('tipo_contrato', e.target.value)} onBlur={guardar}
           className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5">
           {TIPOS_CONTRATO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
@@ -189,6 +201,7 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
           <input
             value={campos.ingresos_mensuales ? Number(campos.ingresos_mensuales).toLocaleString('es-CO') : ''}
             onChange={e => set('ingresos_mensuales', e.target.value.replace(/\D/g, ''))}
+            onBlur={guardar}
             inputMode="numeric"
             placeholder="Ej: 2.000.000"
             className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
@@ -198,16 +211,12 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
           <input
             value={campos.gastos_mensuales ? Number(campos.gastos_mensuales).toLocaleString('es-CO') : ''}
             onChange={e => set('gastos_mensuales', e.target.value.replace(/\D/g, ''))}
+            onBlur={guardar}
             inputMode="numeric"
             placeholder="Ej: 800.000"
             className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
         </div>
       </div>
-
-      <button onClick={guardar} disabled={saving}
-        className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 mt-2">
-        {saving ? 'Guardando...' : 'Guardar datos'}
-      </button>
     </div>
   )
 }
