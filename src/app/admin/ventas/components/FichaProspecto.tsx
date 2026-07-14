@@ -1092,7 +1092,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 </div>
               )}
 
-              {tabDer === 'datos'      && <DatosClienteTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
+              {tabDer === 'datos'      && <DatosClienteTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''}
+                onClienteUpdate={({ nombre, celular }) => onLeadUpdate?.(lead.id, {
+                  ...(nombre  ? { nombre }  : {}),
+                  ...(celular ? { celular } : {}),
+                })} />}
               {tabDer === 'motos'      && <MotosInteresTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'cotizacion' && <CotizacionTab clienteId={lead.id} tenantId={tenantId} clienteNombre={lead.cliente?.nombre ?? ''} clienteCelular={lead.cliente?.celular ?? ''} />}
               {tabDer === 'archivos'   && <ArchivosTab clienteId={lead.id} />}

@@ -7,6 +7,7 @@ interface Props {
   clienteId: string
   tenantId: string
   usuarioId: string
+  onClienteUpdate?: (updates: { nombre?: string; celular?: string }) => void
 }
 
 const TIPOS_DOCUMENTO = [
@@ -70,7 +71,7 @@ function Field({ label, value, onChange, onBlur }: { label: string; value: strin
   )
 }
 
-export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Props) {
+export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClienteUpdate }: Props) {
   const supabase = createClient()
   const [campos, setCampos]     = useState<Campos>(VACIO)
   const [original, setOriginal] = useState<Campos>(VACIO)
@@ -131,6 +132,7 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId }: Prop
         usuario_id: usuarioId,
       })
       setOriginal(c)
+      onClienteUpdate?.({ nombre: nombreCompleto || undefined, celular: c.celular || undefined })
     } catch (e: unknown) {
       console.error(e)
     } finally {
