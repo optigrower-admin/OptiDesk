@@ -57,6 +57,7 @@ function PanelCRM({ lead, tenantId, usuarios, onLeadUpdate }: {
   const [proxFecha,     setProxFecha]     = useState(
     lead.proxima_accion_fecha ? lead.proxima_accion_fecha.slice(0, 16) : ''
   )
+  const [proxConRec,    setProxConRec]    = useState(false)
   const [nota,          setNota]          = useState('')
   const [saving,        setSaving]        = useState(false)
   const [savedOk,       setSavedOk]       = useState(false)
@@ -86,9 +87,17 @@ function PanelCRM({ lead, tenantId, usuarios, onLeadUpdate }: {
   }
 
   async function guardarProxima() {
-    const fecha = proxFecha ? new Date(proxFecha).toISOString() : null
-    onLeadUpdate(lead.id, { proxima_accion: proxAccion || null, proxima_accion_fecha: fecha })
-    await supabase.from('clientes').update({ proxima_accion: proxAccion || null, proxima_accion_fecha: fecha }).eq('id', lead.id)
+    const accion = proxAccion.trim() || null
+    const fecha  = proxFecha ? new Date(proxFecha).toISOString() : null
+    if (proxConRec && accion && fecha && profile?.id && lead.cliente?.id) {
+      await supabase.from('recordatorios').insert({
+        cliente_id: lead.cliente.id, tenant_id: tenantId, asignado_a: profile.id,
+        nota: accion, fecha_recordatorio: fecha, completado: false, tipo: 'manual',
+      })
+    }
+    onLeadUpdate(lead.id, { proxima_accion: accion, proxima_accion_fecha: fecha })
+    await supabase.from('clientes').update({ proxima_accion: accion, proxima_accion_fecha: fecha }).eq('id', lead.id)
+    setProxConRec(false)
     toast()
   }
 
@@ -161,6 +170,10 @@ function PanelCRM({ lead, tenantId, usuarios, onLeadUpdate }: {
             className="w-full text-xs bg-white/10 border border-white/10 rounded-lg px-2.5 py-2 text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1.5" />
           <input type="datetime-local" value={proxFecha} onChange={e => setProxFecha(e.target.value)}
             className="w-full text-[11px] bg-white/10 border border-white/10 rounded-lg px-2.5 py-2 text-white focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1.5" />
+          <label className="flex items-center gap-2 mb-1.5 cursor-pointer select-none">
+            <input type="checkbox" checked={proxConRec} onChange={e => setProxConRec(e.target.checked)} className="rounded" />
+            <span className="text-[10px] text-white/60">⏰ Crear también como recordatorio</span>
+          </label>
           <button onClick={guardarProxima}
             className="w-full py-1.5 text-xs font-bold bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors">
             Guardar acción
