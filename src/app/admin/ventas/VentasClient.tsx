@@ -216,6 +216,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       .from('usuarios')
       .select('id, nombre, email')
       .eq('tenant_id', tenantId)
+      .eq('es_asesor', true)
       .order('nombre')
       .then(({ data }) => {
         setUsuarios((data ?? []).map(u => ({

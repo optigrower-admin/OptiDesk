@@ -17,6 +17,7 @@ interface UsuarioEquipo {
   email: string
   rol: Rol
   activo: boolean
+  es_asesor: boolean
 }
 
 interface SeccionDef { key: string; label: string; defaultOrden: number; soloGerencia?: boolean; soloRoles?: Rol[] }
@@ -160,12 +161,12 @@ export default function EquipoPage() {
     setLoading(true)
     const { data } = await supabase
       .from('usuarios')
-      .select('id, nombre, email, rol, activo')
+      .select('id, nombre, email, rol, activo, es_asesor')
       .eq('tenant_id', profile.tenant_id)
       .neq('id', profile.id)
       .neq('rol', 'control_total')
       .order('nombre')
-    setUsuarios((data as unknown as UsuarioEquipo[]) ?? [])
+    setUsuarios(((data as unknown as UsuarioEquipo[]) ?? []).map(u => ({ ...u, es_asesor: u.es_asesor ?? true })))
     setLoading(false)
   }, [profile?.tenant_id, profile?.id])
 
@@ -369,6 +370,12 @@ export default function EquipoPage() {
       usuario_id: profile?.id,
     })
     setUsuarios((prev) => prev.map((x) => x.id === u.id ? { ...x, activo: !u.activo } : x))
+  }
+
+  // Toggle es_asesor
+  const toggleEsAsesor = async (u: UsuarioEquipo) => {
+    await supabase.from('usuarios').update({ es_asesor: !u.es_asesor }).eq('id', u.id)
+    setUsuarios((prev) => prev.map((x) => x.id === u.id ? { ...x, es_asesor: !u.es_asesor } : x))
   }
 
   // Cambiar rol
@@ -575,14 +582,29 @@ export default function EquipoPage() {
                     {rst === 'ok' ? '✓ Enviado' : rst === 'error' ? '✗ Error' : rst === 'loading' ? '...' : '🔑 Contraseña'}
                   </button>
 
+                  {/* Toggle es_asesor */}
+                  <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                    <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Asesor</span>
+                    <button
+                      onClick={() => toggleEsAsesor(u)}
+                      title={u.es_asesor ? 'Quitar de asesores' : 'Marcar como asesor'}
+                      className={`w-9 h-5 rounded-full transition-colors ${u.es_asesor ? 'bg-blue-500' : 'bg-gray-300'}`}
+                    >
+                      <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${u.es_asesor ? 'translate-x-4' : ''}`} />
+                    </button>
+                  </div>
+
                   {/* Toggle activo */}
-                  <button
-                    onClick={() => toggleActivo(u)}
-                    title={u.activo ? 'Desactivar' : 'Activar'}
-                    className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${u.activo ? 'bg-green-500' : 'bg-gray-300'}`}
-                  >
-                    <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${u.activo ? 'translate-x-4' : ''}`} />
-                  </button>
+                  <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                    <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Activo</span>
+                    <button
+                      onClick={() => toggleActivo(u)}
+                      title={u.activo ? 'Desactivar' : 'Activar'}
+                      className={`w-9 h-5 rounded-full transition-colors ${u.activo ? 'bg-green-500' : 'bg-gray-300'}`}
+                    >
+                      <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${u.activo ? 'translate-x-4' : ''}`} />
+                    </button>
+                  </div>
                 </div>
               )
             })

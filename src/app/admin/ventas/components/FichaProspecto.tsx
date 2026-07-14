@@ -172,7 +172,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         : Promise.resolve({ data: [] }),
       supabase.from('ordenes').select('id,created_at,estado,descripcion_problema')
         .eq('cliente_id', lead.id).order('created_at', { ascending: false }).limit(5),
-      supabase.from('usuarios').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true),
+      supabase.from('usuarios').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).eq('es_asesor', true),
       supabase.from('clientes').select('email, assigned_to, created_at').eq('id', lead.id).single(),
       supabase.from('historial_etapas_cliente')
         .select('etapa_anterior, etapa_nueva, created_at')

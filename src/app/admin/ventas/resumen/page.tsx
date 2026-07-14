@@ -24,6 +24,7 @@ export default function ResumenVentasPage() {
       .from('usuarios')
       .select('id, nombre, email')
       .eq('tenant_id', profile.tenant_id)
+      .eq('es_asesor', true)
       .order('nombre')
       .then(({ data }) => {
         setUsuarios((data ?? []).map(u => ({
