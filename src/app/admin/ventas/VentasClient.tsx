@@ -10,6 +10,7 @@ import VistaLista from './components/VistaLista'
 import VistaBandeja from './VistaBandeja'
 import { ImportadorExcel } from '@/components/ImportadorExcel'
 import { importarSeguimientoVentas, previsualizarSeguimientoVentas } from '@/lib/bulkImport'
+import WhatsAppCreditoModal from './components/WhatsAppCreditoModal'
 
 type Tab = 'kanban' | 'bandeja' | 'hoy' | 'lista'
 
@@ -197,6 +198,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [usuarioFiltro, setUsuarioFiltro] = useState<string | null>(null) // null = todos
   const [abrirClienteId, setAbrirClienteId] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
+  const [whatsappOpen, setWhatsappOpen] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -247,6 +249,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   return (
     <div className="p-5">
       {nuevoOpen && <NuevoClienteModal onClose={() => setNuevoOpen(false)} />}
+      {whatsappOpen && <WhatsAppCreditoModal leads={leadsIniciales} onClose={() => setWhatsappOpen(false)} />}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
@@ -266,6 +269,11 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
           <button onClick={() => setNuevoOpen(true)}
             className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold transition-colors flex-shrink-0">
             + Nuevo cliente
+          </button>
+          <button onClick={() => setWhatsappOpen(true)}
+            title="Generar lista de clientes para WhatsApp (estudio de crédito)"
+            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors flex-shrink-0">
+            📋 Lista WA
           </button>
 
           {/* Tabs */}

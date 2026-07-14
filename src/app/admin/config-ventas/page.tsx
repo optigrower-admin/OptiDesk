@@ -552,6 +552,8 @@ export default function ConfigVentasPage() {
 
   const [entidades, setEntidades]         = useState<Entidad[]>([])
   const [nuevaEntidad, setNuevaEntidad]   = useState('')
+  const [editandoEntidadId, setEditandoEntidadId]       = useState<string | null>(null)
+  const [editandoEntidadNombre, setEditandoEntidadNombre] = useState('')
   const [categoriasPago, setCategoriasPago]     = useState<CategoriaPago[]>([])
   const [nuevaCategoriaPago, setNuevaCategoriaPago] = useState('')
   const [editandoCatId, setEditandoCatId]       = useState<string | null>(null)
@@ -775,6 +777,12 @@ export default function ConfigVentasPage() {
     if (!confirm('¿Eliminar esta entidad?')) return
     await supabase.from('entidades_financieras').delete().eq('id', id)
     cargar()
+  }
+  async function renombrarEntidad() {
+    if (!editandoEntidadId || !editandoEntidadNombre.trim()) return
+    await supabase.from('entidades_financieras').update({ nombre: editandoEntidadNombre.trim() }).eq('id', editandoEntidadId)
+    setEntidades(p => p.map(e => e.id === editandoEntidadId ? { ...e, nombre: editandoEntidadNombre.trim() } : e))
+    setEditandoEntidadId(null); setEditandoEntidadNombre('')
   }
 
   /* ── Motos ── */
@@ -1201,15 +1209,33 @@ export default function ConfigVentasPage() {
         <div className="p-5">
           <div className="space-y-2 mb-3">
             {entidades.map(e => (
-              <div key={e.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${!e.activa ? 'opacity-60' : 'border-gray-200'}`}>
-                <span className="flex-1 text-sm font-medium text-gray-800">{e.nombre}</span>
-                <ToggleSwitch activo={e.activa} onChange={() => toggleEntidad(e.id, e.activa)} />
-                <button onClick={() => eliminarEntidad(e.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+              <div key={e.id} className={`rounded-lg border px-3 py-2 ${!e.activa ? 'opacity-60 border-gray-200' : 'border-gray-200'}`}>
+                {editandoEntidadId === e.id ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      autoFocus
+                      value={editandoEntidadNombre}
+                      onChange={ev => setEditandoEntidadNombre(ev.target.value)}
+                      onKeyDown={ev => { if (ev.key === 'Enter') renombrarEntidad(); if (ev.key === 'Escape') { setEditandoEntidadId(null); setEditandoEntidadNombre('') } }}
+                      className="flex-1 border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button onClick={renombrarEntidad} className="text-xs font-semibold text-blue-700 hover:text-blue-900">Guardar</button>
+                    <button onClick={() => { setEditandoEntidadId(null); setEditandoEntidadNombre('') }} className="text-xs text-gray-400 hover:text-gray-600">Cancelar</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="flex-1 text-sm font-medium text-gray-800">{e.nombre}</span>
+                    <button onClick={() => { setEditandoEntidadId(e.id); setEditandoEntidadNombre(e.nombre) }} className="text-xs text-blue-500 hover:text-blue-700">Editar</button>
+                    <ToggleSwitch activo={e.activa} onChange={() => toggleEntidad(e.id, e.activa)} />
+                    <button onClick={() => eliminarEntidad(e.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
           <div className="flex gap-2">
             <input value={nuevaEntidad} onChange={e => setNuevaEntidad(e.target.value)} placeholder="ej: Bancolombia"
+              onKeyDown={e => { if (e.key === 'Enter') agregarEntidad() }}
               className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button onClick={agregarEntidad} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">+ Agregar</button>
           </div>

@@ -32,6 +32,8 @@ export type LeadData = {
   estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'
   tienePlaca?: boolean
   numero_factura?: string | null
+  creditoAprobadoEntidad?: string | null
+  creditoRechazadoEntidades?: string[]
 }
 
 const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
@@ -220,6 +222,22 @@ export default function LeadCard({ lead, onClick, overlay, asignado, onQuickDone
           </span>
         ))}
       </div>
+
+      {/* Entidades crédito: aprobada verde, rechazadas rojo tachado */}
+      {(lead.creditoAprobadoEntidad || (lead.creditoRechazadoEntidades?.length ?? 0) > 0) && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {lead.creditoAprobadoEntidad && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-300">
+              ✓ {lead.creditoAprobadoEntidad}
+            </span>
+          )}
+          {lead.creditoRechazadoEntidades?.map(nombre => (
+            <span key={nombre} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-50 text-red-500 border border-red-200 line-through">
+              {nombre}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Canales + origen */}
       <div className="flex flex-wrap gap-1 mb-2">

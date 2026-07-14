@@ -98,6 +98,26 @@ export default function VentasPage() {
         }
       }
 
+      // Estudio de crédito por entidad — aprobado (verde) y rechazado (rojo tachado) en la carta
+      const creditoMap: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
+      if ((raw ?? []).length > 0) {
+        try {
+          const ids = (raw ?? []).map((c) => c.id as string)
+          const { data: estudios } = await supabase
+            .from('clientes_credito_estudio')
+            .select('cliente_id, estado, entidades_financieras(nombre)')
+            .in('cliente_id', ids)
+            .in('estado', ['aprobado', 'rechazado'])
+          for (const row of (estudios ?? []) as unknown as { cliente_id: string; estado: string; entidades_financieras: { nombre: string } | null }[]) {
+            const nombre = row.entidades_financieras?.nombre
+            if (!nombre) continue
+            if (!creditoMap[row.cliente_id]) creditoMap[row.cliente_id] = { aprobada: null, rechazadas: [] }
+            if (row.estado === 'aprobado') creditoMap[row.cliente_id].aprobada = nombre
+            if (row.estado === 'rechazado') creditoMap[row.cliente_id].rechazadas.push(nombre)
+          }
+        } catch { /* tablas de crédito aún no existen o sin datos — ignorar */ }
+      }
+
       // Alistamiento check: clientes en espera_entrega/entregada sin orden UMA+Alistamiento → rojo
       const clientesConAlistamiento = new Set<string>()
       // Los que tienen vinculación manual directa cuentan como "con alistamiento"
@@ -186,6 +206,8 @@ export default function VentasPage() {
             ? !!(ex.placa)
             : undefined,
           numero_factura: (ex.numero_factura ?? null) as string | null,
+          creditoAprobadoEntidad: creditoMap[c.id as string]?.aprobada ?? null,
+          creditoRechazadoEntidades: creditoMap[c.id as string]?.rechazadas ?? [],
         }
       })
 
