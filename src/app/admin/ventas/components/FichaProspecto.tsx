@@ -49,7 +49,7 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_factura?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null }) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_factura?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[] }) => void
   onLeadDelete?: (id: string) => void
 }
 
@@ -1056,6 +1056,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     tenantId={tenantId}
                     usuarioId={profile?.id ?? ''}
                     onProximaAccionChange={(proxAccion, proxFecha) => onLeadUpdate?.(lead.id, { proxima_accion: proxAccion, proxima_accion_fecha: proxFecha })}
+                    onCreditoChange={(aprobada, rechazadas) => onLeadUpdate?.(lead.id, { creditoAprobadoEntidad: aprobada, creditoRechazadoEntidades: rechazadas })}
                   />
 
                   {ordenes.length > 0 && (

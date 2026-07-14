@@ -9,6 +9,7 @@ interface Props {
   tenantId: string
   usuarioId: string
   onProximaAccionChange?: (proxAccion: string | null, proxFecha: string | null) => void
+  onCreditoChange?: (aprobada: string | null, rechazadas: string[]) => void
 }
 
 type MotoCatalogo = { id: string; referencia: string; precio: number; costo_documentos: number; costo_prenda: number }
@@ -91,7 +92,7 @@ function RecordatorioItem({ r, onToggle, confirmId, onConfirm, onCancelConfirm }
   )
 }
 
-export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAccionChange }: Props) {
+export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAccionChange, onCreditoChange }: Props) {
   const supabase = createClient()
   const [seleccion, setSeleccion] = useState<Seleccion[]>([])
   const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([])
@@ -229,7 +230,7 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
 
       {/* Pago */}
       <div className="border-t pt-3">
-        <PagoTab clienteId={clienteId} tenantId={tenantId} usuarioId={usuarioId} />
+        <PagoTab clienteId={clienteId} tenantId={tenantId} usuarioId={usuarioId} onCreditoChange={onCreditoChange} />
       </div>
 
       {/* Pasos a seguir (unificado: pasos + recordatorios) */}

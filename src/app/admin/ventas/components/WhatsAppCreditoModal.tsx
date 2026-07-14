@@ -29,6 +29,7 @@ function formatCliente(lead: LeadData): string {
 export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
   const [filtro, setFiltro]               = useState<Filtro>('en_estudio')
   const [entidadFiltro, setEntidadFiltro] = useState<string>('todas')
+  const [busqueda, setBusqueda]           = useState('')
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
     () => new Set(leads.filter(l => ETAPAS_CREDITO.includes(l.etapa_venta)).map(l => l.id))
   )
@@ -60,6 +61,17 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
     }
     return lista
   }, [leads, filtro, entidadFiltro])
+
+  // Búsqueda por nombre sobre los leads ya filtrados
+  const leadsVisibles = useMemo(() => {
+    if (!busqueda.trim()) return leadsFiltrados
+    const q = busqueda.toLowerCase()
+    return leadsFiltrados.filter(l =>
+      (l.cliente?.nombre ?? '').toLowerCase().includes(q) ||
+      (l.cliente_documento ?? '').includes(q) ||
+      (l.cliente?.celular ?? '').includes(q)
+    )
+  }, [leadsFiltrados, busqueda])
 
   // Cuando cambia el filtro, auto-seleccionar los leads visibles
   function aplicarFiltro(f: Filtro) {
@@ -106,6 +118,7 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
   }
 
   const leadsSeleccionados = leadsFiltrados.filter(l => seleccionados.has(l.id))
+  const visiblesSeleccionados = leadsVisibles.filter(l => seleccionados.has(l.id)).length
   const textoTodos = leadsSeleccionados.map(formatCliente).join('\n\n')
 
   async function copiar(text: string, key: string) {
@@ -181,29 +194,50 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
               ))}
             </div>
           )}
+
+          {/* Buscador */}
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
+            <input
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              placeholder="Buscar por nombre, cédula o celular..."
+              className="w-full pl-7 pr-8 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+            />
+            {busqueda && (
+              <button
+                onClick={() => setBusqueda('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm leading-none">
+                ×
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Lista */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-semibold text-gray-500">
-              {leadsFiltrados.length} cliente{leadsFiltrados.length !== 1 ? 's' : ''} · {seleccionados.size} seleccionado{seleccionados.size !== 1 ? 's' : ''}
+              {leadsVisibles.length} cliente{leadsVisibles.length !== 1 ? 's' : ''}
+              {busqueda.trim() && ` de ${leadsFiltrados.length}`}
+              {' · '}{visiblesSeleccionados} seleccionado{visiblesSeleccionados !== 1 ? 's' : ''}
+              {seleccionados.size > visiblesSeleccionados && ` (+${seleccionados.size - visiblesSeleccionados} fuera del filtro)`}
             </span>
             <div className="flex gap-3">
-              <button onClick={() => setSeleccionados(new Set(leadsFiltrados.map(l => l.id)))}
+              <button onClick={() => setSeleccionados(prev => new Set([...prev, ...leadsVisibles.map(l => l.id)]))}
                 className="text-xs text-blue-600 hover:underline font-medium">Todos</button>
-              <button onClick={() => setSeleccionados(new Set())}
+              <button onClick={() => setSeleccionados(prev => { const next = new Set(prev); leadsVisibles.forEach(l => next.delete(l.id)); return next })}
                 className="text-xs text-gray-500 hover:underline">Ninguno</button>
             </div>
           </div>
 
-          {leadsFiltrados.length === 0 && (
+          {leadsVisibles.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-8">
-              Sin clientes para este filtro
+              {busqueda.trim() ? 'Sin resultados para esa búsqueda' : 'Sin clientes para este filtro'}
             </p>
           )}
 
-          {leadsFiltrados.map(lead => {
+          {leadsVisibles.map(lead => {
             const sel  = seleccionados.has(lead.id)
             const texto = formatCliente(lead)
             const aprobada  = lead.creditoAprobadoEntidad

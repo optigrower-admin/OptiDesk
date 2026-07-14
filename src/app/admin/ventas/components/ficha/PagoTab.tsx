@@ -7,6 +7,7 @@ interface Props {
   clienteId: string
   tenantId: string
   usuarioId: string
+  onCreditoChange?: (aprobada: string | null, rechazadas: string[]) => void
 }
 
 type MetodoPago    = { id: string; nombre: string; recargo_porcentaje: number }
@@ -38,7 +39,7 @@ const FORMA_OPCIONES: { value: FormaPago; label: string }[] = [
   { value: 'credito_ci', label: 'Crédito & C. Inicial' },
 ]
 
-export default function PagoTab({ clienteId, tenantId, usuarioId }: Props) {
+export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChange }: Props) {
   const supabase = createClient()
 
   /* ── Estado forma de pago ── */
@@ -135,6 +136,13 @@ export default function PagoTab({ clienteId, tenantId, usuarioId }: Props) {
       await supabase.from('clientes_credito_estudio').insert({ cliente_id: clienteId, tenant_id: tenantId, entidad_id: entidadId, estado, actualizado_por: usuarioId })
     }
     cargar()
+    if (onCreditoChange) {
+      const updatedEstudios = estudios.map(e => e.entidad_id === entidadId ? { ...e, estado } : e)
+      if (!existente) updatedEstudios.push({ id: '', entidad_id: entidadId, estado, monto_aprobado: null })
+      const aprobada = entidades.find(e => updatedEstudios.some(es => es.entidad_id === e.id && es.estado === 'aprobado'))?.nombre ?? null
+      const rechazadas = entidades.filter(e => updatedEstudios.some(es => es.entidad_id === e.id && es.estado === 'rechazado')).map(e => e.nombre)
+      onCreditoChange(aprobada, rechazadas)
+    }
   }
 
   async function setMonto(entidadId: string, monto: string) {

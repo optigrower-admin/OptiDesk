@@ -408,7 +408,9 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
         ...l,
         ...(updates.proxima_accion       !== undefined ? { proxima_accion: updates.proxima_accion }             : {}),
         ...(updates.proxima_accion_fecha !== undefined ? { proxima_accion_fecha: updates.proxima_accion_fecha } : {}),
-        ...(updates.assigned_to          !== undefined ? { assigned_to: updates.assigned_to }                   : {}),
+        ...(updates.assigned_to                !== undefined ? { assigned_to: updates.assigned_to }                                   : {}),
+        ...(updates.creditoAprobadoEntidad    !== undefined ? { creditoAprobadoEntidad: updates.creditoAprobadoEntidad }               : {}),
+        ...(updates.creditoRechazadoEntidades !== undefined ? { creditoRechazadoEntidades: updates.creditoRechazadoEntidades }         : {}),
         ...(l.cliente && Object.keys(cp).length > 0 ? { cliente: { ...l.cliente, ...cp } } : {}),
       }
     }))
