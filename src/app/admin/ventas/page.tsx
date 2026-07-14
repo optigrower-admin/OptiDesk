@@ -50,7 +50,8 @@ export default function VentasPage() {
 
       // Gerencia ve todos los clientes en seguimiento; el resto solo los suyos
       // o los que Gerencia le compartió explícitamente vía clientes_visibilidad.
-      if (profile.rol !== 'gerencia' && profile.rol !== 'control_total' && profile.rol !== 'dueño') {
+      const rolNorm = (profile.rol ?? '').toLowerCase().replace('ñ', 'n')
+      if (rolNorm !== 'gerencia' && rolNorm !== 'control_total' && rolNorm !== 'dueno') {
         const { data: compartidos } = await supabase
           .from('clientes_visibilidad')
           .select('cliente_id')

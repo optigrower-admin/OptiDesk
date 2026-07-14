@@ -85,7 +85,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const supabase = createClient()
   const { profile } = useAuth()
   const endRef   = useRef<HTMLDivElement>(null)
-  const esGerencia = profile?.rol === 'gerencia' || profile?.rol === 'control_total' || profile?.rol === 'dueño'
+  const rolNorm = (profile?.rol ?? '').toLowerCase().replace('ñ', 'n')
+  const esGerencia = rolNorm === 'gerencia' || rolNorm === 'control_total' || rolNorm === 'dueno'
 
   const [mensajes, setMensajes]         = useState<Mensaje[]>([])
   const [ordenes, setOrdenes]           = useState<Orden[]>([])
@@ -649,7 +650,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
             </div>
 
             {/* Footer panel: eliminar */}
-            {(profile?.rol === 'gerencia' || profile?.rol === 'dueño') && (
+            {(rolNorm === 'gerencia' || rolNorm === 'dueno') && (
               <div className="px-3 py-3 border-t border-[#2a3550] flex-shrink-0">
                 <button onClick={() => { setConfirmDeleteInput(''); setConfirmDelete(true) }}
                   className="w-full py-1.5 text-[10px] font-bold text-red-400 bg-red-900/30 hover:bg-red-900/50 border border-red-700/40 rounded-lg transition-colors">

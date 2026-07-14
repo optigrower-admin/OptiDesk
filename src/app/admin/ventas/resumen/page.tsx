@@ -50,7 +50,8 @@ export default function ResumenVentasPage() {
         .order('etapa_venta_orden', { ascending: true, nullsFirst: false })
         .limit(500)
 
-      if (profile.rol !== 'gerencia' && profile.rol !== 'control_total' && profile.rol !== 'dueño') {
+      const rolNorm = (profile.rol ?? '').toLowerCase().replace('ñ', 'n')
+      if (rolNorm !== 'gerencia' && rolNorm !== 'control_total' && rolNorm !== 'dueno') {
         const { data: compartidos } = await supabase
           .from('clientes_visibilidad').select('cliente_id').eq('usuario_id', profile.id)
         const ids = (compartidos ?? []).map(c => c.cliente_id)

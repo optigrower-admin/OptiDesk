@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCOP } from '@/lib/ventas/pipeline'
-import ComentariosTab from './ComentariosTab'
 import PagoTab from './PagoTab'
 
 interface Props {
@@ -161,10 +160,6 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
       {/* Pago */}
       <div className="border-t pt-3">
         <PagoTab clienteId={clienteId} tenantId={tenantId} usuarioId={usuarioId} />
-      </div>
-
-      <div className="border-t pt-3">
-        <ComentariosTab clienteId={clienteId} tenantId={tenantId} usuarioId={usuarioId} />
       </div>
 
       {/* Pasos a seguir */}
