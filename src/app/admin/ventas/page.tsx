@@ -99,21 +99,31 @@ export default function VentasPage() {
       }
 
       // Estudio de crédito por entidad — aprobado (verde) y rechazado (rojo tachado) en la carta
+      // Dos queries separadas para evitar dependencia de FK nombradas en PostgREST
       const creditoMap: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
       if ((raw ?? []).length > 0) {
         try {
           const ids = (raw ?? []).map((c) => c.id as string)
-          const { data: estudios } = await supabase
+          const { data: estudiosRows } = await supabase
             .from('clientes_credito_estudio')
-            .select('cliente_id, estado, entidades_financieras(nombre)')
+            .select('cliente_id, entidad_id, estado')
             .in('cliente_id', ids)
             .in('estado', ['aprobado', 'rechazado'])
-          for (const row of (estudios ?? []) as unknown as { cliente_id: string; estado: string; entidades_financieras: { nombre: string } | null }[]) {
-            const nombre = row.entidades_financieras?.nombre
-            if (!nombre) continue
-            if (!creditoMap[row.cliente_id]) creditoMap[row.cliente_id] = { aprobada: null, rechazadas: [] }
-            if (row.estado === 'aprobado') creditoMap[row.cliente_id].aprobada = nombre
-            if (row.estado === 'rechazado') creditoMap[row.cliente_id].rechazadas.push(nombre)
+          if ((estudiosRows ?? []).length > 0) {
+            const entidadIds = [...new Set((estudiosRows ?? []).map(r => r.entidad_id as string))]
+            const { data: entRows } = await supabase
+              .from('entidades_financieras')
+              .select('id, nombre')
+              .in('id', entidadIds)
+            const entNombreMap: Record<string, string> = {}
+            for (const e of entRows ?? []) entNombreMap[e.id as string] = e.nombre as string
+            for (const row of estudiosRows ?? []) {
+              const nombre = entNombreMap[row.entidad_id as string]
+              if (!nombre) continue
+              if (!creditoMap[row.cliente_id as string]) creditoMap[row.cliente_id as string] = { aprobada: null, rechazadas: [] }
+              if (row.estado === 'aprobado') creditoMap[row.cliente_id as string].aprobada = nombre
+              if (row.estado === 'rechazado') creditoMap[row.cliente_id as string].rechazadas.push(nombre)
+            }
           }
         } catch { /* tablas de crédito aún no existen o sin datos — ignorar */ }
       }

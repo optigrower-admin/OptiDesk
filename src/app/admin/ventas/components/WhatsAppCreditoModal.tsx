@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { LeadData } from './LeadCard'
 
 interface Props {
@@ -7,21 +7,95 @@ interface Props {
   onClose: () => void
 }
 
+type Filtro = 'todos' | 'en_estudio' | 'aprobados' | 'rechazados'
+
+const FILTROS: { id: Filtro; label: string; color: string }[] = [
+  { id: 'todos',      label: 'Todos',        color: 'bg-gray-100 text-gray-700 border-gray-300' },
+  { id: 'en_estudio', label: 'En estudio',   color: 'bg-amber-100 text-amber-700 border-amber-300' },
+  { id: 'aprobados',  label: 'Aprobados',    color: 'bg-green-100 text-green-700 border-green-300' },
+  { id: 'rechazados', label: 'Con rechazos', color: 'bg-red-100 text-red-600 border-red-300' },
+]
+
+const ETAPAS_CREDITO = ['buscando_credito', 'en_proceso_credito']
+
 function formatCliente(lead: LeadData): string {
-  const nombre = lead.cliente?.nombre ?? '[Pendiente]'
-  const cedula = lead.cliente_documento ? lead.cliente_documento : '[Pendiente]'
+  const nombre  = lead.cliente?.nombre ?? '[Pendiente]'
+  const cedula  = lead.cliente_documento ?? '[Pendiente]'
   const celular = lead.cliente?.celular ?? '[Pendiente]'
-  const correo = lead.cliente_email ?? '[Pendiente]'
+  const correo  = lead.cliente_email ?? '[Pendiente]'
   return `*${nombre}*\nCédula: ${cedula}\nCelular: ${celular}\nCorreo: ${correo}`
 }
 
 export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
-  const ETAPAS_CREDITO = ['buscando_credito', 'en_proceso_credito']
-
+  const [filtro, setFiltro]               = useState<Filtro>('en_estudio')
+  const [entidadFiltro, setEntidadFiltro] = useState<string>('todas')
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
     () => new Set(leads.filter(l => ETAPAS_CREDITO.includes(l.etapa_venta)).map(l => l.id))
   )
   const [copiado, setCopiado] = useState<string | null>(null)
+
+  // Entidades únicas presentes en los leads (aprobadas o rechazadas)
+  const entidadesDisponibles = useMemo(() => {
+    const set = new Set<string>()
+    for (const l of leads) {
+      if (l.creditoAprobadoEntidad) set.add(l.creditoAprobadoEntidad)
+      for (const r of l.creditoRechazadoEntidades ?? []) set.add(r)
+    }
+    return [...set].sort()
+  }, [leads])
+
+  // Leads visibles según el filtro activo
+  const leadsFiltrados = useMemo(() => {
+    let lista = leads
+    switch (filtro) {
+      case 'en_estudio': lista = leads.filter(l => ETAPAS_CREDITO.includes(l.etapa_venta)); break
+      case 'aprobados':  lista = leads.filter(l => !!l.creditoAprobadoEntidad); break
+      case 'rechazados': lista = leads.filter(l => (l.creditoRechazadoEntidades?.length ?? 0) > 0); break
+    }
+    if (entidadFiltro !== 'todas') {
+      lista = lista.filter(l =>
+        l.creditoAprobadoEntidad === entidadFiltro ||
+        l.creditoRechazadoEntidades?.includes(entidadFiltro)
+      )
+    }
+    return lista
+  }, [leads, filtro, entidadFiltro])
+
+  // Cuando cambia el filtro, auto-seleccionar los leads visibles
+  function aplicarFiltro(f: Filtro) {
+    setFiltro(f)
+    // recalcula inline para no esperar el useMemo
+    let lista = leads
+    switch (f) {
+      case 'en_estudio': lista = leads.filter(l => ETAPAS_CREDITO.includes(l.etapa_venta)); break
+      case 'aprobados':  lista = leads.filter(l => !!l.creditoAprobadoEntidad); break
+      case 'rechazados': lista = leads.filter(l => (l.creditoRechazadoEntidades?.length ?? 0) > 0); break
+    }
+    if (entidadFiltro !== 'todas') {
+      lista = lista.filter(l =>
+        l.creditoAprobadoEntidad === entidadFiltro ||
+        l.creditoRechazadoEntidades?.includes(entidadFiltro)
+      )
+    }
+    setSeleccionados(new Set(lista.map(l => l.id)))
+  }
+
+  function aplicarEntidad(e: string) {
+    setEntidadFiltro(e)
+    let lista = leads
+    switch (filtro) {
+      case 'en_estudio': lista = leads.filter(l => ETAPAS_CREDITO.includes(l.etapa_venta)); break
+      case 'aprobados':  lista = leads.filter(l => !!l.creditoAprobadoEntidad); break
+      case 'rechazados': lista = leads.filter(l => (l.creditoRechazadoEntidades?.length ?? 0) > 0); break
+    }
+    if (e !== 'todas') {
+      lista = lista.filter(l =>
+        l.creditoAprobadoEntidad === e ||
+        l.creditoRechazadoEntidades?.includes(e)
+      )
+    }
+    setSeleccionados(new Set(lista.map(l => l.id)))
+  }
 
   function toggle(id: string) {
     setSeleccionados(prev => {
@@ -31,7 +105,7 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
     })
   }
 
-  const leadsSeleccionados = leads.filter(l => seleccionados.has(l.id))
+  const leadsSeleccionados = leadsFiltrados.filter(l => seleccionados.has(l.id))
   const textoTodos = leadsSeleccionados.map(formatCliente).join('\n\n')
 
   async function copiar(text: string, key: string) {
@@ -48,37 +122,92 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col">
+
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div>
             <h2 className="font-bold text-gray-900">Lista para WhatsApp</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Selecciona los clientes para enviar al estudio de crédito</p>
+            <p className="text-xs text-gray-500 mt-0.5">Clientes para enviar al estudio de crédito</p>
           </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 text-xl leading-none transition-colors">×</button>
+          <button onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 text-xl leading-none transition-colors">
+            ×
+          </button>
+        </div>
+
+        {/* Filtros */}
+        <div className="px-5 pt-3 pb-2 border-b border-gray-100 flex-shrink-0 space-y-2">
+          {/* Filtro por estado de crédito */}
+          <div className="flex gap-1.5 flex-wrap">
+            {FILTROS.map(f => (
+              <button
+                key={f.id}
+                onClick={() => aplicarFiltro(f.id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                  filtro === f.id
+                    ? f.color + ' ring-2 ring-offset-1 ring-current'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                }`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Filtro por entidad (solo si hay entidades con datos) */}
+          {entidadesDisponibles.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap items-center">
+              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Entidad:</span>
+              <button
+                onClick={() => aplicarEntidad('todas')}
+                className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                  entidadFiltro === 'todas'
+                    ? 'bg-blue-700 text-white border-blue-700'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'
+                }`}>
+                Todas
+              </button>
+              {entidadesDisponibles.map(e => (
+                <button
+                  key={e}
+                  onClick={() => aplicarEntidad(e)}
+                  className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                    entidadFiltro === e
+                      ? 'bg-blue-700 text-white border-blue-700'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'
+                  }`}>
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Lista */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              {seleccionados.size} seleccionado{seleccionados.size !== 1 ? 's' : ''}
+            <span className="text-xs font-semibold text-gray-500">
+              {leadsFiltrados.length} cliente{leadsFiltrados.length !== 1 ? 's' : ''} · {seleccionados.size} seleccionado{seleccionados.size !== 1 ? 's' : ''}
             </span>
             <div className="flex gap-3">
-              <button onClick={() => setSeleccionados(new Set(leads.map(l => l.id)))}
+              <button onClick={() => setSeleccionados(new Set(leadsFiltrados.map(l => l.id)))}
                 className="text-xs text-blue-600 hover:underline font-medium">Todos</button>
               <button onClick={() => setSeleccionados(new Set())}
                 className="text-xs text-gray-500 hover:underline">Ninguno</button>
             </div>
           </div>
 
-          {leads.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-6">No hay clientes en seguimiento</p>
+          {leadsFiltrados.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-8">
+              Sin clientes para este filtro
+            </p>
           )}
 
-          {leads.map(lead => {
-            const sel = seleccionados.has(lead.id)
+          {leadsFiltrados.map(lead => {
+            const sel  = seleccionados.has(lead.id)
             const texto = formatCliente(lead)
+            const aprobada  = lead.creditoAprobadoEntidad
+            const rechazadas = lead.creditoRechazadoEntidades ?? []
             return (
               <div key={lead.id}
                 className={`rounded-xl border p-3 transition-colors cursor-pointer select-none ${
@@ -86,13 +215,8 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
                 }`}
                 onClick={() => toggle(lead.id)}>
                 <div className="flex items-start gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={sel}
-                    onChange={() => toggle(lead.id)}
-                    onClick={e => e.stopPropagation()}
-                    className="mt-0.5 flex-shrink-0 rounded"
-                  />
+                  <input type="checkbox" checked={sel} onChange={() => toggle(lead.id)}
+                    onClick={e => e.stopPropagation()} className="mt-0.5 flex-shrink-0 rounded" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">
                       {lead.cliente?.nombre ?? '— Sin nombre —'}
@@ -102,7 +226,22 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
                       {' · '}
                       {lead.cliente?.celular ?? '[Sin celular]'}
                     </p>
-                    <p className="text-xs text-gray-400">{lead.cliente_email ?? '[Sin correo]'}</p>
+                    <p className="text-xs text-gray-400 truncate">{lead.cliente_email ?? '[Sin correo]'}</p>
+                    {/* Badges crédito */}
+                    {(aprobada || rechazadas.length > 0) && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {aprobada && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-300">
+                            ✓ {aprobada}
+                          </span>
+                        )}
+                        {rechazadas.map(r => (
+                          <span key={r} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-500 border border-red-200 line-through">
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {sel && (
                     <button
@@ -121,7 +260,7 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
           })}
         </div>
 
-        {/* Footer — vista previa + copiar todos */}
+        {/* Footer */}
         <div className="border-t border-gray-100 px-5 py-4 bg-gray-50 rounded-b-2xl flex-shrink-0">
           {leadsSeleccionados.length === 0 ? (
             <p className="text-sm text-gray-400 text-center">Selecciona al menos un cliente</p>
