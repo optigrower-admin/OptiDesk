@@ -54,16 +54,19 @@ export async function GET(
   })
 }
 
+// Dar hasta 60 s al procesamiento (Vercel Pro) — en Hobby se recorta a 10 s
+export const maxDuration = 60
+
 // POST — mensajes entrantes de Meta
 export async function POST(
   request: NextRequest,
   { params }: { params: { tenant_id: string } }
 ) {
-  // Meta requiere 200 en < 20 segundos — responder inmediatamente
   let body: unknown
   try { body = await request.json() } catch { return new NextResponse('EVENT_RECEIVED', { status: 200 }) }
 
-  procesarMensajeMeta(body, params.tenant_id).catch(console.error)
+  // Await garantiza que Vercel no mate el serverless antes de que se guarde el cliente
+  await procesarMensajeMeta(body, params.tenant_id).catch(e => console.error('[webhook] error:', e))
   return new NextResponse('EVENT_RECEIVED', { status: 200 })
 }
 
