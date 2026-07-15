@@ -115,7 +115,20 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
       const nombreCompleto = [c.primer_nombre, c.segundo_nombre, c.primer_apellido, c.segundo_apellido]
         .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
 
-      const update: Record<string, string | number | null> = { ...c }
+      // Campos de texto: vacío → null (evita unique constraint violations en cedula/email)
+      const NULLABLE_TEXT: (keyof Campos)[] = [
+        'cedula', 'email', 'celular', 'direccion', 'municipio', 'ciudad',
+        'descuentos', 'lugar_matricula', 'ocupacion', 'tipo_contrato',
+        'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido',
+      ]
+      const update: Record<string, string | number | null> = {}
+      for (const k of Object.keys(c) as (keyof Campos)[]) {
+        if (NULLABLE_TEXT.includes(k)) {
+          update[k] = c[k] || null
+        } else {
+          update[k] = c[k]  // tipo_documento siempre tiene valor
+        }
+      }
       if (nombreCompleto) update.nombre = nombreCompleto
       update.ingresos_mensuales = c.ingresos_mensuales ? parseInt(c.ingresos_mensuales, 10) : null
       update.gastos_mensuales   = c.gastos_mensuales   ? parseInt(c.gastos_mensuales,   10) : null
@@ -152,7 +165,7 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Identificación</p>
         {saving    && <span className="text-[10px] text-blue-400 font-medium">Guardando...</span>}
-        {saveError && <span className="text-[10px] text-red-500 font-medium" title={saveError}>⚠ {saveError}</span>}
+        {saveError && <span className="text-[10px] text-red-500 font-medium" title={saveError}>⚠ Error al guardar</span>}
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Primer nombre"   value={campos.primer_nombre}   onChange={v => set('primer_nombre', v)}   onBlur={guardar} />
