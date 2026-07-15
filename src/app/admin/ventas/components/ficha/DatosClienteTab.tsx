@@ -76,8 +76,8 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
   const [campos, setCampos]     = useState<Campos>(VACIO)
   const [original, setOriginal] = useState<Campos>(VACIO)
   const [loading, setLoading]   = useState(true)
-  const [saving, setSaving]     = useState(false)
-  const [saveError, setSaveError] = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const camposRef               = useRef<Campos>(VACIO)
 
   useEffect(() => {
@@ -136,9 +136,10 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
       setOriginal(c)
       onClienteUpdate?.({ nombre: nombreCompleto || undefined, celular: c.celular || undefined })
     } catch (e: unknown) {
-      console.error(e)
-      setSaveError(true)
-      setTimeout(() => setSaveError(false), 3000)
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('guardar error:', msg)
+      setSaveError(msg)
+      setTimeout(() => setSaveError(null), 6000)
     } finally {
       setSaving(false)
     }
@@ -151,7 +152,7 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Identificación</p>
         {saving    && <span className="text-[10px] text-blue-400 font-medium">Guardando...</span>}
-        {saveError && <span className="text-[10px] text-red-500 font-medium">⚠ Error al guardar</span>}
+        {saveError && <span className="text-[10px] text-red-500 font-medium" title={saveError}>⚠ {saveError}</span>}
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Primer nombre"   value={campos.primer_nombre}   onChange={v => set('primer_nombre', v)}   onBlur={guardar} />
