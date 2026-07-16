@@ -222,7 +222,7 @@ export default function AdminOrdenDetallePage() {
   // (modal ConsultaRepuestos), quedan en una lista (varios por orden) y se guardan
   // de inmediato, sin esperar a "Guardar cambios".
   const [showAgregarRepuesto, setShowAgregarRepuesto] = useState(false)
-  const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; codigoPrefix: string; costo: string; precio: string; metodo_pago_id: string; precioMin: number | null; errMsg: string } | null>(null)
+  const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; codigoPrefix: string; costo: string; precio: string; metodo_pago_id: string; precioMin: number | null; errMsg: string; cantidad: string } | null>(null)
 
   // Lavado de moto — botón "+ Agregar lavado" en la tarjeta de Pagos, con envío explícito
   // (igual a Mano de obra), no autoguardado al perder el foco.
@@ -834,7 +834,7 @@ export default function AdminOrdenDetallePage() {
 
   // Actualiza un ítem de repuesto ya guardado (UMA/Externo/Insumo/Porta) y recalcula
   // el valor_total de la orden con el cambio ya aplicado. Retorna true si guardó OK.
-  const actualizarItemRepuesto = async (id: string, cambios: Partial<{ descripcion: string; precio_venta: number; costo: number; metodo_pago_id: string | null }>): Promise<boolean> => {
+  const actualizarItemRepuesto = async (id: string, cambios: Partial<{ descripcion: string; precio_venta: number; cantidad: number; costo: number; metodo_pago_id: string | null }>): Promise<boolean> => {
     const itemAnterior = items.find((i) => i.id === id)
     const { data: updated, error } = await supabase
       .from('items_orden').update(cambios).eq('id', id).select('id')
@@ -865,6 +865,7 @@ export default function AdminOrdenDetallePage() {
     if (!editingItem || !editingItem.descripcion.trim()) return
     const itemActual = items.find((i) => i.id === editingItem.id)
     const precio = parseInt(editingItem.precio.replace(/\D/g, ''), 10) || 0
+    const cantidad = Math.max(1, parseInt(editingItem.cantidad || '1', 10) || 1)
     const costo = itemActual?.origen === 'externo' ? (parseInt(editingItem.costo.replace(/\D/g, ''), 10) || 0) : 0
     const descripcionFinal = editingItem.codigoPrefix
       ? `${editingItem.codigoPrefix} - ${editingItem.descripcion.trim()}`
@@ -879,10 +880,19 @@ export default function AdminOrdenDetallePage() {
     const ok = await actualizarItemRepuesto(editingItem.id, {
       descripcion: descripcionFinal,
       precio_venta: precio,
+      cantidad,
       costo,
       metodo_pago_id: itemActual?.origen === 'externo' ? (editingItem.metodo_pago_id || null) : null,
     })
-    if (!ok) return  // mantener el form abierto con el errMsg ya seteado
+    if (!ok) return
+
+    // Ajustar stock si la cantidad cambió en un ítem UMA con repuesto_uma_id
+    if (itemActual?.repuesto_uma_id && cantidad !== itemActual.cantidad) {
+      const delta = cantidad - itemActual.cantidad  // positivo = usó más, negativo = devolvió
+      await supabase.from('movimientos_inventario').update({ cantidad }).eq('item_orden_id', editingItem.id)
+      await supabase.rpc('ajustar_stock_uma', { p_repuesto_id: itemActual.repuesto_uma_id, p_delta: -delta })
+    }
+
     setEditingItem(null)
     await cargar()
   }
@@ -896,6 +906,7 @@ export default function AdminOrdenDetallePage() {
       costo: String(item.costo), precio: String(item.precio_venta),
       metodo_pago_id: item.metodo_pago_id ?? '',
       precioMin: null, errMsg: '',
+      cantidad: String(item.cantidad),
     })
     // Para ítems UMA del catálogo, cargar precio mínimo
     if (item.origen === 'uma' && item.repuesto_uma_id) {
@@ -2507,6 +2518,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                   <tr className="text-[11px] text-gray-500 uppercase border-b bg-blue-50">
                     <th className="text-left py-1 px-2 font-medium w-28">Origen / Ref.</th>
                     <th className="text-left py-1 px-2 font-medium">Descripción</th>
+                    <th className="text-center py-1 px-2 font-medium w-10">Q</th>
                     <th className="text-left py-1 px-2 font-medium w-24 hidden sm:table-cell">Método prov.</th>
                     <th className="text-right py-1 px-2 font-medium w-20 hidden sm:table-cell">Costo</th>
                     <th className="text-right py-1 px-2 font-medium w-20">P. venta</th>
@@ -2515,7 +2527,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </thead>
                 <tbody>
                   {repuestosItems.length === 0 && (
-                    <tr><td colSpan={6} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
+                    <tr><td colSpan={7} className="py-6 text-center text-xs text-gray-400">Sin repuestos agregados todavía.</td></tr>
                   )}
                   {repuestosItems.map((item) => {
                     const tipoLabel = item.origen === 'uma' ? 'UMA' : item.origen === 'externo' ? 'Externo' : item.descripcion === 'Porta Placas' ? 'Porta Placas' : 'Insumo'
@@ -2538,6 +2550,15 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                             autoFocus
                             placeholder="Nombre del repuesto"
                             className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none"
+                          />
+                        </td>
+                        <td className="py-1 px-2">
+                          <input
+                            type="number"
+                            min="1"
+                            value={editingItem.cantidad}
+                            onChange={(e) => setEditingItem({ ...editingItem, cantidad: e.target.value })}
+                            className="w-full px-1 py-1 border border-blue-300 rounded-lg text-sm font-mono text-center focus:outline-none"
                           />
                         </td>
                         <td className="py-1 px-2 hidden sm:table-cell">
@@ -2588,6 +2609,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                           </div>
                         </td>
                         <td className="py-1.5 px-2 text-gray-800 truncate" title={descClean}>{descClean}</td>
+                        <td className="py-1.5 px-2 text-center text-sm font-mono text-gray-700">{item.cantidad}</td>
                         <td className="py-1.5 px-2 text-gray-500 text-xs hidden sm:table-cell">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
                         <td className="py-1.5 px-2 text-right text-gray-500 whitespace-nowrap hidden sm:table-cell">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
                         <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>

@@ -546,6 +546,7 @@ export default function AdminRepuestosPage() {
                     <th className="text-left py-2.5 px-3 font-medium">ID Interno</th>
                     <th className="text-left py-2.5 px-3 font-medium">Estado pago</th>
                     <th className="text-left py-2.5 px-3 font-medium">Cliente</th>
+                    <th className="text-center py-2.5 px-3 font-medium w-12">Q</th>
                     <th className="text-right py-2.5 px-3 font-medium">Costo total</th>
                     <th className="text-right py-2.5 px-3 font-medium">Total venta</th>
                     <th className="py-2.5 px-3 w-28" />
@@ -562,7 +563,6 @@ export default function AdminRepuestosPage() {
                         </td>
                         <td className="py-2.5 px-3 max-w-[180px]">
                           <span className={`block truncate ${esPendiente ? 'text-red-800 font-medium' : 'text-gray-800'}`} title={nombreDisplayUMA(item)}>{nombreDisplayUMA(item)}</span>
-                          {item.cantidad > 1 && <span className="text-xs text-gray-400">×{item.cantidad}</span>}
                         </td>
                         <td className="py-2.5 px-3">
                           <Badge variant={item.origen === 'uma' ? 'blue' : 'amber'}>
@@ -599,6 +599,7 @@ export default function AdminRepuestosPage() {
                         <td className="py-2.5 px-3 text-xs text-gray-600 max-w-[120px]">
                           <span className="block truncate" title={item.ordenes?.cliente ?? ''}>{item.ordenes?.cliente ?? '—'}</span>
                         </td>
+                        <td className="py-2.5 px-3 text-center text-sm font-mono text-gray-700">{item.cantidad}</td>
                         <td className="py-2.5 px-3 text-right text-xs text-gray-500 whitespace-nowrap">
                           {item.costo ? formatCOP(item.costo * item.cantidad) : '—'}
                         </td>
@@ -637,7 +638,7 @@ export default function AdminRepuestosPage() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-50">
-                    <td colSpan={7} className="py-2.5 px-4 text-xs text-gray-500 font-medium">{totalItems} ítems en total</td>
+                    <td colSpan={8} className="py-2.5 px-4 text-xs text-gray-500 font-medium">{totalItems} ítems en total</td>
                     <td className="py-2.5 px-3 text-right text-xs text-gray-500 font-medium whitespace-nowrap">{formatCOP(totalCosto)}</td>
                     <td className="py-2.5 px-3 text-right font-bold text-gray-900 whitespace-nowrap">{formatCOP(totalVentas)}</td>
                     <td />
