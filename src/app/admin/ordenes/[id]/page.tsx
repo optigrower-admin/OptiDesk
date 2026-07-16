@@ -222,7 +222,7 @@ export default function AdminOrdenDetallePage() {
   // (modal ConsultaRepuestos), quedan en una lista (varios por orden) y se guardan
   // de inmediato, sin esperar a "Guardar cambios".
   const [showAgregarRepuesto, setShowAgregarRepuesto] = useState(false)
-  const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; codigoPrefix: string; costo: string; precio: string; metodo_pago_id: string } | null>(null)
+  const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; codigoPrefix: string; costo: string; precio: string; metodo_pago_id: string; precioMin: number | null; errMsg: string } | null>(null)
 
   // Lavado de moto — botón "+ Agregar lavado" en la tarjeta de Pagos, con envío explícito
   // (igual a Mano de obra), no autoguardado al perder el foco.
@@ -832,53 +832,19 @@ export default function AdminOrdenDetallePage() {
     }
   }
 
-  // Guarda los cambios de la fila en edición (repuesto o mano de obra) — el costo y el
-  // método de pago solo aplican a Externo, pero da igual mandarlos en 0/null para los demás.
-  const handleEditItem = async () => {
-    if (!editingItem || !editingItem.descripcion.trim()) return
-    const itemActual = items.find((i) => i.id === editingItem.id)
-    const precio = parseInt(editingItem.precio.replace(/\D/g, ''), 10) || 0
-    const costo = itemActual?.origen === 'externo' ? (parseInt(editingItem.costo.replace(/\D/g, ''), 10) || 0) : 0
-    const descripcionFinal = editingItem.codigoPrefix
-      ? `${editingItem.codigoPrefix} - ${editingItem.descripcion.trim()}`
-      : editingItem.descripcion.trim()
-    await actualizarItemRepuesto(editingItem.id, {
-      descripcion: descripcionFinal,
-      precio_venta: precio,
-      costo,
-      metodo_pago_id: itemActual?.origen === 'externo' ? (editingItem.metodo_pago_id || null) : null,
-    })
-    setEditingItem(null)
-    await cargar()
-  }
-
-  const iniciarEditarItem = (item: ItemOrden) => {
-    const sepIdx = item.descripcion.indexOf(' - ')
-    const codigoPrefix = item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(0, sepIdx) : ''
-    const descripcion = item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(sepIdx + 3) : item.descripcion
-    setEditingItem({
-      id: item.id,
-      descripcion,
-      codigoPrefix,
-      costo: String(item.costo),
-      precio: String(item.precio_venta),
-      metodo_pago_id: item.metodo_pago_id ?? '',
-    })
-  }
-
   // Actualiza un ítem de repuesto ya guardado (UMA/Externo/Insumo/Porta) y recalcula
-  // el valor_total de la orden con el cambio ya aplicado.
-  const actualizarItemRepuesto = async (id: string, cambios: Partial<{ descripcion: string; precio_venta: number; costo: number; metodo_pago_id: string | null }>) => {
+  // el valor_total de la orden con el cambio ya aplicado. Retorna true si guardó OK.
+  const actualizarItemRepuesto = async (id: string, cambios: Partial<{ descripcion: string; precio_venta: number; costo: number; metodo_pago_id: string | null }>): Promise<boolean> => {
     const itemAnterior = items.find((i) => i.id === id)
     const { data: updated, error } = await supabase
       .from('items_orden').update(cambios).eq('id', id).select('id')
     if (error) {
-      alert(`No se pudo guardar el cambio: ${error.message}`)
-      return
+      setEditingItem(prev => prev ? { ...prev, errMsg: `No se pudo guardar: ${error.message}` } : prev)
+      return false
     }
     if (!updated || updated.length === 0) {
-      alert('No se pudo guardar el cambio: sin permisos para modificar este ítem. Contacta al administrador del sistema.')
-      return
+      setEditingItem(prev => prev ? { ...prev, errMsg: 'Sin permisos para modificar este ítem. Contacta al administrador.' } : prev)
+      return false
     }
     await recalcularValorTotal()
     await registrarAuditoria(supabase, {
@@ -891,6 +857,57 @@ export default function AdminOrdenDetallePage() {
       descripcion: `Editó repuesto "${cambios.descripcion ?? itemAnterior?.descripcion}" | orden #${orden?.numero}`,
       usuario_id: profile?.id,
     })
+    return true
+  }
+
+  // Guarda los cambios de la fila en edición (repuesto o mano de obra).
+  const handleEditItem = async () => {
+    if (!editingItem || !editingItem.descripcion.trim()) return
+    const itemActual = items.find((i) => i.id === editingItem.id)
+    const precio = parseInt(editingItem.precio.replace(/\D/g, ''), 10) || 0
+    const costo = itemActual?.origen === 'externo' ? (parseInt(editingItem.costo.replace(/\D/g, ''), 10) || 0) : 0
+    const descripcionFinal = editingItem.codigoPrefix
+      ? `${editingItem.codigoPrefix} - ${editingItem.descripcion.trim()}`
+      : editingItem.descripcion.trim()
+
+    // Validar precio mínimo para ítems UMA
+    if (itemActual?.origen === 'uma' && editingItem.precioMin !== null && precio < (editingItem.precioMin ?? 0)) {
+      setEditingItem(prev => prev ? { ...prev, errMsg: `Mínimo: ${formatCOP(editingItem.precioMin!)}` } : prev)
+      return
+    }
+
+    const ok = await actualizarItemRepuesto(editingItem.id, {
+      descripcion: descripcionFinal,
+      precio_venta: precio,
+      costo,
+      metodo_pago_id: itemActual?.origen === 'externo' ? (editingItem.metodo_pago_id || null) : null,
+    })
+    if (!ok) return  // mantener el form abierto con el errMsg ya seteado
+    setEditingItem(null)
+    await cargar()
+  }
+
+  const iniciarEditarItem = async (item: ItemOrden) => {
+    const sepIdx = item.descripcion.indexOf(' - ')
+    const codigoPrefix = item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(0, sepIdx) : ''
+    const descripcion = item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(sepIdx + 3) : item.descripcion
+    setEditingItem({
+      id: item.id, descripcion, codigoPrefix,
+      costo: String(item.costo), precio: String(item.precio_venta),
+      metodo_pago_id: item.metodo_pago_id ?? '',
+      precioMin: null, errMsg: '',
+    })
+    // Para ítems UMA del catálogo, cargar precio mínimo
+    if (item.origen === 'uma' && item.repuesto_uma_id) {
+      const { data } = await supabase.from('repuestos_uma')
+        .select('precio_publico_iva').eq('id', item.repuesto_uma_id).single()
+      if (data) {
+        setEditingItem(prev => prev?.id === item.id
+          ? { ...prev, precioMin: (data as { precio_publico_iva: number }).precio_publico_iva ?? null }
+          : prev
+        )
+      }
+    }
   }
 
   const lavadoDefaults = () => ({
@@ -2547,9 +2564,13 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <td className="py-1 px-2">
                           <PriceInput
                             value={editingItem.precio}
-                            onChange={(v) => setEditingItem({ ...editingItem, precio: v })}
-                            className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
+                            onChange={(v) => setEditingItem({ ...editingItem, precio: v, errMsg: '' })}
+                            className={`w-full px-2 py-1 border rounded-lg text-sm font-mono text-right focus:outline-none ${editingItem.errMsg ? 'border-red-400' : 'border-blue-300'}`}
                           />
+                          {editingItem.errMsg && <p className="text-xs text-red-500 mt-0.5 text-right">{editingItem.errMsg}</p>}
+                          {editingItem.precioMin !== null && !editingItem.errMsg && (
+                            <p className="text-xs text-gray-400 mt-0.5 text-right">Mín: {formatCOP(editingItem.precioMin)}</p>
+                          )}
                         </td>
                         <td className="py-1 px-2">
                           <div className="flex items-center justify-end gap-1">
@@ -2694,9 +2715,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                           <td className="py-2 px-3">
                             <PriceInput
                               value={editingItem.precio}
-                              onChange={(v) => setEditingItem({ ...editingItem, precio: v })}
-                              className="w-full px-2 py-1.5 border border-orange-400 rounded-lg text-sm font-mono text-right focus:outline-none"
+                              onChange={(v) => setEditingItem({ ...editingItem, precio: v, errMsg: '' })}
+                              className={`w-full px-2 py-1.5 border rounded-lg text-sm font-mono text-right focus:outline-none ${editingItem.errMsg ? 'border-red-400' : 'border-orange-400'}`}
                             />
+                            {editingItem.errMsg && <p className="text-xs text-red-500 mt-0.5 text-right">{editingItem.errMsg}</p>}
                           </td>
                           <td className="py-2 px-3">
                             <div className="flex items-center justify-end gap-1.5 flex-nowrap">
