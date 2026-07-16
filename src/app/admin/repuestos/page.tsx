@@ -546,8 +546,8 @@ export default function AdminRepuestosPage() {
                     <th className="text-left py-2.5 px-3 font-medium">ID Interno</th>
                     <th className="text-left py-2.5 px-3 font-medium">Estado pago</th>
                     <th className="text-left py-2.5 px-3 font-medium">Cliente</th>
-                    <th className="text-right py-2.5 px-3 font-medium">Costo</th>
-                    <th className="text-right py-2.5 px-3 font-medium">P. Venta</th>
+                    <th className="text-right py-2.5 px-3 font-medium">Costo total</th>
+                    <th className="text-right py-2.5 px-3 font-medium">Total venta</th>
                     <th className="py-2.5 px-3 w-28" />
                   </tr>
                 </thead>
@@ -602,8 +602,11 @@ export default function AdminRepuestosPage() {
                         <td className="py-2.5 px-3 text-right text-xs text-gray-500 whitespace-nowrap">
                           {item.costo ? formatCOP(item.costo * item.cantidad) : '—'}
                         </td>
-                        <td className={`py-2.5 px-3 text-right font-semibold whitespace-nowrap ${esPendiente ? 'text-red-700' : 'text-gray-900'}`}>
-                          {formatCOP(item.precio_venta * item.cantidad)}
+                        <td className={`py-2.5 px-3 text-right whitespace-nowrap ${esPendiente ? 'text-red-700' : 'text-gray-900'}`}>
+                          <span className="font-semibold">{formatCOP(item.precio_venta * item.cantidad)}</span>
+                          {item.cantidad > 1 && (
+                            <span className="block text-xs text-gray-400 font-normal">{formatCOP(item.precio_venta)} c/u</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3">
                           <div className="flex gap-0.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
