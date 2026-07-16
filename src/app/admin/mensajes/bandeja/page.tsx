@@ -141,6 +141,11 @@ export default function BandejaPage() {
   // Modal agregar a seguimiento
   const [seguimientoOpen, setSeguimientoOpen] = useState(false)
 
+  // Modal seleccionar flujo
+  const [flujoModalOpen, setFlujoModalOpen] = useState(false)
+  const [flujos, setFlujos]                 = useState<{ id: string; nombre: string; trigger_tipo: string }[]>([])
+  const [iniciandoFlujo, setIniciandoFlujo] = useState(false)
+
   // Eliminar conversación
   const [confirmDeleteConv, setConfirmDeleteConv]   = useState(false)
   const [confirmDeleteConvInput, setConfirmDeleteConvInput] = useState('')
@@ -342,6 +347,15 @@ export default function BandejaPage() {
   useEffect(() => { cargarEquipo() }, [cargarEquipo])
   useEffect(() => { cargarConversaciones() }, [cargarConversaciones])
   useEffect(() => {
+    if (!profile?.tenant_id) return
+    supabase.from('flujos_automatizacion')
+      .select('id, nombre, trigger_tipo')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('activo', true)
+      .order('nombre')
+      .then(({ data }) => setFlujos((data as { id: string; nombre: string; trigger_tipo: string }[]) ?? []))
+  }, [profile?.tenant_id])
+  useEffect(() => {
     if (selectedId) { cargarMensajes(selectedId); setShowInfo(false) }
     else setMensajes([])
   }, [selectedId, cargarMensajes])
@@ -474,6 +488,32 @@ export default function BandejaPage() {
   const reasignar = async (id: string, userId: string) => {
     await supabase.from('conversaciones').update({ assigned_to: userId || null, updated_at: new Date().toISOString() }).eq('id', id)
     setConvs(cs => cs.map(c => c.id === id ? { ...c, assigned_to: userId || null } : c))
+  }
+
+  const iniciarFlujo = async (flujoId: string) => {
+    if (!selectedConv || iniciandoFlujo) return
+    setIniciandoFlujo(true)
+    setFlujoModalOpen(false)
+    try {
+      const res = await fetch('/api/admin/flujos/ejecutar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversacion_id: selectedConv.id,
+          cliente_id: selectedConv.cliente_id,
+          flujo_id: flujoId,
+          trigger_tipo: 'mensaje_nuevo',
+        }),
+      })
+      const json = await res.json() as { ok?: boolean; error?: string }
+      if (!res.ok) throw new Error(json.error ?? 'Error al iniciar flujo')
+      const flujoNombre = flujos.find(f => f.id === flujoId)?.nombre ?? 'Flujo'
+      toast(`▶ ${flujoNombre} iniciado`)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Error al iniciar flujo', false)
+    } finally {
+      setIniciandoFlujo(false)
+    }
   }
 
   const eliminarConversacion = async () => {
@@ -694,9 +734,34 @@ export default function BandejaPage() {
               </div>
             </div>
 
-            {/* Barra de acciones — solo Gerencia */}
-            {profile?.rol === 'gerencia' && (
-              <div className="bg-white border-b border-gray-100 px-4 py-1.5 flex items-center justify-end flex-shrink-0">
+            {/* Barra de acciones rápidas */}
+            <div className="bg-white border-b border-gray-100 px-4 py-1.5 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-2">
+                {/* Botón Seguimiento */}
+                <button
+                  onClick={() => setSeguimientoOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors border border-emerald-300 hover:border-emerald-500"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                  + Seguimiento
+                </button>
+                {/* Botón Iniciar flujo */}
+                <button
+                  onClick={() => setFlujoModalOpen(true)}
+                  disabled={iniciandoFlujo}
+                  className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-300 hover:border-indigo-500 disabled:opacity-50"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {iniciandoFlujo ? 'Iniciando...' : '▶ Iniciar flujo'}
+                </button>
+              </div>
+              {/* Eliminar chat — solo Gerencia */}
+              {profile?.rol === 'gerencia' && (
                 <button
                   onClick={() => { setConfirmDeleteConvInput(''); setConfirmDeleteConv(true) }}
                   className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-red-200 hover:border-red-400"
@@ -706,8 +771,8 @@ export default function BandejaPage() {
                   </svg>
                   Eliminar chat
                 </button>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Banner nombre Instagram/Messenger sin nombre */}
             {(selectedConv.canal === 'instagram' || selectedConv.canal === 'messenger') && !selectedConv.clientes?.[0]?.nombre && (
@@ -1047,6 +1112,42 @@ export default function BandejaPage() {
               }}
               onClose={() => setSeguimientoOpen(false)}
             />
+          )}
+
+          {/* Modal selección de flujo */}
+          {flujoModalOpen && selectedConv && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-bold text-gray-900">▶ Iniciar automatización</h2>
+                  <button onClick={() => setFlujoModalOpen(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+                </div>
+                {flujos.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">No hay flujos activos. Crea y activa uno en <strong>Mensajes → Flujos</strong>.</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500 mb-3">Selecciona el flujo que deseas ejecutar para este chat:</p>
+                    {flujos.map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => iniciarFlujo(f.id)}
+                        className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 transition-colors group"
+                      >
+                        <p className="text-sm font-semibold text-gray-800 group-hover:text-indigo-700">{f.nombre}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {f.trigger_tipo === 'mensaje_nuevo' ? '📱 Mensaje nuevo'
+                            : f.trigger_tipo === 'lead_ad' ? '📣 Lead de anuncio'
+                            : f.trigger_tipo === 'etapa_cambiada' ? '📊 Etapa cambiada'
+                            : f.trigger_tipo === 'nuevo_cliente' ? '👤 Cliente nuevo'
+                            : f.trigger_tipo === 'sin_respuesta_24h' ? '⏰ Sin respuesta 24h'
+                            : f.trigger_tipo}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       )}

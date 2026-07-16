@@ -18,7 +18,8 @@ export async function iniciarFlujoParaConversacion(
   tenantId: string,
   conversacionId: string,
   clienteId: string | null,
-  triggerTipo: TriggerTipo
+  triggerTipo: TriggerTipo,
+  flujoId?: string  // opcional: saltarse el lookup por trigger y usar este flujo específico
 ) {
   const supabase = createAdminClient()
 
@@ -30,23 +31,33 @@ export async function iniciarFlujoParaConversacion(
     .eq('estado', 'activo')
     .maybeSingle()
 
-  if (ejecucionExistente) {
-    // Ya hay un flujo corriendo para esta conversación — continuar desde donde está
+  if (ejecucionExistente && !flujoId) {
+    // Ya hay un flujo corriendo — continuar (solo si no se está forzando uno nuevo específico)
     await continuarEjecucion(supabase, ejecucionExistente.id)
     return
   }
 
-  // Buscar flujos activos para este tenant con el trigger correcto
-  const { data: flujos } = await supabase
-    .from('flujos_automatizacion')
-    .select('id, nodos, trigger_tipo')
-    .eq('tenant_id', tenantId)
-    .eq('activo', true)
-    .eq('trigger_tipo', triggerTipo)
+  // Buscar el flujo: por ID específico o por trigger_tipo
+  let flujo: { id: string; nodos: unknown; trigger_tipo: string } | null = null
+  if (flujoId) {
+    const { data } = await supabase
+      .from('flujos_automatizacion')
+      .select('id, nodos, trigger_tipo')
+      .eq('id', flujoId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+    flujo = data
+  } else {
+    const { data: flujos } = await supabase
+      .from('flujos_automatizacion')
+      .select('id, nodos, trigger_tipo')
+      .eq('tenant_id', tenantId)
+      .eq('activo', true)
+      .eq('trigger_tipo', triggerTipo)
+    flujo = flujos?.[0] ?? null
+  }
 
-  if (!flujos?.length) return
-
-  const flujo = flujos[0]
+  if (!flujo) return
   const nodos = flujo.nodos as { nodes: Node[]; edges: Edge[] } | null
   if (!nodos?.nodes?.length) return
 

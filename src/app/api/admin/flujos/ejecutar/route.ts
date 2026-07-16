@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
   const conversacionId = String(body.conversacion_id)
   const triggerTipo    = String(body.trigger_tipo ?? 'mensaje_nuevo')
   const clienteId      = body.cliente_id ? String(body.cliente_id) : null
+  const flujoId        = body.flujo_id   ? String(body.flujo_id)   : undefined
 
   // Verificar que la conversación pertenece al tenant
   const { data: conv } = await supabase
@@ -52,7 +53,8 @@ export async function POST(req: NextRequest) {
     perfil.tenant_id,
     conversacionId,
     clienteId ?? conv.cliente_id,
-    triggerTipo as 'mensaje_nuevo' | 'lead_ad' | 'sin_respuesta_24h' | 'etapa_cambiada' | 'nuevo_cliente'
+    triggerTipo as 'mensaje_nuevo' | 'lead_ad' | 'sin_respuesta_24h' | 'etapa_cambiada' | 'nuevo_cliente',
+    flujoId
   )
 
   return NextResponse.json({ ok: true, message: 'Flujo iniciado' })
