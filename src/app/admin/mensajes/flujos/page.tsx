@@ -211,30 +211,133 @@ const CondicionNode = ({ id, data }: NodeProps) => {
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
 
+  const tipo   = (data.condicion_tipo ?? 'respuesta_contiene') as string
+  const agentes: AgenteIA[] = data.agentes ?? []
+
+  // grupos de tipos que necesitan campo de texto/valor
+  const needsTexto    = ['respuesta_contiene','palabras_clave','contiene_todas','es_exactamente','empieza_con','termina_con']
+  const needsLongitud = tipo === 'longitud_mayor'
+  const needsCanal    = tipo === 'canal'
+  const needsEtapa    = tipo === 'etapa'
+  const needsIA       = tipo === 'ia_evalua'
+
+  const placeholderTexto: Record<string,string> = {
+    respuesta_contiene: 'ej: precio, cuánto, moto...',
+    palabras_clave:     'palabras separadas por coma: precio,cuánto,valor',
+    contiene_todas:     'todas deben estar: hola,precio',
+    es_exactamente:     'texto exacto que debe escribir',
+    empieza_con:        'ej: Hola, Buenas, Buenos...',
+    termina_con:        'ej: gracias, porfa, porfavor',
+  }
+
   return (
-    <div className={`${nodeBaseClass} border-yellow-400`}>
+    <div className={`${nodeBaseClass} border-yellow-400`} style={{ width: 230 }}>
       <Handle type="target" position={Position.Top} className="!bg-yellow-400 !w-3 !h-3" />
       <NodeHeader color="bg-yellow-500" icon="🔀" label="Condición" />
       <div className="px-3 py-2.5 space-y-2">
-        <select defaultValue={data.condicion_tipo ?? 'respuesta_contiene'} onChange={e => upd('condicion_tipo', e.target.value)}
+
+        {/* Selector principal de tipo */}
+        <select value={tipo} onChange={e => upd('condicion_tipo', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400">
-          <option value="respuesta_contiene">Mensaje contiene texto</option>
-          <option value="canal">Canal específico</option>
-          <option value="etapa">Etapa actual es</option>
-          <option value="tiene_celular">Tiene celular registrado</option>
-          <option value="es_nuevo">Es cliente nuevo</option>
+          <optgroup label="── Texto del mensaje ──">
+            <option value="respuesta_contiene">Contiene alguna palabra</option>
+            <option value="palabras_clave">Contiene ALGUNA palabra clave</option>
+            <option value="contiene_todas">Contiene TODAS las palabras</option>
+            <option value="es_exactamente">Es exactamente este texto</option>
+            <option value="empieza_con">Empieza con...</option>
+            <option value="termina_con">Termina con...</option>
+            <option value="longitud_mayor">Longitud mayor a N caracteres</option>
+          </optgroup>
+          <optgroup label="── Intención detectada ──">
+            <option value="es_positivo">Respuesta positiva (sí/ok/claro...)</option>
+            <option value="es_negativo">Respuesta negativa (no/tampoco...)</option>
+            <option value="es_numero">Respuesta es un número</option>
+          </optgroup>
+          <optgroup label="── Contexto del cliente ──">
+            <option value="canal">Canal específico</option>
+            <option value="etapa">Etapa actual es</option>
+            <option value="tiene_celular">Tiene celular registrado</option>
+            <option value="es_nuevo">Es cliente nuevo</option>
+            <option value="horario_laboral">Está en horario laboral</option>
+          </optgroup>
+          <optgroup label="── Inteligencia Artificial ──">
+            <option value="ia_evalua">IA evalúa si se cumple condición</option>
+          </optgroup>
         </select>
-        {['respuesta_contiene', 'canal', 'etapa'].includes(data.condicion_tipo ?? '') && (
+
+        {/* Campo texto para condiciones de texto */}
+        {needsTexto.includes(tipo) && (
           <input type="text" defaultValue={data.condicion_valor ?? ''} onChange={e => upd('condicion_valor', e.target.value)}
-            placeholder={data.condicion_tipo === 'canal' ? 'whatsapp / messenger / instagram' : 'Valor...'}
+            placeholder={placeholderTexto[tipo] ?? 'Valor...'}
             className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400" />
         )}
+
+        {/* Campo longitud */}
+        {needsLongitud && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-500 whitespace-nowrap">Mayor a</span>
+            <input type="number" min={1} defaultValue={data.condicion_valor ?? '10'} onChange={e => upd('condicion_valor', e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400" />
+            <span className="text-xs text-gray-500 whitespace-nowrap">chars</span>
+          </div>
+        )}
+
+        {/* Campo canal */}
+        {needsCanal && (
+          <select defaultValue={data.condicion_valor ?? ''} onChange={e => upd('condicion_valor', e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400">
+            <option value="">Cualquier canal</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="messenger">Messenger</option>
+            <option value="instagram">Instagram</option>
+          </select>
+        )}
+
+        {/* Campo etapa */}
+        {needsEtapa && (
+          <select defaultValue={data.condicion_valor ?? ''} onChange={e => upd('condicion_valor', e.target.value)}
+            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400">
+            <option value="">Seleccionar etapa...</option>
+            {ETAPAS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
+          </select>
+        )}
+
+        {/* Campos IA: agente + pregunta */}
+        {needsIA && (
+          <div className="space-y-1.5">
+            <select defaultValue={data.agente_id ?? ''} onChange={e => upd('agente_id', e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400">
+              <option value="">Agente IA a usar...</option>
+              {agentes.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+            </select>
+            <textarea
+              defaultValue={data.condicion_pregunta ?? ''}
+              onChange={e => upd('condicion_pregunta', e.target.value)}
+              rows={3}
+              placeholder={'¿El cliente está interesado en comprar una moto?\n¿Mencionó algún precio o modelo?\n(La IA responde SÍ/NO)'}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400 resize-none"
+            />
+            <p className="text-[10px] text-gray-400 leading-tight">La IA lee el mensaje del cliente y responde SÍ o NO según tu pregunta.</p>
+          </div>
+        )}
+
+        {/* Etiquetas informativas para tipos sin campo extra */}
+        {['es_positivo','es_negativo','es_numero','tiene_celular','es_nuevo','horario_laboral'].includes(tipo) && (
+          <p className="text-[10px] text-gray-400 leading-tight italic">
+            {tipo === 'es_positivo' && 'Detecta: sí, si, claro, dale, ok, bueno, exacto, correcto, afirmativo…'}
+            {tipo === 'es_negativo' && 'Detecta: no, nop, nope, tampoco, negativo, para nada…'}
+            {tipo === 'es_numero'   && 'El cliente respondió solo un número (ej: "1", "2", "50000")'}
+            {tipo === 'tiene_celular' && 'Verifica si el cliente tiene celular registrado en el CRM'}
+            {tipo === 'es_nuevo'    && 'Cliente en etapa nuevo_mensaje o nuevo'}
+            {tipo === 'horario_laboral' && 'Lunes a sábado 7am–6pm (hora Colombia)'}
+          </p>
+        )}
       </div>
+
       <div className="flex justify-between px-3 pb-2 text-[10px] font-bold">
-        <span className="text-green-600">✅ SÍ</span>
-        <span className="text-red-500">❌ NO</span>
+        <span className="text-green-600">✅ SÍ (izq)</span>
+        <span className="text-red-500">❌ NO (der)</span>
       </div>
-      {/* Dos salidas: true (izq) y false (der) */}
       <Handle id="true"  type="source" position={Position.Bottom} style={{ left: '25%' }}  className="!bg-green-400 !w-3 !h-3" />
       <Handle id="false" type="source" position={Position.Bottom} style={{ left: '75%' }}  className="!bg-red-400 !w-3 !h-3" />
     </div>

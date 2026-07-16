@@ -327,20 +327,28 @@ async function procesarNodo(
 
     // ── Condición (bifurcación) ───────────────────────────────────────────────
     case 'condicion': {
-      const condicionTipo = String(data.condicion_tipo ?? '')
-      const condicionValor = String(data.condicion_valor ?? '')
+      const condicionTipo  = String(data.condicion_tipo  ?? '')
+      const condicionValor = String(data.condicion_valor ?? '').trim()
+      const ultimoMsg      = (contexto.ultimo_mensaje ?? '').trim()
+      const ultimoMsgLower = ultimoMsg.toLowerCase()
       let resultado = false
 
       switch (condicionTipo) {
+
+        // ── Canal ────────────────────────────────────────────────────────────
         case 'canal': {
           const { data: conv } = await supabase
             .from('conversaciones').select('canal').eq('id', convId ?? '').maybeSingle()
           resultado = conv?.canal === condicionValor
           break
         }
+
+        // ── Etapa ────────────────────────────────────────────────────────────
         case 'etapa':
           resultado = (contexto.etapa_actual ?? '') === condicionValor
           break
+
+        // ── Tiene celular ────────────────────────────────────────────────────
         case 'tiene_celular': {
           if (clienteId) {
             const { data: cl } = await supabase
@@ -349,13 +357,138 @@ async function procesarNodo(
           }
           break
         }
-        case 'respuesta_contiene': {
-          resultado = (contexto.ultimo_mensaje ?? '').toLowerCase().includes(condicionValor.toLowerCase())
-          break
-        }
+
+        // ── Es nuevo ─────────────────────────────────────────────────────────
         case 'es_nuevo':
           resultado = contexto.etapa_actual === 'nuevo_mensaje' || contexto.etapa_actual === 'nuevo'
           break
+
+        // ── Contiene alguna palabra (texto simple, original) ─────────────────
+        case 'respuesta_contiene':
+          resultado = ultimoMsgLower.includes(condicionValor.toLowerCase())
+          break
+
+        // ── Contiene ALGUNA de varias palabras clave (lista separada por coma)
+        case 'palabras_clave': {
+          const palabras = condicionValor.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
+          resultado = palabras.some(p => ultimoMsgLower.includes(p))
+          break
+        }
+
+        // ── Contiene TODAS las palabras clave ────────────────────────────────
+        case 'contiene_todas': {
+          const palabras = condicionValor.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
+          resultado = palabras.length > 0 && palabras.every(p => ultimoMsgLower.includes(p))
+          break
+        }
+
+        // ── Es exactamente este texto ─────────────────────────────────────────
+        case 'es_exactamente':
+          resultado = ultimoMsgLower === condicionValor.toLowerCase()
+          break
+
+        // ── Empieza con ──────────────────────────────────────────────────────
+        case 'empieza_con':
+          resultado = ultimoMsgLower.startsWith(condicionValor.toLowerCase())
+          break
+
+        // ── Termina con ──────────────────────────────────────────────────────
+        case 'termina_con':
+          resultado = ultimoMsgLower.endsWith(condicionValor.toLowerCase())
+          break
+
+        // ── Longitud mayor a N caracteres ────────────────────────────────────
+        case 'longitud_mayor': {
+          const n = parseInt(condicionValor) || 10
+          resultado = ultimoMsg.length > n
+          break
+        }
+
+        // ── Respuesta positiva ───────────────────────────────────────────────
+        case 'es_positivo': {
+          const positivos = ['sí','si','claro','dale','ok','bueno','bien','correcto','exacto',
+            'afirmativo','por supuesto','con gusto','listo','perfecto','de acuerdo','va','eso',
+            'sip','seee','yep','yes','obvio','obvio que sí']
+          resultado = positivos.some(p => ultimoMsgLower.includes(p))
+            || /^\s*(s[íi]|ok|dale|listo|bueno|claro)\s*[!.]*\s*$/i.test(ultimoMsg)
+          break
+        }
+
+        // ── Respuesta negativa ───────────────────────────────────────────────
+        case 'es_negativo': {
+          const negativos = ['no','nop','nope','tampoco','negativo','para nada','ni modo',
+            'nel','nada','imposible','negado','no gracias','no me interesa']
+          resultado = negativos.some(p => ultimoMsgLower.includes(p))
+            || /^\s*(no|nop|nope|nel)\s*[!.]*\s*$/i.test(ultimoMsg)
+          break
+        }
+
+        // ── Respuesta es un número ───────────────────────────────────────────
+        case 'es_numero':
+          resultado = /^\s*\d+([.,]\d+)?\s*$/.test(ultimoMsg)
+          break
+
+        // ── Horario laboral (lun-sáb 7am–6pm Colombia UTC-5) ─────────────────
+        case 'horario_laboral': {
+          const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }))
+          const dia  = ahora.getDay()  // 0=dom, 6=sáb
+          const hora = ahora.getHours()
+          resultado = dia >= 1 && dia <= 6 && hora >= 7 && hora < 18
+          break
+        }
+
+        // ── IA evalúa la condición ───────────────────────────────────────────
+        case 'ia_evalua': {
+          const agenteId      = String(data.agente_id ?? '')
+          const pregunta      = String(data.condicion_pregunta ?? '').trim()
+          if (!agenteId || !pregunta || !ultimoMsg) { resultado = false; break }
+
+          // Cargar agente y claves API
+          const [{ data: agente }, { data: apiCfg }] = await Promise.all([
+            supabase.from('agentes_ia').select('proveedor,modelo').eq('id', agenteId).maybeSingle(),
+            supabase.from('config_apis_ia').select('openai_key_enc,anthropic_key_enc,openai_modelo_default,anthropic_modelo_default').eq('tenant_id', tenantId).maybeSingle(),
+          ])
+
+          if (!agente || !apiCfg) { resultado = false; break }
+
+          const systemPrompt = 'Eres un evaluador. Lee el mensaje del cliente y responde SOLO con "SÍ" o "NO". Sin explicaciones, sin puntuación extra, solo SÍ o NO.'
+          const userPrompt   = `Mensaje del cliente: "${ultimoMsg}"\n\nPregunta: ${pregunta}\n\nResponde SÍ o NO:`
+
+          let respuestaIA = ''
+
+          if (agente.proveedor === 'openai' && apiCfg.openai_key_enc) {
+            let key = apiCfg.openai_key_enc
+            try { key = (await import('@/lib/crypto')).decrypt(key) } catch { /* dev */ }
+            const modelo = agente.modelo || apiCfg.openai_modelo_default || 'gpt-4o-mini'
+            const r = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: modelo, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], max_tokens: 5, temperature: 0 }),
+            })
+            if (r.ok) {
+              const d = await r.json() as { choices?: [{ message?: { content?: string } }] }
+              respuestaIA = d.choices?.[0]?.message?.content?.trim() ?? ''
+            }
+          } else if (agente.proveedor === 'anthropic' && apiCfg.anthropic_key_enc) {
+            let key = apiCfg.anthropic_key_enc
+            try { key = (await import('@/lib/crypto')).decrypt(key) } catch { /* dev */ }
+            const modelo = agente.modelo || apiCfg.anthropic_modelo_default || 'claude-haiku-4-5-20251001'
+            const r = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: modelo, max_tokens: 5, system: systemPrompt, messages: [{ role: 'user', content: userPrompt }] }),
+            })
+            if (r.ok) {
+              const d = await r.json() as { content?: [{ text?: string }] }
+              respuestaIA = d.content?.[0]?.text?.trim() ?? ''
+            }
+          }
+
+          resultado = /^s[íi]/i.test(respuestaIA) || /^yes/i.test(respuestaIA)
+          console.log(`[condicion/ia_evalua] pregunta="${pregunta}" respuestaIA="${respuestaIA}" resultado=${resultado}`)
+          break
+        }
+
         default:
           resultado = false
       }
