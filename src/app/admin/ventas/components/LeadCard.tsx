@@ -34,6 +34,8 @@ export type LeadData = {
   numero_factura?: string | null
   creditoAprobadoEntidad?: string | null
   creditoRechazadoEntidades?: string[]
+  automatizado?: boolean
+  flujo_nombre?: string | null
 }
 
 const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
@@ -80,6 +82,7 @@ export default function LeadCard({ lead, onClick, overlay, asignado, onQuickDone
   const seguimiento      = estadoSeguimiento(lead.proxima_accion_fecha)
   const esUrgente        = sinResponder.urgente || seguimiento === 'vencido'
   const nombrePendiente  = lead.nombre_pendiente_aprobacion === true
+  const esAutomatizado   = lead.automatizado === true
   const necesitaAlistamiento =
     (lead.etapa_venta === 'espera_entrega' || lead.etapa_venta === 'entregada') &&
     lead.tieneAlistamiento === false
@@ -131,9 +134,23 @@ export default function LeadCard({ lead, onClick, overlay, asignado, onQuickDone
               ? 'bg-amber-50 border-amber-300'
               : esUrgente
                 ? 'bg-white border-l-4 border-l-red-500 border-r border-t border-b border-gray-200'
-                : 'bg-white border-gray-200'
+                : esAutomatizado
+                  ? 'bg-blue-50 border-blue-200 border-l-4 border-l-blue-500'
+                  : 'bg-white border-gray-200'
       } ${overlay ? 'shadow-lg rotate-1' : ''}`}
     >
+      {/* Badge automatizado */}
+      {esAutomatizado && (
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span className="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+            🤖 AUTOMATIZADO
+          </span>
+          {lead.flujo_nombre && (
+            <span className="text-[10px] text-blue-600 font-medium truncate max-w-[120px]">{lead.flujo_nombre}</span>
+          )}
+        </div>
+      )}
+
       {/* Banner FALTA ALISTAMIENTO */}
       {necesitaAlistamiento && (
         <div className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5">

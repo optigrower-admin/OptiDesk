@@ -201,6 +201,12 @@ async function procesarMensajeIndividual(
   }).eq('id', conv.id)
 
   await verificarLimiteDiario(supabase, tenantId)
+
+  // Disparar flujo de automatización (no-bloqueante)
+  const clienteIdFinal = (conv as Record<string, unknown>).cliente_id as string | null
+  import('./flow-executor').then(({ iniciarFlujoParaConversacion }) =>
+    iniciarFlujoParaConversacion(tenantId, conv.id, clienteIdFinal, 'mensaje_nuevo')
+  ).catch(e => console.error('[flujo] error iniciando flujo:', e))
 }
 
 async function determinarAsignacion(

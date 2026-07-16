@@ -573,6 +573,15 @@ export default function ConfigVentasPage() {
   const [creandoMoto, setCreandoMoto]     = useState(false)
   const cargandoRef = useRef(false)
 
+  // ── APIs IA ────────────────────────────────────────────────────────────────
+  const [configApis, setConfigApis]           = useState({ openai_key: '', anthropic_key: '', elevenlabs_key: '', openai_modelo: 'gpt-4o-mini', anthropic_modelo: 'claude-haiku-4-5-20251001', elevenlabs_voz_id: '' })
+  const [savingApis, setSavingApis]           = useState(false)
+  const [apisOk, setApisOk]                  = useState(false)
+  const [agentes, setAgentes]                 = useState<{ id: string; nombre: string; proveedor: string; modelo: string | null; prompt_sistema: string | null; instrucciones: string | null; temperatura: number; max_tokens: number; activo: boolean }[]>([])
+  const [nuevoAgente, setNuevoAgente]         = useState({ nombre: '', proveedor: 'openai', modelo: '', prompt_sistema: '', instrucciones: '', temperatura: 0.7, max_tokens: 800 })
+  const [savingAgente, setSavingAgente]       = useState(false)
+  const [editAgente, setEditAgente]           = useState<string | null>(null)
+
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
     if (cargandoRef.current) return   // evita ejecuciones concurrentes
@@ -706,6 +715,23 @@ export default function ConfigVentasPage() {
     const { data: cats } = await supabase.from('categorias_pago')
       .select('id, nombre, activa, orden').eq('tenant_id', profile.tenant_id).order('orden')
     setCategoriasPago((cats ?? []) as CategoriaPago[])
+
+    // APIs IA + Agentes (defensivo, migración v78)
+    const [{ data: apisCfg }, { data: agts }] = await Promise.all([
+      supabase.from('config_apis_ia').select('*').eq('tenant_id', profile.tenant_id).maybeSingle(),
+      supabase.from('agentes_ia').select('id, nombre, proveedor, modelo, prompt_sistema, instrucciones, temperatura, max_tokens, activo').eq('tenant_id', profile.tenant_id).order('created_at'),
+    ])
+    if (apisCfg) {
+      setConfigApis({
+        openai_key:       apisCfg.openai_key_enc       ? '••••••••••••••••' : '',
+        anthropic_key:    apisCfg.anthropic_key_enc    ? '••••••••••••••••' : '',
+        elevenlabs_key:   apisCfg.elevenlabs_key_enc   ? '••••••••••••••••' : '',
+        openai_modelo:    apisCfg.openai_modelo_default  ?? 'gpt-4o-mini',
+        anthropic_modelo: apisCfg.anthropic_modelo_default ?? 'claude-haiku-4-5-20251001',
+        elevenlabs_voz_id: apisCfg.elevenlabs_voz_id   ?? '',
+      })
+    }
+    setAgentes(agts ?? [])
 
     setLoading(false)
     cargandoRef.current = false
@@ -855,6 +881,61 @@ export default function ConfigVentasPage() {
     if (!confirm('¿Eliminar esta plantilla?')) return
     await supabase.from('plantillas_correo').delete().eq('id', id)
     cargar()
+  }
+
+  /* ── APIs IA ── */
+  async function guardarApis(partial: Partial<typeof configApis>) {
+    if (!profile?.tenant_id) return
+    setSavingApis(true)
+    try {
+      const body: Record<string, string> = {}
+      if (partial.openai_key     && !partial.openai_key.startsWith('•'))    body.openai_key     = partial.openai_key
+      if (partial.anthropic_key  && !partial.anthropic_key.startsWith('•')) body.anthropic_key  = partial.anthropic_key
+      if (partial.elevenlabs_key && !partial.elevenlabs_key.startsWith('•'))body.elevenlabs_key = partial.elevenlabs_key
+      if (partial.openai_modelo)    body.openai_modelo    = partial.openai_modelo
+      if (partial.anthropic_modelo) body.anthropic_modelo = partial.anthropic_modelo
+      if (partial.elevenlabs_voz_id !== undefined) body.elevenlabs_voz_id = partial.elevenlabs_voz_id
+
+      const res = await fetch('/api/admin/config-apis-ia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) { setApisOk(true); setTimeout(() => setApisOk(false), 2500) }
+      else { alert('Error al guardar APIs') }
+    } finally {
+      setSavingApis(false)
+    }
+  }
+
+  async function crearAgente() {
+    if (!profile?.tenant_id || !nuevoAgente.nombre.trim()) return
+    setSavingAgente(true)
+    try {
+      const { data: a } = await supabase.from('agentes_ia').insert({
+        tenant_id:      profile.tenant_id,
+        nombre:         nuevoAgente.nombre.trim(),
+        proveedor:      nuevoAgente.proveedor,
+        modelo:         nuevoAgente.modelo || null,
+        prompt_sistema: nuevoAgente.prompt_sistema || null,
+        instrucciones:  nuevoAgente.instrucciones || null,
+        temperatura:    nuevoAgente.temperatura,
+        max_tokens:     nuevoAgente.max_tokens,
+      }).select('id, nombre, proveedor, modelo, prompt_sistema, instrucciones, temperatura, max_tokens, activo').single()
+      if (a) setAgentes(prev => [...prev, a])
+      setNuevoAgente({ nombre: '', proveedor: 'openai', modelo: '', prompt_sistema: '', instrucciones: '', temperatura: 0.7, max_tokens: 800 })
+    } finally { setSavingAgente(false) }
+  }
+
+  async function actualizarAgente(id: string, patch: Partial<(typeof agentes)[number]>) {
+    await supabase.from('agentes_ia').update(patch).eq('id', id)
+    setAgentes(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a))
+  }
+
+  async function eliminarAgente(id: string) {
+    if (!confirm('¿Eliminar este agente IA?')) return
+    await supabase.from('agentes_ia').delete().eq('id', id)
+    setAgentes(prev => prev.filter(a => a.id !== id))
   }
 
   /* ── Logo ── */
@@ -1290,6 +1371,264 @@ export default function ConfigVentasPage() {
               className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
             <button onClick={crearPlantilla} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">
               + Crear plantilla
+            </button>
+          </div>
+        </div>
+      </SeccionColapsable>
+
+      {/* ── APIs de Inteligencia Artificial ── */}
+      <SeccionColapsable titulo="APIs de Inteligencia Artificial" icono="🔑" defaultOpen={false}>
+        <div className="p-5 space-y-5">
+          <p className="text-xs text-gray-500">Conecta tus cuentas de IA para usar agentes en los flujos de automatización. Las claves se almacenan cifradas.</p>
+
+          {/* OpenAI */}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-base">🤖</span>
+              <span className="font-semibold text-gray-800 text-sm">OpenAI (ChatGPT)</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">API Key</label>
+                <input
+                  type="password"
+                  value={configApis.openai_key}
+                  onChange={e => setConfigApis(c => ({ ...c, openai_key: e.target.value }))}
+                  placeholder="sk-..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Modelo por defecto</label>
+                <select
+                  value={configApis.openai_modelo}
+                  onChange={e => setConfigApis(c => ({ ...c, openai_modelo: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="gpt-4o-mini">gpt-4o-mini (económico)</option>
+                  <option value="gpt-4o">gpt-4o (potente)</option>
+                  <option value="gpt-3.5-turbo">gpt-3.5-turbo (rápido)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Anthropic */}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-base">🧠</span>
+              <span className="font-semibold text-gray-800 text-sm">Anthropic (Claude)</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">API Key</label>
+                <input
+                  type="password"
+                  value={configApis.anthropic_key}
+                  onChange={e => setConfigApis(c => ({ ...c, anthropic_key: e.target.value }))}
+                  placeholder="sk-ant-..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Modelo por defecto</label>
+                <select
+                  value={configApis.anthropic_modelo}
+                  onChange={e => setConfigApis(c => ({ ...c, anthropic_modelo: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (rápido)</option>
+                  <option value="claude-sonnet-5">claude-sonnet-5 (potente)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* ElevenLabs */}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-base">🔊</span>
+              <span className="font-semibold text-gray-800 text-sm">ElevenLabs (Notas de voz IA)</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">API Key</label>
+                <input
+                  type="password"
+                  value={configApis.elevenlabs_key}
+                  onChange={e => setConfigApis(c => ({ ...c, elevenlabs_key: e.target.value }))}
+                  placeholder="xi-..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Voice ID</label>
+                <input
+                  value={configApis.elevenlabs_voz_id}
+                  onChange={e => setConfigApis(c => ({ ...c, elevenlabs_voz_id: e.target.value }))}
+                  placeholder="ej: 21m00Tcm4TlvDq8ikWAM"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => guardarApis(configApis)}
+              disabled={savingApis}
+              className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-60"
+            >
+              {savingApis ? 'Guardando…' : 'Guardar claves API'}
+            </button>
+            {apisOk && <span className="text-green-600 text-sm font-medium">✓ Guardado</span>}
+          </div>
+          <p className="text-xs text-gray-400">Los modelos más económicos (gpt-4o-mini, claude-haiku) ofrecen el mejor costo/rendimiento para atención al cliente.</p>
+        </div>
+      </SeccionColapsable>
+
+      {/* ── Agentes IA ── */}
+      <SeccionColapsable titulo="Agentes IA" icono="🤖" badge={agentes.length} defaultOpen={false}>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-500">Configura agentes de IA para usar en los flujos de automatización. Cada agente tiene su propio prompt y comportamiento.</p>
+
+          {/* Lista de agentes */}
+          <div className="space-y-3">
+            {agentes.map(ag => (
+              <div key={ag.id} className={`border rounded-xl p-4 space-y-3 ${!ag.activo ? 'opacity-60 border-gray-100' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{ag.proveedor === 'openai' ? '🤖' : ag.proveedor === 'anthropic' ? '🧠' : '🔊'}</span>
+                  {editAgente === ag.id ? (
+                    <input
+                      defaultValue={ag.nombre}
+                      onBlur={e => actualizarAgente(ag.id, { nombre: e.target.value })}
+                      className="flex-1 border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  ) : (
+                    <span className="flex-1 font-semibold text-gray-800 text-sm">{ag.nombre}</span>
+                  )}
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ag.proveedor === 'openai' ? 'bg-green-100 text-green-700' : ag.proveedor === 'anthropic' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>
+                    {ag.proveedor}
+                  </span>
+                  <ToggleSwitch activo={ag.activo} onChange={() => actualizarAgente(ag.id, { activo: !ag.activo })} />
+                  <button onClick={() => setEditAgente(editAgente === ag.id ? null : ag.id)} className="text-blue-500 hover:text-blue-700 text-xs px-2">
+                    {editAgente === ag.id ? 'Cerrar' : 'Editar'}
+                  </button>
+                  <button onClick={() => eliminarAgente(ag.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+                </div>
+
+                {editAgente === ag.id && (
+                  <div className="space-y-3 mt-2">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Proveedor</label>
+                        <select
+                          defaultValue={ag.proveedor}
+                          onBlur={e => actualizarAgente(ag.id, { proveedor: e.target.value })}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none"
+                        >
+                          <option value="openai">OpenAI</option>
+                          <option value="anthropic">Anthropic</option>
+                          <option value="elevenlabs">ElevenLabs</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-1 block">Modelo (opcional)</label>
+                        <input
+                          defaultValue={ag.modelo ?? ''}
+                          onBlur={e => actualizarAgente(ag.id, { modelo: e.target.value || null })}
+                          placeholder="Usa el modelo por defecto"
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Temperatura</label>
+                          <input
+                            type="number" min={0} max={2} step={0.1}
+                            defaultValue={ag.temperatura}
+                            onBlur={e => actualizarAgente(ag.id, { temperatura: parseFloat(e.target.value) || 0.7 })}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500 mb-1 block">Max tokens</label>
+                          <input
+                            type="number" min={100} max={4000} step={100}
+                            defaultValue={ag.max_tokens}
+                            onBlur={e => actualizarAgente(ag.id, { max_tokens: parseInt(e.target.value) || 800 })}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Prompt del sistema (comportamiento del agente)</label>
+                      <textarea
+                        defaultValue={ag.prompt_sistema ?? ''}
+                        onBlur={e => actualizarAgente(ag.id, { prompt_sistema: e.target.value || null })}
+                        placeholder="Eres un asesor de ventas de motos amable y profesional..."
+                        rows={4}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Instrucciones de acción (qué hacer según el contexto)</label>
+                      <textarea
+                        defaultValue={ag.instrucciones ?? ''}
+                        onBlur={e => actualizarAgente(ag.id, { instrucciones: e.target.value || null })}
+                        placeholder="Si el cliente pregunta por precios, menciona las opciones disponibles. Si quiere agendar, captura fecha y hora..."
+                        rows={3}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400">El agente recibe automáticamente: nombre del cliente, historial reciente, etapa actual y canal de comunicación.</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Formulario nuevo agente */}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+            <p className="text-sm font-semibold text-gray-700">Nuevo agente IA</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input
+                value={nuevoAgente.nombre}
+                onChange={e => setNuevoAgente(a => ({ ...a, nombre: e.target.value }))}
+                placeholder="Nombre del agente (ej: Asesor Principal)"
+                className="md:col-span-2 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <select
+                value={nuevoAgente.proveedor}
+                onChange={e => setNuevoAgente(a => ({ ...a, proveedor: e.target.value }))}
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="elevenlabs">ElevenLabs</option>
+              </select>
+            </div>
+            <textarea
+              value={nuevoAgente.prompt_sistema}
+              onChange={e => setNuevoAgente(a => ({ ...a, prompt_sistema: e.target.value }))}
+              placeholder="Prompt del sistema: describe cómo debe comportarse el agente..."
+              rows={3}
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+            <textarea
+              value={nuevoAgente.instrucciones}
+              onChange={e => setNuevoAgente(a => ({ ...a, instrucciones: e.target.value }))}
+              placeholder="Instrucciones adicionales: qué hacer en cada situación..."
+              rows={2}
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+            <button
+              onClick={crearAgente}
+              disabled={savingAgente || !nuevoAgente.nombre.trim()}
+              className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-60"
+            >
+              {savingAgente ? 'Creando…' : '+ Crear agente IA'}
             </button>
           </div>
         </div>

@@ -40,6 +40,8 @@ export default function VentasPage() {
           assigned_to,
           nombre_pendiente_aprobacion,
           alistamiento_orden_id,
+          automatizado,
+          flujo_activo_id,
           conversaciones ( id, canal, no_leidos_count )
         `)
         .eq('tenant_id', profile.tenant_id)
@@ -219,6 +221,7 @@ export default function VentasPage() {
           numero_factura: (ex.numero_factura ?? null) as string | null,
           creditoAprobadoEntidad: creditoMap[c.id as string]?.aprobada ?? null,
           creditoRechazadoEntidades: creditoMap[c.id as string]?.rechazadas ?? [],
+          automatizado: (c as Record<string, unknown>).automatizado === true,
         }
       })
 

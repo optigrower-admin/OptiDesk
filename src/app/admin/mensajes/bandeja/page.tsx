@@ -33,6 +33,7 @@ type Mensaje = {
   estado_envio: string
   created_at: string
   leido_por_asesor: boolean
+  media_url?: string | null
 }
 
 type Usuario = { id: string; nombre: string }
@@ -124,6 +125,13 @@ export default function BandejaPage() {
   const [filterEstado, setFilterEstado] = useState('activas')
   const [search, setSearch]           = useState('')
   const [toastMsg, setToastMsg]       = useState<{ text: string; ok: boolean } | null>(null)
+
+  // Media adjunta
+  const [mediaFile,    setMediaFile]    = useState<File | null>(null)
+  const [mediaTipo,    setMediaTipo]    = useState<'imagen' | 'documento' | 'audio' | 'video'>('imagen')
+  const [mediaCaption, setMediaCaption] = useState('')
+  const [sendingMedia, setSendingMedia] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Panel de info del contacto
   const [showInfo, setShowInfo]       = useState(false)
@@ -235,11 +243,44 @@ export default function BandejaPage() {
     setLoadingConvs(false)
   }, [profile?.tenant_id, profile?.id, filterEstado, filterCanal, filterMias, selectedId, notificar])
 
+  const enviarMedia = useCallback(async () => {
+    if (!mediaFile || !selectedId || sendingMedia) return
+    setSendingMedia(true)
+    const form = new FormData()
+    form.append('conversacion_id', selectedId)
+    form.append('tipo', mediaTipo)
+    form.append('caption', mediaCaption)
+    form.append('file', mediaFile)
+    try {
+      const res  = await fetch('/api/admin/mensajes/enviar-media', { method: 'POST', body: form })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al enviar')
+      const real = json.mensaje as Mensaje
+      setMensajes(prev => [...prev, real])
+      setMediaFile(null); setMediaCaption(''); setMediaTipo('imagen')
+      toast('Archivo enviado')
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : 'Error al enviar archivo', false)
+    } finally { setSendingMedia(false) }
+  }, [mediaFile, selectedId, mediaTipo, mediaCaption, sendingMedia, toast])
+
+  const onFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    const mime = f.type
+    if (mime.startsWith('image/'))       setMediaTipo('imagen')
+    else if (mime.startsWith('video/'))  setMediaTipo('video')
+    else if (mime.startsWith('audio/'))  setMediaTipo('audio')
+    else                                 setMediaTipo('documento')
+    setMediaFile(f)
+    if (e.target) e.target.value = ''
+  }, [])
+
   const cargarMensajes = useCallback(async (id: string) => {
     setLoadingMsgs(true)
     const { data } = await supabase
       .from('mensajes')
-      .select('id, conversacion_id, direccion, tipo, contenido, enviado_por, estado_envio, created_at, leido_por_asesor')
+      .select('id, conversacion_id, direccion, tipo, contenido, enviado_por, estado_envio, created_at, leido_por_asesor, media_url')
       .eq('conversacion_id', id)
       .order('created_at', { ascending: true })
       .limit(200)
@@ -723,7 +764,37 @@ export default function BandejaPage() {
                           {!isOut && msg.enviado_por && (
                             <p className="text-xs font-semibold text-blue-600 mb-0.5">{usuariosMap[msg.enviado_por] ?? 'Sistema'}</p>
                           )}
-                          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.contenido}</p>
+                          {/* Renderizado de medios adjuntos */}
+                          {msg.tipo === 'imagen' && msg.media_url ? (
+                            <div className="space-y-1">
+                              <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={msg.media_url} alt="imagen" className="max-w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity" />
+                              </a>
+                              {msg.contenido && <p className="text-xs leading-relaxed">{msg.contenido}</p>}
+                            </div>
+                          ) : msg.tipo === 'documento' ? (
+                            <a href={msg.media_url ?? '#'} target="_blank" rel="noopener noreferrer"
+                              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg ${isOut ? 'bg-blue-500' : 'bg-gray-100'}`}>
+                              <span className="text-lg">📄</span>
+                              <div>
+                                <p className="text-xs font-semibold">{msg.contenido || 'Documento'}</p>
+                                <p className="text-[10px] opacity-70">Toca para abrir</p>
+                              </div>
+                            </a>
+                          ) : msg.tipo === 'audio' ? (
+                            <div className="space-y-1">
+                              <audio controls src={msg.media_url ?? undefined} className="w-full max-w-xs h-8" />
+                              {msg.contenido && <p className="text-xs">{msg.contenido}</p>}
+                            </div>
+                          ) : msg.tipo === 'video' ? (
+                            <div className="space-y-1">
+                              <video controls src={msg.media_url ?? undefined} className="max-w-full rounded-lg max-h-48" />
+                              {msg.contenido && <p className="text-xs">{msg.contenido}</p>}
+                            </div>
+                          ) : (
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.contenido}</p>
+                          )}
                           <div className={`flex items-center justify-end gap-1 mt-0.5 ${isOut ? 'text-blue-200' : 'text-gray-400'}`}>
                             <span className="text-xs">{formatTime(msg.created_at)}</span>
                             {isOut && (
@@ -752,6 +823,33 @@ export default function BandejaPage() {
 
             {/* Input */}
             <div className={`bg-white border-t border-gray-200 p-3 flex-shrink-0 ${esNota ? 'bg-yellow-50' : ''}`}>
+              {/* Input de archivo oculto */}
+              <input ref={fileInputRef} type="file" className="hidden"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"
+                onChange={onFileSelect} />
+
+              {/* Preview de archivo seleccionado */}
+              {mediaFile && (
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mb-2">
+                  <span className="text-lg flex-shrink-0">
+                    {mediaTipo === 'imagen' ? '🖼' : mediaTipo === 'video' ? '🎬' : mediaTipo === 'audio' ? '🎵' : '📄'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 truncate">{mediaFile.name}</p>
+                    <p className="text-[10px] text-gray-500">{(mediaFile.size / 1024).toFixed(0)} KB · {mediaTipo}</p>
+                  </div>
+                  <input
+                    type="text"
+                    value={mediaCaption}
+                    onChange={e => setMediaCaption(e.target.value)}
+                    placeholder="Pie de foto (opcional)"
+                    className="flex-1 text-xs border border-blue-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                  />
+                  <button onClick={() => { setMediaFile(null); setMediaCaption('') }}
+                    className="flex-shrink-0 text-gray-400 hover:text-red-500 transition-colors text-lg leading-none">×</button>
+                </div>
+              )}
+
               {/* Banner ventana cerrada — WhatsApp */}
               {selectedConv?.canal === 'whatsapp' && !esNota && ventanaActiva === false && (
                 <div className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2 text-xs text-amber-800">
@@ -813,13 +911,32 @@ export default function BandejaPage() {
                           className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm transition-colors ${esNota ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
                           📝
                         </button>
-                        <button onClick={enviar} disabled={!input.trim() || sending || ventanaCerrada}
-                          className="w-9 h-9 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700 disabled:opacity-40 transition-colors">
-                          {sending
-                            ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            : <svg className="w-4 h-4 rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
-                          }
+                        {/* Botón adjuntar archivo */}
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          title="Adjuntar imagen / archivo / audio / video"
+                          disabled={esNota || ventanaCerrada}
+                          className="w-9 h-9 rounded-lg flex items-center justify-center text-sm bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-40 transition-colors">
+                          📎
                         </button>
+                        {/* Enviar archivo o texto */}
+                        {mediaFile ? (
+                          <button onClick={enviarMedia} disabled={sendingMedia || ventanaCerrada}
+                            className="w-9 h-9 bg-green-600 text-white rounded-lg flex items-center justify-center hover:bg-green-700 disabled:opacity-40 transition-colors">
+                            {sendingMedia
+                              ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              : <svg className="w-4 h-4 rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
+                            }
+                          </button>
+                        ) : (
+                          <button onClick={enviar} disabled={!input.trim() || sending || ventanaCerrada}
+                            className="w-9 h-9 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700 disabled:opacity-40 transition-colors">
+                            {sending
+                              ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              : <svg className="w-4 h-4 rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
+                            }
+                          </button>
+                        )}
                       </div>
                     </>
                   )
