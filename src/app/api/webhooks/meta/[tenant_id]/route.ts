@@ -172,8 +172,6 @@ async function asegurarClienteEnSeguimiento(
   assignedTo: string | null,
 ): Promise<string | null> {
   try {
-    // Pasar los campos de seguimiento al INSERT para que el Realtime INSERT ya los detecte
-    // (evita race condition donde INSERT dispara con en_seguimiento_ventas=false y UPDATE no se detecta)
     const { cliente, creado } = await buscarOCrearCliente({
       tenantId,
       canal,
@@ -195,17 +193,41 @@ async function asegurarClienteEnSeguimiento(
 
     const clienteId: string = cliente.id
 
-    // Si el cliente ya existía (no fue creado ahora), actualizar campos de seguimiento
     if (!creado) {
-      const actualizacion: Record<string, unknown> = {
-        en_seguimiento_ventas:       true,
-        etapa_venta:                 'nuevo_mensaje',
-        etapa_venta_orden:           -1,
-        nombre_pendiente_aprobacion: true,
+      // Cliente encontrado: actualizar seguimiento usando 2 UPDATEs separados.
+      // Esto evita que una columna faltante (nombre_pendiente_aprobacion) o un
+      // CHECK constraint antiguo bloqueen el campo crítico en_seguimiento_ventas.
+
+      // UPDATE 1: campos críticos (garantizar seguimiento)
+      const coreFields: Record<string, unknown> = {
+        en_seguimiento_ventas: true,
+        etapa_venta_orden:     -1,
       }
-      if (!cliente.assigned_to && assignedTo) actualizacion.assigned_to = assignedTo
-      const { error: errUpdate } = await supabase.from('clientes').update(actualizacion).eq('id', clienteId)
-      if (errUpdate) console.error('[webhook] error actualizando cliente existente:', errUpdate.message)
+      if (!cliente.assigned_to && assignedTo) coreFields.assigned_to = assignedTo
+
+      let { error: errCore } = await supabase.from('clientes')
+        .update({ ...coreFields, etapa_venta: 'nuevo_mensaje' })
+        .eq('id', clienteId)
+
+      if (errCore) {
+        console.error('[webhook] error core con nuevo_mensaje:', errCore.message, '|', errCore.code)
+        // Fallback: CHECK constraint no incluye 'nuevo_mensaje' (migration_v81 pendiente)
+        if (errCore.code === '23514') {
+          ;({ error: errCore } = await supabase.from('clientes')
+            .update({ ...coreFields, etapa_venta: 'nuevo' })
+            .eq('id', clienteId))
+          if (errCore) console.error('[webhook] error fallback etapa=nuevo:', errCore.message)
+          else console.log('[webhook] ⚠ usé etapa=nuevo; ejecuta migration_v81 en Supabase')
+        }
+      }
+
+      // UPDATE 2: campos opcionales (no críticos; ignorar si la columna no existe)
+      const optFields: Record<string, unknown> = { nombre_pendiente_aprobacion: true }
+      // Si el perfil de WhatsApp trae un nombre válido, actualizarlo para mostrar quién volvió a escribir
+      const esNombreReal = nombreSugerido && !nombreSugerido.startsWith('+') && !nombreSugerido.startsWith('Contacto') && !nombreSugerido.startsWith('Messenger') && !nombreSugerido.startsWith('Instagram')
+      if (esNombreReal) optFields.nombre = nombreSugerido
+      const { error: errOpt } = await supabase.from('clientes').update(optFields).eq('id', clienteId)
+      if (errOpt && errOpt.code !== '42703') console.error('[webhook] error opt update:', errOpt.message)
     }
 
     const { error: errConv } = await supabase.from('conversaciones').update({ cliente_id: clienteId }).eq('id', convId)
@@ -366,17 +388,36 @@ async function procesarMensajeIndividual(
     } else if (!clienteVivo.en_seguimiento_ventas) {
       // Cliente existe pero no está en seguimiento → reactivar en columna Nuevo Contacto - Mensaje
       console.log(`[webhook] reactivando cliente ${clienteIdActual} en seguimiento`)
-      const { error: errReact } = await supabase.from('clientes').update({
-        en_seguimiento_ventas:       true,
-        etapa_venta:                 'nuevo_mensaje',
-        etapa_venta_orden:           -1,
-        nombre_pendiente_aprobacion: true,
+
+      // UPDATE 1: campos críticos con fallback de etapa
+      let { error: errCore } = await supabase.from('clientes').update({
+        en_seguimiento_ventas: true,
+        etapa_venta:           'nuevo_mensaje',
+        etapa_venta_orden:     -1,
       }).eq('id', clienteIdActual)
-      if (errReact) {
-        console.error('[webhook] ✗ error reactivando cliente:', errReact.message, errReact.code)
+
+      if (errCore) {
+        console.error('[webhook] ✗ error reactivando con nuevo_mensaje:', errCore.message, '|', errCore.code)
+        if (errCore.code === '23514') {
+          // CHECK constraint antiguo: fallback a 'nuevo'
+          ;({ error: errCore } = await supabase.from('clientes').update({
+            en_seguimiento_ventas: true,
+            etapa_venta:           'nuevo',
+            etapa_venta_orden:     0,
+          }).eq('id', clienteIdActual))
+          if (errCore) console.error('[webhook] ✗ error fallback etapa=nuevo:', errCore.message)
+          else console.log(`[webhook] ⚠ usé etapa=nuevo; ejecuta migration_v81 en Supabase`)
+        }
       } else {
         console.log(`[webhook] ✓ cliente ${clienteIdActual} reactivado en nuevo_mensaje`)
       }
+
+      // UPDATE 2: campos opcionales (no bloquean el flujo si fallan)
+      await supabase.from('clientes').update({ nombre_pendiente_aprobacion: true })
+        .eq('id', clienteIdActual)
+        .then(({ error }) => {
+          if (error && error.code !== '42703') console.error('[webhook] error nombre_pendiente:', error.message)
+        })
     } else {
       console.log(`[webhook] cliente ya en seguimiento etapa=${clienteVivo.etapa_venta}`)
     }

@@ -134,10 +134,22 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
     .select('*')
     .single()
 
-  // Si la migración de tipo_documento no se ha corrido todavía en esta base,
-  // no se debe bloquear la creación del cliente por esa sola columna.
+  // Fallback: columna tipo_documento no existe aún
   if (error?.code === '42703' && 'tipo_documento' in nuevo) {
     delete nuevo.tipo_documento
+    ;({ data: creado, error } = await supabase.from('clientes').insert(nuevo).select('*').single())
+  }
+
+  // Fallback: columna nombre_pendiente_aprobacion no existe aún (migration_v72 pendiente)
+  if (error?.code === '42703' && 'nombre_pendiente_aprobacion' in nuevo) {
+    delete nuevo.nombre_pendiente_aprobacion
+    ;({ data: creado, error } = await supabase.from('clientes').insert(nuevo).select('*').single())
+  }
+
+  // Fallback: CHECK constraint no incluye 'nuevo_mensaje' (migration_v74/v81 pendiente)
+  if (error?.code === '23514' && nuevo.etapa_venta === 'nuevo_mensaje') {
+    nuevo.etapa_venta       = 'nuevo'
+    nuevo.etapa_venta_orden = 0
     ;({ data: creado, error } = await supabase.from('clientes').insert(nuevo).select('*').single())
   }
 
