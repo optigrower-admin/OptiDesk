@@ -3,6 +3,7 @@ import { createClient as createAnonClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { decrypt } from '@/lib/crypto'
 import { buscarOCrearCliente } from '@/lib/clientes/buscarOCrearCliente'
+import { iniciarFlujoParaConversacion } from '@/lib/mensajeria/flow-executor'
 
 export const dynamic = 'force-dynamic'
 
@@ -169,11 +170,8 @@ async function asegurarClienteEnSeguimiento(
   nombreSugerido: string,
   convId: string,
   assignedTo: string | null,
-): Promise<void> {
+): Promise<string | null> {
   try {
-    // buscarOCrearCliente busca por whatsapp_number/messenger_id/instagram_id
-    // y si no existe, lo crea con los campos mínimos necesarios.
-    // Maneja internamente el fallback de columnas que aún no existan.
     const { cliente } = await buscarOCrearCliente({
       tenantId,
       canal,
@@ -186,12 +184,11 @@ async function asegurarClienteEnSeguimiento(
 
     if (!cliente) {
       console.error('[webhook] buscarOCrearCliente retornó null')
-      return
+      return null
     }
 
     const clienteId: string = cliente.id
 
-    // Un solo UPDATE con todos los campos (activa Realtime con en_seguimiento_ventas=true)
     const actualizacion: Record<string, unknown> = {
       en_seguimiento_ventas:        true,
       etapa_venta:                  'nuevo_mensaje',
@@ -202,12 +199,12 @@ async function asegurarClienteEnSeguimiento(
       actualizacion.assigned_to = assignedTo
     }
     await supabase.from('clientes').update(actualizacion).eq('id', clienteId)
-
-    // Vincular conversación al cliente
     await supabase.from('conversaciones').update({ cliente_id: clienteId }).eq('id', convId)
 
+    return clienteId
   } catch (e) {
     console.error('[webhook] error en asegurarClienteEnSeguimiento:', e)
+    return null
   }
 }
 
@@ -313,11 +310,12 @@ async function procesarMensajeIndividual(
   // ── Garantizar que el cliente existe y está en Seguimiento Ventas ──
   const clienteIdActual = (conv as Record<string, unknown>).cliente_id as string | null
   const assignedToActual = (conv as Record<string, unknown>).assigned_to as string | null
+  let resolvedClienteId: string | null = clienteIdActual
 
   if (!clienteIdActual) {
     // Sin cliente vinculado → crear uno nuevo
     const nombreSugerido = await obtenerNombreContacto(supabase, tenantId, canal, canalContactId, value)
-    await asegurarClienteEnSeguimiento(
+    resolvedClienteId = await asegurarClienteEnSeguimiento(
       supabase, tenantId, canal, canalContactId,
       nombreSugerido, conv.id, assignedToActual,
     )
@@ -333,7 +331,7 @@ async function procesarMensajeIndividual(
       // Cliente fue eliminado → limpiar referencia y crear uno nuevo
       await supabase.from('conversaciones').update({ cliente_id: null }).eq('id', conv.id)
       const nombreSugerido = await obtenerNombreContacto(supabase, tenantId, canal, canalContactId, value)
-      await asegurarClienteEnSeguimiento(
+      resolvedClienteId = await asegurarClienteEnSeguimiento(
         supabase, tenantId, canal, canalContactId,
         nombreSugerido, conv.id, assignedToActual,
       )
@@ -372,6 +370,15 @@ async function procesarMensajeIndividual(
   }).eq('id', conv.id)
 
   await verificarLimiteDiario(supabase, tenantId)
+
+  // ── Activar flujo de automatización para este mensaje ──
+  // Si hay ejecución activa en pausa (nodo esperar), la continúa.
+  // Si no hay ninguna, busca un flujo activo con trigger_tipo='mensaje_nuevo' y lo inicia.
+  try {
+    await iniciarFlujoParaConversacion(tenantId, conv.id, resolvedClienteId, 'mensaje_nuevo')
+  } catch (e) {
+    console.error('[webhook] error iniciando flujo:', e)
+  }
 }
 
 async function determinarAsignacion(

@@ -99,6 +99,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [tabDer, setTabDer]             = useState<TabDerecha>('resumen')
   const [vincularOpen, setVincularOpen] = useState(false)
   const [convActivaId, setConvActivaId] = useState(lead.todas_conversaciones[0]?.id ?? '')
+  const [flujoModalOpen, setFlujoModalOpen] = useState(false)
+  const [flujos, setFlujos] = useState<{ id: string; nombre: string; trigger_tipo: string }[]>([])
+  const [iniciandoFlujo, setIniciandoFlujo] = useState(false)
 
   // Renombrar / eliminar cliente (solo Gerencia)
   const [editandoNombre, setEditandoNombre] = useState(false)
@@ -212,6 +215,37 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       alert(e instanceof Error ? e.message : 'Error al enviar')
       setInput(texto)
     } finally { setSending(false) }
+  }
+
+  async function abrirModalFlujo() {
+    setFlujoModalOpen(true)
+    if (flujos.length === 0) {
+      const { data } = await supabase
+        .from('flujos_automatizacion')
+        .select('id, nombre, trigger_tipo')
+        .eq('tenant_id', tenantId)
+        .eq('activo', true)
+        .order('nombre')
+      setFlujos((data ?? []) as { id: string; nombre: string; trigger_tipo: string }[])
+    }
+  }
+
+  async function iniciarFlujo(flujoId: string) {
+    if (!convActivaId) { alert('Este cliente no tiene conversación activa.'); return }
+    setIniciandoFlujo(true)
+    try {
+      const res = await fetch('/api/admin/flujos/ejecutar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversacion_id: convActivaId, cliente_id: lead.id, flujo_id: flujoId, trigger_tipo: 'mensaje_nuevo' }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error')
+      setFlujoModalOpen(false)
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Error al iniciar el flujo')
+    } finally {
+      setIniciandoFlujo(false)
+    }
   }
 
   // Registra cualquier cambio en historial (defensivo: no rompe si la tabla aún no existe)
@@ -427,6 +461,35 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   return (
     <>
+    {/* Modal selección de flujo */}
+    {flujoModalOpen && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+          <h3 className="font-bold text-gray-900 mb-1">Iniciar flujo</h3>
+          <p className="text-xs text-gray-500 mb-4">Selecciona la automatización a ejecutar para este cliente.</p>
+          {flujos.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">Sin flujos activos</p>
+          ) : (
+            <div className="space-y-2">
+              {flujos.map(f => (
+                <button key={f.id} disabled={iniciandoFlujo} onClick={() => iniciarFlujo(f.id)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors disabled:opacity-50">
+                  <p className="text-sm font-semibold text-gray-900">{f.nombre}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Trigger: {f.trigger_tipo.replace(/_/g, ' ')}</p>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => setFlujoModalOpen(false)} disabled={iniciandoFlujo}
+              className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+              Cancelar
+            </button>
+          </div>
+          {iniciandoFlujo && <p className="text-xs text-indigo-600 text-center mt-2">Iniciando flujo...</p>}
+        </div>
+      </div>
+    )}
     {vincularOpen && lead.cliente && (
       <VincularClienteModal
         tenantId={tenantId}
@@ -516,6 +579,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           <div className="flex items-center gap-2 flex-shrink-0">
             {saving && <span className="text-[10px] text-gray-400">Guardando...</span>}
             {savedOk && !saving && <span className="text-[10px] text-green-600 font-semibold">✓ Guardado</span>}
+            {convActivaId && (
+              <button
+                onClick={abrirModalFlujo}
+                title="Iniciar flujo de automatización"
+                className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors">
+                ▶ Flujo
+              </button>
+            )}
             <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
           </div>
         </div>
