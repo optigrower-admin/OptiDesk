@@ -99,12 +99,12 @@ export async function POST(req: NextRequest) {
       .select('id, descripcion, precio_venta, cantidad, created_at, ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
       .eq('origen', 'uma').eq('ordenes.tenant_id', tenantId).eq('ordenes.tipo_orden', 'servicio')
       .neq('ordenes.estado_pago', 'pendiente')
-      .gte('created_at', desdeISO).lte('created_at', hastaISO).order('created_at'),
+      .gte('ordenes.created_at', desdeISO).lte('ordenes.created_at', hastaISO).order('created_at'),
     supabase.from('items_orden')
       .select('id, descripcion, precio_venta, cantidad, created_at, ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
       .eq('origen', 'uma').eq('ordenes.tenant_id', tenantId).eq('ordenes.tipo_orden', 'venta_repuestos')
       .neq('ordenes.estado_pago', 'pendiente')
-      .gte('created_at', desdeISO).lte('created_at', hastaISO).order('created_at'),
+      .gte('ordenes.created_at', desdeISO).lte('ordenes.created_at', hastaISO).order('created_at'),
   ])
 
   if (e1 || e2) return NextResponse.json({ error: e1?.message ?? e2?.message }, { status: 500 })
