@@ -64,6 +64,24 @@ interface ItemOrdenRow {
   }
 }
 
+interface OrdenRow {
+  id: string
+  numero: string | null
+  placa: string | null
+  cliente: string | null
+  tipo_orden: string
+  created_at: string
+  estado_pago: string
+  items_orden: {
+    id: string
+    descripcion: string
+    precio_venta: number
+    cantidad: number
+    created_at: string
+    origen: string
+  }[]
+}
+
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -94,25 +112,45 @@ export async function POST(req: NextRequest) {
   fechaFinNext.setUTCHours(4, 59, 59, 999)
   const hastaISO = fechaFinNext.toISOString()
 
-  const [{ data: itemsServicio, error: e1 }, { data: itemsVenta, error: e2 }] = await Promise.all([
-    supabase.from('items_orden')
-      .select('id, descripcion, precio_venta, cantidad, created_at, ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
-      .eq('origen', 'uma').eq('ordenes.tenant_id', tenantId).eq('ordenes.tipo_orden', 'servicio')
-      .neq('ordenes.estado_pago', 'pendiente')
-      .gte('created_at', desdeISO).lte('created_at', hastaISO).order('created_at'),
-    supabase.from('items_orden')
-      .select('id, descripcion, precio_venta, cantidad, created_at, ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
-      .eq('origen', 'uma').eq('ordenes.tenant_id', tenantId).eq('ordenes.tipo_orden', 'venta_repuestos')
-      .neq('ordenes.estado_pago', 'pendiente')
-      .gte('created_at', desdeISO).lte('created_at', hastaISO).order('created_at'),
+  // Filtrar por ordenes.created_at para que la fecha del filtro coincida con la fecha mostrada en Excel
+  const [{ data: ordServicio, error: e1 }, { data: ordVenta, error: e2 }] = await Promise.all([
+    supabase.from('ordenes')
+      .select('id, numero, placa, cliente, tipo_orden, created_at, estado_pago, items_orden(id, descripcion, precio_venta, cantidad, created_at, origen)')
+      .eq('tenant_id', tenantId).eq('tipo_orden', 'servicio')
+      .neq('estado_pago', 'pendiente')
+      .gte('created_at', desdeISO).lte('created_at', hastaISO),
+    supabase.from('ordenes')
+      .select('id, numero, placa, cliente, tipo_orden, created_at, estado_pago, items_orden(id, descripcion, precio_venta, cantidad, created_at, origen)')
+      .eq('tenant_id', tenantId).eq('tipo_orden', 'venta_repuestos')
+      .neq('estado_pago', 'pendiente')
+      .gte('created_at', desdeISO).lte('created_at', hastaISO),
   ])
 
   if (e1 || e2) return NextResponse.json({ error: e1?.message ?? e2?.message }, { status: 500 })
 
-  const todosItems: ItemOrdenRow[] = [
-    ...((itemsServicio ?? []) as unknown as ItemOrdenRow[]),
-    ...((itemsVenta   ?? []) as unknown as ItemOrdenRow[]),
-  ].sort((a, b) => new Date(a.ordenes.created_at).getTime() - new Date(b.ordenes.created_at).getTime())
+  const todosItems: ItemOrdenRow[] = []
+  for (const ord of [...((ordServicio ?? []) as OrdenRow[]), ...((ordVenta ?? []) as OrdenRow[])]) {
+    for (const item of (ord.items_orden ?? [])) {
+      if (item.origen === 'uma') {
+        todosItems.push({
+          id: item.id,
+          descripcion: item.descripcion,
+          precio_venta: item.precio_venta,
+          cantidad: item.cantidad,
+          created_at: item.created_at,
+          ordenes: {
+            id: ord.id,
+            numero: ord.numero,
+            placa: ord.placa,
+            cliente: ord.cliente,
+            tipo_orden: ord.tipo_orden,
+            created_at: ord.created_at,
+          },
+        })
+      }
+    }
+  }
+  todosItems.sort((a, b) => new Date(a.ordenes.created_at).getTime() - new Date(b.ordenes.created_at).getTime())
 
   // Consecutivo por orden
   const ordenConsec = new Map<string, number>()
