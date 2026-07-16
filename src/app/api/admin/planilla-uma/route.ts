@@ -5,8 +5,9 @@ import path from 'path'
 import fs from 'fs'
 
 function toExcelDate(isoString: string): number {
-  const d = new Date(isoString)
-  return Math.round(d.getTime() / 86400000 + 25569)
+  // Colombia es UTC-5: convertir a hora local antes de calcular el número de serie
+  const colMs = new Date(isoString).getTime() - 5 * 3600000
+  return Math.floor(colMs / 86400000) + 25569
 }
 
 function extraerCodigo(descripcion: string): string {
@@ -86,8 +87,12 @@ export async function POST(req: NextRequest) {
 
   if (!fechaInicio || !fechaFin) return NextResponse.json({ error: 'Faltan fechas' }, { status: 400 })
 
-  const desdeISO = fechaInicio + 'T00:00:00.000Z'
-  const hastaISO = fechaFin   + 'T23:59:59.999Z'
+  // Colombia es UTC-5: medianoche COT = 05:00 UTC; fin del día COT = 04:59:59 UTC del día siguiente
+  const desdeISO = fechaInicio + 'T05:00:00.000Z'
+  const fechaFinNext = new Date(fechaFin + 'T05:00:00.000Z')
+  fechaFinNext.setUTCDate(fechaFinNext.getUTCDate() + 1)
+  fechaFinNext.setUTCHours(4, 59, 59, 999)
+  const hastaISO = fechaFinNext.toISOString()
 
   const [{ data: itemsServicio, error: e1 }, { data: itemsVenta, error: e2 }] = await Promise.all([
     supabase.from('items_orden')
