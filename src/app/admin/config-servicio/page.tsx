@@ -53,6 +53,29 @@ function TrashBtn({ onClick }: { onClick: () => void }) {
   )
 }
 
+function SeccionColapsable({ titulo, icono, badge, children, defaultOpen = false }: {
+  titulo: string; icono: string; badge?: string | number
+  children: React.ReactNode; defaultOpen?: boolean
+}) {
+  const [abierto, setAbierto] = useState(defaultOpen)
+  return (
+    <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <button onClick={() => setAbierto(o => !o)}
+        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 transition-colors">
+        <span className="text-lg">{icono}</span>
+        <span className="font-bold text-gray-900 flex-1 text-sm">{titulo}</span>
+        {badge !== undefined && (
+          <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full">{badge}</span>
+        )}
+        <svg className={`w-4 h-4 text-gray-400 transition-transform ${abierto ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      {abierto && <div className="border-t border-gray-100">{children}</div>}
+    </section>
+  )
+}
+
 /* ═══════════════════════════════════════════════════════════ */
 function ConfigServicioContent() {
   const searchParams = useSearchParams()
@@ -640,7 +663,7 @@ function ConfigServicioContent() {
   if (loading) return <div className="p-6 text-gray-400">Cargando...</div>
 
   return (
-    <div className="p-6 space-y-8 max-w-4xl">
+    <div className="p-6 space-y-3 max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Config Servicio Técnico</h1>
         <p className="text-sm text-gray-500 mt-1">
@@ -649,73 +672,49 @@ function ConfigServicioContent() {
       </div>
 
       {/* ── Logo del negocio ── */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-gray-900">Logo del negocio</h2>
-            <p className="text-xs text-gray-400">Aparece en el menú lateral de la aplicación</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-6">
-          {logoUrl ? (
-            <img src={logoUrl} alt="Logo actual"
-              className="w-20 h-20 rounded-xl object-contain bg-gray-50 border border-gray-200 flex-shrink-0"
-              onError={() => setLogoUrl(null)} />
-          ) : (
-            <div className="w-20 h-20 rounded-xl bg-gray-100 border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs flex-shrink-0">
-              Sin logo
-            </div>
-          )}
-          <div className="flex-1">
-            <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-colors ${
-              uploadingLogo
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-blue-700 hover:bg-blue-800 text-white'
-            }`}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-              <input type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" className="hidden"
-                disabled={uploadingLogo}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) subirLogo(f) }} />
-              {uploadingLogo ? 'Subiendo...' : 'Cambiar logo'}
-            </label>
-            <p className="text-xs text-gray-400 mt-2">JPG, PNG, WebP o SVG · máx 3 MB</p>
-            {logoMsg && (
-              <p className={`text-xs mt-2 font-medium ${logoMsg.ok ? 'text-green-600' : 'text-red-600'}`}>
-                {logoMsg.text}
-              </p>
+      <SeccionColapsable titulo="Logo del negocio" icono="🖼️">
+        <div className="p-5">
+          <p className="text-xs text-gray-400 mb-4">Aparece en el menú lateral de la aplicación</p>
+          <div className="flex items-center gap-6">
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo actual"
+                className="w-20 h-20 rounded-xl object-contain bg-gray-50 border border-gray-200 flex-shrink-0"
+                onError={() => setLogoUrl(null)} />
+            ) : (
+              <div className="w-20 h-20 rounded-xl bg-gray-100 border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs flex-shrink-0">
+                Sin logo
+              </div>
             )}
+            <div className="flex-1">
+              <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-colors ${
+                uploadingLogo
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-blue-700 hover:bg-blue-800 text-white'
+              }`}>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" className="hidden"
+                  disabled={uploadingLogo}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) subirLogo(f) }} />
+                {uploadingLogo ? 'Subiendo...' : 'Cambiar logo'}
+              </label>
+              <p className="text-xs text-gray-400 mt-2">JPG, PNG, WebP o SVG · máx 3 MB</p>
+              {logoMsg && (
+                <p className={`text-xs mt-2 font-medium ${logoMsg.ok ? 'text-green-600' : 'text-red-600'}`}>
+                  {logoMsg.text}
+                </p>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </SeccionColapsable>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
-        {/* ══════════════════════════════════════════
-            COLUMNA 1 — TIPOS DE SERVICIO
-        ══════════════════════════════════════════ */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Tipos de servicio</h2>
-              <p className="text-xs text-gray-400">Aparecen como botones al crear una recepción</p>
-            </div>
-          </div>
-
+      {/* ── Tipos de servicio ── */}
+      <SeccionColapsable titulo="Tipos de servicio" icono="🔧" badge={categorias.length}>
+        <div className="p-4 space-y-4">
+          <p className="text-xs text-gray-400">Aparecen como botones al crear una recepción</p>
           <div className="space-y-2">
             {categorias.length === 0 && (
               <p className="text-sm text-gray-400 italic">Sin tipos de servicio.</p>
@@ -771,7 +770,7 @@ function ConfigServicioContent() {
           </div>
 
           {/* Agregar categoría */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="border border-gray-200 rounded-xl p-4">
             <p className="text-sm font-semibold text-gray-700 mb-2">Nuevo tipo</p>
             <div className="flex gap-2">
               <input value={nuevaCat} onChange={(e) => setNuevaCat(e.target.value)}
@@ -785,29 +784,17 @@ function ConfigServicioContent() {
             </div>
           </div>
         </div>
+      </SeccionColapsable>
 
-        {/* ══════════════════════════════════════════
-            COLUMNA 2 — MÉTODOS DE PAGO
-        ══════════════════════════════════════════ */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Métodos de pago</h2>
-              <p className="text-xs text-gray-400">Aparecen al registrar el pago de una orden</p>
-            </div>
-          </div>
-
+      {/* ── Métodos de pago ── */}
+      <SeccionColapsable titulo="Métodos de pago" icono="💳" badge={metodos.length}>
+        <div className="p-4 space-y-4">
+          <p className="text-xs text-gray-400">Aparecen al registrar el pago de una orden</p>
           {metodos.length > 0 && (
-            <p className="text-xs text-gray-400 -mb-1">
-              El campo "% recargo" se suma al total cuando el cliente paga con ese método (ej. 5% en Datáfono o Tarjeta de crédito) — se usa en Seguimiento Ventas.
+            <p className="text-xs text-gray-400">
+              El campo &quot;% recargo&quot; se suma al total cuando el cliente paga con ese método (ej. 5% en Datáfono o Tarjeta de crédito) — se usa en Seguimiento Ventas.
             </p>
           )}
-
           <div className="space-y-2">
             {metodos.length === 0 && (
               <p className="text-sm text-gray-400 italic">Sin métodos de pago.</p>
@@ -841,7 +828,7 @@ function ConfigServicioContent() {
           </div>
 
           {/* Agregar método */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="border border-gray-200 rounded-xl p-4">
             <p className="text-sm font-semibold text-gray-700 mb-2">Nuevo método</p>
             <div className="flex gap-2">
               <input value={nuevoMetodo} onChange={(e) => setNuevoMetodo(e.target.value)}
@@ -855,13 +842,11 @@ function ConfigServicioContent() {
             </div>
           </div>
         </div>
+      </SeccionColapsable>
 
-      </div>
-
-      {/* ══════════════════════════════════════════
-          SECCIÓN LAVA MOTO
-      ══════════════════════════════════════════ */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      {/* ── Servicio Lava Moto ── */}
+      <SeccionColapsable titulo="Servicio Lava Moto" icono="🚿">
+        <div className="p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-cyan-500 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -964,28 +949,13 @@ function ConfigServicioContent() {
             {lavaMotoMsg.ok ? '✓' : '✗'} {lavaMotoMsg.text}
           </p>
         )}
-      </div>
-
-      {/* ══════════════════════════════════════════
-          SECCIÓN 3 — CATÁLOGO REPUESTOS UMA
-      ══════════════════════════════════════════ */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-gray-900">Catálogo Repuestos UMA</h2>
-            <p className="text-xs text-gray-500">
-              Carga el Excel de precios UMA. Se actualizan todos los repuestos por referencia — hoja &quot;Pedido&quot;, fila 12 en adelante.
-            </p>
-          </div>
         </div>
+      </SeccionColapsable>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+      {/* ── Catálogo Repuestos UMA ── */}
+      <SeccionColapsable titulo="Catálogo Repuestos UMA" icono="📦">
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-500">Carga el Excel de precios UMA. Se actualizan todos los repuestos por referencia — hoja &quot;Pedido&quot;, fila 12 en adelante.</p>
           <div className="flex flex-col sm:flex-row gap-3 items-start">
             <label className="flex-1 cursor-pointer">
               <div className={`flex items-center gap-3 px-4 py-3 border-2 border-dashed rounded-xl transition-colors ${
@@ -1073,28 +1043,12 @@ function ConfigServicioContent() {
             El proceso puede tardar 1-2 minutos para archivos con +18.000 repuestos. No cierres la página durante la carga.
           </p>
         </div>
-      </div>
+      </SeccionColapsable>
 
-      {/* ══════════════════════════════════════════
-          SECCIÓN 4 — CATÁLOGO LUBRICANTES
-      ══════════════════════════════════════════ */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-amber-600 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-gray-900">Catálogo Lubricantes</h2>
-            <p className="text-xs text-gray-500">
-              Carga el Excel de precios de lubricantes (&quot;SUGERIDO LUBRICANTES DEALER&quot;) — hoja &quot;Lista de Precios&quot;.
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+      {/* ── Catálogo Lubricantes ── */}
+      <SeccionColapsable titulo="Catálogo Lubricantes" icono="🛢️">
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-500">Carga el Excel de precios de lubricantes (&quot;SUGERIDO LUBRICANTES DEALER&quot;) — hoja &quot;Lista de Precios&quot;.</p>
           <div className="flex flex-col sm:flex-row gap-3 items-start">
             <label className="flex-1 cursor-pointer">
               <div className={`flex items-center gap-3 px-4 py-3 border-2 border-dashed rounded-xl transition-colors ${
@@ -1182,28 +1136,11 @@ function ConfigServicioContent() {
             El proceso puede tardar 1-2 minutos para archivos grandes. No cierres la página durante la carga.
           </p>
         </div>
-      </div>
+      </SeccionColapsable>
 
-      {/* ══════════════════════════════════════════
-          SECCIÓN — MANUALES DE PARTES (CSV)
-      ══════════════════════════════════════════ */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-rose-600 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-gray-900">Manuales de Partes</h2>
-            <p className="text-xs text-gray-500">
-              Catálogo de manuales (PDF de Drive) que se ve desde &quot;Ver Manuales de Partes&quot; en Servicio Técnico. Actualmente hay {manualesCount} manual(es) cargados.
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+      {/* ── Manuales de Partes ── */}
+      <SeccionColapsable titulo="Manuales de Partes" icono="📋" badge={manualesCount}>
+        <div className="p-5 space-y-4">
           <p className="text-xs text-gray-500">
             Sube un Excel con las columnas <strong>MANUAL</strong> (nombre del archivo), <strong>CARPETA</strong> (&quot;Motocarros&quot; o &quot;Motocicletas&quot;) y <strong>LINK DRIVE</strong> (link del PDF compartido en Drive). El archivo solo se lee en el navegador para tomar los datos, no se guarda. Cada carga reemplaza por completo la lista anterior — vuelve a subir el archivo cada vez que agregues, renombres o elimines un manual en Drive.
           </p>
@@ -1277,29 +1214,13 @@ function ConfigServicioContent() {
             </div>
           )}
         </div>
-      </div>
+      </SeccionColapsable>
 
-      {/* ══════════════════════════════════════════
-          SECCIÓN — CONVERTIR VIDEOS ANTIGUOS A MP4
-      ══════════════════════════════════════════ */}
-      {['admin', 'gerencia', 'control_total'].includes(profile?.rol ?? '') && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Convertir videos antiguos a MP4</h2>
-              <p className="text-xs text-gray-500">
-                Los videos nuevos de Servicio Técnico ya se guardan siempre en .mp4. Usa esto una sola vez para convertir también los que se subieron antes de ese cambio.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+      {/* ── Google Drive y videos ── */}
+      <SeccionColapsable titulo="Google Drive y videos" icono="☁️">
+        {['admin', 'gerencia', 'control_total'].includes(profile?.rol ?? '') && (
+          <div className="p-5 space-y-3 border-b border-gray-100">
+            <p className="text-xs text-gray-500">Los videos nuevos de Servicio Técnico ya se guardan siempre en .mp4. Usa esto una sola vez para convertir también los que se subieron antes de ese cambio.</p>
             <button
               onClick={migrarVideosAntiguos}
               disabled={migrando}
@@ -1342,16 +1263,15 @@ function ConfigServicioContent() {
               Procesa los videos en lotes pequeños, así que puede tardar varios minutos si hay muchos. No cierres la página mientras dice &quot;Convirtiendo...&quot;.
             </p>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ─── Google Drive ──────────────────────────────────── */}
-      {(() => {
-        const driveOk = searchParams.get('drive_ok')
-        const driveError = searchParams.get('drive_error')
-        const driveListoParaUsarse = driveConectado && !!driveFolderGuardado
-        return (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+        {/* ─── Google Drive ─── */}
+        {(() => {
+          const driveOk = searchParams.get('drive_ok')
+          const driveError = searchParams.get('drive_error')
+          const driveListoParaUsarse = driveConectado && !!driveFolderGuardado
+          return (
+            <div className="p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold text-gray-900">Almacenamiento en Google Drive</h2>
@@ -1561,17 +1481,12 @@ function ConfigServicioContent() {
               </div>
             )}
           </div>
-        )
-      })()}
+          )
+        })()}
+      </SeccionColapsable>
 
-      {/* ── COTIZACIONES S.T. — Contacto y mensaje ── */}
-      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">📄</span>
-            <h2 className="text-base font-bold text-gray-900">Cotizaciones S.T. — Pie de página y mensaje</h2>
-          </div>
-        </div>
+      {/* ── Cotizaciones S.T. ── */}
+      <SeccionColapsable titulo="Cotizaciones S.T." icono="📄">
         <div className="p-5 space-y-3 max-w-lg">
           <p className="text-xs text-gray-400">Estos datos aparecen en el pie de cada página del PDF de cotización de Servicio Técnico.</p>
           <div className="grid grid-cols-2 gap-3">
@@ -1618,14 +1533,12 @@ function ConfigServicioContent() {
             {servtecOk && <span className="text-sm text-green-600 font-medium">✓ Guardado</span>}
           </div>
         </div>
-      </div>
+      </SeccionColapsable>
 
-      {/* ── Catálogo UMA — Editar ítems ── */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Catálogo UMA — Editar ítems</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Edita código, descripción y precio de los repuestos y lubricantes cargados. Cada cambio requiere confirmación.</p>
-        </div>
+      {/* ── Catálogo UMA — Editar ── */}
+      <SeccionColapsable titulo="Catálogo UMA — Editar" icono="✏️">
+        <div className="p-6 space-y-4">
+          <p className="text-xs text-gray-500">Edita código, descripción y precio de los repuestos y lubricantes cargados. Cada cambio requiere confirmación.</p>
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-gray-200">
@@ -1722,7 +1635,8 @@ function ConfigServicioContent() {
             )}
           </div>
         )}
-      </div>
+        </div>
+      </SeccionColapsable>
 
       {/* Modal de confirmación catálogo */}
       {confirmCatalog && (
