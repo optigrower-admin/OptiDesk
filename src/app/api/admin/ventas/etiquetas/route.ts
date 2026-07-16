@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
   const { accion, nombre, color, etiqueta_id, cliente_id } =
     await req.json() as {
-      accion: 'crear_y_aplicar' | 'aplicar' | 'quitar'
+      accion: 'crear' | 'crear_y_aplicar' | 'aplicar' | 'quitar' | 'editar' | 'eliminar'
       nombre?: string
       color?: string
       etiqueta_id?: string
@@ -22,6 +22,52 @@ export async function POST(req: NextRequest) {
     }
 
   const admin = createAdminClient()
+
+  if (accion === 'crear') {
+    if (!nombre || !color)
+      return NextResponse.json({ error: 'Faltan campos' }, { status: 400 })
+    const { data: existente } = await admin
+      .from('etiquetas_venta')
+      .select('id, nombre, color')
+      .eq('tenant_id', perfil.tenant_id)
+      .eq('nombre', nombre)
+      .maybeSingle()
+    if (existente) return NextResponse.json({ error: 'Ya existe una etiqueta con ese nombre' }, { status: 409 })
+    const { data: nueva, error } = await admin
+      .from('etiquetas_venta')
+      .insert({ tenant_id: perfil.tenant_id, nombre, color })
+      .select('id, nombre, color')
+      .single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, etiqueta: nueva })
+  }
+
+  if (accion === 'editar') {
+    if (!etiqueta_id) return NextResponse.json({ error: 'Falta etiqueta_id' }, { status: 400 })
+    const updates: Record<string, string> = {}
+    if (nombre) updates.nombre = nombre
+    if (color)  updates.color  = color
+    const { error } = await admin
+      .from('etiquetas_venta')
+      .update(updates)
+      .eq('id', etiqueta_id)
+      .eq('tenant_id', perfil.tenant_id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
+  if (accion === 'eliminar') {
+    if (!etiqueta_id) return NextResponse.json({ error: 'Falta etiqueta_id' }, { status: 400 })
+    // Quitar de todos los clientes primero (cascade no garantizado en RLS)
+    await admin.from('clientes_etiquetas').delete().eq('etiqueta_id', etiqueta_id)
+    const { error } = await admin
+      .from('etiquetas_venta')
+      .delete()
+      .eq('id', etiqueta_id)
+      .eq('tenant_id', perfil.tenant_id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
 
   if (accion === 'crear_y_aplicar') {
     if (!nombre || !color || !cliente_id)

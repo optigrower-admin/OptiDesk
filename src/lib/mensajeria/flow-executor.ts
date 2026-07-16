@@ -604,6 +604,26 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
+    // ── Etiquetar cliente ────────────────────────────────────────────────────
+    case 'etiqueta': {
+      const accionEtiqueta = String(data.accion ?? 'agregar')
+      const etiquetaId = String(data.etiqueta_id ?? '')
+      if (etiquetaId && clienteId) {
+        if (accionEtiqueta === 'agregar') {
+          await supabase.from('clientes_etiquetas').upsert(
+            { cliente_id: clienteId, etiqueta_id: etiquetaId, tenant_id: tenantId },
+            { onConflict: 'cliente_id,etiqueta_id' }
+          )
+        } else {
+          await supabase.from('clientes_etiquetas')
+            .delete()
+            .eq('cliente_id', clienteId)
+            .eq('etiqueta_id', etiquetaId)
+        }
+      }
+      return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+    }
+
     // ── Subflujo (ejecutar otro flujo anidado) ────────────────────────────────
     case 'subflujo': {
       const subflujoId = String(data.subflujo_id ?? '')

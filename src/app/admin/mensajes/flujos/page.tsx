@@ -41,6 +41,7 @@ type Flujo = {
 type Usuario = { id: string; nombre: string }
 type Plantilla = { id: string; nombre: string; meta_status: string; meta_template_name: string | null }
 type AgenteIA = { id: string; nombre: string; proveedor: string }
+type Etiqueta = { id: string; nombre: string; color: string }
 
 // ─── Componentes base de nodos ────────────────────────────────────────────────
 
@@ -487,6 +488,45 @@ const SubflujoNode = ({ id, data }: NodeProps) => {
 }
 
 // ─── NODO: Fin ───────────────────────────────────────────────────────────────
+// ─── NODO: Etiqueta ──────────────────────────────────────────────────────────
+const EtiquetaNode = ({ id, data }: NodeProps) => {
+  const { setNodes } = useReactFlow()
+  const upd = (k: string, v: string) =>
+    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const etiquetas: Etiqueta[] = data.etiquetas ?? []
+  const etiquetaId = String(data.etiqueta_id ?? '')
+  const seleccionada = etiquetas.find(e => e.id === etiquetaId)
+  return (
+    <div className={`${nodeBaseClass} border-rose-300`} style={{ width: 230 }}>
+      <Handle type="target" position={Position.Top} className="!bg-rose-400 !w-3 !h-3" />
+      <NodeHeader color="bg-rose-500" icon="🏷️" label="Etiquetar cliente" />
+      <div className="px-3 py-2.5 space-y-2">
+        <select defaultValue={data.accion ?? 'agregar'} onChange={e => upd('accion', e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400">
+          <option value="agregar">➕ Agregar etiqueta</option>
+          <option value="quitar">➖ Quitar etiqueta</option>
+        </select>
+        <div className="flex items-center gap-2">
+          {seleccionada && (
+            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: seleccionada.color }} />
+          )}
+          <select value={etiquetaId} onChange={e => upd('etiqueta_id', e.target.value)}
+            className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400">
+            <option value="">— Seleccionar etiqueta —</option>
+            {etiquetas.map(et => (
+              <option key={et.id} value={et.id}>{et.nombre}</option>
+            ))}
+          </select>
+        </div>
+        {etiquetas.length === 0 && (
+          <p className="text-[10px] text-gray-400">Crea etiquetas en Config Ventas → Etiquetas</p>
+        )}
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!bg-rose-400 !w-3 !h-3" />
+    </div>
+  )
+}
+
 const FinNode = (_: NodeProps) => (
   <div className={`${nodeBaseClass} border-gray-300`}>
     <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-3 !h-3" />
@@ -509,6 +549,7 @@ const NODE_TYPES: NodeTypes = {
   plantilla:    PlantillaNode,
   media:        MediaNode,
   nota_interna: NotaInternaNode,
+  etiqueta:     EtiquetaNode,
   subflujo:     SubflujoNode,
   fin:          FinNode,
 }
@@ -523,12 +564,13 @@ const PALETTE_ITEMS = [
   { type: 'asignar',     icon: '👤', label: 'Asignar asesor',    color: 'border-purple-300 bg-purple-50 hover:bg-purple-100'  },
   { type: 'etapa',       icon: '📊', label: 'Cambiar etapa',     color: 'border-cyan-300 bg-cyan-50 hover:bg-cyan-100'       },
   { type: 'esperar',     icon: '⏱️', label: 'Esperar / Delay',   color: 'border-orange-300 bg-orange-50 hover:bg-orange-100'  },
+  { type: 'etiqueta',    icon: '🏷️', label: 'Etiquetar cliente', color: 'border-rose-300 bg-rose-50 hover:bg-rose-100'       },
   { type: 'nota_interna',icon: '📝', label: 'Nota interna',      color: 'border-yellow-200 bg-yellow-50 hover:bg-yellow-100'  },
   { type: 'subflujo',    icon: '🔗', label: 'Subflujo',          color: 'border-slate-300 bg-slate-50 hover:bg-slate-100'    },
   { type: 'fin',         icon: '🏁', label: 'Fin del flujo',     color: 'border-gray-300 bg-gray-50 hover:bg-gray-100'       },
 ]
 
-function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[] }): Record<string, unknown> {
+function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[]; etiquetas: Etiqueta[] }): Record<string, unknown> {
   switch (type) {
     case 'trigger':       return { trigger_tipo: 'mensaje_nuevo' }
     case 'mensaje':       return { contenido: '', usar_plantilla: false, plantillas: ctx.plantillas }
@@ -540,6 +582,7 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
     case 'plantilla':     return { plantilla_id: '', plantillas: ctx.plantillas }
     case 'media':         return { media_tipo: 'imagen', media_url: '', media_caption: '' }
     case 'nota_interna':  return { contenido: '' }
+    case 'etiqueta':      return { accion: 'agregar', etiqueta_id: '', etiquetas: ctx.etiquetas }
     case 'subflujo':      return { subflujo_id: '', flujos_disponibles: ctx.flujos }
     case 'fin':           return {}
     default:              return {}
@@ -548,7 +591,7 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
 
 // ─── Editor de flujo (canvas principal) ──────────────────────────────────────
 
-type EditorCtx = { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[] }
+type EditorCtx = { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[]; etiquetas: Etiqueta[] }
 
 type EditorProps = {
   flujo: Flujo | null
@@ -780,7 +823,7 @@ export default function FlujoPage() {
   const supabase = createClient()
 
   const [flujos,   setFlujos]   = useState<Flujo[]>([])
-  const [ctx,      setCtx]      = useState<EditorCtx>({ equipo: [], plantillas: [], agentes: [], flujos: [] })
+  const [ctx,      setCtx]      = useState<EditorCtx>({ equipo: [], plantillas: [], agentes: [], flujos: [], etiquetas: [] })
   const [loading,  setLoading]  = useState(true)
   const [editando, setEditando] = useState<Flujo | null | 'new'>(null)
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
@@ -806,12 +849,14 @@ export default function FlujoPage() {
       supabase.from('plantillas_mensajes').select('id, nombre, meta_status, meta_template_name').eq('tenant_id', profile.tenant_id),
       supabase.from('agentes_ia').select('id, nombre, proveedor').eq('tenant_id', profile.tenant_id).eq('activo', true),
       supabase.from('flujos_automatizacion').select('id, nombre').eq('tenant_id', profile.tenant_id),
-    ]).then(([{ data: eq }, { data: pl }, { data: ag }, { data: fl }]) => {
+      supabase.from('etiquetas_venta').select('id, nombre, color').eq('tenant_id', profile.tenant_id).order('nombre'),
+    ]).then(([{ data: eq }, { data: pl }, { data: ag }, { data: fl }, { data: et }]) => {
       setCtx({
         equipo:     (eq as Usuario[]) ?? [],
         plantillas: (pl as Plantilla[]) ?? [],
         agentes:    (ag as AgenteIA[]) ?? [],
         flujos:     ((fl as { id: string; nombre: string }[]) ?? []),
+        etiquetas:  ((et as Etiqueta[]) ?? []),
       })
     })
   }, [profile?.tenant_id])

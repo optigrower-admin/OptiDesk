@@ -573,6 +573,12 @@ export default function ConfigVentasPage() {
   const [creandoMoto, setCreandoMoto]     = useState(false)
   const cargandoRef = useRef(false)
 
+  // ── Etiquetas ──────────────────────────────────────────────────────────────
+  const [etiquetas, setEtiquetas]       = useState<{ id: string; nombre: string; color: string }[]>([])
+  const [nuevaEtiqueta, setNuevaEtiqueta] = useState({ nombre: '', color: '#3B82F6' })
+  const [savingEtiqueta, setSavingEtiqueta] = useState(false)
+  const [editEtiqueta, setEditEtiqueta] = useState<{ id: string; nombre: string; color: string } | null>(null)
+
   // ── APIs IA ────────────────────────────────────────────────────────────────
   const [configApis, setConfigApis]           = useState({ openai_key: '', anthropic_key: '', elevenlabs_key: '', openai_modelo: 'gpt-4o-mini', anthropic_modelo: 'claude-haiku-4-5-20251001', elevenlabs_voz_id: '' })
   const [savingApis, setSavingApis]           = useState(false)
@@ -733,6 +739,14 @@ export default function ConfigVentasPage() {
     }
     setAgentes(agts ?? [])
 
+    // Etiquetas de venta
+    const { data: etqs } = await supabase
+      .from('etiquetas_venta')
+      .select('id, nombre, color')
+      .eq('tenant_id', profile.tenant_id)
+      .order('nombre')
+    setEtiquetas(etqs ?? [])
+
     setLoading(false)
     cargandoRef.current = false
   }, [profile?.tenant_id])
@@ -881,6 +895,43 @@ export default function ConfigVentasPage() {
     if (!confirm('¿Eliminar esta plantilla?')) return
     await supabase.from('plantillas_correo').delete().eq('id', id)
     cargar()
+  }
+
+  /* ── Etiquetas ── */
+  async function crearEtiqueta() {
+    if (!nuevaEtiqueta.nombre.trim() || !profile?.tenant_id) return
+    setSavingEtiqueta(true)
+    const res = await fetch('/api/admin/ventas/etiquetas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'crear', nombre: nuevaEtiqueta.nombre.trim(), color: nuevaEtiqueta.color }),
+    })
+    if (res.ok) {
+      const { etiqueta } = await res.json() as { etiqueta: { id: string; nombre: string; color: string } }
+      setEtiquetas(e => [...e, etiqueta].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+      setNuevaEtiqueta({ nombre: '', color: '#3B82F6' })
+    }
+    setSavingEtiqueta(false)
+  }
+
+  async function guardarEdicionEtiqueta() {
+    if (!editEtiqueta) return
+    await fetch('/api/admin/ventas/etiquetas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'editar', etiqueta_id: editEtiqueta.id, nombre: editEtiqueta.nombre, color: editEtiqueta.color }),
+    })
+    setEtiquetas(e => e.map(et => et.id === editEtiqueta.id ? { ...et, nombre: editEtiqueta.nombre, color: editEtiqueta.color } : et))
+    setEditEtiqueta(null)
+  }
+
+  async function eliminarEtiqueta(id: string) {
+    await fetch('/api/admin/ventas/etiquetas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'eliminar', etiqueta_id: id }),
+    })
+    setEtiquetas(e => e.filter(et => et.id !== id))
   }
 
   /* ── APIs IA ── */
@@ -1372,6 +1423,80 @@ export default function ConfigVentasPage() {
             <button onClick={crearPlantilla} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">
               + Crear plantilla
             </button>
+          </div>
+        </div>
+      </SeccionColapsable>
+
+      {/* ── Etiquetas de cliente ── */}
+      <SeccionColapsable titulo="Etiquetas de cliente" icono="🏷️" badge={etiquetas.length} defaultOpen={false}>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-500">Crea etiquetas para clasificar el origen o tipo de tus clientes. Puedes asignarlas automáticamente desde los flujos.</p>
+
+          {/* Lista de etiquetas existentes */}
+          {etiquetas.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">No hay etiquetas creadas aún.</p>
+          ) : (
+            <div className="space-y-2">
+              {etiquetas.map(et => (
+                <div key={et.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                  {editEtiqueta?.id === et.id ? (
+                    <>
+                      <input
+                        type="color" value={editEtiqueta.color}
+                        onChange={e => setEditEtiqueta(ed => ed ? { ...ed, color: e.target.value } : ed)}
+                        className="w-8 h-8 rounded cursor-pointer border-0 p-0"
+                      />
+                      <input
+                        value={editEtiqueta.nombre}
+                        onChange={e => setEditEtiqueta(ed => ed ? { ...ed, nombre: e.target.value } : ed)}
+                        className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onKeyDown={e => e.key === 'Enter' && guardarEdicionEtiqueta()}
+                      />
+                      <button onClick={guardarEdicionEtiqueta} className="px-3 py-1.5 bg-blue-700 text-white rounded-lg text-xs font-semibold hover:bg-blue-800">Guardar</button>
+                      <button onClick={() => setEditEtiqueta(null)} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-300">Cancelar</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: et.color }} />
+                      <span className="flex-1 text-sm font-medium text-gray-800">{et.nombre}</span>
+                      <button onClick={() => setEditEtiqueta(et)} className="text-xs text-blue-600 hover:underline">Editar</button>
+                      <button onClick={() => { if (confirm(`¿Eliminar etiqueta "${et.nombre}"? Se quitará de todos los clientes.`)) eliminarEtiqueta(et.id) }}
+                        className="text-xs text-red-500 hover:underline">Eliminar</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Crear nueva etiqueta */}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-3 border border-dashed border-gray-300">
+            <p className="text-sm font-semibold text-gray-700">Nueva etiqueta</p>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="color" value={nuevaEtiqueta.color}
+                  onChange={e => setNuevaEtiqueta(n => ({ ...n, color: e.target.value }))}
+                  className="w-10 h-10 rounded-lg cursor-pointer border border-gray-200 p-0.5"
+                  title="Color de la etiqueta"
+                />
+                <span className="text-xs text-gray-500">Color</span>
+              </div>
+              <input
+                value={nuevaEtiqueta.nombre}
+                onChange={e => setNuevaEtiqueta(n => ({ ...n, nombre: e.target.value }))}
+                placeholder="Ej: Facebook Ads, Referido, WhatsApp"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onKeyDown={e => e.key === 'Enter' && crearEtiqueta()}
+              />
+              <button
+                onClick={crearEtiqueta}
+                disabled={savingEtiqueta || !nuevaEtiqueta.nombre.trim()}
+                className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-60"
+              >
+                {savingEtiqueta ? 'Creando…' : '+ Crear'}
+              </button>
+            </div>
           </div>
         </div>
       </SeccionColapsable>
