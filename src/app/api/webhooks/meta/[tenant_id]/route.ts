@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { decrypt } from '@/lib/crypto'
 import { buscarOCrearCliente } from '@/lib/clientes/buscarOCrearCliente'
 import { iniciarFlujoParaConversacion } from '@/lib/mensajeria/flow-executor'
+import type { TriggerTipo } from '@/types/flujos'
 
 export const dynamic = 'force-dynamic'
 
@@ -354,6 +355,8 @@ async function procesarMensajeIndividual(
   const clienteIdActual = (conv as Record<string, unknown>).cliente_id as string | null
   const assignedToActual = (conv as Record<string, unknown>).assigned_to as string | null
   let resolvedClienteId: string | null = clienteIdActual
+  // Rastrea si el cliente es nuevo o fue reactivado — activa trigger 'nuevo_cliente' como fallback
+  let clienteEsNuevoOReactivado = false
 
   console.log(`[webhook] clienteIdActual=${clienteIdActual ?? 'null'} convId=${conv.id}`)
 
@@ -365,6 +368,7 @@ async function procesarMensajeIndividual(
       supabase, tenantId, canal, canalContactId,
       nombreSugerido, conv.id, assignedToActual,
     )
+    clienteEsNuevoOReactivado = true
     console.log(`[webhook] resolvedClienteId después de asegurar: ${resolvedClienteId ?? 'null'}`)
   } else {
     // Verificar que el cliente aún existe (pudo haber sido eliminado)
@@ -384,10 +388,12 @@ async function procesarMensajeIndividual(
         supabase, tenantId, canal, canalContactId,
         nombreSugerido, conv.id, assignedToActual,
       )
+      clienteEsNuevoOReactivado = true
       console.log(`[webhook] cliente recreado: ${resolvedClienteId ?? 'null'}`)
     } else if (!clienteVivo.en_seguimiento_ventas) {
       // Cliente existe pero no está en seguimiento → reactivar en columna Nuevo Contacto - Mensaje
       console.log(`[webhook] reactivando cliente ${clienteIdActual} en seguimiento`)
+      clienteEsNuevoOReactivado = true
 
       // UPDATE 1: campos críticos con fallback de etapa
       let { error: errCore } = await supabase.from('clientes').update({
@@ -450,10 +456,15 @@ async function procesarMensajeIndividual(
 
   // ── Activar flujo de automatización para este mensaje ──
   // Si hay ejecución activa en pausa (nodo esperar), la continúa.
-  // Si no hay ninguna, busca un flujo activo con trigger_tipo='mensaje_nuevo' y lo inicia.
-  console.log(`[webhook] iniciando flujo para conv=${conv.id} cliente=${resolvedClienteId ?? 'null'}`)
+  // Si no hay ninguna, busca un flujo activo por trigger_tipo y lo inicia.
+  // Para clientes nuevos o reactivados también prueba 'nuevo_cliente' como fallback,
+  // por si el usuario configuró el flujo con ese trigger en lugar de 'mensaje_nuevo'.
+  const triggerTipos: TriggerTipo | TriggerTipo[] = clienteEsNuevoOReactivado
+    ? ['mensaje_nuevo', 'nuevo_cliente']
+    : 'mensaje_nuevo'
+  console.log(`[webhook] iniciando flujo para conv=${conv.id} cliente=${resolvedClienteId ?? 'null'} trigger=${JSON.stringify(triggerTipos)}`)
   try {
-    await iniciarFlujoParaConversacion(tenantId, conv.id, resolvedClienteId, 'mensaje_nuevo')
+    await iniciarFlujoParaConversacion(tenantId, conv.id, resolvedClienteId, triggerTipos)
     console.log(`[webhook] ✓ flujo iniciado/continuado`)
   } catch (e) {
     console.error('[webhook] ✗ error iniciando flujo:', e)
