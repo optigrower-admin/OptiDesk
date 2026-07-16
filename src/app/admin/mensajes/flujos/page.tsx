@@ -661,23 +661,30 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId }: EditorProp
 
   const guardar = async () => {
     if (!nombre.trim()) { alert('El flujo necesita un nombre'); return }
+    if (!tenantId) { alert('Error: sin empresa asignada. Recarga la página.'); return }
     setSaving(true)
     const nodos = { nodes, edges }
     const triggerTipo = nodes.find(n => n.type === 'trigger')?.data?.trigger_tipo ?? 'mensaje_nuevo'
     try {
       if (flujo) {
-        await supabase.from('flujos_automatizacion').update({
+        const { error } = await supabase.from('flujos_automatizacion').update({
           nombre, descripcion: descripcion || null, trigger_tipo: triggerTipo, nodos, activo,
           updated_at: new Date().toISOString(),
         }).eq('id', flujo.id)
+        if (error) throw error
       } else {
-        await supabase.from('flujos_automatizacion').insert({
+        const { error } = await supabase.from('flujos_automatizacion').insert({
           tenant_id: tenantId, nombre, descripcion: descripcion || null,
           trigger_tipo: triggerTipo, nodos, activo,
         })
+        if (error) throw error
       }
       onSaved()
-    } catch (e) { console.error(e) } finally { setSaving(false) }
+    } catch (e) {
+      const msg = (e as { message?: string }).message ?? String(e)
+      console.error('[guardar flujo]', e)
+      alert(`Error al guardar el flujo:\n${msg}`)
+    } finally { setSaving(false) }
   }
 
   const cargarEjecuciones = async () => {
