@@ -261,6 +261,8 @@ async function procesarMensajeIndividual(
 
   if (!canalContactId) return
 
+  console.log(`[webhook] ► msg de ${canalContactId} | tenant=${tenantId} | msgId=${metaMessageId}`)
+
   // Idempotencia: no duplicar si ya procesamos este mensaje
   if (metaMessageId) {
     const { data: dup } = await supabase
@@ -268,7 +270,10 @@ async function procesarMensajeIndividual(
       .select('id')
       .eq('meta_message_id', metaMessageId)
       .maybeSingle()
-    if (dup) return
+    if (dup) {
+      console.log(`[webhook] ✓ duplicado ignorado msgId=${metaMessageId}`)
+      return
+    }
   }
 
   // Buscar conversación activa (incluir cliente_id para saber si ya está vinculado)
@@ -284,6 +289,7 @@ async function procesarMensajeIndividual(
     .maybeSingle()
 
   const esNueva = !conv
+  console.log(`[webhook] conv=${conv?.id ?? 'NUEVA'} esNueva=${esNueva}`)
 
   if (!conv) {
     const assignedTo = await determinarAsignacion(supabase, tenantId, canal, canalContactId)
@@ -298,9 +304,10 @@ async function procesarMensajeIndividual(
         .eq('whatsapp_number', canalContactId)
         .maybeSingle()
       clienteId = cliente?.id ?? null
+      console.log(`[webhook] cliente por whatsapp_number=${canalContactId}: ${clienteId ?? 'no encontrado'}`)
     }
 
-    const { data: nuevaConv } = await supabase
+    const { data: nuevaConv, error: errConv } = await supabase
       .from('conversaciones')
       .insert({
         tenant_id:        tenantId,
@@ -312,30 +319,40 @@ async function procesarMensajeIndividual(
       })
       .select('id,assigned_to,no_leidos_count,cliente_id,sin_respuesta_asesor_desde')
       .single()
+    if (errConv) console.error('[webhook] error creando conversación:', errConv.message)
     conv = nuevaConv
   }
 
-  if (!conv) return
+  if (!conv) {
+    console.error('[webhook] ✗ no se pudo obtener conversación — abortando')
+    return
+  }
 
   // ── Garantizar que el cliente existe y está en Seguimiento Ventas ──
   const clienteIdActual = (conv as Record<string, unknown>).cliente_id as string | null
   const assignedToActual = (conv as Record<string, unknown>).assigned_to as string | null
   let resolvedClienteId: string | null = clienteIdActual
 
+  console.log(`[webhook] clienteIdActual=${clienteIdActual ?? 'null'} convId=${conv.id}`)
+
   if (!clienteIdActual) {
-    // Sin cliente vinculado → crear uno nuevo
+    // Sin cliente vinculado → crear/buscar con buscarOCrearCliente
     const nombreSugerido = await obtenerNombreContacto(supabase, tenantId, canal, canalContactId, value)
+    console.log(`[webhook] asegurarClienteEnSeguimiento para "${nombreSugerido}"`)
     resolvedClienteId = await asegurarClienteEnSeguimiento(
       supabase, tenantId, canal, canalContactId,
       nombreSugerido, conv.id, assignedToActual,
     )
+    console.log(`[webhook] resolvedClienteId después de asegurar: ${resolvedClienteId ?? 'null'}`)
   } else {
     // Verificar que el cliente aún existe (pudo haber sido eliminado)
     const { data: clienteVivo } = await supabase
       .from('clientes')
-      .select('id, en_seguimiento_ventas')
+      .select('id, en_seguimiento_ventas, etapa_venta')
       .eq('id', clienteIdActual)
       .maybeSingle()
+
+    console.log(`[webhook] clienteVivo id=${clienteVivo?.id ?? 'no existe'} en_seg=${clienteVivo?.en_seguimiento_ventas} etapa=${clienteVivo?.etapa_venta}`)
 
     if (!clienteVivo) {
       // Cliente fue eliminado → limpiar referencia y crear uno nuevo
@@ -345,15 +362,23 @@ async function procesarMensajeIndividual(
         supabase, tenantId, canal, canalContactId,
         nombreSugerido, conv.id, assignedToActual,
       )
+      console.log(`[webhook] cliente recreado: ${resolvedClienteId ?? 'null'}`)
     } else if (!clienteVivo.en_seguimiento_ventas) {
       // Cliente existe pero no está en seguimiento → reactivar en columna Nuevo Contacto - Mensaje
+      console.log(`[webhook] reactivando cliente ${clienteIdActual} en seguimiento`)
       const { error: errReact } = await supabase.from('clientes').update({
         en_seguimiento_ventas:       true,
         etapa_venta:                 'nuevo_mensaje',
         etapa_venta_orden:           -1,
         nombre_pendiente_aprobacion: true,
       }).eq('id', clienteIdActual)
-      if (errReact) console.error('[webhook] error reactivando cliente en seguimiento:', errReact.message)
+      if (errReact) {
+        console.error('[webhook] ✗ error reactivando cliente:', errReact.message, errReact.code)
+      } else {
+        console.log(`[webhook] ✓ cliente ${clienteIdActual} reactivado en nuevo_mensaje`)
+      }
+    } else {
+      console.log(`[webhook] cliente ya en seguimiento etapa=${clienteVivo.etapa_venta}`)
     }
   }
 
@@ -385,11 +410,14 @@ async function procesarMensajeIndividual(
   // ── Activar flujo de automatización para este mensaje ──
   // Si hay ejecución activa en pausa (nodo esperar), la continúa.
   // Si no hay ninguna, busca un flujo activo con trigger_tipo='mensaje_nuevo' y lo inicia.
+  console.log(`[webhook] iniciando flujo para conv=${conv.id} cliente=${resolvedClienteId ?? 'null'}`)
   try {
     await iniciarFlujoParaConversacion(tenantId, conv.id, resolvedClienteId, 'mensaje_nuevo')
+    console.log(`[webhook] ✓ flujo iniciado/continuado`)
   } catch (e) {
-    console.error('[webhook] error iniciando flujo:', e)
+    console.error('[webhook] ✗ error iniciando flujo:', e)
   }
+  console.log(`[webhook] ◄ procesamiento completo para ${canalContactId}`)
 }
 
 async function determinarAsignacion(

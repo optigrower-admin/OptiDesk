@@ -231,9 +231,9 @@ export default function VentasPage() {
 
     cargar()
 
-    // Escuchar nuevos clientes en seguimiento (INSERT + UPDATE desde webhook)
-    // El INSERT inicial del webhook no trae en_seguimiento_ventas=true todavía;
-    // el UPDATE posterior sí — por eso se escuchan ambos eventos.
+    // Escuchar cambios en clientes en seguimiento (INSERT + UPDATE desde webhook)
+    // IMPORTANTE: La tabla clientes debe estar en supabase_realtime (migration_v80).
+    // Condición permisiva: recargar siempre que un cliente esté (o pase a estar) en seguimiento.
     const channel = supabase
       .channel(`ventas-nuevos-${profile.tenant_id}`)
       .on(
@@ -260,13 +260,24 @@ export default function VentasPage() {
         (payload) => {
           const row = payload.new as Record<string, unknown>
           const old = payload.old as Record<string, unknown>
-          // Solo recargar cuando en_seguimiento_ventas acaba de activarse
-          if (row.en_seguimiento_ventas && !old.en_seguimiento_ventas) cargar()
+          // Recargar si el cliente está en seguimiento (nuevo_mensaje, etapa cambiada, etc.)
+          if (row.en_seguimiento_ventas) {
+            const acabaDeEntrar = !old.en_seguimiento_ventas
+            const etapaCambio   = old.etapa_venta !== row.etapa_venta
+            if (acabaDeEntrar || etapaCambio) cargar()
+          }
         }
       )
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    // Polling de seguridad: si Realtime falla o la tabla no está en la publicación,
+    // actualizar cada 60 s para asegurar que los mensajes nuevos aparezcan.
+    const pollId = setInterval(() => { cargar() }, 60_000)
+
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(pollId)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.tenant_id, profile?.rol, profile?.id])
 
