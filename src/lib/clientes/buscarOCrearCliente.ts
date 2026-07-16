@@ -17,6 +17,11 @@ interface BuscarCrearParams {
   tipoDocumento?: string
   email?: string
   assignedTo?: string
+  // Campos de seguimiento para incluir directo en el INSERT (evita race condition con UPDATE posterior)
+  enSeguimientoVentas?: boolean
+  etapaVenta?: string
+  etapaVentaOrden?: number
+  nombrePendienteAprobacion?: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabaseClient?: SupabaseClient<any, any, any>
 }
@@ -47,6 +52,7 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
     tenantId, canal, contactId, celular, cedula, nombre,
     primerNombre, segundoNombre, primerApellido, segundoApellido,
     tipoDocumento, email, assignedTo,
+    enSeguimientoVentas, etapaVenta, etapaVentaOrden, nombrePendienteAprobacion,
   } = params
 
   // 1. Buscar por cédula (identificador más fuerte)
@@ -100,7 +106,7 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
   }
 
   // 4. Crear nuevo registro único
-  const nuevo: Record<string, string> = {
+  const nuevo: Record<string, string | boolean | number> = {
     tenant_id: tenantId,
     nombre: nombre || 'Contacto nuevo',
   }
@@ -116,6 +122,11 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
   if (canal === 'whatsapp'  && contactId) nuevo.whatsapp_number = contactId
   if (canal === 'messenger' && contactId) nuevo.messenger_id    = contactId
   if (canal === 'instagram' && contactId) nuevo.instagram_id    = contactId
+  // Campos de seguimiento: incluirlos en el INSERT para que el Realtime INSERT ya los tenga correctos
+  if (enSeguimientoVentas !== undefined) nuevo.en_seguimiento_ventas = enSeguimientoVentas
+  if (etapaVenta)                        nuevo.etapa_venta           = etapaVenta
+  if (etapaVentaOrden !== undefined)     nuevo.etapa_venta_orden     = etapaVentaOrden
+  if (nombrePendienteAprobacion !== undefined) nuevo.nombre_pendiente_aprobacion = nombrePendienteAprobacion
 
   let { data: creado, error } = await supabase
     .from('clientes')

@@ -172,14 +172,20 @@ async function asegurarClienteEnSeguimiento(
   assignedTo: string | null,
 ): Promise<string | null> {
   try {
-    const { cliente } = await buscarOCrearCliente({
+    // Pasar los campos de seguimiento al INSERT para que el Realtime INSERT ya los detecte
+    // (evita race condition donde INSERT dispara con en_seguimiento_ventas=false y UPDATE no se detecta)
+    const { cliente, creado } = await buscarOCrearCliente({
       tenantId,
       canal,
-      contactId:      canalContactId,
-      celular:        canal === 'whatsapp' ? canalContactId : undefined,
-      nombre:         nombreSugerido,
-      assignedTo:     assignedTo ?? undefined,
-      supabaseClient: supabase,
+      contactId:                   canalContactId,
+      celular:                     canal === 'whatsapp' ? canalContactId : undefined,
+      nombre:                      nombreSugerido,
+      assignedTo:                  assignedTo ?? undefined,
+      enSeguimientoVentas:         true,
+      etapaVenta:                  'nuevo_mensaje',
+      etapaVentaOrden:             -1,
+      nombrePendienteAprobacion:   true,
+      supabaseClient:              supabase,
     })
 
     if (!cliente) {
@@ -189,17 +195,21 @@ async function asegurarClienteEnSeguimiento(
 
     const clienteId: string = cliente.id
 
-    const actualizacion: Record<string, unknown> = {
-      en_seguimiento_ventas:        true,
-      etapa_venta:                  'nuevo_mensaje',
-      etapa_venta_orden:            -1,
-      nombre_pendiente_aprobacion:  true,
+    // Si el cliente ya existía (no fue creado ahora), actualizar campos de seguimiento
+    if (!creado) {
+      const actualizacion: Record<string, unknown> = {
+        en_seguimiento_ventas:       true,
+        etapa_venta:                 'nuevo_mensaje',
+        etapa_venta_orden:           -1,
+        nombre_pendiente_aprobacion: true,
+      }
+      if (!cliente.assigned_to && assignedTo) actualizacion.assigned_to = assignedTo
+      const { error: errUpdate } = await supabase.from('clientes').update(actualizacion).eq('id', clienteId)
+      if (errUpdate) console.error('[webhook] error actualizando cliente existente:', errUpdate.message)
     }
-    if (!cliente.assigned_to && assignedTo) {
-      actualizacion.assigned_to = assignedTo
-    }
-    await supabase.from('clientes').update(actualizacion).eq('id', clienteId)
-    await supabase.from('conversaciones').update({ cliente_id: clienteId }).eq('id', convId)
+
+    const { error: errConv } = await supabase.from('conversaciones').update({ cliente_id: clienteId }).eq('id', convId)
+    if (errConv) console.error('[webhook] error vinculando conversación:', errConv.message)
 
     return clienteId
   } catch (e) {
@@ -336,13 +346,14 @@ async function procesarMensajeIndividual(
         nombreSugerido, conv.id, assignedToActual,
       )
     } else if (!clienteVivo.en_seguimiento_ventas) {
-      // Cliente existe pero no está en seguimiento → activarlo con etapa de canal
-      await supabase.from('clientes').update({
+      // Cliente existe pero no está en seguimiento → reactivar en columna Nuevo Contacto - Mensaje
+      const { error: errReact } = await supabase.from('clientes').update({
         en_seguimiento_ventas:       true,
         etapa_venta:                 'nuevo_mensaje',
         etapa_venta_orden:           -1,
         nombre_pendiente_aprobacion: true,
       }).eq('id', clienteIdActual)
+      if (errReact) console.error('[webhook] error reactivando cliente en seguimiento:', errReact.message)
     }
   }
 
