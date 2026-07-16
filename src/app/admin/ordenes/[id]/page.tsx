@@ -2518,8 +2518,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                   <tr className="text-[11px] text-gray-500 uppercase border-b bg-blue-50">
                     <th className="text-left py-1 px-2 font-medium w-28">Origen / Ref.</th>
                     <th className="text-left py-1 px-2 font-medium">Descripción</th>
-                    <th className="text-center py-1 px-2 font-medium w-10">Q</th>
-                    <th className="text-left py-1 px-2 font-medium w-24 hidden sm:table-cell">Método prov.</th>
+                    <th className="text-center py-1 px-2 font-medium w-16">Q</th>
+                    <th className="text-left py-1 px-2 font-medium w-20 hidden sm:table-cell">Método prov.</th>
                     <th className="text-right py-1 px-2 font-medium w-20 hidden sm:table-cell">Costo</th>
                     <th className="text-right py-1 px-2 font-medium w-20">P. venta</th>
                     <th className="text-right py-1 px-2 font-medium w-24">Acciones</th>
