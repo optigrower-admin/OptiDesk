@@ -11,6 +11,15 @@ interface Subcategoria { id: string; nombre: string; activo: boolean }
 interface Categoria { id: string; nombre: string; activo: boolean; subcategorias_servicio: Subcategoria[] }
 interface MetodoPago { id: string; nombre: string; activo: boolean; recargo_porcentaje: number }
 interface LavaMotoConfig { id?: string; costo: number; precio_venta: number; activo: boolean }
+interface RepuestoUMAEdit {
+  id: string
+  codigo: string
+  descripcion: string
+  subgrupo: string | null
+  precio_publico_iva: number | null
+  tipo: 'repuesto' | 'lubricante'
+  activo: boolean
+}
 
 /* ─── Helpers ────────────────────────────────────────────── */
 function ToggleSwitch({ activo, onChange }: { activo: boolean; onChange: () => void }) {
@@ -107,6 +116,19 @@ function ConfigServicioContent() {
   const [savingLavaMoto, setSavingLavaMoto] = useState(false)
   const [lavaMotoMsg, setLavaMotoMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
+  /* ── Estado catálogo UMA editable ── */
+  const [catalogTab, setCatalogTab]     = useState<'repuesto' | 'lubricante'>('repuesto')
+  const [catalogSearch, setCatalogSearch] = useState('')
+  const [catalogItems, setCatalogItems] = useState<RepuestoUMAEdit[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [editCatalog, setEditCatalog]   = useState<{ id: string; codigo: string; descripcion: string; precio: string } | null>(null)
+  const [confirmCatalog, setConfirmCatalog] = useState<{
+    id: string
+    original: { codigo: string; descripcion: string; precio: number | null }
+    nuevo: { codigo: string; descripcion: string; precio: string }
+  } | null>(null)
+  const [savingCatalog, setSavingCatalog] = useState(false)
+
   /* ── Estado Google Drive ── */
   const [driveConectado, setDriveConectado] = useState(false)
   const [driveFolderInput, setDriveFolderInput] = useState('')
@@ -154,6 +176,37 @@ function ConfigServicioContent() {
   }, [profile?.tenant_id])
 
   useEffect(() => { cargar() }, [cargar])
+
+  const cargarCatalogo = useCallback(async () => {
+    if (!profile?.tenant_id) return
+    setCatalogLoading(true)
+    const base = supabase.from('repuestos_uma')
+      .select('id, codigo, descripcion, subgrupo, precio_publico_iva, tipo, activo')
+      .eq('tenant_id', profile.tenant_id).eq('tipo', catalogTab).order('codigo').limit(300)
+    const q = catalogSearch.trim()
+      ? base.or(`codigo.ilike.%${catalogSearch.trim()}%,descripcion.ilike.%${catalogSearch.trim()}%`)
+      : base
+    const { data } = await q
+    setCatalogItems((data as RepuestoUMAEdit[]) ?? [])
+    setCatalogLoading(false)
+  }, [profile?.tenant_id, catalogTab, catalogSearch])
+
+  useEffect(() => { cargarCatalogo() }, [cargarCatalogo])
+
+  const guardarCatalogItem = async () => {
+    if (!confirmCatalog || !profile?.tenant_id) return
+    setSavingCatalog(true)
+    const nuevoPrecio = parseInt(confirmCatalog.nuevo.precio.replace(/\D/g, ''), 10) || null
+    await supabase.from('repuestos_uma').update({
+      codigo: confirmCatalog.nuevo.codigo.trim(),
+      descripcion: confirmCatalog.nuevo.descripcion.trim(),
+      precio_publico_iva: nuevoPrecio,
+    }).eq('id', confirmCatalog.id).eq('tenant_id', profile.tenant_id)
+    setSavingCatalog(false)
+    setConfirmCatalog(null)
+    setEditCatalog(null)
+    await cargarCatalogo()
+  }
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -1566,6 +1619,162 @@ function ConfigServicioContent() {
           </div>
         </div>
       </div>
+
+      {/* ── Catálogo UMA — Editar ítems ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Catálogo UMA — Editar ítems</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Edita código, descripción y precio de los repuestos y lubricantes cargados. Cada cambio requiere confirmación.</p>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 border-b border-gray-200">
+          {(['repuesto', 'lubricante'] as const).map(tab => (
+            <button key={tab} onClick={() => { setCatalogTab(tab); setEditCatalog(null) }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${catalogTab === tab ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              {tab === 'repuesto' ? 'Repuestos' : 'Lubricantes'}
+            </button>
+          ))}
+        </div>
+
+        {/* Búsqueda */}
+        <div className="flex gap-2">
+          <input value={catalogSearch} onChange={e => setCatalogSearch(e.target.value)}
+            placeholder="Buscar por código o descripción..."
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          {catalogSearch && (
+            <button onClick={() => setCatalogSearch('')}
+              className="px-3 py-2 text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg text-sm">✕</button>
+          )}
+        </div>
+
+        {/* Tabla */}
+        {catalogLoading ? (
+          <p className="text-sm text-gray-400 text-center py-6">Cargando...</p>
+        ) : catalogItems.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-6">Sin resultados.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-gray-100">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[11px] text-gray-500 uppercase border-b bg-gray-50">
+                  <th className="text-left py-2 px-3 font-medium w-32">Código</th>
+                  <th className="text-left py-2 px-3 font-medium">Descripción</th>
+                  <th className="text-right py-2 px-3 font-medium w-32">Precio c/IVA</th>
+                  <th className="py-2 px-3 w-20" />
+                </tr>
+              </thead>
+              <tbody>
+                {catalogItems.map(item => editCatalog?.id === item.id ? (
+                  <tr key={item.id} className="border-b bg-blue-50/40">
+                    <td className="py-1.5 px-2">
+                      <input value={editCatalog.codigo}
+                        onChange={e => setEditCatalog({ ...editCatalog, codigo: e.target.value })}
+                        className="w-full px-2 py-1 border border-blue-300 rounded-lg text-xs font-mono focus:outline-none" />
+                    </td>
+                    <td className="py-1.5 px-2">
+                      <input value={editCatalog.descripcion}
+                        onChange={e => setEditCatalog({ ...editCatalog, descripcion: e.target.value })}
+                        autoFocus
+                        className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm focus:outline-none" />
+                    </td>
+                    <td className="py-1.5 px-2">
+                      <input value={editCatalog.precio}
+                        onChange={e => setEditCatalog({ ...editCatalog, precio: e.target.value.replace(/\D/g, '') })}
+                        className="w-full px-2 py-1 border border-blue-300 rounded-lg text-sm font-mono text-right focus:outline-none"
+                        inputMode="numeric" />
+                    </td>
+                    <td className="py-1.5 px-2">
+                      <div className="flex gap-1 justify-end">
+                        <button onClick={() => {
+                          if (!editCatalog.codigo.trim() || !editCatalog.descripcion.trim()) return
+                          setConfirmCatalog({
+                            id: item.id,
+                            original: { codigo: item.codigo, descripcion: item.descripcion, precio: item.precio_publico_iva },
+                            nuevo: { codigo: editCatalog.codigo, descripcion: editCatalog.descripcion, precio: editCatalog.precio },
+                          })
+                        }} className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-semibold">OK</button>
+                        <button onClick={() => setEditCatalog(null)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">✕</button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={item.id} className="border-b hover:bg-gray-50">
+                    <td className="py-2 px-3 font-mono text-xs text-gray-600">{item.codigo}</td>
+                    <td className="py-2 px-3 text-gray-800 truncate max-w-xs" title={item.descripcion}>{item.descripcion}</td>
+                    <td className="py-2 px-3 text-right text-gray-700 font-semibold">
+                      {item.precio_publico_iva != null ? `$${item.precio_publico_iva.toLocaleString('es-CO')}` : '—'}
+                    </td>
+                    <td className="py-2 px-3">
+                      <button onClick={() => setEditCatalog({ id: item.id, codigo: item.codigo, descripcion: item.descripcion, precio: String(item.precio_publico_iva ?? '') })}
+                        className="text-gray-400 hover:text-blue-600 p-1 transition-colors" title="Editar">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {catalogItems.length === 300 && (
+              <p className="text-xs text-gray-400 text-center py-2">Mostrando primeros 300 resultados — usa el buscador para filtrar.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Modal de confirmación catálogo */}
+      {confirmCatalog && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-base font-semibold text-gray-900">Confirmar cambios en catálogo</h3>
+            <p className="text-sm text-gray-500">Revisa los cambios antes de guardar. Esta acción actualiza el catálogo UMA.</p>
+            <div className="rounded-xl border border-gray-100 overflow-hidden text-sm">
+              <table className="w-full">
+                <thead><tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+                  <th className="text-left py-2 px-3 font-medium">Campo</th>
+                  <th className="text-left py-2 px-3 font-medium">Antes</th>
+                  <th className="text-left py-2 px-3 font-medium">Después</th>
+                </tr></thead>
+                <tbody>
+                  {confirmCatalog.original.codigo !== confirmCatalog.nuevo.codigo && (
+                    <tr className="border-t">
+                      <td className="py-2 px-3 text-gray-500 font-medium">Código</td>
+                      <td className="py-2 px-3 font-mono text-red-600 line-through">{confirmCatalog.original.codigo}</td>
+                      <td className="py-2 px-3 font-mono text-green-700 font-semibold">{confirmCatalog.nuevo.codigo}</td>
+                    </tr>
+                  )}
+                  {confirmCatalog.original.descripcion !== confirmCatalog.nuevo.descripcion && (
+                    <tr className="border-t">
+                      <td className="py-2 px-3 text-gray-500 font-medium">Descripción</td>
+                      <td className="py-2 px-3 text-red-600 line-through">{confirmCatalog.original.descripcion}</td>
+                      <td className="py-2 px-3 text-green-700 font-semibold">{confirmCatalog.nuevo.descripcion}</td>
+                    </tr>
+                  )}
+                  {String(confirmCatalog.original.precio ?? '') !== confirmCatalog.nuevo.precio && (
+                    <tr className="border-t">
+                      <td className="py-2 px-3 text-gray-500 font-medium">Precio c/IVA</td>
+                      <td className="py-2 px-3 text-red-600 line-through">{confirmCatalog.original.precio != null ? `$${confirmCatalog.original.precio.toLocaleString('es-CO')}` : '—'}</td>
+                      <td className="py-2 px-3 text-green-700 font-semibold">{confirmCatalog.nuevo.precio ? `$${parseInt(confirmCatalog.nuevo.precio).toLocaleString('es-CO')}` : '—'}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex gap-3 justify-end pt-1">
+              <button onClick={() => setConfirmCatalog(null)} disabled={savingCatalog}
+                className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={guardarCatalogItem} disabled={savingCatalog}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors">
+                {savingCatalog ? 'Guardando...' : 'Confirmar y guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )
