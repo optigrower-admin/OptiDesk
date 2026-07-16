@@ -76,7 +76,7 @@ export default function VentasPage() {
         const ids = (raw ?? []).map((c) => c.id as string)
         const { data: extras } = await supabase
           .from('clientes')
-          .select('id, primer_apellido, cedula, numero_documento, email, estado_aprobacion_matricula, placa, numero_factura')
+          .select('id, primer_apellido, cedula, email, estado_aprobacion_matricula, placa, numero_factura')
           .in('id', ids)
         for (const e of extras ?? []) extraMap[e.id as string] = e
       }
@@ -205,7 +205,7 @@ export default function VentasPage() {
           cliente:                      { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null, placa: (ex.placa ?? null) as string | null },
           alistamientoOrdenId:          ((c as Record<string, unknown>).alistamiento_orden_id ?? null) as string | null,
           cliente_apellido:             (ex.primer_apellido ?? null) as string | null,
-          cliente_documento:            (ex.numero_documento ?? ex.cedula ?? null) as string | null,
+          cliente_documento:            (ex.cedula ?? null) as string | null,
           cliente_email:                (ex.email ?? null) as string | null,
           nombre_pendiente_aprobacion:  (c.nombre_pendiente_aprobacion ?? null) as boolean | null,
           leads_campana:                [],
