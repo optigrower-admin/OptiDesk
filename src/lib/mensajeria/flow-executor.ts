@@ -723,10 +723,14 @@ async function procesarNodo(
 
     // ── Menú de opciones (matching por número, exacto, contiene o no_contiene) ─
     case 'menu_opciones': {
-      const cantidad = Number(data.cantidad ?? 3)
+      const cantidad    = Number(data.cantidad ?? 3)
       const rawOpciones = (data.opciones ?? []) as { tipo_match?: string; valor_match?: string }[]
-      const ultimoMsg  = (contexto.ultimo_mensaje ?? '').trim()
-      const ultimoLow  = ultimoMsg.toLowerCase()
+      // Limpiar el mensaje: quitar espacios, puntuación y saltos de línea alrededor del número
+      const raw         = (contexto.ultimo_mensaje ?? '')
+      const ultimoMsg   = raw.replace(/^[\s.,!?¿¡\n\r]+|[\s.,!?¿¡\n\r]+$/g, '')
+      const ultimoLow   = ultimoMsg.toLowerCase()
+
+      console.log(`[menu_opciones] raw="${raw.replace(/\n/g,'\\n')}" limpio="${ultimoMsg}" cantidad=${cantidad} opciones=${rawOpciones.length}`)
 
       for (let i = 0; i < cantidad; i++) {
         const op    = rawOpciones[i] ?? {}
@@ -736,20 +740,30 @@ async function procesarNodo(
 
         let match = false
         switch (tipo) {
-          case 'numero':      match = ultimoMsg === String(num); break
+          // Número: acepta "3", "3.", "3!" pero NO "13" ni "hola 3"
+          case 'numero': {
+            // Quitar puntuación y espacios, luego verificar que solo queda ese número
+            const soloChars = ultimoMsg.replace(/[.,!?¿¡\s]/g, '')
+            match = soloChars === String(num)
+            break
+          }
           case 'exacto':      match = Boolean(valor) && ultimoLow === valor; break
           case 'contiene':    match = Boolean(valor) && ultimoLow.includes(valor); break
           case 'no_contiene': match = Boolean(valor) && !ultimoLow.includes(valor); break
         }
 
+        console.log(`[menu_opciones] opción ${num}: tipo=${tipo} valor="${valor}" match=${match}`)
+
         if (match) {
           const siguiente = getSiguienteNodoConSalida(edges, nodo.id, String(num))
+          console.log(`[menu_opciones] → salida "${num}" → nodo=${siguiente}`)
           return { tipo: 'continuar', siguiente_nodo_id: siguiente }
         }
       }
 
       // Ninguna opción coincidió → salida "otro" si está conectada
       const otraSalida = getSiguienteNodoConSalida(edges, nodo.id, 'otro')
+      console.log(`[menu_opciones] sin coincidencia → otro=${otraSalida}`)
       if (otraSalida) return { tipo: 'continuar', siguiente_nodo_id: otraSalida }
 
       // Sin "otro": pausar en este nodo esperando nueva respuesta
