@@ -548,6 +548,65 @@ const EtiquetaNode = ({ id, data }: NodeProps) => {
   )
 }
 
+// ─── NODO: Capturar dato ─────────────────────────────────────────────────────
+const CapturarDatoNode = ({ id, data }: NodeProps) => {
+  const { setNodes, setEdges } = useReactFlow()
+  const upd = (k: string, v: string) =>
+    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
+
+  const campo = String(data.campo ?? 'nombre')
+  const esVariable = campo === 'variable'
+
+  const etiquetaCampo: Record<string, string> = {
+    nombre: 'nombre del cliente',
+    celular: 'celular',
+    email: 'correo electrónico',
+    cedula: 'número de cédula',
+  }
+
+  return (
+    <div className={`${nodeBaseClass} border-violet-400`} style={{ width: 230 }}>
+      <Handle type="target" position={Position.Top} className="!bg-violet-400 !w-3 !h-3" />
+      <NodeHeader color="bg-violet-500" icon="💾" label="Guardar respuesta" onDelete={eliminar} />
+      <div className="px-3 py-2.5 space-y-2">
+        <label className="block text-xs text-gray-500 font-medium">Guardar último mensaje del cliente en:</label>
+        <select value={campo} onChange={e => upd('campo', e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-400">
+          <optgroup label="── Perfil del cliente ──">
+            <option value="nombre">Nombre del cliente</option>
+            <option value="celular">Celular</option>
+            <option value="email">Correo electrónico</option>
+            <option value="cedula">Número de cédula</option>
+          </optgroup>
+          <optgroup label="── Variable del flujo ──">
+            <option value="variable">Variable personalizada</option>
+          </optgroup>
+        </select>
+        {esVariable ? (
+          <>
+            <input type="text" defaultValue={data.nombre_variable ?? ''} onChange={e => upd('nombre_variable', e.target.value)}
+              placeholder="Nombre de la variable (ej: moto_interes)"
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-400" />
+            <p className="text-[10px] text-violet-600 leading-tight">
+              Usa {'{{variables.'}{data.nombre_variable || 'nombre_variable'}{'}}' } en mensajes siguientes.
+            </p>
+          </>
+        ) : (
+          <p className="text-[10px] text-violet-600 leading-tight font-medium">
+            Actualiza el campo <strong>{etiquetaCampo[campo]}</strong> del cliente en el CRM.
+            También disponible como {'{{variables.'}{campo}{'}}' }.
+          </p>
+        )}
+        <p className="text-[10px] text-gray-400 leading-tight">
+          Pon un nodo Condición antes para validar el dato antes de guardarlo.
+        </p>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!bg-violet-400 !w-3 !h-3" />
+    </div>
+  )
+}
+
 const FinNode = ({ id }: NodeProps) => {
   const { setNodes, setEdges } = useReactFlow()
   const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
@@ -561,35 +620,37 @@ const FinNode = ({ id }: NodeProps) => {
 
 // ─── Registro de tipos de nodo ────────────────────────────────────────────────
 const NODE_TYPES: NodeTypes = {
-  trigger:      TriggerNode,
-  mensaje:      MensajeNode,
-  asignar:      AsignarNode,
-  esperar:      EsperarNode,
-  etapa:        EtapaNode,
-  condicion:    CondicionNode,
-  agente_ia:    AgenteIANode,
-  plantilla:    PlantillaNode,
-  media:        MediaNode,
-  nota_interna: NotaInternaNode,
-  etiqueta:     EtiquetaNode,
-  subflujo:     SubflujoNode,
-  fin:          FinNode,
+  trigger:       TriggerNode,
+  mensaje:       MensajeNode,
+  asignar:       AsignarNode,
+  esperar:       EsperarNode,
+  etapa:         EtapaNode,
+  condicion:     CondicionNode,
+  agente_ia:     AgenteIANode,
+  plantilla:     PlantillaNode,
+  media:         MediaNode,
+  nota_interna:  NotaInternaNode,
+  etiqueta:      EtiquetaNode,
+  subflujo:      SubflujoNode,
+  capturar_dato: CapturarDatoNode,
+  fin:           FinNode,
 }
 
 // ─── Paleta de nodos ──────────────────────────────────────────────────────────
 const PALETTE_ITEMS = [
-  { type: 'mensaje',      icon: '💬', label: 'Enviar mensaje',    color: 'border-green-300 bg-green-50 hover:bg-green-100'    },
-  { type: 'agente_ia',   icon: '🤖', label: 'Agente IA',         color: 'border-indigo-300 bg-indigo-50 hover:bg-indigo-100'  },
-  { type: 'plantilla',   icon: '📋', label: 'Plantilla Meta',    color: 'border-teal-300 bg-teal-50 hover:bg-teal-100'       },
-  { type: 'media',       icon: '📎', label: 'Archivo/Media',     color: 'border-pink-300 bg-pink-50 hover:bg-pink-100'       },
-  { type: 'condicion',   icon: '🔀', label: 'Condición',         color: 'border-yellow-300 bg-yellow-50 hover:bg-yellow-100'  },
-  { type: 'asignar',     icon: '👤', label: 'Asignar asesor',    color: 'border-purple-300 bg-purple-50 hover:bg-purple-100'  },
-  { type: 'etapa',       icon: '📊', label: 'Cambiar etapa',     color: 'border-cyan-300 bg-cyan-50 hover:bg-cyan-100'       },
-  { type: 'esperar',     icon: '⏱️', label: 'Esperar / Delay',   color: 'border-orange-300 bg-orange-50 hover:bg-orange-100'  },
-  { type: 'etiqueta',    icon: '🏷️', label: 'Etiquetar cliente', color: 'border-rose-300 bg-rose-50 hover:bg-rose-100'       },
-  { type: 'nota_interna',icon: '📝', label: 'Nota interna',      color: 'border-yellow-200 bg-yellow-50 hover:bg-yellow-100'  },
-  { type: 'subflujo',    icon: '🔗', label: 'Subflujo',          color: 'border-slate-300 bg-slate-50 hover:bg-slate-100'    },
-  { type: 'fin',         icon: '🏁', label: 'Fin del flujo',     color: 'border-gray-300 bg-gray-50 hover:bg-gray-100'       },
+  { type: 'mensaje',       icon: '💬', label: 'Enviar mensaje',    color: 'border-green-300 bg-green-50 hover:bg-green-100'    },
+  { type: 'agente_ia',    icon: '🤖', label: 'Agente IA',         color: 'border-indigo-300 bg-indigo-50 hover:bg-indigo-100'  },
+  { type: 'plantilla',    icon: '📋', label: 'Plantilla Meta',    color: 'border-teal-300 bg-teal-50 hover:bg-teal-100'       },
+  { type: 'media',        icon: '📎', label: 'Archivo/Media',     color: 'border-pink-300 bg-pink-50 hover:bg-pink-100'       },
+  { type: 'condicion',    icon: '🔀', label: 'Condición',         color: 'border-yellow-300 bg-yellow-50 hover:bg-yellow-100'  },
+  { type: 'capturar_dato',icon: '💾', label: 'Guardar respuesta', color: 'border-violet-300 bg-violet-50 hover:bg-violet-100' },
+  { type: 'asignar',      icon: '👤', label: 'Asignar asesor',    color: 'border-purple-300 bg-purple-50 hover:bg-purple-100'  },
+  { type: 'etapa',        icon: '📊', label: 'Cambiar etapa',     color: 'border-cyan-300 bg-cyan-50 hover:bg-cyan-100'       },
+  { type: 'esperar',      icon: '⏱️', label: 'Esperar / Delay',   color: 'border-orange-300 bg-orange-50 hover:bg-orange-100'  },
+  { type: 'etiqueta',     icon: '🏷️', label: 'Etiquetar cliente', color: 'border-rose-300 bg-rose-50 hover:bg-rose-100'       },
+  { type: 'nota_interna', icon: '📝', label: 'Nota interna',      color: 'border-yellow-200 bg-yellow-50 hover:bg-yellow-100'  },
+  { type: 'subflujo',     icon: '🔗', label: 'Subflujo',          color: 'border-slate-300 bg-slate-50 hover:bg-slate-100'    },
+  { type: 'fin',          icon: '🏁', label: 'Fin del flujo',     color: 'border-gray-300 bg-gray-50 hover:bg-gray-100'       },
 ]
 
 function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[]; etiquetas: Etiqueta[] }): Record<string, unknown> {
@@ -606,6 +667,7 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
     case 'nota_interna':  return { contenido: '' }
     case 'etiqueta':      return { accion: 'agregar', etiqueta_id: '', etiquetas: ctx.etiquetas }
     case 'subflujo':      return { subflujo_id: '', flujos_disponibles: ctx.flujos }
+    case 'capturar_dato': return { campo: 'nombre', nombre_variable: '' }
     case 'fin':           return {}
     default:              return {}
   }

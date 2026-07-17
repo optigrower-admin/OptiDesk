@@ -16,7 +16,9 @@ export type TipoNodo =
   | 'plantilla'
   | 'media'
   | 'nota_interna'
+  | 'etiqueta'
   | 'subflujo'
+  | 'capturar_dato'
   | 'fin'
 
 // ─── Tipos de disparador ──────────────────────────────────────────────────────
@@ -87,6 +89,11 @@ export interface DatosSubflujo {
   nombre_subflujo?: string
 }
 
+export interface DatosCapturarDato {
+  campo: 'nombre' | 'celular' | 'email' | 'cedula' | 'variable'
+  nombre_variable?: string  // solo cuando campo === 'variable'
+}
+
 // ─── Estructura de nodo completa ──────────────────────────────────────────────
 export type DatosNodo =
   | (DatosTrigger & { tipo: 'trigger' })
@@ -100,6 +107,7 @@ export type DatosNodo =
   | (DatosMedia & { tipo: 'media' })
   | (DatosNotaInterna & { tipo: 'nota_interna' })
   | (DatosSubflujo & { tipo: 'subflujo' })
+  | (DatosCapturarDato & { tipo: 'capturar_dato' })
   | ({ tipo: 'fin' })
 
 // ─── Estructura del flujo guardado en DB (nodos JSONB) ────────────────────────
@@ -146,7 +154,7 @@ export interface ContextoEjecucion {
   ultimo_mensaje?: string
   etapa_actual?: string
   assigned_to?: string
-  variables?: Record<string, string>   // variables personalizadas recolectadas
+  variables?: Record<string, string>   // datos capturados por nodos capturar_dato + variables personalizadas
   respuestas?: Record<string, string>  // respuestas de agentes IA o formularios
 }
 

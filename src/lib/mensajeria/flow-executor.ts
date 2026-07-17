@@ -690,6 +690,43 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
+    // ── Guardar respuesta del cliente en campo del perfil ─────────────────────
+    case 'capturar_dato': {
+      const campo = String(data.campo ?? 'nombre')
+      const nombreVar = campo === 'variable' ? String(data.nombre_variable ?? 'dato') : campo
+      const valor = (contexto.ultimo_mensaje ?? '').trim()
+
+      if (valor) {
+        const nuevasVars = { ...(contexto.variables ?? {}), [nombreVar]: valor }
+
+        const camposDB: Record<string, string> = {
+          nombre: 'nombre', celular: 'celular', email: 'email', cedula: 'cedula',
+        }
+
+        if (clienteId && camposDB[campo]) {
+          await supabase.from('clientes')
+            .update({ [camposDB[campo]]: valor })
+            .eq('id', clienteId)
+
+          // Sincronizar contexto si es nombre o celular (se usan en interpolación)
+          const ctxUpdate: Partial<ContextoEjecucion> = { variables: nuevasVars }
+          if (campo === 'nombre') ctxUpdate.nombre_cliente = valor
+          if (campo === 'celular') ctxUpdate.celular_cliente = valor
+
+          console.log(`[flow-executor] capturar_dato: campo=${campo} valor="${valor}" cliente=${clienteId}`)
+          return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), contexto: ctxUpdate }
+        }
+
+        return {
+          tipo: 'continuar',
+          siguiente_nodo_id: getSiguienteNodo(edges, nodo.id),
+          contexto: { variables: nuevasVars },
+        }
+      }
+
+      return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+    }
+
     // ── Fin del flujo ─────────────────────────────────────────────────────────
     case 'fin':
       return { tipo: 'fin' }
@@ -1050,6 +1087,7 @@ function interpolarVariables(texto: string, contexto: ContextoEjecucion): string
     .replace(/\{\{canal\}\}/gi, contexto.canal ?? '')
     .replace(/\{\{etapa\}\}/gi, contexto.etapa_actual ?? '')
     .replace(/\{\{ultimo_mensaje\}\}/gi, contexto.ultimo_mensaje ?? '')
+    .replace(/\{\{variables\.(\w+)\}\}/gi, (_, k) => contexto.variables?.[k] ?? '')
 }
 
 // ─── Marcar ejecución como error ──────────────────────────────────────────────

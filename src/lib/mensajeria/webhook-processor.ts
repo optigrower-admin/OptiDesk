@@ -244,12 +244,14 @@ async function procesarMensajeIndividual(
 async function determinarAsignacion(
   supabase: SupabaseAdmin, tenantId: string, canal: string, contactId: string
 ): Promise<string | null> {
+  // Si el cliente ya tenía asesor asignado, mantenerlo
   const { data: clienteExistente } = await supabase
     .from('clientes').select('assigned_to').eq('tenant_id', tenantId)
     .or(`whatsapp_number.eq.${contactId},messenger_id.eq.${contactId},instagram_id.eq.${contactId}`)
     .maybeSingle()
   if (clienteExistente?.assigned_to) return clienteExistente.assigned_to
 
+  // Solo aplicar reglas explícitas de asignación configuradas por el tenant
   const { data: regla } = await supabase
     .from('reglas_asignacion').select('tipo_asignacion, asignar_a')
     .eq('tenant_id', tenantId).eq('activa', true)
@@ -259,20 +261,8 @@ async function determinarAsignacion(
 
   if (regla?.tipo_asignacion === 'usuario_fijo' && regla.asignar_a) return regla.asignar_a
 
-  const { data: asesores } = await supabase
-    .from('usuarios').select('id').eq('tenant_id', tenantId).in('rol', ['admin', 'gerencia'])
-
-  if (!asesores?.length) return null
-
-  let menorCarga = Infinity
-  let seleccionado: string | null = null
-  for (const asesor of asesores) {
-    const { count } = await supabase
-      .from('conversaciones').select('id', { count: 'exact', head: true })
-      .eq('assigned_to', asesor.id).eq('estado', 'abierta')
-    if ((count ?? 0) < menorCarga) { menorCarga = count ?? 0; seleccionado = asesor.id }
-  }
-  return seleccionado
+  // Sin regla activa: llega sin asignar para que el equipo lo tome manualmente
+  return null
 }
 
 async function verificarLimiteDiario(supabase: SupabaseAdmin, tenantId: string) {
