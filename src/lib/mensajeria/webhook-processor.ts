@@ -1,5 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToTenant } from './push'
+import { buscarOCrearCliente } from '@/lib/clientes/buscarOCrearCliente'
+import type { TriggerTipo } from '@/types/flujos'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
 
@@ -127,6 +129,8 @@ async function procesarMensajeIndividual(
     .maybeSingle()
 
   const esNueva = !conv
+  let clienteEsNuevoOReactivado = false
+  let resolvedClienteId: string | null = null
 
   if (!conv) {
     const assignedTo = await determinarAsignacion(supabase, tenantId, canal, canalContactId)
@@ -155,12 +159,33 @@ async function procesarMensajeIndividual(
       .select('id,assigned_to,no_leidos_count,sin_respuesta_asesor_desde,cliente_id')
       .single()
     conv = nuevaConv
+    clienteEsNuevoOReactivado = true
   }
 
   if (!conv) return
 
-  // Conversación Messenger/Instagram existente sin cliente vinculado
-  if ((canal === 'messenger' || canal === 'instagram') && !(conv as Record<string, unknown>).cliente_id) {
+  resolvedClienteId = (conv as Record<string, unknown>).cliente_id as string | null
+
+  // WhatsApp: si no hay cliente vinculado, crear uno nuevo en seguimiento con el nombre del perfil
+  if (canal === 'whatsapp' && !resolvedClienteId) {
+    const contacts = value.contacts as Array<{ profile?: { name?: string } }> | undefined
+    const nombreWa = contacts?.[0]?.profile?.name ?? `+${canalContactId}`
+    try {
+      const { cliente: nuevoCliente } = await buscarOCrearCliente({
+        tenantId, canal: 'whatsapp', contactId: canalContactId,
+        celular: canalContactId, nombre: nombreWa,
+        enSeguimientoVentas: true, etapaVenta: 'nuevo_mensaje', etapaVentaOrden: -1,
+        supabaseClient: supabase,
+      })
+      if (nuevoCliente) {
+        resolvedClienteId = nuevoCliente.id
+        await supabase.from('conversaciones').update({ cliente_id: nuevoCliente.id }).eq('id', conv.id)
+      }
+    } catch (e) { console.error('[webhook] error creando cliente WhatsApp:', e) }
+  }
+
+  // Messenger/Instagram: vincular cliente si la conversación no tiene uno
+  if ((canal === 'messenger' || canal === 'instagram') && !resolvedClienteId) {
     let clienteVinculadoId: string | null = null
     if (canal === 'messenger') {
       const { data: existente } = await supabase
@@ -172,6 +197,7 @@ async function procesarMensajeIndividual(
       clienteVinculadoId = existente?.id ?? await crearClienteDesdeInstagram(supabase, tenantId, canalContactId)
     }
     if (clienteVinculadoId) {
+      resolvedClienteId = clienteVinculadoId
       await supabase.from('conversaciones').update({ cliente_id: clienteVinculadoId }).eq('id', conv.id)
     }
   }
@@ -202,11 +228,17 @@ async function procesarMensajeIndividual(
 
   await verificarLimiteDiario(supabase, tenantId)
 
-  // Disparar flujo de automatización (no-bloqueante)
-  const clienteIdFinal = (conv as Record<string, unknown>).cliente_id as string | null
-  import('./flow-executor').then(({ iniciarFlujoParaConversacion }) =>
-    iniciarFlujoParaConversacion(tenantId, conv.id, clienteIdFinal, 'mensaje_nuevo')
-  ).catch(e => console.error('[flujo] error iniciando flujo:', e))
+  // Iniciar/continuar flujo de automatización
+  // await garantiza que Vercel no termine la función serverless antes de que se ejecute
+  const triggerTipos: TriggerTipo | TriggerTipo[] = clienteEsNuevoOReactivado
+    ? ['mensaje_nuevo', 'nuevo_cliente']
+    : 'mensaje_nuevo'
+  try {
+    const { iniciarFlujoParaConversacion } = await import('./flow-executor')
+    await iniciarFlujoParaConversacion(tenantId, conv.id, resolvedClienteId, triggerTipos)
+  } catch (e) {
+    console.error('[flujo] error iniciando flujo:', e)
+  }
 }
 
 async function determinarAsignacion(

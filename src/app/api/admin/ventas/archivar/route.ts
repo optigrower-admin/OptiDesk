@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
       en_seguimiento_ventas: false,
       automatizado:          false,
       flujo_activo_id:       null,
+      whatsapp_number:       null,
+      messenger_id:          null,
+      instagram_id:          null,
     })
     .eq('id', cliente_id)
     .eq('tenant_id', perfil.tenant_id)
