@@ -509,38 +509,95 @@ const SubflujoNode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Fin ───────────────────────────────────────────────────────────────
 // ─── NODO: Etiqueta ──────────────────────────────────────────────────────────
+const COLORES_ETIQUETA = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#6b7280']
+
 const EtiquetaNode = ({ id, data }: NodeProps) => {
   const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const updMulti = (patch: Record<string, string>) =>
+    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n))
   const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
+
   const etiquetas: Etiqueta[] = data.etiquetas ?? []
   const etiquetaId = String(data.etiqueta_id ?? '')
   const seleccionada = etiquetas.find(e => e.id === etiquetaId)
+  const modoNueva = String(data.modo_etiqueta ?? 'existente') === 'nueva'
+  const colorNueva = String(data.nueva_etiqueta_color ?? '#3b82f6')
+
   return (
-    <div className={`${nodeBaseClass} border-rose-300`} style={{ width: 230 }}>
+    <div className={`${nodeBaseClass} border-rose-300`} style={{ width: 240 }}>
       <Handle type="target" position={Position.Top} className="!bg-rose-400 !w-3 !h-3" />
       <NodeHeader color="bg-rose-500" icon="🏷️" label="Etiquetar cliente" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
+        {/* Acción */}
         <select defaultValue={data.accion ?? 'agregar'} onChange={e => upd('accion', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400">
           <option value="agregar">➕ Agregar etiqueta</option>
           <option value="quitar">➖ Quitar etiqueta</option>
         </select>
-        <div className="flex items-center gap-2">
-          {seleccionada && (
-            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: seleccionada.color }} />
-          )}
-          <select value={etiquetaId} onChange={e => upd('etiqueta_id', e.target.value)}
-            className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400">
-            <option value="">— Seleccionar etiqueta —</option>
-            {etiquetas.map(et => (
-              <option key={et.id} value={et.id}>{et.nombre}</option>
-            ))}
-          </select>
+
+        {/* Toggle existente / nueva */}
+        <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs">
+          <button
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); updMulti({ modo_etiqueta: 'existente', nueva_etiqueta_nombre: '', nueva_etiqueta_color: '' }) }}
+            className={`nodrag flex-1 py-1 transition-colors ${!modoNueva ? 'bg-rose-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
+          >Existente</button>
+          <button
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); updMulti({ modo_etiqueta: 'nueva', etiqueta_id: '' }) }}
+            className={`nodrag flex-1 py-1 transition-colors ${modoNueva ? 'bg-rose-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
+          >+ Crear nueva</button>
         </div>
-        {etiquetas.length === 0 && (
-          <p className="text-[10px] text-gray-400">Crea etiquetas en Config Ventas → Etiquetas</p>
+
+        {!modoNueva ? (
+          /* ── Seleccionar existente ─────────────── */
+          <div className="flex items-center gap-2">
+            {seleccionada && (
+              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: seleccionada.color }} />
+            )}
+            <select value={etiquetaId} onChange={e => upd('etiqueta_id', e.target.value)}
+              className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400">
+              <option value="">— Seleccionar etiqueta —</option>
+              {etiquetas.map(et => (
+                <option key={et.id} value={et.id}>{et.nombre}</option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          /* ── Crear nueva etiqueta ──────────────── */
+          <div className="space-y-1.5">
+            <input
+              type="text"
+              defaultValue={data.nueva_etiqueta_nombre ?? ''}
+              onChange={e => upd('nueva_etiqueta_nombre', e.target.value)}
+              placeholder="Nombre de la etiqueta..."
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
+            />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] text-gray-500">Color:</span>
+              {COLORES_ETIQUETA.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={e => { e.stopPropagation(); upd('nueva_etiqueta_color', c) }}
+                  className={`nodrag w-4 h-4 rounded-full flex-shrink-0 transition-transform hover:scale-110 ${colorNueva === c ? 'ring-2 ring-offset-1 ring-gray-500 scale-110' : ''}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+            {data.nueva_etiqueta_nombre && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-white font-medium"
+                style={{ backgroundColor: colorNueva }}
+              >
+                🏷️ {String(data.nueva_etiqueta_nombre)}
+              </span>
+            )}
+            <p className="text-[10px] text-gray-400 leading-tight">Si ya existe una etiqueta con ese nombre la reutiliza.</p>
+          </div>
         )}
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-rose-400 !w-3 !h-3" />

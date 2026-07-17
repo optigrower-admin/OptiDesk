@@ -662,7 +662,31 @@ async function procesarNodo(
     // ── Etiquetar cliente ────────────────────────────────────────────────────
     case 'etiqueta': {
       const accionEtiqueta = String(data.accion ?? 'agregar')
-      const etiquetaId = String(data.etiqueta_id ?? '')
+      let etiquetaId = String(data.etiqueta_id ?? '').trim()
+      const nuevaNombre = String(data.nueva_etiqueta_nombre ?? '').trim()
+      const nuevaColor  = String(data.nueva_etiqueta_color  ?? '#3b82f6')
+
+      // Modo "crear nueva": buscar o crear la etiqueta por nombre
+      if (!etiquetaId && nuevaNombre && clienteId) {
+        const { data: existente } = await supabase
+          .from('etiquetas')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .ilike('nombre', nuevaNombre)
+          .maybeSingle()
+
+        if (existente) {
+          etiquetaId = existente.id
+        } else {
+          const { data: creada } = await supabase
+            .from('etiquetas')
+            .insert({ tenant_id: tenantId, nombre: nuevaNombre, color: nuevaColor })
+            .select('id')
+            .single()
+          if (creada) etiquetaId = creada.id
+        }
+      }
+
       if (etiquetaId && clienteId) {
         if (accionEtiqueta === 'agregar') {
           await supabase.from('clientes_etiquetas').upsert(
