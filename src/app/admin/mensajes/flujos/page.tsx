@@ -548,6 +548,104 @@ const EtiquetaNode = ({ id, data }: NodeProps) => {
   )
 }
 
+// ─── NODO: Menú de opciones ───────────────────────────────────────────────────
+const MenuOpcionesNode = ({ id, data }: NodeProps) => {
+  const { setNodes, setEdges } = useReactFlow()
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
+
+  const cantidad = Number(data.cantidad ?? 3)
+  const etiquetas: string[] = data.etiquetas ?? []
+
+  const updCantidad = (n: number) =>
+    setNodes(ns => ns.map(node => node.id === id ? { ...node, data: { ...node.data, cantidad: n } } : node))
+
+  const updEtiqueta = (i: number, v: string) => {
+    const nuevas = [...etiquetas]
+    nuevas[i] = v
+    setNodes(ns => ns.map(node => node.id === id ? { ...node, data: { ...node.data, etiquetas: nuevas } } : node))
+  }
+
+  // Posiciones de handles: opciones 1..N + "otro" al final
+  // Total handles = cantidad + 1 (otro); distribuidos en el ancho del nodo
+  const getLeft = (idx: number) => `${(100 / (cantidad + 2)) * (idx + 1)}%`
+
+  const nums = Array.from({ length: cantidad }, (_, i) => i + 1)
+
+  return (
+    <div className={`${nodeBaseClass} border-fuchsia-400`} style={{ width: 250 }}>
+      <Handle type="target" position={Position.Top} className="!bg-fuchsia-400 !w-3 !h-3" />
+      <NodeHeader color="bg-fuchsia-500" icon="📋" label="Menú de opciones" onDelete={eliminar} />
+      <div className="px-3 py-2.5 space-y-2">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-500 whitespace-nowrap">Número de opciones:</label>
+          <select
+            value={cantidad}
+            onChange={e => updCantidad(Number(e.target.value))}
+            className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
+          >
+            {[2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{n} opciones</option>)}
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          {nums.map(n => (
+            <div key={n} className="flex items-center gap-1.5">
+              <span className="text-fuchsia-600 font-bold text-xs w-4 text-right flex-shrink-0">{n}.</span>
+              <input
+                key={`${id}-op-${n}`}
+                type="text"
+                defaultValue={etiquetas[n - 1] ?? ''}
+                onChange={e => updEtiqueta(n - 1, e.target.value)}
+                placeholder={`Opción ${n} (etiqueta opcional)`}
+                className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
+              />
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[10px] text-gray-400 leading-tight">
+          El cliente responde con el número (1, 2, 3…). Si la respuesta no coincide → salida <span className="text-amber-600 font-medium">?otro</span>.
+        </p>
+      </div>
+
+      {/* Etiquetas de handles */}
+      <div className="relative h-5 mx-3">
+        {nums.map(n => (
+          <span
+            key={n}
+            className="absolute text-[9px] text-fuchsia-600 font-bold"
+            style={{ left: getLeft(n - 1), transform: 'translateX(-50%)' }}
+          >{n}</span>
+        ))}
+        <span
+          className="absolute text-[9px] text-amber-500 font-bold"
+          style={{ left: getLeft(cantidad), transform: 'translateX(-50%)' }}
+        >?</span>
+      </div>
+
+      {/* Handles numerados */}
+      {nums.map(n => (
+        <Handle
+          key={n}
+          id={String(n)}
+          type="source"
+          position={Position.Bottom}
+          style={{ left: getLeft(n - 1) }}
+          className="!bg-fuchsia-400 !w-3 !h-3"
+        />
+      ))}
+      {/* Handle fallback */}
+      <Handle
+        id="otro"
+        type="source"
+        position={Position.Bottom}
+        style={{ left: getLeft(cantidad) }}
+        className="!bg-amber-400 !w-3 !h-3"
+      />
+    </div>
+  )
+}
+
 // ─── NODO: Capturar dato ─────────────────────────────────────────────────────
 const CapturarDatoNode = ({ id, data }: NodeProps) => {
   const { setNodes, setEdges } = useReactFlow()
@@ -632,8 +730,9 @@ const NODE_TYPES: NodeTypes = {
   nota_interna:  NotaInternaNode,
   etiqueta:      EtiquetaNode,
   subflujo:      SubflujoNode,
-  capturar_dato: CapturarDatoNode,
-  fin:           FinNode,
+  capturar_dato:  CapturarDatoNode,
+  menu_opciones:  MenuOpcionesNode,
+  fin:            FinNode,
 }
 
 // ─── Paleta de nodos ──────────────────────────────────────────────────────────
@@ -643,7 +742,8 @@ const PALETTE_ITEMS = [
   { type: 'plantilla',    icon: '📋', label: 'Plantilla Meta',    color: 'border-teal-300 bg-teal-50 hover:bg-teal-100'       },
   { type: 'media',        icon: '📎', label: 'Archivo/Media',     color: 'border-pink-300 bg-pink-50 hover:bg-pink-100'       },
   { type: 'condicion',    icon: '🔀', label: 'Condición',         color: 'border-yellow-300 bg-yellow-50 hover:bg-yellow-100'  },
-  { type: 'capturar_dato',icon: '💾', label: 'Guardar respuesta', color: 'border-violet-300 bg-violet-50 hover:bg-violet-100' },
+  { type: 'capturar_dato', icon: '💾', label: 'Guardar respuesta', color: 'border-violet-300 bg-violet-50 hover:bg-violet-100' },
+  { type: 'menu_opciones', icon: '📋', label: 'Menú de opciones', color: 'border-fuchsia-300 bg-fuchsia-50 hover:bg-fuchsia-100' },
   { type: 'asignar',      icon: '👤', label: 'Asignar asesor',    color: 'border-purple-300 bg-purple-50 hover:bg-purple-100'  },
   { type: 'etapa',        icon: '📊', label: 'Cambiar etapa',     color: 'border-cyan-300 bg-cyan-50 hover:bg-cyan-100'       },
   { type: 'esperar',      icon: '⏱️', label: 'Esperar / Delay',   color: 'border-orange-300 bg-orange-50 hover:bg-orange-100'  },
@@ -667,8 +767,9 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
     case 'nota_interna':  return { contenido: '' }
     case 'etiqueta':      return { accion: 'agregar', etiqueta_id: '', etiquetas: ctx.etiquetas }
     case 'subflujo':      return { subflujo_id: '', flujos_disponibles: ctx.flujos }
-    case 'capturar_dato': return { campo: 'nombre', nombre_variable: '' }
-    case 'fin':           return {}
+    case 'capturar_dato':  return { campo: 'nombre', nombre_variable: '' }
+    case 'menu_opciones':  return { cantidad: 3, etiquetas: ['', '', ''] }
+    case 'fin':            return {}
     default:              return {}
   }
 }

@@ -690,6 +690,29 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
+    // ── Menú de opciones (1, 2, 3 … N → salida numerada) ─────────────────────
+    case 'menu_opciones': {
+      const cantidad = Number(data.cantidad ?? 3)
+      const ultimoMsg = (contexto.ultimo_mensaje ?? '').trim()
+      const num = parseInt(ultimoMsg)
+
+      // Respuesta válida: número entre 1 y N
+      if (!isNaN(num) && num >= 1 && num <= cantidad) {
+        const siguiente = getSiguienteNodoConSalida(edges, nodo.id, String(num))
+        return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+      }
+
+      // Respuesta no es un número válido → salida "otro" si está conectada
+      const otraSalida = getSiguienteNodoConSalida(edges, nodo.id, 'otro')
+      if (otraSalida) {
+        return { tipo: 'continuar', siguiente_nodo_id: otraSalida }
+      }
+
+      // Sin "otro" conectado: pausar en este nodo esperando respuesta válida
+      const enUnAno = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString()
+      return { tipo: 'pausar', proxima_ejecucion_at: enUnAno, siguiente_nodo_id: nodo.id }
+    }
+
     // ── Guardar respuesta del cliente en campo del perfil ─────────────────────
     case 'capturar_dato': {
       const campo = String(data.campo ?? 'nombre')

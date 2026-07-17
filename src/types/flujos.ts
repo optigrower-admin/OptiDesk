@@ -19,6 +19,7 @@ export type TipoNodo =
   | 'etiqueta'
   | 'subflujo'
   | 'capturar_dato'
+  | 'menu_opciones'
   | 'fin'
 
 // ─── Tipos de disparador ──────────────────────────────────────────────────────
@@ -94,6 +95,11 @@ export interface DatosCapturarDato {
   nombre_variable?: string  // solo cuando campo === 'variable'
 }
 
+export interface DatosMenuOpciones {
+  cantidad: number          // 2-7 opciones
+  etiquetas?: string[]      // texto descriptivo de cada opción (solo referencia visual)
+}
+
 // ─── Estructura de nodo completa ──────────────────────────────────────────────
 export type DatosNodo =
   | (DatosTrigger & { tipo: 'trigger' })
@@ -108,6 +114,7 @@ export type DatosNodo =
   | (DatosNotaInterna & { tipo: 'nota_interna' })
   | (DatosSubflujo & { tipo: 'subflujo' })
   | (DatosCapturarDato & { tipo: 'capturar_dato' })
+  | (DatosMenuOpciones & { tipo: 'menu_opciones' })
   | ({ tipo: 'fin' })
 
 // ─── Estructura del flujo guardado en DB (nodos JSONB) ────────────────────────
