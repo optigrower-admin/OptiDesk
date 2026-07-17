@@ -751,7 +751,10 @@ async function procesarNodo(
       if (!destinoId) return { tipo: 'continuar', siguiente_nodo_id: null }
       const existe = nodes.find(n => n.id === destinoId)
       if (!existe) return { tipo: 'continuar', siguiente_nodo_id: null }
-      return { tipo: 'continuar', siguiente_nodo_id: destinoId }
+      // Siempre pausa: reanuda en el nodo destino al recibir el próximo mensaje.
+      // Esto evita bucles infinitos dentro del mismo ciclo de ejecución.
+      const lejano = new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000).toISOString()
+      return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: destinoId }
     }
 
     // ── Guardar respuesta del cliente en campo del perfil ─────────────────────

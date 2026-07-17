@@ -837,7 +837,7 @@ const IrANodoNode = ({ id, data }: NodeProps) => {
           ))}
         </select>
         <p className="text-[10px] text-gray-400 leading-tight">
-          El flujo salta directamente a ese nodo. Para esperar la siguiente respuesta del cliente, apunta a un nodo <strong>Esperar</strong>.
+          Pausa el flujo y lo reanuda en ese nodo cuando el cliente escriba su próxima respuesta. Siempre espera un mensaje nuevo antes de continuar.
         </p>
       </div>
       {/* Sin handle de salida — el destino se define en el selector */}
