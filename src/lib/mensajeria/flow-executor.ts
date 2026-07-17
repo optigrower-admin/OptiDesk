@@ -713,10 +713,9 @@ async function procesarNodo(
 
     // ── Subflujo (ejecutar otro flujo anidado) ────────────────────────────────
     case 'subflujo': {
-      const subflujoId = String(data.subflujo_id ?? '')
+      const subflujoId = String(data.subflujo_id ?? '').trim()
       if (subflujoId && convId) {
-        // Iniciar subflujo como ejecución separada — no bloqueante
-        iniciarFlujoParaConversacion(tenantId, convId, ejec.cliente_id as string | null, 'mensaje_nuevo')
+        iniciarFlujoParaConversacion(tenantId, convId, ejec.cliente_id as string | null, 'mensaje_nuevo', subflujoId)
           .catch(e => console.error('[flow-executor] Error subflujo:', e))
       }
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
