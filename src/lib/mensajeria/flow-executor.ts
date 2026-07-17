@@ -27,7 +27,7 @@ export async function iniciarFlujoParaConversacion(
   // Verificar si esta conversación ya tiene una ejecución activa
   const { data: ejecucionExistente, error: errExist } = await supabase
     .from('flujo_ejecuciones')
-    .select('id')
+    .select('id, contexto')
     .eq('conversacion_id', conversacionId)
     .eq('estado', 'activo')
     .maybeSingle()
@@ -35,7 +35,24 @@ export async function iniciarFlujoParaConversacion(
   if (errExist) console.error(`[flow-executor] error buscando ejecución existente:`, errExist.code, errExist.message)
 
   if (ejecucionExistente && !flujoId) {
-    // Ya hay un flujo corriendo — continuar (solo si no se está forzando uno nuevo específico)
+    // Ya hay un flujo corriendo — actualizar contexto con el último mensaje entrante
+    // (crítico para flujos Q&A: la condición necesita leer la NUEVA respuesta del usuario)
+    const { data: ultimoMsg } = await supabase
+      .from('mensajes')
+      .select('contenido')
+      .eq('conversacion_id', conversacionId)
+      .eq('direccion', 'entrante')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (ultimoMsg?.contenido) {
+      const contextoActual = (ejecucionExistente as Record<string, unknown>).contexto as Record<string, unknown> ?? {}
+      await supabase.from('flujo_ejecuciones').update({
+        contexto: { ...contextoActual, ultimo_mensaje: ultimoMsg.contenido },
+      }).eq('id', ejecucionExistente.id)
+    }
+
     console.log(`[flow-executor] ejecución existente ${ejecucionExistente.id} → continuando`)
     await continuarEjecucion(supabase, ejecucionExistente.id)
     return

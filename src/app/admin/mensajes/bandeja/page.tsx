@@ -20,7 +20,7 @@ type Conversacion = {
   ultimo_mensaje_direccion: string | null
   assigned_to: string | null
   cliente_id: string | null
-  clientes: { id: string; nombre: string | null }[] | null
+  clientes: { id: string; nombre: string | null; automatizado?: boolean }[] | null
 }
 
 type Mensaje = {
@@ -72,7 +72,7 @@ function formatDuracion(ms: number): string {
 
 // PostgREST may return the embedded join as an object (many-to-one) or array —
 // normalize to always have an array so the rest of the code works uniformly.
-function normalizeClientes(raw: unknown): { id: string; nombre: string | null }[] {
+function normalizeClientes(raw: unknown): { id: string; nombre: string | null; automatizado?: boolean }[] {
   if (!raw) return []
   if (Array.isArray(raw)) return raw as { id: string; nombre: string | null }[]
   if (typeof raw === 'object') return [raw as { id: string; nombre: string | null }]
@@ -151,6 +151,9 @@ export default function BandejaPage() {
   const [confirmDeleteConvInput, setConfirmDeleteConvInput] = useState('')
   const [deletingConv, setDeletingConv]             = useState(false)
 
+  // Estado de automatización para la conversación seleccionada
+  const [flujoStatus, setFlujoStatus] = useState<{ estado: string; flujoNombre?: string } | null>(null)
+
   // Ventana de 24 h
   const [ventanaActiva, setVentanaActiva]     = useState<boolean | null>(null)
   const [ventanaExpiraAt, setVentanaExpiraAt] = useState<number | null>(null)
@@ -208,7 +211,7 @@ export default function BandejaPage() {
     if (!silent) setLoadingConvs(true)
     let q = supabase
       .from('conversaciones')
-      .select('id, canal, canal_contact_id, estado, prioridad, no_leidos_count, ultimo_mensaje_at, ultimo_mensaje_texto, ultimo_mensaje_direccion, assigned_to, cliente_id, clientes(id, nombre)')
+      .select('id, canal, canal_contact_id, estado, prioridad, no_leidos_count, ultimo_mensaje_at, ultimo_mensaje_texto, ultimo_mensaje_direccion, assigned_to, cliente_id, clientes(id, nombre, automatizado)')
       .eq('tenant_id', profile.tenant_id)
       .order('ultimo_mensaje_at', { ascending: false, nullsFirst: false })
       .limit(100)
@@ -401,6 +404,27 @@ export default function BandejaPage() {
     setVentanaActiva(null) // reset mientras cargan mensajes
   }, [selectedConv?.id])
 
+  // Cargar estado de flujo de automatización para la conversación seleccionada
+  useEffect(() => {
+    if (!selectedId) { setFlujoStatus(null); return }
+    supabase
+      .from('flujo_ejecuciones')
+      .select('estado, flujos_automatizacion(nombre)')
+      .eq('conversacion_id', selectedId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) { setFlujoStatus(null); return }
+        const row = data as Record<string, unknown>
+        const flujoRow = Array.isArray(row.flujos_automatizacion)
+          ? (row.flujos_automatizacion as { nombre?: string }[])[0]
+          : row.flujos_automatizacion as { nombre?: string } | null
+        setFlujoStatus({ estado: String(row.estado), flujoNombre: flujoRow?.nombre })
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId])
+
   // Ticker de 1 minuto para actualizar el tiempo restante de ventana
   // (se inicializa en useEffect para evitar hydration mismatch con Date.now())
   useEffect(() => {
@@ -576,7 +600,7 @@ export default function BandejaPage() {
       )}
 
       {/* ── Lista de conversaciones ──────────────────────────────────────── */}
-      <div className="w-80 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col">
+      <div className={`${selectedId ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 flex-shrink-0 border-r border-gray-200 bg-white`}>
         <div className="p-4 border-b space-y-2">
           <div className="flex items-center justify-between">
             <h1 className="font-bold text-gray-900">Bandeja</h1>
@@ -618,7 +642,13 @@ export default function BandejaPage() {
             const isSelected = conv.id === selectedId
             return (
               <div key={conv.id}
-                className={`relative group w-full text-left px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors ${isSelected ? 'bg-blue-50 border-l-2 border-blue-600' : ''}`}
+                className={`relative group w-full text-left px-4 py-3 cursor-pointer transition-colors ${
+                  isSelected
+                    ? 'bg-blue-50 border-l-2 border-blue-600'
+                    : conv.clientes?.[0]?.automatizado
+                      ? 'bg-blue-50/60 border-l-2 border-l-blue-300 hover:bg-blue-50'
+                      : 'hover:bg-gray-50'
+                }`}
                 onClick={() => setSelectedId(conv.id)}
               >
                 <div className="flex items-start gap-2.5">
@@ -628,7 +658,12 @@ export default function BandejaPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1">
-                      <span className="font-medium text-sm text-gray-900 truncate">{getDisplayName(conv)}</span>
+                      <div className="flex items-center gap-1 min-w-0">
+                        {conv.clientes?.[0]?.automatizado && (
+                          <span className="flex-shrink-0 text-blue-500 text-xs" title="Automatización activa">🤖</span>
+                        )}
+                        <span className="font-medium text-sm text-gray-900 truncate">{getDisplayName(conv)}</span>
+                      </div>
                       <span className="flex-shrink-0 text-xs text-gray-400">{timeAgo(conv.ultimo_mensaje_at)}</span>
                     </div>
                     {conv.clientes?.[0]?.nombre && conv.canal === 'whatsapp' && (
@@ -676,6 +711,7 @@ export default function BandejaPage() {
       </div>
 
       {/* ── Panel derecho ────────────────────────────────────────────────── */}
+      <div className={`${selectedId ? 'flex' : 'hidden md:flex'} flex-1 min-w-0 flex-col`}>
       {!selectedConv ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center bg-gray-50 p-8">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -693,6 +729,16 @@ export default function BandejaPage() {
           <div className="flex-1 flex flex-col bg-gray-50 min-w-0">
             {/* Header */}
             <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 flex-shrink-0">
+              {/* Botón volver — solo mobile */}
+              <button
+                onClick={() => setSelectedId(null)}
+                className="md:hidden flex-shrink-0 p-1.5 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+                title="Volver a la lista"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
               <div className="relative flex-shrink-0">
                 <span className={`w-9 h-9 rounded-full flex items-center justify-center text-base ${CANAL_META[selectedConv.canal]?.cls}`}>
                   {CANAL_META[selectedConv.canal]?.icon}
@@ -773,6 +819,29 @@ export default function BandejaPage() {
                 </button>
               )}
             </div>
+
+            {/* Banner estado de automatización */}
+            {flujoStatus && (
+              <div className={`flex items-center gap-2 px-4 py-1.5 text-xs font-medium flex-shrink-0 ${
+                flujoStatus.estado === 'activo'
+                  ? 'bg-blue-50 border-b border-blue-100 text-blue-700'
+                  : flujoStatus.estado === 'completado'
+                    ? 'bg-green-50 border-b border-green-100 text-green-700'
+                    : flujoStatus.estado === 'error'
+                      ? 'bg-red-50 border-b border-red-100 text-red-700'
+                      : 'bg-amber-50 border-b border-amber-100 text-amber-700'
+              }`}>
+                <span>
+                  {flujoStatus.estado === 'activo' ? '🤖 Automatización activa'
+                    : flujoStatus.estado === 'completado' ? '✅ Automatización finalizada'
+                    : flujoStatus.estado === 'error' ? '❌ Error en automatización'
+                    : '⏸ Automatización en espera'}
+                </span>
+                {flujoStatus.flujoNombre && (
+                  <span className="opacity-70">· {flujoStatus.flujoNombre}</span>
+                )}
+              </div>
+            )}
 
             {/* Banner nombre Instagram/Messenger sin nombre */}
             {(selectedConv.canal === 'instagram' || selectedConv.canal === 'messenger') && !selectedConv.clientes?.[0]?.nombre && (
@@ -1151,6 +1220,7 @@ export default function BandejaPage() {
           )}
         </div>
       )}
+      </div>{/* fin panel derecho mobile wrapper */}
     </div>
   )
 }
