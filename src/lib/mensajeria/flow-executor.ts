@@ -339,18 +339,21 @@ async function procesarNodo(
     case 'esperar': {
       const siguienteId = getSiguienteNodo(edges, nodo.id)
 
+      // Si el siguiente nodo es menu_opciones, pre-marcar _menu_esperando para que
+      // la respuesta del cliente sea evaluada directamente sin una fase extra de pausa
+      const siguienteNodo = nodes.find(n => n.id === siguienteId)
+      const ctxExtra = siguienteNodo?.type === 'menu_opciones' ? { _menu_esperando: siguienteId } : {}
+
       if (String(data.modo_espera ?? 'tiempo') === 'respuesta') {
-        // Pausa indefinida: solo un mensaje del cliente reanuda el flujo
-        // proxima_ejecucion_at muy lejana → el cron nunca la activa
         const lejano = new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000).toISOString()
-        return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: siguienteId }
+        return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: siguienteId, contexto: ctxExtra }
       }
 
       const horas = Number(data.horas ?? 24)
       const minutos = Number(data.minutos ?? 0)
       const totalMs = (horas * 3600 + minutos * 60) * 1000
       const proxima = new Date(Date.now() + totalMs).toISOString()
-      return { tipo: 'pausar', proxima_ejecucion_at: proxima, siguiente_nodo_id: siguienteId }
+      return { tipo: 'pausar', proxima_ejecucion_at: proxima, siguiente_nodo_id: siguienteId, contexto: ctxExtra }
     }
 
     // ── Cambiar etapa de venta ────────────────────────────────────────────────
