@@ -766,12 +766,10 @@ async function procesarNodo(
         }
       }
 
-      // Ninguna coincide → "otro" si conectado; si no, re-pausar esperando otra respuesta
+      // Ninguna coincide → siempre sale por "otro" (o fin si no está conectado)
       const otraSalida = getSiguienteNodoConSalida(edges, nodo.id, 'otro')
-      if (otraSalida) return { tipo: 'continuar', siguiente_nodo_id: otraSalida }
-
-      console.log(`[menu_opciones] respuesta inválida — re-pausando`)
-      return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: nodo.id, contexto: { _menu_esperando: nodo.id } }
+      console.log(`[menu_opciones] sin coincidencia → otro=${otraSalida}`)
+      return { tipo: 'continuar', siguiente_nodo_id: otraSalida }
     }
 
     // ── Saltar a otro nodo del flujo (goto / loop-back) ──────────────────────
