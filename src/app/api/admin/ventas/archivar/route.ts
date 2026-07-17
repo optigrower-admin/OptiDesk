@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
   // Cerrar conversaciones activas del cliente para que la próxima llegue como nueva
   await admin
     .from('conversaciones')
-    .update({ estado: 'cerrada', cliente_id: null })
+    .update({ estado: 'archivada', cliente_id: null })
     .eq('tenant_id', perfil.tenant_id)
     .eq('cliente_id', cliente_id)
     .in('estado', ['abierta', 'pendiente'])
