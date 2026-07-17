@@ -47,11 +47,29 @@ type Etiqueta = { id: string; nombre: string; color: string }
 
 const nodeBaseClass = 'rounded-xl shadow-md border-2 min-w-52 text-sm font-sans bg-white'
 
-function NodeHeader({ color, icon, label }: { color: string; icon: string; label: string }) {
+function DeleteNodeButton({ nodeId }: { nodeId: string }) {
+  const { setNodes, setEdges } = useReactFlow()
+  return (
+    <button
+      onClick={e => {
+        e.stopPropagation()
+        setNodes(ns => ns.filter(n => n.id !== nodeId))
+        setEdges(es => es.filter(e => e.source !== nodeId && e.target !== nodeId))
+      }}
+      className="ml-auto text-white/60 hover:text-white transition-colors text-base leading-none px-0.5"
+      title="Eliminar nodo"
+    >
+      ×
+    </button>
+  )
+}
+
+function NodeHeader({ color, icon, label, nodeId }: { color: string; icon: string; label: string; nodeId?: string }) {
   return (
     <div className={`flex items-center gap-2 px-3 py-2 rounded-t-xl ${color}`}>
       <span>{icon}</span>
-      <span className="font-semibold text-white text-xs uppercase tracking-wide">{label}</span>
+      <span className="font-semibold text-white text-xs uppercase tracking-wide flex-1">{label}</span>
+      {nodeId && <DeleteNodeButton nodeId={nodeId} />}
     </div>
   )
 }
@@ -98,7 +116,7 @@ const MensajeNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-green-400`}>
       <Handle type="target" position={Position.Top} className="!bg-green-400 !w-3 !h-3" />
-      <NodeHeader color="bg-green-500" icon="💬" label="Enviar mensaje" />
+      <NodeHeader color="bg-green-500" icon="💬" label="Enviar mensaje" nodeId={id} />
       <div className="px-3 py-2.5 space-y-2">
         <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
           <input type="checkbox" defaultChecked={data.usar_plantilla ?? false}
@@ -136,7 +154,7 @@ const AsignarNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-purple-400`}>
       <Handle type="target" position={Position.Top} className="!bg-purple-400 !w-3 !h-3" />
-      <NodeHeader color="bg-purple-500" icon="👤" label="Asignar asesor" />
+      <NodeHeader color="bg-purple-500" icon="👤" label="Asignar asesor" nodeId={id} />
       <div className="px-3 py-2.5 space-y-2">
         <select defaultValue={data.tipo_asignacion ?? 'round_robin'} onChange={e => upd('tipo_asignacion', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400">
@@ -165,7 +183,7 @@ const EsperarNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-orange-400`}>
       <Handle type="target" position={Position.Top} className="!bg-orange-400 !w-3 !h-3" />
-      <NodeHeader color="bg-orange-500" icon="⏱️" label="Esperar / Delay" />
+      <NodeHeader color="bg-orange-500" icon="⏱️" label="Esperar / Delay" nodeId={id} />
       <div className="px-3 py-2.5 space-y-1.5">
         <div className="flex items-center gap-2">
           <input type="number" defaultValue={data.horas ?? 24} min={0} max={720}
@@ -192,7 +210,7 @@ const EtapaNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-cyan-400`}>
       <Handle type="target" position={Position.Top} className="!bg-cyan-400 !w-3 !h-3" />
-      <NodeHeader color="bg-cyan-500" icon="📊" label="Cambiar etapa" />
+      <NodeHeader color="bg-cyan-500" icon="📊" label="Cambiar etapa" nodeId={id} />
       <div className="px-3 py-2.5">
         <select defaultValue={data.etapa ?? 'nuevo'} onChange={e => upd('etapa', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-400">
@@ -234,7 +252,7 @@ const CondicionNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-yellow-400`} style={{ width: 230 }}>
       <Handle type="target" position={Position.Top} className="!bg-yellow-400 !w-3 !h-3" />
-      <NodeHeader color="bg-yellow-500" icon="🔀" label="Condición" />
+      <NodeHeader color="bg-yellow-500" icon="🔀" label="Condición" nodeId={id} />
       <div className="px-3 py-2.5 space-y-2">
 
         {/* Selector principal de tipo */}
@@ -355,7 +373,7 @@ const AgenteIANode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-indigo-400`}>
       <Handle type="target" position={Position.Top} className="!bg-indigo-400 !w-3 !h-3" />
-      <NodeHeader color="bg-indigo-600" icon="🤖" label="Agente IA" />
+      <NodeHeader color="bg-indigo-600" icon="🤖" label="Agente IA" nodeId={id} />
       <div className="px-3 py-2.5 space-y-2">
         <label className="block text-xs text-gray-500 font-medium">Agente configurado</label>
         <select defaultValue={data.agente_id ?? ''} onChange={e => upd('agente_id', e.target.value)}
@@ -393,7 +411,7 @@ const PlantillaNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-teal-400`}>
       <Handle type="target" position={Position.Top} className="!bg-teal-400 !w-3 !h-3" />
-      <NodeHeader color="bg-teal-600" icon="📋" label="Plantilla aprobada" />
+      <NodeHeader color="bg-teal-600" icon="📋" label="Plantilla aprobada" nodeId={id} />
       <div className="px-3 py-2.5 space-y-2">
         <select defaultValue={data.plantilla_id ?? ''} onChange={e => upd('plantilla_id', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-teal-400">
@@ -421,7 +439,7 @@ const MediaNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-pink-400`}>
       <Handle type="target" position={Position.Top} className="!bg-pink-400 !w-3 !h-3" />
-      <NodeHeader color="bg-pink-500" icon="📎" label="Enviar archivo" />
+      <NodeHeader color="bg-pink-500" icon="📎" label="Enviar archivo" nodeId={id} />
       <div className="px-3 py-2.5 space-y-2">
         <select defaultValue={data.media_tipo ?? 'imagen'} onChange={e => upd('media_tipo', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-pink-400">
@@ -451,7 +469,7 @@ const NotaInternaNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-yellow-300`}>
       <Handle type="target" position={Position.Top} className="!bg-yellow-400 !w-3 !h-3" />
-      <NodeHeader color="bg-yellow-400" icon="📝" label="Nota interna" />
+      <NodeHeader color="bg-yellow-400" icon="📝" label="Nota interna" nodeId={id} />
       <div className="px-3 py-2.5">
         <textarea defaultValue={data.contenido ?? ''} onChange={e => upd('contenido', e.target.value)}
           placeholder="Nota visible solo para el equipo..."
@@ -473,7 +491,7 @@ const SubflujoNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-slate-400`}>
       <Handle type="target" position={Position.Top} className="!bg-slate-400 !w-3 !h-3" />
-      <NodeHeader color="bg-slate-600" icon="🔗" label="Subflujo" />
+      <NodeHeader color="bg-slate-600" icon="🔗" label="Subflujo" nodeId={id} />
       <div className="px-3 py-2.5 space-y-2">
         <label className="block text-xs text-gray-500">Flujo anidado a ejecutar</label>
         <select defaultValue={data.subflujo_id ?? ''} onChange={e => upd('subflujo_id', e.target.value)}
@@ -499,7 +517,7 @@ const EtiquetaNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-rose-300`} style={{ width: 230 }}>
       <Handle type="target" position={Position.Top} className="!bg-rose-400 !w-3 !h-3" />
-      <NodeHeader color="bg-rose-500" icon="🏷️" label="Etiquetar cliente" />
+      <NodeHeader color="bg-rose-500" icon="🏷️" label="Etiquetar cliente" nodeId={id} />
       <div className="px-3 py-2.5 space-y-2">
         <select defaultValue={data.accion ?? 'agregar'} onChange={e => upd('accion', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400">
@@ -527,13 +545,10 @@ const EtiquetaNode = ({ id, data }: NodeProps) => {
   )
 }
 
-const FinNode = (_: NodeProps) => (
+const FinNode = ({ id }: NodeProps) => (
   <div className={`${nodeBaseClass} border-gray-300`}>
     <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-3 !h-3" />
-    <div className="px-3 py-3 text-center">
-      <span className="text-2xl">🏁</span>
-      <p className="text-xs font-semibold text-gray-600 mt-1">Fin del flujo</p>
-    </div>
+    <NodeHeader color="bg-gray-500" icon="🏁" label="Fin del flujo" nodeId={id} />
   </div>
 )
 
