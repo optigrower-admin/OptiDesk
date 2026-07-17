@@ -22,17 +22,21 @@ export async function iniciarFlujoParaConversacion(
   flujoId?: string  // opcional: saltarse el lookup por trigger y usar este flujo específico
 ) {
   const supabase = createAdminClient()
+  console.log(`[flow-executor] iniciarFlujo conv=${conversacionId} cliente=${clienteId ?? 'null'} trigger=${JSON.stringify(triggerTipo)}`)
 
   // Verificar si esta conversación ya tiene una ejecución activa
-  const { data: ejecucionExistente } = await supabase
+  const { data: ejecucionExistente, error: errExist } = await supabase
     .from('flujo_ejecuciones')
     .select('id')
     .eq('conversacion_id', conversacionId)
     .eq('estado', 'activo')
     .maybeSingle()
 
+  if (errExist) console.error(`[flow-executor] error buscando ejecución existente:`, errExist.code, errExist.message)
+
   if (ejecucionExistente && !flujoId) {
     // Ya hay un flujo corriendo — continuar (solo si no se está forzando uno nuevo específico)
+    console.log(`[flow-executor] ejecución existente ${ejecucionExistente.id} → continuando`)
     await continuarEjecucion(supabase, ejecucionExistente.id)
     return
   }
@@ -63,20 +67,32 @@ export async function iniciarFlujoParaConversacion(
     }
   }
 
-  if (!flujo) return
+  if (!flujo) {
+    console.log(`[flow-executor] ✗ flujo no encontrado para tenant=${tenantId} trigger=${JSON.stringify(triggerTipo)}`)
+    return
+  }
+  console.log(`[flow-executor] flujo encontrado: ${flujo.id} trigger_tipo=${flujo.trigger_tipo}`)
+
   const nodos = flujo.nodos as { nodes: Node[]; edges: Edge[] } | null
-  if (!nodos?.nodes?.length) return
+  if (!nodos?.nodes?.length) {
+    console.log(`[flow-executor] ✗ flujo sin nodos`)
+    return
+  }
 
   // Encontrar el nodo trigger
   const nodosOrdenados = nodos.nodes
   const nodoTrigger = nodosOrdenados.find(n => n.type === 'trigger')
-  if (!nodoTrigger) return
+  if (!nodoTrigger) {
+    console.log(`[flow-executor] ✗ no hay nodo tipo 'trigger' en el flujo`)
+    return
+  }
+  console.log(`[flow-executor] nodoTrigger=${nodoTrigger.id} → insertando ejecución...`)
 
   // Obtener contexto del cliente
   const contexto = await construirContexto(supabase, tenantId, conversacionId, clienteId)
 
   // Crear ejecución
-  const { data: ejecucion } = await supabase
+  const { data: ejecucion, error: errEjec } = await supabase
     .from('flujo_ejecuciones')
     .insert({
       tenant_id:       tenantId,
@@ -90,7 +106,12 @@ export async function iniciarFlujoParaConversacion(
     .select('id')
     .single()
 
-  if (!ejecucion) return
+  if (errEjec) console.error(`[flow-executor] ✗ error INSERT flujo_ejecuciones:`, errEjec.code, errEjec.message)
+  if (!ejecucion) {
+    console.log(`[flow-executor] ✗ ejecución no creada (data null)`)
+    return
+  }
+  console.log(`[flow-executor] ✓ ejecución creada: ${ejecucion.id}`)
 
   // Marcar cliente como automatizado
   if (clienteId) {
