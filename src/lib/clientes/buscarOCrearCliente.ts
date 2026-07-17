@@ -84,23 +84,25 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
   }
 
   // 3. Buscar por celular (con normalización de prefijo Colombia 57XXXXXXXXXX ↔ 3XXXXXXXXX)
+  // Solo busca clientes activos (en_seguimiento_ventas = true) para evitar
+  // que un cliente archivado bloquee la creación de uno nuevo al re-contactar.
   if (celular) {
     const { data } = await supabase
-      .from('clientes').select('*').eq('tenant_id', tenantId).eq('celular', celular).maybeSingle()
+      .from('clientes').select('*').eq('tenant_id', tenantId).eq('celular', celular).eq('en_seguimiento_ventas', true).maybeSingle()
     if (data) return { cliente: await rellenarCamposVacios(supabase, data, params), creado: false }
 
     // WhatsApp envía con código de país (573001234567), DB suele guardar sin él (3001234567)
     if (/^57\d{10}$/.test(celular)) {
       const sinPrefijo = celular.slice(2)
       const { data: d2 } = await supabase
-        .from('clientes').select('*').eq('tenant_id', tenantId).eq('celular', sinPrefijo).maybeSingle()
+        .from('clientes').select('*').eq('tenant_id', tenantId).eq('celular', sinPrefijo).eq('en_seguimiento_ventas', true).maybeSingle()
       if (d2) return { cliente: await rellenarCamposVacios(supabase, d2, params), creado: false }
     }
     // Inverso: guardado con prefijo pero llega sin él
     if (/^3\d{9}$/.test(celular)) {
       const conPrefijo = `57${celular}`
       const { data: d2 } = await supabase
-        .from('clientes').select('*').eq('tenant_id', tenantId).eq('celular', conPrefijo).maybeSingle()
+        .from('clientes').select('*').eq('tenant_id', tenantId).eq('celular', conPrefijo).eq('en_seguimiento_ventas', true).maybeSingle()
       if (d2) return { cliente: await rellenarCamposVacios(supabase, d2, params), creado: false }
     }
   }

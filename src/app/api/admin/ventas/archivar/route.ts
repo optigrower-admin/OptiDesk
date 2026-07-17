@@ -28,15 +28,14 @@ export async function POST(req: NextRequest) {
     .single()
   if (!cliente) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
-  // Eliminar completamente del sistema:
-  // 1. Borrar whatsapp_number para que no sea reconocido si vuelve a escribir
-  // 2. Sacar de seguimiento y limpiar estado de automatización
+  // Sacar de seguimiento:
+  // - en_seguimiento_ventas = false → no aparece en el kanban
+  // - buscarOCrearCliente con celular solo encuentra clientes activos (en_seguimiento_ventas=true),
+  //   por lo que si vuelven a escribir, entrarán como nuevo contacto sin sobreescribir este registro
   const { error } = await admin
     .from('clientes')
     .update({
       en_seguimiento_ventas: false,
-      whatsapp_number:       null,
-      celular:               null,
       automatizado:          false,
       flujo_activo_id:       null,
     })
