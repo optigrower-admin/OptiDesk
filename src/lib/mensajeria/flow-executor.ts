@@ -188,7 +188,7 @@ export async function continuarEjecucion(supabase: Supa, ejecucionId: string) {
     const resultado = await procesarNodo(supabase, nodo, ejec, contexto, tenantId, nodes, edges)
 
     if (resultado.tipo === 'pausar') {
-      // El nodo esperar o similar — salir del loop y guardar próxima ejecución
+      if (resultado.contexto) contexto = { ...contexto, ...(resultado.contexto as Partial<ContextoEjecucion>) }
       await supabase.from('flujo_ejecuciones').update({
         proxima_ejecucion_at: resultado.proxima_ejecucion_at,
         nodo_actual_id:       resultado.siguiente_nodo_id ?? nodoActualId,
@@ -265,7 +265,7 @@ export async function procesarEjecucionesPendientes(tenantId?: string) {
 // ─── Procesador de nodos individuales ────────────────────────────────────────
 type ResultadoNodo =
   | { tipo: 'continuar'; siguiente_nodo_id: string | null; contexto?: Partial<ContextoEjecucion> }
-  | { tipo: 'pausar'; proxima_ejecucion_at: string; siguiente_nodo_id: string | null }
+  | { tipo: 'pausar'; proxima_ejecucion_at: string; siguiente_nodo_id: string | null; contexto?: Partial<Record<string, unknown>> }
   | { tipo: 'fin' }
   | { tipo: 'error'; error: string }
 
@@ -721,28 +721,35 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
-    // ── Menú de opciones (matching por número, exacto, contiene o no_contiene) ─
+    // ── Menú de opciones — dos fases: 1) pausar y esperar; 2) evaluar respuesta ─
     case 'menu_opciones': {
       const cantidad    = Number(data.cantidad ?? 3)
       const rawOpciones = (data.opciones ?? []) as { tipo_match?: string; valor_match?: string }[]
-      // Limpiar el mensaje: quitar espacios, puntuación y saltos de línea alrededor del número
-      const raw         = (contexto.ultimo_mensaje ?? '')
-      const ultimoMsg   = raw.replace(/^[\s.,!?¿¡\n\r]+|[\s.,!?¿¡\n\r]+$/g, '')
-      const ultimoLow   = ultimoMsg.toLowerCase()
+      const ctx         = contexto as Record<string, unknown>
+      const lejano      = new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000).toISOString()
 
-      console.log(`[menu_opciones] raw="${raw.replace(/\n/g,'\\n')}" limpio="${ultimoMsg}" cantidad=${cantidad} opciones=${rawOpciones.length}`)
+      // FASE 1: primera vez que el flujo llega aquí → pausar y esperar respuesta del cliente
+      if (ctx._menu_esperando !== nodo.id) {
+        console.log(`[menu_opciones] fase 1 — pausando en nodo ${nodo.id}`)
+        return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: nodo.id, contexto: { _menu_esperando: nodo.id } }
+      }
+
+      // FASE 2: cliente ya respondió → evaluar ultimo_mensaje
+      delete ctx._menu_esperando
+      const raw       = String(contexto.ultimo_mensaje ?? '')
+      const ultimoMsg = raw.replace(/^[\s.,!?¿¡\n\r]+|[\s.,!?¿¡\n\r]+$/g, '')
+      const ultimoLow = ultimoMsg.toLowerCase()
+      console.log(`[menu_opciones] fase 2 — evaluando: "${ultimoMsg}"`)
 
       for (let i = 0; i < cantidad; i++) {
         const op    = rawOpciones[i] ?? {}
         const tipo  = op.tipo_match ?? 'numero'
         const valor = (op.valor_match ?? '').trim().toLowerCase()
         const num   = i + 1
+        let match   = false
 
-        let match = false
         switch (tipo) {
-          // Número: acepta "3", "3.", "3!" pero NO "13" ni "hola 3"
           case 'numero': {
-            // Quitar puntuación y espacios, luego verificar que solo queda ese número
             const soloChars = ultimoMsg.replace(/[.,!?¿¡\s]/g, '')
             match = soloChars === String(num)
             break
@@ -752,23 +759,19 @@ async function procesarNodo(
           case 'no_contiene': match = Boolean(valor) && !ultimoLow.includes(valor); break
         }
 
-        console.log(`[menu_opciones] opción ${num}: tipo=${tipo} valor="${valor}" match=${match}`)
-
+        console.log(`[menu_opciones] opción ${num} (${tipo}="${valor}"): match=${match}`)
         if (match) {
           const siguiente = getSiguienteNodoConSalida(edges, nodo.id, String(num))
-          console.log(`[menu_opciones] → salida "${num}" → nodo=${siguiente}`)
           return { tipo: 'continuar', siguiente_nodo_id: siguiente }
         }
       }
 
-      // Ninguna opción coincidió → salida "otro" si está conectada
+      // Ninguna coincide → "otro" si conectado; si no, re-pausar esperando otra respuesta
       const otraSalida = getSiguienteNodoConSalida(edges, nodo.id, 'otro')
-      console.log(`[menu_opciones] sin coincidencia → otro=${otraSalida}`)
       if (otraSalida) return { tipo: 'continuar', siguiente_nodo_id: otraSalida }
 
-      // Sin "otro": pausar en este nodo esperando nueva respuesta
-      const enUnAno = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString()
-      return { tipo: 'pausar', proxima_ejecucion_at: enUnAno, siguiente_nodo_id: nodo.id }
+      console.log(`[menu_opciones] respuesta inválida — re-pausando`)
+      return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: nodo.id, contexto: { _menu_esperando: nodo.id } }
     }
 
     // ── Saltar a otro nodo del flujo (goto / loop-back) ──────────────────────
