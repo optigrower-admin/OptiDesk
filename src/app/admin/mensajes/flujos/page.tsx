@@ -47,29 +47,21 @@ type Etiqueta = { id: string; nombre: string; color: string }
 
 const nodeBaseClass = 'rounded-xl shadow-md border-2 min-w-52 text-sm font-sans bg-white'
 
-function DeleteNodeButton({ nodeId }: { nodeId: string }) {
-  const { setNodes, setEdges } = useReactFlow()
-  return (
-    <button
-      onClick={e => {
-        e.stopPropagation()
-        setNodes(ns => ns.filter(n => n.id !== nodeId))
-        setEdges(es => es.filter(e => e.source !== nodeId && e.target !== nodeId))
-      }}
-      className="ml-auto text-white/60 hover:text-white transition-colors text-base leading-none px-0.5"
-      title="Eliminar nodo"
-    >
-      ×
-    </button>
-  )
-}
-
-function NodeHeader({ color, icon, label, nodeId }: { color: string; icon: string; label: string; nodeId?: string }) {
+function NodeHeader({ color, icon, label, onDelete }: { color: string; icon: string; label: string; onDelete?: () => void }) {
   return (
     <div className={`flex items-center gap-2 px-3 py-2 rounded-t-xl ${color}`}>
       <span>{icon}</span>
       <span className="font-semibold text-white text-xs uppercase tracking-wide flex-1">{label}</span>
-      {nodeId && <DeleteNodeButton nodeId={nodeId} />}
+      {onDelete && (
+        <button
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onDelete() }}
+          className="nodrag ml-auto text-white/60 hover:text-white transition-colors text-lg leading-none w-5 h-5 flex items-center justify-center rounded"
+          title="Eliminar nodo"
+        >
+          ×
+        </button>
+      )}
     </div>
   )
 }
@@ -108,15 +100,16 @@ const TriggerNode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Mensaje ────────────────────────────────────────────────────────────
 const MensajeNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string | boolean) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
   const plantillas: Plantilla[] = data.plantillas ?? []
 
   return (
     <div className={`${nodeBaseClass} border-green-400`}>
       <Handle type="target" position={Position.Top} className="!bg-green-400 !w-3 !h-3" />
-      <NodeHeader color="bg-green-500" icon="💬" label="Enviar mensaje" nodeId={id} />
+      <NodeHeader color="bg-green-500" icon="💬" label="Enviar mensaje" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
         <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
           <input type="checkbox" defaultChecked={data.usar_plantilla ?? false}
@@ -146,15 +139,16 @@ const MensajeNode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Asignar ────────────────────────────────────────────────────────────
 const AsignarNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
   const equipo: Usuario[] = data.equipo ?? []
 
   return (
     <div className={`${nodeBaseClass} border-purple-400`}>
       <Handle type="target" position={Position.Top} className="!bg-purple-400 !w-3 !h-3" />
-      <NodeHeader color="bg-purple-500" icon="👤" label="Asignar asesor" nodeId={id} />
+      <NodeHeader color="bg-purple-500" icon="👤" label="Asignar asesor" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
         <select defaultValue={data.tipo_asignacion ?? 'round_robin'} onChange={e => upd('tipo_asignacion', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400">
@@ -176,14 +170,15 @@ const AsignarNode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Esperar ────────────────────────────────────────────────────────────
 const EsperarNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
 
   return (
     <div className={`${nodeBaseClass} border-orange-400`}>
       <Handle type="target" position={Position.Top} className="!bg-orange-400 !w-3 !h-3" />
-      <NodeHeader color="bg-orange-500" icon="⏱️" label="Esperar / Delay" nodeId={id} />
+      <NodeHeader color="bg-orange-500" icon="⏱️" label="Esperar / Delay" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-1.5">
         <div className="flex items-center gap-2">
           <input type="number" defaultValue={data.horas ?? 24} min={0} max={720}
@@ -203,14 +198,15 @@ const EsperarNode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Etapa ─────────────────────────────────────────────────────────────
 const EtapaNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
 
   return (
     <div className={`${nodeBaseClass} border-cyan-400`}>
       <Handle type="target" position={Position.Top} className="!bg-cyan-400 !w-3 !h-3" />
-      <NodeHeader color="bg-cyan-500" icon="📊" label="Cambiar etapa" nodeId={id} />
+      <NodeHeader color="bg-cyan-500" icon="📊" label="Cambiar etapa" onDelete={eliminar} />
       <div className="px-3 py-2.5">
         <select defaultValue={data.etapa ?? 'nuevo'} onChange={e => upd('etapa', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-400">
@@ -226,9 +222,10 @@ const EtapaNode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Condición ─────────────────────────────────────────────────────────
 const CondicionNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
 
   const tipo   = (data.condicion_tipo ?? 'respuesta_contiene') as string
   const agentes: AgenteIA[] = data.agentes ?? []
@@ -252,7 +249,7 @@ const CondicionNode = ({ id, data }: NodeProps) => {
   return (
     <div className={`${nodeBaseClass} border-yellow-400`} style={{ width: 230 }}>
       <Handle type="target" position={Position.Top} className="!bg-yellow-400 !w-3 !h-3" />
-      <NodeHeader color="bg-yellow-500" icon="🔀" label="Condición" nodeId={id} />
+      <NodeHeader color="bg-yellow-500" icon="🔀" label="Condición" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
 
         {/* Selector principal de tipo */}
@@ -365,15 +362,16 @@ const CondicionNode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Agente IA ──────────────────────────────────────────────────────────
 const AgenteIANode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string | boolean) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
   const agentes: AgenteIA[] = data.agentes ?? []
 
   return (
     <div className={`${nodeBaseClass} border-indigo-400`}>
       <Handle type="target" position={Position.Top} className="!bg-indigo-400 !w-3 !h-3" />
-      <NodeHeader color="bg-indigo-600" icon="🤖" label="Agente IA" nodeId={id} />
+      <NodeHeader color="bg-indigo-600" icon="🤖" label="Agente IA" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
         <label className="block text-xs text-gray-500 font-medium">Agente configurado</label>
         <select defaultValue={data.agente_id ?? ''} onChange={e => upd('agente_id', e.target.value)}
@@ -403,15 +401,16 @@ const AgenteIANode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Plantilla Meta ─────────────────────────────────────────────────────
 const PlantillaNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
   const plantillas: Plantilla[] = data.plantillas ?? []
 
   return (
     <div className={`${nodeBaseClass} border-teal-400`}>
       <Handle type="target" position={Position.Top} className="!bg-teal-400 !w-3 !h-3" />
-      <NodeHeader color="bg-teal-600" icon="📋" label="Plantilla aprobada" nodeId={id} />
+      <NodeHeader color="bg-teal-600" icon="📋" label="Plantilla aprobada" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
         <select defaultValue={data.plantilla_id ?? ''} onChange={e => upd('plantilla_id', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-teal-400">
@@ -432,14 +431,15 @@ const PlantillaNode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Media ─────────────────────────────────────────────────────────────
 const MediaNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
 
   return (
     <div className={`${nodeBaseClass} border-pink-400`}>
       <Handle type="target" position={Position.Top} className="!bg-pink-400 !w-3 !h-3" />
-      <NodeHeader color="bg-pink-500" icon="📎" label="Enviar archivo" nodeId={id} />
+      <NodeHeader color="bg-pink-500" icon="📎" label="Enviar archivo" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
         <select defaultValue={data.media_tipo ?? 'imagen'} onChange={e => upd('media_tipo', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-pink-400">
@@ -462,14 +462,15 @@ const MediaNode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Nota interna ───────────────────────────────────────────────────────
 const NotaInternaNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
 
   return (
     <div className={`${nodeBaseClass} border-yellow-300`}>
       <Handle type="target" position={Position.Top} className="!bg-yellow-400 !w-3 !h-3" />
-      <NodeHeader color="bg-yellow-400" icon="📝" label="Nota interna" nodeId={id} />
+      <NodeHeader color="bg-yellow-400" icon="📝" label="Nota interna" onDelete={eliminar} />
       <div className="px-3 py-2.5">
         <textarea defaultValue={data.contenido ?? ''} onChange={e => upd('contenido', e.target.value)}
           placeholder="Nota visible solo para el equipo..."
@@ -483,15 +484,16 @@ const NotaInternaNode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Subflujo ───────────────────────────────────────────────────────────
 const SubflujoNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
   const flujos: { id: string; nombre: string }[] = data.flujos_disponibles ?? []
 
   return (
     <div className={`${nodeBaseClass} border-slate-400`}>
       <Handle type="target" position={Position.Top} className="!bg-slate-400 !w-3 !h-3" />
-      <NodeHeader color="bg-slate-600" icon="🔗" label="Subflujo" nodeId={id} />
+      <NodeHeader color="bg-slate-600" icon="🔗" label="Subflujo" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
         <label className="block text-xs text-gray-500">Flujo anidado a ejecutar</label>
         <select defaultValue={data.subflujo_id ?? ''} onChange={e => upd('subflujo_id', e.target.value)}
@@ -508,16 +510,17 @@ const SubflujoNode = ({ id, data }: NodeProps) => {
 // ─── NODO: Fin ───────────────────────────────────────────────────────────────
 // ─── NODO: Etiqueta ──────────────────────────────────────────────────────────
 const EtiquetaNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
+  const { setNodes, setEdges } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
   const etiquetas: Etiqueta[] = data.etiquetas ?? []
   const etiquetaId = String(data.etiqueta_id ?? '')
   const seleccionada = etiquetas.find(e => e.id === etiquetaId)
   return (
     <div className={`${nodeBaseClass} border-rose-300`} style={{ width: 230 }}>
       <Handle type="target" position={Position.Top} className="!bg-rose-400 !w-3 !h-3" />
-      <NodeHeader color="bg-rose-500" icon="🏷️" label="Etiquetar cliente" nodeId={id} />
+      <NodeHeader color="bg-rose-500" icon="🏷️" label="Etiquetar cliente" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
         <select defaultValue={data.accion ?? 'agregar'} onChange={e => upd('accion', e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400">
@@ -545,12 +548,16 @@ const EtiquetaNode = ({ id, data }: NodeProps) => {
   )
 }
 
-const FinNode = ({ id }: NodeProps) => (
-  <div className={`${nodeBaseClass} border-gray-300`}>
-    <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-3 !h-3" />
-    <NodeHeader color="bg-gray-500" icon="🏁" label="Fin del flujo" nodeId={id} />
-  </div>
-)
+const FinNode = ({ id }: NodeProps) => {
+  const { setNodes, setEdges } = useReactFlow()
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
+  return (
+    <div className={`${nodeBaseClass} border-gray-300`}>
+      <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-3 !h-3" />
+      <NodeHeader color="bg-gray-500" icon="🏁" label="Fin del flujo" onDelete={eliminar} />
+    </div>
+  )
+}
 
 // ─── Registro de tipos de nodo ────────────────────────────────────────────────
 const NODE_TYPES: NodeTypes = {
