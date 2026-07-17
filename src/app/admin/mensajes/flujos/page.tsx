@@ -13,11 +13,17 @@ import ReactFlow, {
   Position,
   useReactFlow,
   ReactFlowProvider,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getSmoothStepPath,
+  MarkerType,
+  type EdgeProps,
   type NodeProps,
   type Node,
   type Edge,
   type Connection,
   type NodeTypes,
+  type EdgeTypes,
   type ReactFlowInstance,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -42,6 +48,39 @@ type Usuario = { id: string; nombre: string }
 type Plantilla = { id: string; nombre: string; meta_status: string; meta_template_name: string | null }
 type AgenteIA = { id: string; nombre: string; proveedor: string }
 type Etiqueta = { id: string; nombre: string; color: string }
+
+// ─── Edge personalizado con botón de eliminar ─────────────────────────────────
+
+function DeletableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, selected }: EdgeProps) {
+  const { setEdges } = useReactFlow()
+  const [edgePath, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })
+  const [hovered, setHovered] = useState(false)
+  const visible = selected || hovered
+  return (
+    <>
+      <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ ...style, strokeWidth: selected ? 2.5 : 2 }} />
+      <EdgeLabelRenderer>
+        <div
+          style={{ position: 'absolute', transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`, pointerEvents: 'all' }}
+          className="nodrag nopan"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        >
+          <button
+            onClick={() => setEdges(es => es.filter(e => e.id !== id))}
+            title="Eliminar conexión"
+            style={{ opacity: visible ? 1 : 0, transition: 'opacity 0.15s, background 0.15s', pointerEvents: visible ? 'auto' : 'none' }}
+            className="w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-500 hover:bg-red-500 hover:text-white hover:border-red-500 text-xs flex items-center justify-center shadow-sm"
+          >
+            ×
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  )
+}
+
+const EDGE_TYPES: EdgeTypes = { deletable: DeletableEdge }
 
 // ─── Componentes base de nodos ────────────────────────────────────────────────
 
@@ -942,8 +981,13 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId }: EditorProp
   }
 
   const parsed = flujo?.nodos
+  const migratedEdges = (parsed?.edges ?? []).map(e => ({
+    ...e,
+    type: 'deletable',
+    markerEnd: { type: MarkerType.ArrowClosed, color: (e.style as { stroke?: string })?.stroke ?? '#6366f1' },
+  }))
   const [nodes, setNodes, onNodesChange] = useNodesState(parsed?.nodes ?? [defaultTrigger])
-  const [edges, setEdges, onEdgesChange] = useEdgesState(parsed?.edges ?? [])
+  const [edges, setEdges, onEdgesChange] = useEdgesState(migratedEdges)
   const [nombre,      setNombre]      = useState(flujo?.nombre ?? '')
   const [descripcion, setDescripcion] = useState(flujo?.descripcion ?? '')
   const [activo,      setActivo]      = useState(flujo?.activo ?? false)
@@ -965,7 +1009,13 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId }: EditorProp
   }, [ctx])
 
   const onConnect = useCallback(
-    (c: Connection) => setEdges(es => addEdge({ ...c, type: 'smoothstep', animated: true, style: { stroke: '#6366f1' } }, es)),
+    (c: Connection) => setEdges(es => addEdge({
+      ...c,
+      type: 'deletable',
+      animated: true,
+      style: { stroke: '#6366f1' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1' },
+    }, es)),
     [setEdges]
   )
 
@@ -1074,7 +1124,8 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId }: EditorProp
             <p className="text-[10px] text-gray-400 leading-relaxed px-1">
               Arrastra o haz clic para agregar.<br />
               Conecta arrastrando entre los puntos azules.<br />
-              <kbd className="bg-gray-100 px-1 rounded text-[9px]">Del</kbd> para eliminar seleccionados.
+              Pasa el cursor sobre una flecha y pulsa <strong>×</strong> para eliminarla.<br />
+              <kbd className="bg-gray-100 px-1 rounded text-[9px]">Del</kbd> o <kbd className="bg-gray-100 px-1 rounded text-[9px]">⌫</kbd> elimina lo seleccionado.
             </p>
           </div>
         </div>
@@ -1086,9 +1137,14 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId }: EditorProp
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
             onConnect={onConnect} onInit={setRfInstance}
             onDrop={onDrop} onDragOver={onDragOver}
-            nodeTypes={NODE_TYPES} fitView
-            deleteKeyCode="Delete" snapToGrid snapGrid={[16, 16]}
-            defaultEdgeOptions={{ type: 'smoothstep', animated: true, style: { stroke: '#6366f1' } }}>
+            nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} fitView
+            deleteKeyCode={['Delete', 'Backspace']} snapToGrid snapGrid={[16, 16]}
+            defaultEdgeOptions={{
+              type: 'deletable',
+              animated: true,
+              style: { stroke: '#6366f1' },
+              markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1' },
+            }}>
             <Background color="#e5e7eb" gap={16} />
             <Controls />
             <MiniMap nodeStrokeWidth={3} pannable zoomable className="!bg-white !border-gray-200" />
