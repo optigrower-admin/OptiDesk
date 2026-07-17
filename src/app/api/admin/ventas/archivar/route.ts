@@ -28,23 +28,47 @@ export async function POST(req: NextRequest) {
     .single()
   if (!cliente) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
-  // Soft delete: sacar de seguimiento sin borrar el registro
+  // Eliminar completamente del sistema:
+  // 1. Borrar whatsapp_number para que no sea reconocido si vuelve a escribir
+  // 2. Sacar de seguimiento y limpiar estado de automatización
   const { error } = await admin
     .from('clientes')
-    .update({ en_seguimiento_ventas: false })
+    .update({
+      en_seguimiento_ventas: false,
+      whatsapp_number:       null,
+      celular:               null,
+      automatizado:          false,
+      flujo_activo_id:       null,
+    })
     .eq('id', cliente_id)
     .eq('tenant_id', perfil.tenant_id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Cerrar conversaciones activas del cliente para que la próxima llegue como nueva
+  await admin
+    .from('conversaciones')
+    .update({ estado: 'cerrada', cliente_id: null })
+    .eq('tenant_id', perfil.tenant_id)
+    .eq('cliente_id', cliente_id)
+    .in('estado', ['abierta', 'pendiente'])
+
+  // Cancelar ejecuciones de flujo activas
+  await admin
+    .from('flujo_ejecuciones')
+    .update({ estado: 'completado' })
+    .eq('tenant_id', perfil.tenant_id)
+    .eq('cliente_id', cliente_id)
+    .eq('estado', 'activo')
+
   // Registro de auditoría
   await admin.from('auditoria').insert({
     tenant_id:  perfil.tenant_id,
     usuario_id: perfil.id,
-    accion:     'archivar_cliente_ventas',
+    accion:     'eliminar_cliente_ventas',
     tabla:      'clientes',
     registro_id: cliente_id,
-    detalle:    'Cliente archivado desde Seguimiento Ventas (en_seguimiento_ventas = false)',
+    detalle:    'Cliente eliminado de Seguimiento Ventas: whatsapp_number borrado, conversaciones cerradas',
   }).then(() => {/* ignorar error si tabla no existe */})
 
   return NextResponse.json({ ok: true })
