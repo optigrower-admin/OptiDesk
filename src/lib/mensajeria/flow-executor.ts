@@ -335,13 +335,21 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
-    // ── Esperar (delay) ───────────────────────────────────────────────────────
+    // ── Esperar (delay o hasta respuesta) ────────────────────────────────────
     case 'esperar': {
+      const siguienteId = getSiguienteNodo(edges, nodo.id)
+
+      if (String(data.modo_espera ?? 'tiempo') === 'respuesta') {
+        // Pausa indefinida: solo un mensaje del cliente reanuda el flujo
+        // proxima_ejecucion_at muy lejana → el cron nunca la activa
+        const lejano = new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000).toISOString()
+        return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: siguienteId }
+      }
+
       const horas = Number(data.horas ?? 24)
       const minutos = Number(data.minutos ?? 0)
       const totalMs = (horas * 3600 + minutos * 60) * 1000
       const proxima = new Date(Date.now() + totalMs).toISOString()
-      const siguienteId = getSiguienteNodo(edges, nodo.id)
       return { tipo: 'pausar', proxima_ejecucion_at: proxima, siguiente_nodo_id: siguienteId }
     }
 

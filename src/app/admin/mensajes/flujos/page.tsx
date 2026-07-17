@@ -175,21 +175,43 @@ const EsperarNode = ({ id, data }: NodeProps) => {
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
   const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
 
+  const esRespuesta = String(data.modo_espera ?? 'tiempo') === 'respuesta'
+
   return (
     <div className={`${nodeBaseClass} border-orange-400`}>
       <Handle type="target" position={Position.Top} className="!bg-orange-400 !w-3 !h-3" />
-      <NodeHeader color="bg-orange-500" icon="⏱️" label="Esperar / Delay" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-1.5">
-        <div className="flex items-center gap-2">
-          <input type="number" defaultValue={data.horas ?? 24} min={0} max={720}
-            onChange={e => upd('horas', e.target.value)}
-            className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
-          <span className="text-xs text-gray-500">horas</span>
-          <input type="number" defaultValue={data.minutos ?? 0} min={0} max={59}
-            onChange={e => upd('minutos', e.target.value)}
-            className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
-          <span className="text-xs text-gray-500">min</span>
+      <NodeHeader color="bg-orange-500" icon="⏱️" label="Esperar" onDelete={eliminar} />
+      <div className="px-3 py-2.5 space-y-2">
+        {/* Toggle modo */}
+        <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs">
+          <button
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); upd('modo_espera', 'tiempo') }}
+            className={`nodrag flex-1 py-1 transition-colors ${!esRespuesta ? 'bg-orange-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
+          >Con tiempo</button>
+          <button
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); upd('modo_espera', 'respuesta') }}
+            className={`nodrag flex-1 py-1 transition-colors ${esRespuesta ? 'bg-orange-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
+          >Esperar respuesta</button>
         </div>
+
+        {!esRespuesta ? (
+          <div className="flex items-center gap-2">
+            <input type="number" defaultValue={data.horas ?? 24} min={0} max={720}
+              onChange={e => upd('horas', e.target.value)}
+              className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
+            <span className="text-xs text-gray-500">horas</span>
+            <input type="number" defaultValue={data.minutos ?? 0} min={0} max={59}
+              onChange={e => upd('minutos', e.target.value)}
+              className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
+            <span className="text-xs text-gray-500">min</span>
+          </div>
+        ) : (
+          <p className="text-[10px] text-gray-400 leading-tight">
+            El flujo pausa aquí hasta que el cliente escriba cualquier mensaje. Sin límite de tiempo.
+          </p>
+        )}
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-orange-400 !w-3 !h-3" />
     </div>
