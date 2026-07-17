@@ -429,22 +429,24 @@ async function procesarNodo(
           resultado = contexto.etapa_actual === 'nuevo_mensaje' || contexto.etapa_actual === 'nuevo'
           break
 
-        // ── Contiene alguna palabra (texto simple, original) ─────────────────
+        // ── Contiene alguna palabra (subcadena, sin dividir) ─────────────────
         case 'respuesta_contiene':
           resultado = ultimoMsgLower.includes(condicionValor.toLowerCase())
           break
 
-        // ── Contiene ALGUNA de varias palabras clave (lista separada por coma)
+        // ── Contiene ALGUNA de varias palabras clave (comparación por palabra completa)
         case 'palabras_clave': {
-          const palabras = condicionValor.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
-          resultado = palabras.some(p => ultimoMsgLower.includes(p))
+          const palabras  = condicionValor.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
+          const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
+          resultado = palabras.some(p => msgTokens.includes(p))
           break
         }
 
-        // ── Contiene TODAS las palabras clave ────────────────────────────────
+        // ── Contiene TODAS las palabras clave (comparación por palabra completa)
         case 'contiene_todas': {
-          const palabras = condicionValor.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
-          resultado = palabras.length > 0 && palabras.every(p => ultimoMsgLower.includes(p))
+          const palabras  = condicionValor.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
+          const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
+          resultado = palabras.length > 0 && palabras.every(p => msgTokens.includes(p))
           break
         }
 
@@ -473,19 +475,17 @@ async function procesarNodo(
         // ── Respuesta positiva ───────────────────────────────────────────────
         case 'es_positivo': {
           const positivos = ['sí','si','claro','dale','ok','bueno','bien','correcto','exacto',
-            'afirmativo','por supuesto','con gusto','listo','perfecto','de acuerdo','va','eso',
-            'sip','seee','yep','yes','obvio','obvio que sí']
-          resultado = positivos.some(p => ultimoMsgLower.includes(p))
-            || /^\s*(s[íi]|ok|dale|listo|bueno|claro)\s*[!.]*\s*$/i.test(ultimoMsg)
+            'afirmativo','listo','perfecto','va','sip','seee','yep','yes','obvio']
+          const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
+          resultado = positivos.some(p => msgTokens.includes(p))
           break
         }
 
         // ── Respuesta negativa ───────────────────────────────────────────────
         case 'es_negativo': {
-          const negativos = ['no','nop','nope','tampoco','negativo','para nada','ni modo',
-            'nel','nada','imposible','negado','no gracias','no me interesa']
-          resultado = negativos.some(p => ultimoMsgLower.includes(p))
-            || /^\s*(no|nop|nope|nel)\s*[!.]*\s*$/i.test(ultimoMsg)
+          const negativos = ['no','nop','nope','tampoco','negativo','nel','nada','negado']
+          const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
+          resultado = negativos.some(p => msgTokens.includes(p))
           break
         }
 
