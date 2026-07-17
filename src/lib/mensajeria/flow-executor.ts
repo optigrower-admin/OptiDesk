@@ -11,7 +11,7 @@ import type { ContextoEjecucion, TriggerTipo } from '@/types/flujos'
 
 type Supa = ReturnType<typeof createAdminClient>
 
-const MAX_PASOS_POR_EJECUCION = 20  // evitar loops infinitos
+const MAX_PASOS_POR_EJECUCION = 100  // evitar loops infinitos
 
 // ─── Función principal: iniciar flujo cuando llega un mensaje ─────────────────
 export async function iniciarFlujoParaConversacion(
