@@ -705,6 +705,67 @@ const CapturarDatoNode = ({ id, data }: NodeProps) => {
   )
 }
 
+// ─── NODO: Ir a nodo (goto / loop-back) ──────────────────────────────────────
+const IrANodoNode = ({ id, data }: NodeProps) => {
+  const { setNodes, setEdges, getNodes } = useReactFlow()
+  const upd = (k: string, v: string) =>
+    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
+
+  const otrosNodos = getNodes().filter(n => n.id !== id)
+
+  const iconTipo: Record<string, string> = {
+    trigger: '⚡', mensaje: '💬', esperar: '⏱️', condicion: '🔀',
+    menu_opciones: '📋', capturar_dato: '💾', asignar: '👤', etapa: '📊',
+    etiqueta: '🏷️', agente_ia: '🤖', plantilla: '📄', media: '📎',
+    nota_interna: '📝', subflujo: '🔗', fin: '🏁',
+  }
+
+  const labelNodo = (n: typeof otrosNodos[number]) => {
+    const icono = iconTipo[n.type ?? ''] ?? '◼'
+    const d = n.data as Record<string, unknown>
+    if (n.type === 'mensaje' && d.contenido)
+      return `${icono} Mensaje: "${String(d.contenido).slice(0, 22)}…"`
+    if (n.type === 'esperar')
+      return `${icono} Esperar ${d.horas ?? 24}h ${d.minutos ? `${d.minutos}m` : ''}`
+    if (n.type === 'menu_opciones')
+      return `${icono} Menú (${d.cantidad ?? 3} opciones)`
+    if (n.type === 'condicion')
+      return `${icono} Condición: ${d.condicion_tipo ?? ''}`
+    const tipoNombre: Record<string, string> = {
+      trigger: 'Disparador', asignar: 'Asignar asesor', etapa: 'Cambiar etapa',
+      etiqueta: 'Etiquetar', capturar_dato: 'Guardar dato', agente_ia: 'Agente IA',
+      plantilla: 'Plantilla', media: 'Archivo', nota_interna: 'Nota interna',
+      subflujo: 'Subflujo', fin: 'Fin del flujo',
+    }
+    return `${icono} ${tipoNombre[n.type ?? ''] ?? n.type ?? 'Nodo'}`
+  }
+
+  return (
+    <div className={`${nodeBaseClass} border-sky-400`} style={{ width: 230 }}>
+      <Handle type="target" position={Position.Top} className="!bg-sky-400 !w-3 !h-3" />
+      <NodeHeader color="bg-sky-500" icon="↩" label="Ir a nodo" onDelete={eliminar} />
+      <div className="px-3 py-2.5 space-y-2">
+        <label className="block text-xs text-gray-500 font-medium">Saltar a:</label>
+        <select
+          value={data.nodo_destino_id ?? ''}
+          onChange={e => upd('nodo_destino_id', e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-sky-400"
+        >
+          <option value="">— Seleccionar nodo —</option>
+          {otrosNodos.map(n => (
+            <option key={n.id} value={n.id}>{labelNodo(n)}</option>
+          ))}
+        </select>
+        <p className="text-[10px] text-gray-400 leading-tight">
+          El flujo salta directamente a ese nodo. Para esperar la siguiente respuesta del cliente, apunta a un nodo <strong>Esperar</strong>.
+        </p>
+      </div>
+      {/* Sin handle de salida — el destino se define en el selector */}
+    </div>
+  )
+}
+
 const FinNode = ({ id }: NodeProps) => {
   const { setNodes, setEdges } = useReactFlow()
   const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
@@ -732,6 +793,7 @@ const NODE_TYPES: NodeTypes = {
   subflujo:      SubflujoNode,
   capturar_dato:  CapturarDatoNode,
   menu_opciones:  MenuOpcionesNode,
+  ir_a_nodo:      IrANodoNode,
   fin:            FinNode,
 }
 
@@ -744,6 +806,7 @@ const PALETTE_ITEMS = [
   { type: 'condicion',    icon: '🔀', label: 'Condición',         color: 'border-yellow-300 bg-yellow-50 hover:bg-yellow-100'  },
   { type: 'capturar_dato', icon: '💾', label: 'Guardar respuesta', color: 'border-violet-300 bg-violet-50 hover:bg-violet-100' },
   { type: 'menu_opciones', icon: '📋', label: 'Menú de opciones', color: 'border-fuchsia-300 bg-fuchsia-50 hover:bg-fuchsia-100' },
+  { type: 'ir_a_nodo',    icon: '↩',  label: 'Ir a nodo',       color: 'border-sky-300 bg-sky-50 hover:bg-sky-100'             },
   { type: 'asignar',      icon: '👤', label: 'Asignar asesor',    color: 'border-purple-300 bg-purple-50 hover:bg-purple-100'  },
   { type: 'etapa',        icon: '📊', label: 'Cambiar etapa',     color: 'border-cyan-300 bg-cyan-50 hover:bg-cyan-100'       },
   { type: 'esperar',      icon: '⏱️', label: 'Esperar / Delay',   color: 'border-orange-300 bg-orange-50 hover:bg-orange-100'  },
@@ -769,6 +832,7 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
     case 'subflujo':      return { subflujo_id: '', flujos_disponibles: ctx.flujos }
     case 'capturar_dato':  return { campo: 'nombre', nombre_variable: '' }
     case 'menu_opciones':  return { cantidad: 3, etiquetas: ['', '', ''] }
+    case 'ir_a_nodo':      return { nodo_destino_id: '' }
     case 'fin':            return {}
     default:              return {}
   }

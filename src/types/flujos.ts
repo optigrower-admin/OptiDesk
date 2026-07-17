@@ -20,6 +20,7 @@ export type TipoNodo =
   | 'subflujo'
   | 'capturar_dato'
   | 'menu_opciones'
+  | 'ir_a_nodo'
   | 'fin'
 
 // ─── Tipos de disparador ──────────────────────────────────────────────────────
@@ -115,6 +116,7 @@ export type DatosNodo =
   | (DatosSubflujo & { tipo: 'subflujo' })
   | (DatosCapturarDato & { tipo: 'capturar_dato' })
   | (DatosMenuOpciones & { tipo: 'menu_opciones' })
+  | ({ tipo: 'ir_a_nodo'; nodo_destino_id: string })
   | ({ tipo: 'fin' })
 
 // ─── Estructura del flujo guardado en DB (nodos JSONB) ────────────────────────

@@ -713,6 +713,15 @@ async function procesarNodo(
       return { tipo: 'pausar', proxima_ejecucion_at: enUnAno, siguiente_nodo_id: nodo.id }
     }
 
+    // ── Saltar a otro nodo del flujo (goto / loop-back) ──────────────────────
+    case 'ir_a_nodo': {
+      const destinoId = String(data.nodo_destino_id ?? '').trim()
+      if (!destinoId) return { tipo: 'continuar', siguiente_nodo_id: null }
+      const existe = nodes.find(n => n.id === destinoId)
+      if (!existe) return { tipo: 'continuar', siguiente_nodo_id: null }
+      return { tipo: 'continuar', siguiente_nodo_id: destinoId }
+    }
+
     // ── Guardar respuesta del cliente en campo del perfil ─────────────────────
     case 'capturar_dato': {
       const campo = String(data.campo ?? 'nombre')
