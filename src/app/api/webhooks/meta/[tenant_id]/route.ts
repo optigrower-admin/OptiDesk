@@ -418,20 +418,28 @@ async function procesarMensajeIndividual(
         console.log(`[webhook] ✓ cliente ${clienteIdActual} reactivado en nuevo_mensaje`)
       }
 
-      // UPDATE 2: campos opcionales (no bloquean el flujo si fallan)
-      await supabase.from('clientes').update({ nombre_pendiente_aprobacion: true })
+      // UPDATE 2: campos opcionales — actualizar nombre desde WhatsApp + flag de revisión
+      const nombreReactivado = await obtenerNombreContacto(supabase, tenantId, canal, canalContactId, value)
+      const esNombreRealReac = nombreReactivado && !nombreReactivado.startsWith('+') &&
+        !nombreReactivado.startsWith('Contacto') && !nombreReactivado.startsWith('Messenger') &&
+        !nombreReactivado.startsWith('Instagram')
+      const optFieldsReac: Record<string, unknown> = { nombre_pendiente_aprobacion: true }
+      if (esNombreRealReac) optFieldsReac.nombre = nombreReactivado
+      await supabase.from('clientes').update(optFieldsReac)
         .eq('id', clienteIdActual)
         .then(({ error }) => {
-          if (error && error.code !== '42703') console.error('[webhook] error nombre_pendiente:', error.message)
+          if (error && error.code !== '42703') console.error('[webhook] error opt reactivación:', error.message)
         })
     } else {
       console.log(`[webhook] cliente ya en seguimiento etapa=${clienteVivo.etapa_venta}`)
     }
   }
 
-  // Guardar el mensaje
+  // Guardar el mensaje — upsert con ignoreDuplicates previene race condition
+  // cuando Meta reintenta el webhook antes de que el INSERT anterior se persista.
+  // Requiere UNIQUE constraint en meta_message_id (migration_v83).
   const now = new Date().toISOString()
-  await supabase.from('mensajes').insert({
+  const { error: errMsg } = await supabase.from('mensajes').upsert({
     conversacion_id:  conv.id,
     tenant_id:        tenantId,
     direccion:        'entrante',
@@ -439,7 +447,8 @@ async function procesarMensajeIndividual(
     contenido:        contenido.slice(0, 4000),
     meta_message_id:  metaMessageId || null,
     leido_por_asesor: false,
-  })
+  }, { onConflict: 'meta_message_id', ignoreDuplicates: true })
+  if (errMsg) console.error('[webhook] error guardando mensaje:', errMsg.message, errMsg.code)
 
   // Actualizar conversación
   const sinRespDesde = (conv as Record<string, unknown>).sin_respuesta_asesor_desde as string | null
