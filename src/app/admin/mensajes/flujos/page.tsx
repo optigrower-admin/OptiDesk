@@ -667,99 +667,110 @@ const EtiquetaNode = ({ id, data }: NodeProps) => {
 }
 
 // ─── NODO: Menú de opciones ───────────────────────────────────────────────────
+type MenuOpcion = { etiqueta?: string; tipo_match?: string; valor_match?: string }
+
+const MATCH_TIPOS = [
+  { value: 'numero',      label: '# Número'      },
+  { value: 'exacto',      label: '= Exacto'      },
+  { value: 'contiene',    label: '⊃ Contiene'    },
+  { value: 'no_contiene', label: '⊄ No contiene' },
+]
+
 const MenuOpcionesNode = ({ id, data }: NodeProps) => {
   const { setNodes, setEdges } = useReactFlow()
   const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
 
   const cantidad = Number(data.cantidad ?? 3)
-  const etiquetas: string[] = data.etiquetas ?? []
 
-  const updCantidad = (n: number) =>
-    setNodes(ns => ns.map(node => node.id === id ? { ...node, data: { ...node.data, cantidad: n } } : node))
+  // Migrar legacy etiquetas[] → opciones[]
+  const rawOpciones = (data.opciones as MenuOpcion[] | undefined)
+    ?? (data.etiquetas as string[] | undefined)?.map((et: string) => ({ etiqueta: et, tipo_match: 'numero', valor_match: '' }))
+    ?? []
+  const opciones: MenuOpcion[] = Array.from(
+    { length: cantidad },
+    (_, i) => rawOpciones[i] ?? { etiqueta: '', tipo_match: 'numero', valor_match: '' }
+  )
 
-  const updEtiqueta = (i: number, v: string) => {
-    const nuevas = [...etiquetas]
-    nuevas[i] = v
-    setNodes(ns => ns.map(node => node.id === id ? { ...node, data: { ...node.data, etiquetas: nuevas } } : node))
+  const updOpcion = (i: number, field: keyof MenuOpcion, value: string) => {
+    const nuevas = opciones.map((op, idx) => idx === i ? { ...op, [field]: value } : op)
+    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, opciones: nuevas } } : n))
   }
 
-  // Posiciones de handles: opciones 1..N + "otro" al final
-  // Total handles = cantidad + 1 (otro); distribuidos en el ancho del nodo
-  const getLeft = (idx: number) => `${(100 / (cantidad + 2)) * (idx + 1)}%`
+  const updCantidad = (n: number) => {
+    const nuevas = Array.from({ length: n }, (_, i) => opciones[i] ?? { etiqueta: '', tipo_match: 'numero', valor_match: '' })
+    setNodes(ns => ns.map(node => node.id === id ? { ...node, data: { ...node.data, cantidad: n, opciones: nuevas } } : node))
+  }
 
+  const getLeft = (idx: number) => `${(100 / (cantidad + 2)) * (idx + 1)}%`
   const nums = Array.from({ length: cantidad }, (_, i) => i + 1)
 
   return (
-    <div className={`${nodeBaseClass} border-fuchsia-400`} style={{ width: 250 }}>
+    <div className={`${nodeBaseClass} border-fuchsia-400`} style={{ width: 290 }}>
       <Handle type="target" position={Position.Top} className="!bg-fuchsia-400 !w-3 !h-3" />
       <NodeHeader color="bg-fuchsia-500" icon="📋" label="Menú de opciones" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
         <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-500 whitespace-nowrap">Número de opciones:</label>
-          <select
-            value={cantidad}
-            onChange={e => updCantidad(Number(e.target.value))}
-            className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
-          >
+          <label className="text-xs text-gray-500 whitespace-nowrap">Opciones:</label>
+          <select value={cantidad} onChange={e => updCantidad(Number(e.target.value))}
+            className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400">
             {[2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{n} opciones</option>)}
           </select>
         </div>
 
-        <div className="space-y-1">
-          {nums.map(n => (
-            <div key={n} className="flex items-center gap-1.5">
-              <span className="text-fuchsia-600 font-bold text-xs w-4 text-right flex-shrink-0">{n}.</span>
-              <input
-                key={`${id}-op-${n}`}
-                type="text"
-                defaultValue={etiquetas[n - 1] ?? ''}
-                onChange={e => updEtiqueta(n - 1, e.target.value)}
-                placeholder={`Opción ${n} (etiqueta opcional)`}
-                className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
-              />
-            </div>
-          ))}
+        <div className="space-y-1.5">
+          {nums.map((n, i) => {
+            const op = opciones[i]
+            const tipo = op?.tipo_match ?? 'numero'
+            return (
+              <div key={n} className="border border-gray-100 rounded-lg p-1.5 space-y-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-fuchsia-600 font-bold text-xs w-4 flex-shrink-0">{n}.</span>
+                  <input key={`${id}-lbl-${n}`} type="text" defaultValue={op?.etiqueta ?? ''}
+                    onChange={e => updOpcion(i, 'etiqueta', e.target.value)}
+                    placeholder={`Etiqueta opción ${n} (opcional)`}
+                    className="flex-1 border border-gray-200 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
+                </div>
+                <div className="flex items-center gap-1 ml-5">
+                  <select value={tipo} onChange={e => updOpcion(i, 'tipo_match', e.target.value)}
+                    className="border border-gray-200 rounded px-1 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-fuchsia-400 bg-gray-50">
+                    {MATCH_TIPOS.map(mt => <option key={mt.value} value={mt.value}>{mt.label}</option>)}
+                  </select>
+                  {tipo !== 'numero' ? (
+                    <input key={`${id}-val-${n}-${tipo}`} type="text" defaultValue={op?.valor_match ?? ''}
+                      onChange={e => updOpcion(i, 'valor_match', e.target.value)}
+                      placeholder="texto a comparar..."
+                      className="flex-1 border border-gray-200 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
+                  ) : (
+                    <span className="text-[10px] text-gray-400">cliente escribe &quot;{n}&quot;</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
 
         <p className="text-[10px] text-gray-400 leading-tight">
-          El cliente responde con el número (1, 2, 3…). Si la respuesta no coincide → salida <span className="text-amber-600 font-medium">?otro</span>.
+          Se evalúan en orden — primera coincidencia gana. Sin coincidencia → <span className="text-amber-600 font-medium">?otro</span>.
         </p>
       </div>
 
       {/* Etiquetas de handles */}
       <div className="relative h-5 mx-3">
         {nums.map(n => (
-          <span
-            key={n}
-            className="absolute text-[9px] text-fuchsia-600 font-bold"
-            style={{ left: getLeft(n - 1), transform: 'translateX(-50%)' }}
-          >{n}</span>
+          <span key={n} className="absolute text-[9px] text-fuchsia-600 font-bold"
+            style={{ left: getLeft(n - 1), transform: 'translateX(-50%)' }}>{n}</span>
         ))}
-        <span
-          className="absolute text-[9px] text-amber-500 font-bold"
-          style={{ left: getLeft(cantidad), transform: 'translateX(-50%)' }}
-        >?</span>
+        <span className="absolute text-[9px] text-amber-500 font-bold"
+          style={{ left: getLeft(cantidad), transform: 'translateX(-50%)' }}>?</span>
       </div>
 
       {/* Handles numerados */}
       {nums.map(n => (
-        <Handle
-          key={n}
-          id={String(n)}
-          type="source"
-          position={Position.Bottom}
-          style={{ left: getLeft(n - 1) }}
-          className="!bg-fuchsia-400 !w-3 !h-3"
-        />
+        <Handle key={n} id={String(n)} type="source" position={Position.Bottom}
+          style={{ left: getLeft(n - 1) }} className="!bg-fuchsia-400 !w-3 !h-3" />
       ))}
-      {/* Handle fallback */}
-      <Handle
-        id="otro"
-        type="source"
-        position={Position.Bottom}
-        style={{ left: getLeft(cantidad) }}
-        className="!bg-amber-400 !w-3 !h-3"
-      />
+      <Handle id="otro" type="source" position={Position.Bottom}
+        style={{ left: getLeft(cantidad) }} className="!bg-amber-400 !w-3 !h-3" />
     </div>
   )
 }
@@ -949,7 +960,11 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
     case 'etiqueta':      return { accion: 'agregar', etiqueta_id: '', etiquetas: ctx.etiquetas }
     case 'subflujo':      return { subflujo_id: '', flujos_disponibles: ctx.flujos }
     case 'capturar_dato':  return { campo: 'nombre', nombre_variable: '' }
-    case 'menu_opciones':  return { cantidad: 3, etiquetas: ['', '', ''] }
+    case 'menu_opciones':  return { cantidad: 3, opciones: [
+      { etiqueta: '', tipo_match: 'numero', valor_match: '' },
+      { etiqueta: '', tipo_match: 'numero', valor_match: '' },
+      { etiqueta: '', tipo_match: 'numero', valor_match: '' },
+    ] }
     case 'ir_a_nodo':      return { nodo_destino_id: '' }
     case 'fin':            return {}
     default:              return {}

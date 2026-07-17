@@ -722,25 +722,38 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
-    // ── Menú de opciones (1, 2, 3 … N → salida numerada) ─────────────────────
+    // ── Menú de opciones (matching por número, exacto, contiene o no_contiene) ─
     case 'menu_opciones': {
       const cantidad = Number(data.cantidad ?? 3)
-      const ultimoMsg = (contexto.ultimo_mensaje ?? '').trim()
-      const num = parseInt(ultimoMsg)
+      const rawOpciones = (data.opciones ?? []) as { tipo_match?: string; valor_match?: string }[]
+      const ultimoMsg  = (contexto.ultimo_mensaje ?? '').trim()
+      const ultimoLow  = ultimoMsg.toLowerCase()
 
-      // Respuesta válida: número entre 1 y N
-      if (!isNaN(num) && num >= 1 && num <= cantidad) {
-        const siguiente = getSiguienteNodoConSalida(edges, nodo.id, String(num))
-        return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+      for (let i = 0; i < cantidad; i++) {
+        const op    = rawOpciones[i] ?? {}
+        const tipo  = op.tipo_match ?? 'numero'
+        const valor = (op.valor_match ?? '').trim().toLowerCase()
+        const num   = i + 1
+
+        let match = false
+        switch (tipo) {
+          case 'numero':      match = ultimoMsg === String(num); break
+          case 'exacto':      match = Boolean(valor) && ultimoLow === valor; break
+          case 'contiene':    match = Boolean(valor) && ultimoLow.includes(valor); break
+          case 'no_contiene': match = Boolean(valor) && !ultimoLow.includes(valor); break
+        }
+
+        if (match) {
+          const siguiente = getSiguienteNodoConSalida(edges, nodo.id, String(num))
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+        }
       }
 
-      // Respuesta no es un número válido → salida "otro" si está conectada
+      // Ninguna opción coincidió → salida "otro" si está conectada
       const otraSalida = getSiguienteNodoConSalida(edges, nodo.id, 'otro')
-      if (otraSalida) {
-        return { tipo: 'continuar', siguiente_nodo_id: otraSalida }
-      }
+      if (otraSalida) return { tipo: 'continuar', siguiente_nodo_id: otraSalida }
 
-      // Sin "otro" conectado: pausar en este nodo esperando respuesta válida
+      // Sin "otro": pausar en este nodo esperando nueva respuesta
       const enUnAno = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString()
       return { tipo: 'pausar', proxima_ejecucion_at: enUnAno, siguiente_nodo_id: nodo.id }
     }

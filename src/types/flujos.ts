@@ -96,9 +96,16 @@ export interface DatosCapturarDato {
   nombre_variable?: string  // solo cuando campo === 'variable'
 }
 
+export interface DatosMenuOpcion {
+  etiqueta?: string
+  tipo_match: 'numero' | 'exacto' | 'contiene' | 'no_contiene'
+  valor_match?: string
+}
+
 export interface DatosMenuOpciones {
-  cantidad: number          // 2-7 opciones
-  etiquetas?: string[]      // texto descriptivo de cada opción (solo referencia visual)
+  cantidad: number
+  opciones?: DatosMenuOpcion[]  // nuevo — por opción
+  etiquetas?: string[]          // legacy — solo numérico
 }
 
 // ─── Estructura de nodo completa ──────────────────────────────────────────────
