@@ -399,6 +399,8 @@ async function procesarNodo(
       const ultimoMsgLower = ultimoMsg.toLowerCase()
       let resultado = false
 
+      console.log(`[condicion] tipo="${condicionTipo}" valor="${condicionValor}" ultimoMsg="${ultimoMsg}" ultimoMsgLower="${ultimoMsgLower}"`)
+
       switch (condicionTipo) {
 
         // ── Canal ────────────────────────────────────────────────────────────
@@ -561,6 +563,8 @@ async function procesarNodo(
 
       const salida = resultado ? 'true' : 'false'
       const siguiente = getSiguienteNodoConSalida(edges, nodo.id, salida)
+      const edgesDeNodo = edges.filter(e => e.source === nodo.id).map(e => `${e.sourceHandle}→${e.target}`)
+      console.log(`[condicion] resultado=${resultado} salida="${salida}" siguiente=${siguiente} edges=[${edgesDeNodo.join(', ')}]`)
       return { tipo: 'continuar', siguiente_nodo_id: siguiente }
     }
 
