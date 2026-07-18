@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import type { EtapaVenta } from '@/lib/ventas/pipeline'
@@ -15,13 +15,15 @@ export default function VentasPage() {
 
   const [leads, setLeads]       = useState<LeadData[]>([])
   const [cargando, setCargando] = useState(true)
+  const cargadoRef              = useRef(false)   // true después de la primera carga exitosa
 
   useEffect(() => {
     if (!profile?.tenant_id) return
 
     async function cargar() {
       if (!profile) return
-      setCargando(true)
+      // Solo mostrar spinner en la primera carga; las recargas de fondo son silenciosas
+      if (!cargadoRef.current) setCargando(true)
 
       let query = supabase
         .from('clientes')
@@ -226,6 +228,7 @@ export default function VentasPage() {
       })
 
       setLeads(mapped)
+      cargadoRef.current = true
       setCargando(false)
     }
 
@@ -260,19 +263,16 @@ export default function VentasPage() {
         (payload) => {
           const row = payload.new as Record<string, unknown>
           const old = payload.old as Record<string, unknown>
-          // Recargar si el cliente está en seguimiento (nuevo_mensaje, etapa cambiada, etc.)
-          if (row.en_seguimiento_ventas) {
-            const acabaDeEntrar = !old.en_seguimiento_ventas
-            const etapaCambio   = old.etapa_venta !== row.etapa_venta
-            if (acabaDeEntrar || etapaCambio) cargar()
-          }
+          // Solo recargar cuando un cliente ENTRA a seguimiento (INSERT silencioso o cambio de flag)
+          // NO recargar en etapaCambio: ese evento lo dispara el propio usuario al mover tarjetas
+          if (row.en_seguimiento_ventas && !old.en_seguimiento_ventas) cargar()
         }
       )
       .subscribe()
 
-    // Polling de seguridad: si Realtime falla o la tabla no está en la publicación,
-    // actualizar cada 60 s para asegurar que los mensajes nuevos aparezcan.
-    const pollId = setInterval(() => { cargar() }, 60_000)
+    // Polling de seguridad: recargar silenciosamente cada 3 min para capturar cambios
+    // de otros usuarios (etapas, nuevos leads, etc.) sin interrumpir la UI
+    const pollId = setInterval(() => { cargar() }, 180_000)
 
     return () => {
       supabase.removeChannel(channel)
