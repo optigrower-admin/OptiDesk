@@ -281,16 +281,21 @@ export default function VentasPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.tenant_id, profile?.rol, profile?.id])
 
-  if (cargando) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-500">Cargando seguimiento de ventas...</p>
-        </div>
-      </div>
-    )
-  }
+  // Mostrar spinner de primera carga solo si aún no tenemos datos
+  // VentasClient SIEMPRE queda montado para no perder estado (ficha abierta, tab, etc.)
+  const primeraCarga = cargando && leads.length === 0
 
-  return <VentasClient leadsIniciales={leads} tenantId={profile?.tenant_id ?? ''} />
+  return (
+    <div className="relative min-h-screen">
+      {primeraCarga && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-50">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-gray-500">Cargando seguimiento de ventas...</p>
+          </div>
+        </div>
+      )}
+      <VentasClient leadsIniciales={leads} tenantId={profile?.tenant_id ?? ''} />
+    </div>
+  )
 }

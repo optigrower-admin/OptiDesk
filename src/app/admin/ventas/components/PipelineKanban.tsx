@@ -239,6 +239,15 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   const [fasesExpandidas, setFasesExpandidas] = useState<Set<string>>(new Set())
   const fasesPreDragRef = useRef<Set<string> | null>(null)
 
+  // Sincronizar carga inicial: cuando VentasPage termina de cargar y pasa los leads
+  // reales por primera vez, los internalizamos. Recargas de fondo no tocan este estado.
+  useEffect(() => {
+    if (leads.length === 0 && leadsIniciales.length > 0) {
+      setLeads(leadsIniciales)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadsIniciales])
+
   useEffect(() => {
     if (abrirClienteId && leads.some(l => l.id === abrirClienteId)) setFichaId(abrirClienteId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
