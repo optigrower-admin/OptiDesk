@@ -1043,23 +1043,24 @@ function TransferirModal({ tenantId, usuarioId, esGerencia = false, onClose, onC
 
     try {
       if (esCFDestino && !esCFOrigen) {
-        // Regular → Caja fuerte: gastos_caja con la descripción mágica que detecta saldoCajaFuerte
-        const { data, error: err } = await supabase.from('gastos_caja').insert({
-          tenant_id: tenantId,
-          descripcion: 'transferencia a caja fuerte',
-          monto: montoNum,
-          metodo_pago_id: cuentaOrigen,
-          registrado_por: usuarioId,
-          ...fechaPayload,
-        }).select('id').single()
-        if (err) throw new Error(err.message)
-        await registrarAuditoria(supabase, {
-          tenant_id: tenantId, tabla: 'gastos_caja',
-          registro_id: (data as { id: string }).id, tipo: 'movimiento',
-          valor_nuevo: { descripcion: 'transferencia a caja fuerte', monto: montoNum },
-          descripcion: `Transfirió ${formatCOP(montoNum)} de ${nombreCuenta(cuentaOrigen)} a Caja fuerte`,
-          usuario_id: usuarioId,
-        })
+        // Regular → Caja fuerte: gasto en origen + ajuste positivo en CF (simétrico a CF→Regular)
+        const [{ data: d1, error: e1 }, { data: d2, error: e2 }] = await Promise.all([
+          supabase.from('gastos_caja').insert({
+            tenant_id: tenantId, descripcion: desc, monto: montoNum,
+            metodo_pago_id: cuentaOrigen, registrado_por: usuarioId, ...fechaPayload,
+          }).select('id').single(),
+          supabase.from('ajustes_caja').insert({
+            tenant_id: tenantId, descripcion: desc, monto: montoNum,
+            metodo_pago_id: null, cuenta_especial: 'caja_fuerte',
+            registrado_por: usuarioId, ...fechaPayload,
+          }).select('id').single(),
+        ])
+        if (e1) throw new Error(e1.message)
+        if (e2) throw new Error(e2.message)
+        await Promise.all([
+          registrarAuditoria(supabase, { tenant_id: tenantId, tabla: 'gastos_caja', registro_id: (d1 as { id: string }).id, tipo: 'movimiento', valor_nuevo: { descripcion: desc, monto: montoNum }, descripcion: `Salida de ${formatCOP(montoNum)} de ${nombreCuenta(cuentaOrigen)} hacia Caja fuerte`, usuario_id: usuarioId }),
+          registrarAuditoria(supabase, { tenant_id: tenantId, tabla: 'ajustes_caja', registro_id: (d2 as { id: string }).id, tipo: 'movimiento', valor_nuevo: { descripcion: desc, monto: montoNum }, descripcion: `Ingreso de ${formatCOP(montoNum)} en Caja fuerte desde ${nombreCuenta(cuentaOrigen)}`, usuario_id: usuarioId }),
+        ])
       } else if (esCFOrigen && !esCFDestino) {
         // Caja fuerte → Regular: ajuste negativo en CF + ingreso en destino
         const [{ data: d1, error: e1 }, { data: d2, error: e2 }] = await Promise.all([
@@ -1243,7 +1244,7 @@ export default function CajaPage() {
           case 'costos_externos':   return m.categoria === 'costo_externo'
           case 'costos_lavado':     return m.categoria === 'costo_lavado'
           case 'transferencias':    return esTransfer
-          case 'ajuste_caja':       return m.categoria === 'ajuste'
+          case 'ajuste_caja':       return m.categoria === 'ajuste' && !esTransfer
           default:                  return true
         }
       })
@@ -1730,8 +1731,10 @@ export default function CajaPage() {
                     {new Date(m.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORIA_BADGE[m.categoria]}`}>
-                      {CATEGORIA_LABEL[m.categoria]}
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                      esTransferenciaConcepto(m.concepto) ? 'bg-indigo-100 text-indigo-700' : CATEGORIA_BADGE[m.categoria]
+                    }`}>
+                      {esTransferenciaConcepto(m.concepto) ? 'Transferencia' : CATEGORIA_LABEL[m.categoria]}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-900 truncate max-w-[280px]">{m.concepto}</td>
@@ -1815,8 +1818,10 @@ export default function CajaPage() {
                     {new Date(f.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${CATEGORIA_BADGE[f.categoria]}`}>
-                      {CATEGORIA_LABEL[f.categoria]}
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                      esTransferenciaConcepto(f.concepto) ? 'bg-indigo-100 text-indigo-700' : CATEGORIA_BADGE[f.categoria]
+                    }`}>
+                      {esTransferenciaConcepto(f.concepto) ? 'Transferencia' : CATEGORIA_LABEL[f.categoria]}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-900 truncate max-w-[280px]">{f.concepto}</td>

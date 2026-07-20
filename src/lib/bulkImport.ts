@@ -21,7 +21,10 @@ function parseFecha(s: string): string | null {
 
 function parseNum(s: string | undefined): number {
   if (!s) return 0
-  const n = parseInt(String(s).replace(/[^\d-]/g, ''), 10)
+  // Strip trailing decimal separator + 1-2 decimal digits (e.g. ".00", ",00") before removing separators
+  // so "59500.00" becomes "59500" (→ 59500) and not "5950000" (→ 5,950,000)
+  const str = String(s).trim().replace(/[.,]\d{1,2}$/, '')
+  const n = parseInt(str.replace(/[^\d-]/g, ''), 10)
   return isNaN(n) ? 0 : n
 }
 

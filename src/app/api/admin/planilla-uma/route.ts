@@ -54,6 +54,7 @@ interface ItemOrdenRow {
   precio_venta: number
   cantidad: number
   created_at: string
+  repuestos_uma: { codigo: string; precio_publico_iva: number | null } | null
   ordenes: {
     id: string
     numero: string | null
@@ -115,12 +116,12 @@ export async function POST(req: NextRequest) {
   // Filtrar por items_orden.created_at: fecha en que se ingresó cada repuesto UMA
   const [{ data: itemsServicio, error: e1 }, { data: itemsVenta, error: e2 }] = await Promise.all([
     supabase.from('items_orden')
-      .select('id, descripcion, precio_venta, cantidad, created_at, ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
+      .select('id, descripcion, precio_venta, cantidad, created_at, repuestos_uma:repuesto_uma_id(codigo,precio_publico_iva), ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
       .eq('origen', 'uma').eq('ordenes.tenant_id', tenantId).eq('ordenes.tipo_orden', 'servicio')
       .neq('ordenes.estado_pago', 'pendiente')
       .gte('created_at', desdeISO).lte('created_at', hastaISO).order('created_at'),
     supabase.from('items_orden')
-      .select('id, descripcion, precio_venta, cantidad, created_at, ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
+      .select('id, descripcion, precio_venta, cantidad, created_at, repuestos_uma:repuesto_uma_id(codigo,precio_publico_iva), ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
       .eq('origen', 'uma').eq('ordenes.tenant_id', tenantId).eq('ordenes.tipo_orden', 'venta_repuestos')
       .neq('ordenes.estado_pago', 'pendiente')
       .gte('created_at', desdeISO).lte('created_at', hastaISO).order('created_at'),
@@ -187,7 +188,9 @@ export async function POST(req: NextRequest) {
     const orden = item.ordenes
     const consec   = ordenConsec.get(orden.id) ?? nextC
     const excelDt  = toExcelDate(item.created_at)
-    const refCode  = extraerCodigo(item.descripcion)
+    const refCode  = item.repuestos_uma?.codigo ?? extraerCodigo(item.descripcion)
+    // Usar precio del catálogo si existe (siempre actualizado); fallback al precio guardado en la orden
+    const precioUnitario = Math.round(item.repuestos_uma?.precio_publico_iva ?? item.precio_venta)
     const tercero  = modoTercero === 'consumidor_final'
       ? '222222222'
       : (orden.placa ? placaCedula.get(orden.placa) : undefined) ?? '222222222'
@@ -210,7 +213,7 @@ export async function POST(req: NextRequest) {
       [33, 'und.',                          's'],
       [34, item.cantidad,                   'n'],
       [35, 0.19,                            'n'],
-      [36, Math.round(item.precio_venta),   'n'],
+      [36, precioUnitario,                   'n'],
       [37, 0,                               'n'],
       [38, excelDt,                         'n', 'DD/MM/YYYY'],
     ]
