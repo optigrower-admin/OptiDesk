@@ -82,15 +82,41 @@ async function procesarMensajeIndividual(
   let contenido = ''
   let tipo: 'texto' | 'imagen' | 'documento' | 'audio' | 'video' = 'texto'
 
+  let mediaId: string | null = null
+
   if (objeto === 'whatsapp_business_account') {
     canal = 'whatsapp'
     canalContactId = String(msg.from ?? '')
     const text = msg.text as Record<string, string> | undefined
     contenido = text?.body ?? ''
-    if (msg.image)    tipo = 'imagen'
-    if (msg.document) tipo = 'documento'
-    if (msg.audio)    tipo = 'audio'
-    if (msg.video)    tipo = 'video'
+    if (msg.image) {
+      tipo = 'imagen'
+      const img = msg.image as Record<string, unknown>
+      mediaId = String(img.id ?? '') || null
+      if (!contenido) contenido = String(img.caption ?? '')
+    }
+    if (msg.document) {
+      tipo = 'documento'
+      const doc = msg.document as Record<string, unknown>
+      mediaId = String(doc.id ?? '') || null
+      contenido = String(doc.filename ?? doc.caption ?? '') || contenido
+    }
+    if (msg.audio) {
+      tipo = 'audio'
+      const aud = msg.audio as Record<string, unknown>
+      mediaId = String(aud.id ?? '') || null
+    }
+    if (msg.video) {
+      tipo = 'video'
+      const vid = msg.video as Record<string, unknown>
+      mediaId = String(vid.id ?? '') || null
+      if (!contenido) contenido = String(vid.caption ?? '')
+    }
+    if (msg.sticker) {
+      tipo = 'imagen'
+      const stk = msg.sticker as Record<string, unknown>
+      mediaId = String(stk.id ?? '') || null
+    }
   } else if (objeto === 'page') {
     canal = 'messenger'
     const sender = msg.sender as Record<string, string> | undefined
@@ -208,6 +234,7 @@ async function procesarMensajeIndividual(
     direccion: 'entrante', tipo,
     contenido: contenido.slice(0, 4000),
     meta_message_id: metaMessageId || null,
+    media_url: mediaId ? `meta-media://${mediaId}` : null,
     leido_por_asesor: false,
   })
 

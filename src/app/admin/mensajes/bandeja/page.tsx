@@ -899,50 +899,81 @@ export default function BandejaPage() {
                             <p className="text-xs font-semibold text-blue-600 mb-0.5">{usuariosMap[msg.enviado_por] ?? 'Sistema'}</p>
                           )}
                           {/* Renderizado de medios adjuntos */}
-                          {msg.tipo === 'imagen' && msg.media_url ? (
-                            <div className="space-y-1">
-                              <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={msg.media_url}
-                                  alt="imagen"
-                                  className="max-w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                  onError={(e) => {
-                                    const t = e.currentTarget
-                                    t.style.display = 'none'
-                                    const fallback = t.nextElementSibling as HTMLElement | null
-                                    if (fallback) fallback.style.display = 'flex'
-                                  }}
-                                />
-                                <div style={{ display: 'none' }}
-                                  className="items-center gap-2 px-2 py-1.5 rounded-lg bg-white bg-opacity-20 text-xs opacity-80">
-                                  🖼️ Imagen · <span className="underline">Abrir enlace</span>
+                          {(() => {
+                            const rawUrl = msg.media_url
+                            const mediaSrc = rawUrl?.startsWith('meta-media://')
+                              ? `/api/admin/mensajes/meta-media/${rawUrl.slice('meta-media://'.length)}`
+                              : rawUrl ?? null
+
+                            if (msg.tipo === 'imagen' && mediaSrc) {
+                              return (
+                                <div className="space-y-1">
+                                  <a href={mediaSrc} target="_blank" rel="noopener noreferrer">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={mediaSrc}
+                                      alt="imagen"
+                                      className="max-w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                      onError={(e) => {
+                                        const t = e.currentTarget
+                                        t.style.display = 'none'
+                                        const fallback = t.nextElementSibling as HTMLElement | null
+                                        if (fallback) fallback.style.display = 'flex'
+                                      }}
+                                    />
+                                    <div style={{ display: 'none' }}
+                                      className="items-center gap-2 px-2 py-1.5 rounded-lg bg-white bg-opacity-20 text-xs opacity-80">
+                                      🖼️ Imagen · <span className="underline">Abrir enlace</span>
+                                    </div>
+                                  </a>
+                                  {msg.contenido && <p className="text-xs leading-relaxed">{msg.contenido}</p>}
                                 </div>
-                              </a>
-                              {msg.contenido && <p className="text-xs leading-relaxed">{msg.contenido}</p>}
-                            </div>
-                          ) : msg.tipo === 'documento' ? (
-                            <a href={msg.media_url ?? '#'} target="_blank" rel="noopener noreferrer"
-                              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg ${isOut ? 'bg-blue-500' : 'bg-gray-100'}`}>
-                              <span className="text-lg">📄</span>
-                              <div>
-                                <p className="text-xs font-semibold">{msg.contenido || 'Documento'}</p>
-                                <p className="text-[10px] opacity-70">Toca para abrir</p>
-                              </div>
-                            </a>
-                          ) : msg.tipo === 'audio' ? (
-                            <div className="space-y-1">
-                              <audio controls src={msg.media_url ?? undefined} className="w-full max-w-xs h-8" />
-                              {msg.contenido && <p className="text-xs">{msg.contenido}</p>}
-                            </div>
-                          ) : msg.tipo === 'video' ? (
-                            <div className="space-y-1">
-                              <video controls src={msg.media_url ?? undefined} className="max-w-full rounded-lg max-h-48" />
-                              {msg.contenido && <p className="text-xs">{msg.contenido}</p>}
-                            </div>
-                          ) : (
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.contenido}</p>
-                          )}
+                              )
+                            }
+                            if (msg.tipo === 'documento') {
+                              return mediaSrc ? (
+                                <a href={mediaSrc} target="_blank" rel="noopener noreferrer"
+                                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg ${isOut ? 'bg-blue-500' : 'bg-gray-100'}`}>
+                                  <span className="text-lg">📄</span>
+                                  <div>
+                                    <p className="text-xs font-semibold">{msg.contenido || 'Documento'}</p>
+                                    <p className="text-[10px] opacity-70">Toca para abrir</p>
+                                  </div>
+                                </a>
+                              ) : (
+                                <div className={`flex items-center gap-2 px-2 py-1.5 rounded-lg ${isOut ? 'bg-blue-500' : 'bg-gray-100'}`}>
+                                  <span className="text-lg">📄</span>
+                                  <div>
+                                    <p className="text-xs font-semibold">{msg.contenido || 'Documento'}</p>
+                                    <p className="text-[10px] opacity-70">No disponible</p>
+                                  </div>
+                                </div>
+                              )
+                            }
+                            if (msg.tipo === 'audio') {
+                              return (
+                                <div className="space-y-1">
+                                  {mediaSrc
+                                    ? <audio controls src={mediaSrc} className="w-full max-w-xs h-8" />
+                                    : <p className="text-xs opacity-60">🎵 Audio no disponible</p>
+                                  }
+                                  {msg.contenido && <p className="text-xs">{msg.contenido}</p>}
+                                </div>
+                              )
+                            }
+                            if (msg.tipo === 'video') {
+                              return (
+                                <div className="space-y-1">
+                                  {mediaSrc
+                                    ? <video controls src={mediaSrc} className="max-w-full rounded-lg max-h-48" />
+                                    : <p className="text-xs opacity-60">🎬 Video no disponible</p>
+                                  }
+                                  {msg.contenido && <p className="text-xs">{msg.contenido}</p>}
+                                </div>
+                              )
+                            }
+                            return <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.contenido}</p>
+                          })()}
                           <div className={`flex items-center justify-end gap-1 mt-0.5 ${isOut ? 'text-blue-200' : 'text-gray-400'}`}>
                             <span className="text-xs">{formatTime(msg.created_at)}</span>
                             {isOut && (
