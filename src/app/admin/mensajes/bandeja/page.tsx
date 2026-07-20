@@ -562,7 +562,7 @@ export default function BandejaPage() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full">
+    <div className="flex h-full overflow-hidden">
       {toastMsg && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-sm text-white shadow-lg ${toastMsg.ok ? 'bg-green-600' : 'bg-red-600'}`}>
           {toastMsg.text}
@@ -630,7 +630,7 @@ export default function BandejaPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+        <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-gray-100">
           {loadingConvs ? (
             <div className="flex justify-center py-12">
               <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -711,7 +711,7 @@ export default function BandejaPage() {
       </div>
 
       {/* ── Panel derecho ────────────────────────────────────────────────── */}
-      <div className={`${selectedId ? 'flex' : 'hidden md:flex'} flex-1 min-w-0 flex-col`}>
+      <div className={`${selectedId ? 'flex' : 'hidden md:flex'} flex-1 min-w-0 min-h-0 flex-col overflow-hidden`}>
       {!selectedConv ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center bg-gray-50 p-8">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -723,10 +723,10 @@ export default function BandejaPage() {
           <p className="text-sm text-gray-400">Elige una conversación de la lista</p>
         </div>
       ) : (
-        <div className="flex-1 flex min-w-0">
+        <div className="flex-1 min-h-0 flex min-w-0 overflow-hidden">
 
           {/* ── Área de chat ────────────────────────────────────────────── */}
-          <div className="flex-1 flex flex-col bg-gray-50 min-w-0">
+          <div className="flex-1 min-h-0 flex flex-col bg-gray-50 min-w-0 overflow-hidden">
             {/* Header */}
             <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 flex-shrink-0">
               {/* Botón volver — solo mobile */}
@@ -865,7 +865,7 @@ export default function BandejaPage() {
             )}
 
             {/* Mensajes */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-1">
               {loadingMsgs ? (
                 <div className="flex justify-center py-8">
                   <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -1095,8 +1095,8 @@ export default function BandejaPage() {
 
           {/* ── Panel de info del contacto ───────────────────────────── */}
           {showInfo && (
-            <div className="w-64 flex-shrink-0 border-l border-gray-200 bg-white flex flex-col">
-              <div className="px-4 py-3 border-b flex items-center justify-between">
+            <div className="w-64 flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
+              <div className="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
                 <p className="font-semibold text-sm text-gray-900">Info del contacto</p>
                 <button onClick={() => setShowInfo(false)} className="text-gray-400 hover:text-gray-600">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1104,7 +1104,7 @@ export default function BandejaPage() {
                   </svg>
                 </button>
               </div>
-              <div className="p-4 space-y-4">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {/* Canal */}
                 <div>
                   <p className="text-xs text-gray-400 mb-1">Canal</p>
