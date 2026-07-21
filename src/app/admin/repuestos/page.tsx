@@ -376,37 +376,6 @@ export default function AdminRepuestosPage() {
         ))}
       </div>
 
-      {tab === 'ventas' && (profile?.rol === 'gerencia' || profile?.rol === 'admin') && (
-        <ImportadorExcel
-          titulo="Carga masiva (Excel) — recuperar ventas de un caído de plataforma"
-          descripcion="Cada fila es un ítem vendido. Varias filas con la misma 'Referencia' forman una sola venta. Funciona igual que registrarla manualmente: descuenta inventario de Repuestos UMA y registra el costo de Externos en Caja."
-          nombreArchivoPlantilla="plantilla_venta_repuestos.xlsx"
-          encabezados={['Referencia (la inventas tú, ej: 1)', 'Fecha de la venta (DD/MM/AAAA)', 'Cliente', 'Cedula', 'Celular', 'Placa (opcional)', 'Descripcion del item', 'Origen (uma/externo)', 'Codigo UMA (si Origen=uma)', 'Codigo externo (opcional, si Origen=externo)', 'Proveedor (opcional, si Origen=externo)', 'Metodo de pago (obligatorio si Origen=externo)', 'Cantidad', 'Costo proveedor', 'Precio de venta', 'Monto pagado (solo en la primera fila de cada venta)']}
-          obligatoriedad={['si', 'si', 'si', 'no', 'no', 'no', 'condicional', 'condicional', 'condicional', 'no', 'no', 'condicional', 'no', 'no', 'no', 'no']}
-          filasEjemplo={[
-            ['1', '15/03/2025', 'Juan Pérez', '1020304050', '3001234567', 'ABC123', 'Llanta trasera', 'externo', '', 'LL-300', 'Llantas Express', 'Efectivo', '1', '80000', '120000', '120000'],
-            ['2', '16/03/2025', 'María Gómez', '', '3019876543', '', 'Espejo retrovisor', 'uma', 'ESP-50', '', '', '', '2', '0', '30000', ''],
-          ]}
-          notas={[
-            'Lo único realmente obligatorio para crear la venta es: Referencia, Fecha de la venta y Cliente. Los ítems son opcionales — una Referencia sin ningún ítem igual crea la venta, solo que sin nada cargado todavía.',
-            '¿Qué es "Referencia"? NO es algo que ya exista en el sistema — es un identificador que TÚ inventas, solo para indicarle al sistema qué filas pertenecen a la misma venta. Ejemplo: pon "1" en todas las filas de la primera venta, "2" en todas las de la segunda, etc. No queda guardado en ningún lado.',
-            '¿Qué fecha va en "Fecha de la venta"? La fecha real en que se hizo la venta (puede ser una fecha pasada, para recuperar historial). No tiene que ser la fecha de hoy.',
-            'Si una Referencia SÍ trae ítems: una fila = un ítem vendido. Para una venta con varios ítems, repite la misma Referencia en todas sus filas.',
-            'Fecha, Cliente, Cedula, Celular, Placa y Monto pagado solo se leen de la PRIMERA fila de cada Referencia.',
-            'Si vas a agregar un ítem en una fila, ahí sí son obligatorios "Descripcion del item" y "Origen".',
-            'Origen: uma o externo.',
-            'Si Origen=uma, el Código UMA es obligatorio y debe existir en tu catálogo — con eso se descuenta el inventario igual que en el flujo manual.',
-            'Si Origen=externo, el Código externo es opcional: si coincide con uno del catálogo se usa ese (con su costo); si no, se busca por el nombre exacto y, si tampoco existe, se crea uno nuevo con el Costo proveedor, Precio de venta y Proveedor que indiques.',
-            'Metodo de pago: obligatorio cuando Origen es externo — es necesario para que Caja sepa de qué cuenta salió ese dinero pagado al proveedor. Escribe el nombre EXACTO de un método que ya exista en tu lista de Métodos de pago (ej: Efectivo, Transferencia, Datafono). No se pide para uma.',
-            'Monto pagado: si lo dejas vacío o en 0, la venta queda "pendiente" de pago. Si es igual o mayor al total, queda "pagado". Si es menor, queda "abono".',
-            'Si el Cliente o la Cédula no existen todavía en el sistema, se crean automáticamente.',
-          ]}
-          vistaPrevia={(filas) => previsualizarVentaRepuestos(filas, supabase, profile!.tenant_id)}
-          procesarFilas={(filas) => importarVentaRepuestos(supabase, profile!.tenant_id, profile!.id, filas)}
-          onCompletado={cargarVentas}
-        />
-      )}
-
       {/* Búsqueda + filtros */}
       {tab === 'ventas' ? (
         <div className="flex flex-wrap gap-3 items-center">

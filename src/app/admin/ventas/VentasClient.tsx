@@ -394,31 +394,6 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         </div>
       )}
 
-      {(profile?.rol === 'gerencia' || profile?.rol === 'admin') && (
-        <div className="mb-4">
-          <ImportadorExcel
-            titulo="Carga masiva (Excel) — recuperar clientes de un caído de plataforma"
-            descripcion="Cada fila es un cliente para Seguimiento Ventas. Si la cédula o el celular ya existen, se actualiza ese cliente en vez de duplicarlo."
-            nombreArchivoPlantilla="plantilla_seguimiento_ventas.xlsx"
-            encabezados={['Fecha (DD/MM/AAAA)', 'Primer nombre', 'Segundo nombre', 'Primer apellido', 'Segundo apellido', 'Tipo de documento (CC/TI/CE/PASAPORTE/NIT/RC/PEP)', 'Numero de documento', 'Celular', 'Email', 'Etapa (nuevo/con_interes/con_objecion/seguimiento/buscando_credito/calificado/demo/propuesta/negociacion/ganado/en_matricula/alistamiento/espera_entrega/entregada/perdido)', 'Valor estimado de venta', 'Proxima accion', 'Fecha proxima accion (DD/MM/AAAA)']}
-            obligatoriedad={['no', 'si', 'no', 'si', 'no', 'no', 'no', 'no', 'no', 'no', 'no', 'no', 'no']}
-            filasEjemplo={[
-              ['15/03/2025', 'Juan', '', 'Pérez', '', 'CC', '1020304050', '3001234567', 'juan@correo.com', 'calificado', '8000000', 'Llamar para agendar demo', '20/03/2025'],
-            ]}
-            notas={[
-              'Una fila = un cliente.',
-              'Tipo de documento: CC, TI, CE, PASAPORTE, NIT, RC o PEP. Si lo dejas vacío se usa CC.',
-              'Etapa: si la dejas vacía se usa "nuevo".',
-              'Si el Número de documento o el Celular ya existen en el sistema, se actualiza ese cliente con los datos de la fila en vez de crear uno nuevo.',
-              'El cliente queda marcado automáticamente para aparecer en Seguimiento Ventas.',
-            ]}
-            vistaPrevia={previsualizarSeguimientoVentas}
-            procesarFilas={(filas) => importarSeguimientoVentas(supabase, tenantId, profile!.id, filas)}
-            onCompletado={() => window.location.reload()}
-          />
-        </div>
-      )}
-
       {/* Content */}
       {tab === 'kanban' && (
         <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} />
