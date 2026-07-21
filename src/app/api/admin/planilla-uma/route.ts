@@ -189,8 +189,7 @@ export async function POST(req: NextRequest) {
     const consec   = ordenConsec.get(orden.id) ?? nextC
     const excelDt  = toExcelDate(item.created_at)
     const refCode  = item.repuestos_uma?.codigo ?? extraerCodigo(item.descripcion)
-    // Usar precio del catálogo si existe (siempre actualizado); fallback al precio guardado en la orden
-    const precioUnitario = Math.round(item.repuestos_uma?.precio_publico_iva ?? item.precio_venta)
+    const precioUnitario = Math.round(item.precio_venta)
     const tercero  = modoTercero === 'consumidor_final'
       ? '222222222'
       : (orden.placa ? placaCedula.get(orden.placa) : undefined) ?? '222222222'
