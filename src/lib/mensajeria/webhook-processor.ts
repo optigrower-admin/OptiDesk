@@ -143,6 +143,22 @@ async function procesarMensajeIndividual(
     if (dup) return
   }
 
+  // ── Bot interno de colaboradores (sólo WhatsApp) ─────────────────────────
+  if (canal === 'whatsapp' && contenido) {
+    try {
+      const { detectarColaborador, procesarMensajeColaborador } = await import('./colaborador-bot')
+      const colaborador = await detectarColaborador(supabase, tenantId, canalContactId)
+      if (colaborador) {
+        const { getCfgMeta } = await import('./enviar-wa-directo')
+        const cfg = await getCfgMeta(supabase, tenantId)
+        if (cfg) await procesarMensajeColaborador(supabase, tenantId, colaborador, contenido, cfg)
+        return
+      }
+    } catch (e) {
+      console.error('[webhook] error en bot colaborador:', e)
+    }
+  }
+
   let { data: conv } = await supabase
     .from('conversaciones')
     .select('id,assigned_to,no_leidos_count,sin_respuesta_asesor_desde,cliente_id')
