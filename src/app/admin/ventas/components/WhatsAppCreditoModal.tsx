@@ -1,5 +1,6 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import type { LeadData } from './LeadCard'
 
 interface Props {
@@ -18,12 +19,16 @@ const FILTROS: { id: Filtro; label: string; color: string }[] = [
 
 const ETAPAS_CREDITO = ['buscando_credito', 'en_proceso_credito']
 
-function formatCliente(lead: LeadData): string {
-  const nombre  = lead.cliente?.nombre ?? '[Pendiente]'
-  const cedula  = lead.cliente_documento ?? '[Pendiente]'
-  const celular = lead.cliente?.celular ?? '[Pendiente]'
-  const correo  = lead.cliente_email ?? '[Pendiente]'
-  return `*${nombre}*\nCédula: ${cedula}\nCelular: ${celular}\nCorreo: ${correo}`
+type FreshDato = { cedula: string | null; email: string | null }
+
+function formatCliente(lead: LeadData, fresh?: FreshDato): string {
+  const cedula  = fresh?.cedula  ?? lead.cliente_documento
+  const correo  = fresh?.email   ?? lead.cliente_email
+  const lines: string[] = [`*${lead.cliente?.nombre ?? 'Sin nombre'}*`]
+  if (cedula)              lines.push(`Cédula: ${cedula}`)
+  if (lead.cliente?.celular) lines.push(`Celular: ${lead.cliente.celular}`)
+  if (correo)              lines.push(`Correo: ${correo}`)
+  return lines.join('\n')
 }
 
 export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
@@ -33,7 +38,26 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
     () => new Set(leads.filter(l => ETAPAS_CREDITO.includes(l.etapa_venta)).map(l => l.id))
   )
-  const [copiado, setCopiado] = useState<string | null>(null)
+  const [copiado, setCopiado]   = useState<string | null>(null)
+  const [freshMap, setFreshMap] = useState<Record<string, FreshDato>>({})
+
+  // Carga datos frescos de cedula/email directamente de Supabase al abrir el modal
+  useEffect(() => {
+    const ids = leads.map(l => l.id)
+    if (!ids.length) return
+    createClient()
+      .from('clientes')
+      .select('id, cedula, email')
+      .in('id', ids)
+      .then(({ data }) => {
+        const map: Record<string, FreshDato> = {}
+        for (const c of (data ?? []) as { id: string; cedula: string | null; email: string | null }[]) {
+          map[c.id] = { cedula: c.cedula ?? null, email: c.email ?? null }
+        }
+        setFreshMap(map)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Entidades únicas presentes en los leads (aprobadas o rechazadas)
   const entidadesDisponibles = useMemo(() => {
@@ -119,7 +143,7 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
 
   const leadsSeleccionados = leadsFiltrados.filter(l => seleccionados.has(l.id))
   const visiblesSeleccionados = leadsVisibles.filter(l => seleccionados.has(l.id)).length
-  const textoTodos = leadsSeleccionados.map(formatCliente).join('\n\n')
+  const textoTodos = leadsSeleccionados.map(l => formatCliente(l, freshMap[l.id])).join('\n\n')
 
   async function copiar(text: string, key: string) {
     try {
@@ -238,8 +262,11 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
           )}
 
           {leadsVisibles.map(lead => {
-            const sel  = seleccionados.has(lead.id)
-            const texto = formatCliente(lead)
+            const sel   = seleccionados.has(lead.id)
+            const fresh = freshMap[lead.id]
+            const texto = formatCliente(lead, fresh)
+            const cedula  = fresh?.cedula  ?? lead.cliente_documento
+            const correo  = fresh?.email   ?? lead.cliente_email
             const aprobada  = lead.creditoAprobadoEntidad
             const rechazadas = lead.creditoRechazadoEntidades ?? []
             return (
@@ -256,11 +283,11 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
                       {lead.cliente?.nombre ?? '— Sin nombre —'}
                     </p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {lead.cliente_documento ? `CC ${lead.cliente_documento}` : 'Cédula: [Pendiente]'}
+                      {cedula ? `CC ${cedula}` : 'Sin cédula'}
                       {' · '}
-                      {lead.cliente?.celular ?? '[Sin celular]'}
+                      {lead.cliente?.celular ?? 'Sin celular'}
                     </p>
-                    <p className="text-xs text-gray-400 truncate">{lead.cliente_email ?? '[Sin correo]'}</p>
+                    <p className="text-xs text-gray-400 truncate">{correo ?? 'Sin correo'}</p>
                     {/* Badges crédito */}
                     {(aprobada || rechazadas.length > 0) && (
                       <div className="flex flex-wrap gap-1 mt-1">
