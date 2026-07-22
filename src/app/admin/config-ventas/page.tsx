@@ -594,6 +594,8 @@ export default function ConfigVentasPage() {
   const [driveConnected, setDriveConnected]               = useState(false)
   const [savingDrive, setSavingDrive]                     = useState(false)
   const [driveOk, setDriveOk]                             = useState(false)
+  const [migrando, setMigrando]                           = useState(false)
+  const [migrMsg, setMigrMsg]                             = useState<string | null>(null)
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
@@ -1822,7 +1824,7 @@ export default function ConfigVentasPage() {
                 />
                 <p className="text-[10px] text-gray-400 mt-1">Abre la carpeta en Google Drive, copia la URL completa y pégala aquí.</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <button
                   onClick={async () => {
                     setSavingDrive(true)
@@ -1847,6 +1849,40 @@ export default function ConfigVentasPage() {
                 </button>
                 {driveOk && <span className="text-xs text-green-600 font-semibold">✓ Guardado</span>}
               </div>
+
+              {ventasFolderConfigured && (
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-xs text-gray-500 mb-2">
+                    Mueve los archivos existentes (guardados antes de vincular Drive) a sus carpetas por cliente en Drive y libera espacio en R2.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={async () => {
+                        setMigrando(true); setMigrMsg(null)
+                        const res = await fetch('/api/admin/ventas/archivos/migrar-a-drive', { method: 'POST' })
+                        const d = await res.json()
+                        setMigrando(false)
+                        if (res.ok) {
+                          setMigrMsg(d.migrated === 0
+                            ? 'Todo ya estaba en Drive ✓'
+                            : `${d.migrated} de ${d.total} archivo(s) movidos a Drive ✓`)
+                        } else {
+                          setMigrMsg('Error: ' + (d.error ?? 'desconocido'))
+                        }
+                      }}
+                      disabled={migrando}
+                      className="px-4 py-2 bg-gray-700 hover:bg-gray-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors"
+                    >
+                      {migrando ? 'Sincronizando...' : 'Sincronizar archivos existentes a Drive'}
+                    </button>
+                    {migrMsg && (
+                      <span className={`text-xs font-medium ${migrMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
+                        {migrMsg}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
