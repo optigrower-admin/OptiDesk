@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,10 +45,13 @@ export async function POST(req: NextRequest) {
   const { folderRaw } = await req.json() as { folderRaw: string }
   const folderId = folderRaw ? parseFolderId(folderRaw) : null
 
-  await supabase
+  const admin = createAdminClient()
+  const { error: updateError } = await admin
     .from('tenants')
     .update({ documentos_folder_id: folderId })
     .eq('id', perfil!.tenant_id)
+
+  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
 
   return NextResponse.json({ ok: true, folderId })
 }
