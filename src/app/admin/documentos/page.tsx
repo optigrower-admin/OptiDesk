@@ -73,6 +73,8 @@ export default function DocumentosPage() {
   const [savingDrive, setSavingDrive]         = useState(false)
   const [driveOk, setDriveOk]                = useState(false)
   const [showDriveConfig, setShowDriveConfig] = useState(false)
+  const [migrando, setMigrando]               = useState(false)
+  const [migrMsg, setMigrMsg]                 = useState<string | null>(null)
 
   // List state
   const [docs, setDocs]           = useState<DocInterno[]>([])
@@ -319,9 +321,30 @@ export default function DocumentosPage() {
                   <button onClick={() => setShowDriveConfig(false)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
                 </>
               ) : (
-                <button onClick={() => setShowDriveConfig(true)} className="text-[10px] text-gray-400 hover:text-gray-600 underline">
-                  Cambiar carpeta
-                </button>
+                <>
+                  <button onClick={() => setShowDriveConfig(true)} className="text-[10px] text-gray-400 hover:text-gray-600 underline">
+                    Cambiar carpeta
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setMigrando(true); setMigrMsg(null)
+                      const res = await fetch('/api/admin/documentos/migrar-a-drive', { method: 'POST' })
+                      const d = await res.json()
+                      setMigrando(false)
+                      if (res.ok) {
+                        setMigrMsg(d.migrated === 0 ? 'Todo ya estaba en Drive ✓' : `${d.migrated} archivo(s) movidos a Drive ✓`)
+                        if (d.migrated > 0) cargarDocs()
+                      } else {
+                        setMigrMsg('Error: ' + (d.error ?? 'desconocido'))
+                      }
+                    }}
+                    disabled={migrando}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 underline disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {migrando ? 'Sincronizando...' : 'Sincronizar archivos a Drive'}
+                  </button>
+                  {migrMsg && <span className="text-[10px] text-green-700 font-medium">{migrMsg}</span>}
+                </>
               )}
             </div>
           )}
