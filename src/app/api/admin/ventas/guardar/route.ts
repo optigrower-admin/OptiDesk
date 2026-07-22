@@ -1,6 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
+import { renameDriveFolder } from '@/lib/drive'
+
+const CAMPOS_NOMBRE = new Set(['primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'nombre', 'celular'])
+
+function buildFolderName(nombre: string | null, celular: string | null): string {
+  const n = (nombre ?? 'cliente').replace(/[<>:"/\\|?*]/g, '_').trim() || 'cliente'
+  const c = (celular ?? '').replace(/\D/g, '')
+  return c ? `${n} - ${c}` : n
+}
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -16,9 +25,6 @@ export async function POST(req: NextRequest) {
   if (!cliente_id)
     return NextResponse.json({ error: 'Falta cliente_id' }, { status: 400 })
 
-  // "Asignado a" solo lo puede cambiar Gerencia (o control_total) — se ignora
-  // el campo en vez de rechazar toda la petición, así el resto de cambios
-  // (ej. etapa) sí se guardan.
   const esGerencia = perfil.rol === 'gerencia' || perfil.rol === 'control_total'
   if ('assigned_to' in campos && !esGerencia) {
     delete campos.assigned_to
@@ -26,13 +32,13 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
 
-  const { data: cliente } = await admin
+  const { data: clienteActual } = await admin
     .from('clientes')
     .select('id')
     .eq('id', cliente_id)
     .eq('tenant_id', perfil.tenant_id)
     .single()
-  if (!cliente) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
+  if (!clienteActual) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
   const { error } = await admin
     .from('clientes')
@@ -42,5 +48,30 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Si cambió nombre o celular, renombrar carpeta en Drive (fire & forget)
+  const afectaNombre = Object.keys(campos).some(k => CAMPOS_NOMBRE.has(k))
+  if (afectaNombre) {
+    renombrarCarpetaDrive(admin, cliente_id, perfil.tenant_id).catch(() => {})
+  }
+
   return NextResponse.json({ ok: true })
+}
+
+async function renombrarCarpetaDrive(
+  admin: ReturnType<typeof createAdminClient>,
+  clienteId: string,
+  tenantId: string,
+) {
+  const [clienteRes, tenantRes] = await Promise.all([
+    admin.from('clientes').select('nombre, celular, drive_folder_id').eq('id', clienteId).single(),
+    admin.from('tenants').select('google_refresh_token').eq('id', tenantId).single(),
+  ])
+
+  const folderId      = clienteRes.data?.drive_folder_id
+  const refreshToken  = tenantRes.data?.google_refresh_token
+
+  if (!folderId || !refreshToken) return
+
+  const nuevoNombre = buildFolderName(clienteRes.data?.nombre ?? null, clienteRes.data?.celular ?? null)
+  await renameDriveFolder(folderId, nuevoNombre, refreshToken)
 }

@@ -16,6 +16,12 @@ const ALLOWED_DOC_TYPES: Record<string, 'pdf' | 'excel' | 'word'> = {
 }
 const MAX_BYTES = 20 * 1024 * 1024
 
+function buildFolderName(nombre: string | null, celular: string | null): string {
+  const n = (nombre ?? 'cliente').replace(/[<>:"/\\|?*]/g, '_').trim() || 'cliente'
+  const c = (celular ?? '').replace(/\D/g, '')
+  return c ? `${n} - ${c}` : n
+}
+
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -40,14 +46,16 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient()
 
   const [clienteRes, tenantRes] = await Promise.all([
-    admin.from('clientes').select('nombre').eq('id', clienteId).eq('tenant_id', perfil.tenant_id).single(),
-    admin.from('tenants').select('ventas_drive_folder_id, google_refresh_token').eq('id', perfil.tenant_id).single(),
+    admin.from('clientes')
+      .select('nombre, celular, drive_folder_id')
+      .eq('id', clienteId).eq('tenant_id', perfil.tenant_id).single(),
+    admin.from('tenants')
+      .select('ventas_drive_folder_id, google_refresh_token')
+      .eq('id', perfil.tenant_id).single(),
   ])
 
   if (!clienteRes.data) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
-  const nombreCliente = (clienteRes.data.nombre ?? 'cliente')
-    .replace(/[<>:"/\\|?*]/g, '_').trim() || 'cliente'
   const buffer = Buffer.from(await file.arrayBuffer())
   const tipo = isImage ? 'imagen' : tipoDoc
 
@@ -58,7 +66,23 @@ export async function POST(req: NextRequest) {
   const { ventas_drive_folder_id, google_refresh_token } = tenantRes.data ?? {}
 
   if (ventas_drive_folder_id && google_refresh_token) {
-    const subfolderId = await getOrCreateDriveSubfolder(ventas_drive_folder_id, nombreCliente, google_refresh_token)
+    const { nombre, celular, drive_folder_id: clienteFolderId } = clienteRes.data
+
+    let subfolderId: string
+
+    if (clienteFolderId) {
+      // Ya existe la carpeta del cliente — usar directamente
+      subfolderId = clienteFolderId
+    } else {
+      // Crear subcarpeta con formato "NOMBRE - CELULAR"
+      const folderName = buildFolderName(nombre, celular)
+      subfolderId = await getOrCreateDriveSubfolder(ventas_drive_folder_id, folderName, google_refresh_token)
+      // Guardar el ID de la carpeta en el cliente para futuras subidas y renombrados
+      await admin.from('clientes')
+        .update({ drive_folder_id: subfolderId })
+        .eq('id', clienteId)
+    }
+
     const driveResult = await uploadToDrive(file.name, file.type, buffer, subfolderId, google_refresh_token)
     url = driveResult.id
     drive_url = driveResult.webViewLink

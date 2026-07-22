@@ -97,6 +97,19 @@ export async function getOrCreateDriveSubfolder(
   return created.data.id!
 }
 
+export async function renameDriveFolder(
+  folderId: string,
+  newName: string,
+  oauthRefreshToken?: string | null,
+): Promise<void> {
+  const auth = getAuthClient(oauthRefreshToken)
+  const drive = google.drive({ version: 'v3', auth })
+  await drive.files.update({
+    fileId: folderId,
+    requestBody: { name: newName },
+  })
+}
+
 export async function deleteFromDrive(
   fileId: string,
   oauthRefreshToken?: string | null,
