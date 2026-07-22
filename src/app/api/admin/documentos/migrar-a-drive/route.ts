@@ -70,6 +70,9 @@ export async function POST() {
         storage_location: 'drive',
       }).eq('id', doc.id)
 
+      // Eliminar de Supabase Storage para liberar espacio
+      await admin.storage.from('docs-internos').remove([doc.storage_path])
+
       migrated++
     } catch (e) {
       errores.push(`${doc.nombre}: ${e instanceof Error ? e.message : 'error'}`)
