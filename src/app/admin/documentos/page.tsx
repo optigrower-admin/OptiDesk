@@ -166,24 +166,52 @@ export default function DocumentosPage() {
     setErrSubida(null)
 
     const catFinal = uNuevaCat.trim() || (uCat !== '__nueva__' ? uCat : '') || 'General'
-    const fd = new FormData()
-    fd.append('file', uFile)
-    fd.append('nombre', uNombre.trim() || uFile.name)
-    fd.append('categoria', catFinal)
-    if (uEmision) fd.append('fecha_emision', uEmision)
-    if (uVence) fd.append('fecha_vencimiento', uVence)
-    if (uNota.trim()) fd.append('anotaciones', uNota.trim())
 
-    const res = await fetch('/api/admin/documentos/subir', { method: 'POST', body: fd })
-    const data = await res.json() as { ok?: boolean; doc?: DocInterno; error?: string }
+    try {
+      // Paso 1: obtener signed URL y crear registro en BD
+      const metaRes = await fetch('/api/admin/documentos/subir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre:           uNombre.trim() || uFile.name,
+          categoria:        catFinal,
+          fecha_emision:    uEmision || null,
+          fecha_vencimiento: uVence || null,
+          anotaciones:      uNota.trim() || null,
+          fileName:         uFile.name,
+          mimeType:         uFile.type || 'application/octet-stream',
+          fileSize:         uFile.size,
+        }),
+      })
 
-    if (res.ok && data.doc) {
-      setDocs(prev => [data.doc!, ...prev])
+      const metaData = await metaRes.json() as { ok?: boolean; doc?: DocInterno; uploadUrl?: string; error?: string }
+
+      if (!metaRes.ok || !metaData.doc || !metaData.uploadUrl) {
+        setErrSubida(metaData.error ?? 'Error al preparar la subida')
+        setSubiendo(false)
+        return
+      }
+
+      // Paso 2: subir archivo directamente a Supabase Storage
+      const uploadRes = await fetch(metaData.uploadUrl, {
+        method: 'PUT',
+        body: uFile,
+        headers: { 'Content-Type': uFile.type || 'application/octet-stream' },
+      })
+
+      if (!uploadRes.ok) {
+        setErrSubida('Error al subir el archivo. Verifica que el bucket docs-internos existe en Supabase Storage.')
+        setSubiendo(false)
+        return
+      }
+
+      setDocs(prev => [metaData.doc!, ...prev])
       setModalOpen(false)
       resetModal()
-    } else {
-      setErrSubida(data.error ?? 'Error al subir')
+    } catch (err) {
+      setErrSubida('Error de conexión: ' + String(err))
     }
+
     setSubiendo(false)
   }
 

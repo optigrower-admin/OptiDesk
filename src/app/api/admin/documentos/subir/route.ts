@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
+// Recibe JSON con metadata + fileName/mimeType/fileSize
+// Devuelve { doc, uploadUrl } — el cliente sube el archivo directo a Supabase
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -14,51 +16,47 @@ export async function POST(req: NextRequest) {
   if (!['gerencia', 'dueno', 'control_total'].includes(perfil?.rol ?? ''))
     return NextResponse.json({ error: 'Sin permiso' }, { status: 403 })
 
-  let fd: FormData
-  try { fd = await req.formData() }
-  catch { return NextResponse.json({ error: 'Error al procesar archivo' }, { status: 400 }) }
+  const body = await req.json() as {
+    nombre: string
+    categoria: string
+    fecha_emision: string | null
+    fecha_vencimiento: string | null
+    anotaciones: string | null
+    fileName: string
+    mimeType: string
+    fileSize: number
+  }
 
-  const file = fd.get('file') as File | null
-  if (!file) return NextResponse.json({ error: 'No se recibió archivo' }, { status: 400 })
-
-  const nombre        = (fd.get('nombre') as string | null)?.trim() || file.name
-  const categoria     = (fd.get('categoria') as string | null)?.trim() || 'General'
-  const fecha_emision    = (fd.get('fecha_emision') as string | null) || null
-  const fecha_vencimiento = (fd.get('fecha_vencimiento') as string | null) || null
-  const anotaciones   = (fd.get('anotaciones') as string | null)?.trim() || null
-
-  const buffer = Buffer.from(await file.arrayBuffer())
-  const ext    = file.name.split('.').pop()?.toLowerCase() ?? 'bin'
-  const path   = `${perfil!.tenant_id}/${crypto.randomUUID()}.${ext}`
+  const ext  = body.fileName.split('.').pop()?.toLowerCase() ?? 'bin'
+  const path = `${perfil!.tenant_id}/${crypto.randomUUID()}.${ext}`
 
   const admin = createAdminClient()
 
-  const { error: upErr } = await admin.storage
+  // Crear signed URL para que el cliente suba el archivo directamente
+  const { data: signed, error: signErr } = await admin.storage
     .from('docs-internos')
-    .upload(path, buffer, { contentType: file.type || 'application/octet-stream' })
+    .createSignedUploadUrl(path)
 
-  if (upErr) return NextResponse.json({ error: 'Error al subir: ' + upErr.message }, { status: 500 })
+  if (signErr) return NextResponse.json({ error: 'Error al crear URL de subida: ' + signErr.message }, { status: 500 })
 
+  // Insertar registro en BD
   const { data: doc, error: dbErr } = await admin
     .from('documentos_internos')
     .insert({
-      tenant_id: perfil!.tenant_id,
-      nombre,
-      storage_path: path,
-      mime_type: file.type || 'application/octet-stream',
-      file_size: file.size,
-      categoria,
-      fecha_emision: fecha_emision || null,
-      fecha_vencimiento: fecha_vencimiento || null,
-      anotaciones: anotaciones || null,
+      tenant_id:        perfil!.tenant_id,
+      nombre:           body.nombre || body.fileName,
+      storage_path:     path,
+      mime_type:        body.mimeType || 'application/octet-stream',
+      file_size:        body.fileSize,
+      categoria:        body.categoria || 'General',
+      fecha_emision:    body.fecha_emision || null,
+      fecha_vencimiento: body.fecha_vencimiento || null,
+      anotaciones:      body.anotaciones || null,
     })
     .select()
     .single()
 
-  if (dbErr) {
-    await admin.storage.from('docs-internos').remove([path])
-    return NextResponse.json({ error: dbErr.message }, { status: 500 })
-  }
+  if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true, doc })
+  return NextResponse.json({ ok: true, doc, uploadUrl: signed.signedUrl })
 }
