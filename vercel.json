@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/colaboradores",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 8 * * *"
     }
   ]
 }
