@@ -6,6 +6,9 @@ interface DocInterno {
   id: string
   nombre: string
   storage_path: string
+  storage_location: string | null
+  drive_file_id: string | null
+  drive_url: string | null
   mime_type: string | null
   file_size: number | null
   categoria: string
@@ -63,6 +66,14 @@ function canPreview(mime: string | null) {
 export default function DocumentosPage() {
   const { profile } = useAuth()
 
+  // Drive config
+  const [driveFolder, setDriveFolder]         = useState<string | null>(null)
+  const [driveConectado, setDriveConectado]   = useState(false)
+  const [driveFolderInput, setDriveFolderInput] = useState('')
+  const [savingDrive, setSavingDrive]         = useState(false)
+  const [driveOk, setDriveOk]                = useState(false)
+  const [showDriveConfig, setShowDriveConfig] = useState(false)
+
   // List state
   const [docs, setDocs]           = useState<DocInterno[]>([])
   const [cargando, setCargando]   = useState(true)
@@ -91,6 +102,36 @@ export default function DocumentosPage() {
   const [dragOver, setDragOver]   = useState(false)
   const [errSubida, setErrSubida] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/documentos/config')
+      .then(r => r.json())
+      .then(d => {
+        setDriveFolder(d.folderId ?? null)
+        setDriveConectado(d.driveConectado ?? false)
+        if (d.folderId) setDriveFolderInput(d.folderId)
+      })
+      .catch(() => {})
+  }, [])
+
+  async function guardarDrive() {
+    setSavingDrive(true)
+    const res = await fetch('/api/admin/documentos/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderRaw: driveFolderInput }),
+    })
+    const d = await res.json()
+    setSavingDrive(false)
+    if (res.ok) {
+      setDriveFolder(d.folderId)
+      setDriveOk(true)
+      setShowDriveConfig(false)
+      setTimeout(() => setDriveOk(false), 2500)
+    } else {
+      alert('Error: ' + (d.error ?? 'Error'))
+    }
+  }
 
   const cargarDocs = useCallback(async () => {
     setCargando(true)
@@ -168,44 +209,24 @@ export default function DocumentosPage() {
     const catFinal = uNuevaCat.trim() || (uCat !== '__nueva__' ? uCat : '') || 'General'
 
     try {
-      // Paso 1: obtener signed URL y crear registro en BD
-      const metaRes = await fetch('/api/admin/documentos/subir', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre:           uNombre.trim() || uFile.name,
-          categoria:        catFinal,
-          fecha_emision:    uEmision || null,
-          fecha_vencimiento: uVence || null,
-          anotaciones:      uNota.trim() || null,
-          fileName:         uFile.name,
-          mimeType:         uFile.type || 'application/octet-stream',
-          fileSize:         uFile.size,
-        }),
-      })
+      const fd = new FormData()
+      fd.append('file', uFile)
+      fd.append('nombre', uNombre.trim() || uFile.name)
+      fd.append('categoria', catFinal)
+      fd.append('fecha_emision', uEmision || '')
+      fd.append('fecha_vencimiento', uVence || '')
+      fd.append('anotaciones', uNota.trim() || '')
 
-      const metaData = await metaRes.json() as { ok?: boolean; doc?: DocInterno; uploadUrl?: string; error?: string }
+      const res = await fetch('/api/admin/documentos/subir', { method: 'POST', body: fd })
+      const data = await res.json() as { ok?: boolean; doc?: DocInterno; error?: string }
 
-      if (!metaRes.ok || !metaData.doc || !metaData.uploadUrl) {
-        setErrSubida(metaData.error ?? 'Error al preparar la subida')
+      if (!res.ok || !data.doc) {
+        setErrSubida(data.error ?? 'Error al subir el documento')
         setSubiendo(false)
         return
       }
 
-      // Paso 2: subir archivo directamente a Supabase Storage
-      const uploadRes = await fetch(metaData.uploadUrl, {
-        method: 'PUT',
-        body: uFile,
-        headers: { 'Content-Type': uFile.type || 'application/octet-stream' },
-      })
-
-      if (!uploadRes.ok) {
-        setErrSubida('Error al subir el archivo. Verifica que el bucket docs-internos existe en Supabase Storage.')
-        setSubiendo(false)
-        return
-      }
-
-      setDocs(prev => [metaData.doc!, ...prev])
+      setDocs(prev => [data.doc!, ...prev])
       setModalOpen(false)
       resetModal()
     } catch (err) {
@@ -240,6 +261,70 @@ export default function DocumentosPage() {
             </svg>
             Subir documento
           </button>
+        </div>
+
+        {/* Banner Drive config */}
+        <div className="flex-shrink-0 px-5 py-2 border-b border-gray-100 bg-white">
+          {!driveConectado ? (
+            <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <span>⚠️</span>
+              <span>Google Drive no conectado — los archivos se guardan en Supabase.</span>
+              <a href="/admin/config-servicio" className="underline font-medium">Conectar en Config Servicio</a>
+            </div>
+          ) : !driveFolder ? (
+            <div className="flex items-center gap-2">
+              {showDriveConfig ? (
+                <>
+                  <input
+                    value={driveFolderInput}
+                    onChange={e => setDriveFolderInput(e.target.value)}
+                    placeholder="https://drive.google.com/drive/folders/..."
+                    className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    autoFocus
+                  />
+                  <button onClick={guardarDrive} disabled={savingDrive || !driveFolderInput.trim()}
+                    className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-40 whitespace-nowrap">
+                    {savingDrive ? 'Guardando...' : 'Guardar'}
+                  </button>
+                  <button onClick={() => setShowDriveConfig(false)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                </>
+              ) : (
+                <button onClick={() => setShowDriveConfig(true)}
+                  className="w-full text-left text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 hover:bg-amber-100 transition-colors">
+                  ⚠️ Carpeta Drive no configurada — haz clic para vincular
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs text-green-700">
+                <span>📁</span>
+                <span className="font-medium">Drive vinculado</span>
+                <span className="text-green-600 font-mono text-[10px] truncate max-w-[200px]">{driveFolder}</span>
+                {driveOk && <span className="text-green-600 font-semibold">✓ Guardado</span>}
+              </div>
+              {showDriveConfig ? (
+                <>
+                  <input
+                    value={driveFolderInput}
+                    onChange={e => setDriveFolderInput(e.target.value)}
+                    placeholder="Nueva URL de carpeta..."
+                    className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+                    autoFocus
+                  />
+                  <button onClick={guardarDrive} disabled={savingDrive || !driveFolderInput.trim()}
+                    className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg disabled:opacity-40">
+                    {savingDrive ? 'Guardando...' : 'Guardar'}
+                  </button>
+                  <button onClick={() => setShowDriveConfig(false)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                </>
+              ) : (
+                <button onClick={() => setShowDriveConfig(true)} className="text-[10px] text-gray-400 hover:text-gray-600 underline">
+                  Cambiar carpeta
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Tabs de categoría */}
@@ -457,17 +542,25 @@ export default function DocumentosPage() {
             >
               {guardando ? 'Guardando...' : 'Guardar cambios'}
             </button>
-            <a
-              href={`/api/admin/documentos/ver/${sel.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              title="Abrir / descargar"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-            </a>
+            {sel.storage_location === 'drive' && sel.drive_url ? (
+              <a href={sel.drive_url} target="_blank" rel="noopener noreferrer"
+                className="px-2.5 py-2 text-xs font-medium text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
+                title="Abrir en Google Drive">
+                Drive ↗
+              </a>
+            ) : (
+              <a
+                href={`/api/admin/documentos/ver/${sel.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                title="Abrir / descargar"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </a>
+            )}
             <button
               onClick={eliminar}
               disabled={eliminando}

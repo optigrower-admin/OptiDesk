@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { deleteFromDrive } from '@/lib/drive'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +30,6 @@ export async function PATCH(
     anotaciones?: string | null
   }
 
-  // Convertir strings vacíos a null para las fechas
   if ('fecha_emision' in body && body.fecha_emision === '') body.fecha_emision = null
   if ('fecha_vencimiento' in body && body.fecha_vencimiento === '') body.fecha_vencimiento = null
 
@@ -58,14 +58,25 @@ export async function DELETE(
 
   const { data: doc } = await admin
     .from('documentos_internos')
-    .select('storage_path')
+    .select('storage_path, storage_location, drive_file_id')
     .eq('id', params.id)
     .eq('tenant_id', perfil.tenant_id)
     .single()
 
   if (!doc) return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
 
-  await admin.storage.from('docs-internos').remove([doc.storage_path])
+  if (doc.storage_location === 'drive') {
+    const fileId = doc.drive_file_id ?? doc.storage_path
+    const { data: tenant } = await admin.from('tenants')
+      .select('google_refresh_token').eq('id', perfil.tenant_id).single()
+    try {
+      await deleteFromDrive(fileId, tenant?.google_refresh_token)
+    } catch {
+      // Si falla la eliminación en Drive, continuar de todas formas
+    }
+  } else {
+    await admin.storage.from('docs-internos').remove([doc.storage_path])
+  }
 
   const { error } = await admin
     .from('documentos_internos')

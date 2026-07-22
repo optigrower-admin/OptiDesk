@@ -20,13 +20,21 @@ export async function GET(
   const admin = createAdminClient()
   const { data: doc } = await admin
     .from('documentos_internos')
-    .select('storage_path, mime_type, nombre')
+    .select('storage_path, storage_location, drive_file_id, drive_url, mime_type, nombre')
     .eq('id', params.id)
     .eq('tenant_id', perfil!.tenant_id)
     .single()
 
   if (!doc) return new NextResponse('No encontrado', { status: 404 })
 
+  // Archivo en Drive → redirigir a URL de vista previa
+  if (doc.storage_location === 'drive') {
+    const fileId  = doc.drive_file_id ?? doc.storage_path
+    const preview = `https://drive.google.com/file/d/${fileId}/preview`
+    return NextResponse.redirect(preview, 302)
+  }
+
+  // Archivo en Supabase Storage → servir inline
   const { data: blob, error } = await admin.storage
     .from('docs-internos')
     .download(doc.storage_path)
