@@ -1,0 +1,3 @@
+export default function DocumentosLayout({ children }: { children: React.ReactNode }) {
+  return <div className="h-full flex flex-col overflow-hidden">{children}</div>
+}
