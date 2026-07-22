@@ -97,7 +97,7 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error al crear el cliente')
-      window.location.reload()
+      window.location.href = '/admin/ventas?abrir=' + json.cliente_id
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al crear el cliente')
       setGuardando(false)

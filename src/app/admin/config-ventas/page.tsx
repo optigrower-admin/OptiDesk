@@ -588,6 +588,13 @@ export default function ConfigVentasPage() {
   const [savingAgente, setSavingAgente]       = useState(false)
   const [editAgente, setEditAgente]           = useState<string | null>(null)
 
+  // ── Drive para archivos de clientes ───────────────────────────────────────
+  const [ventasFolderUrl, setVentasFolderUrl]             = useState('')
+  const [ventasFolderConfigured, setVentasFolderConfigured] = useState<string | null>(null)
+  const [driveConnected, setDriveConnected]               = useState(false)
+  const [savingDrive, setSavingDrive]                     = useState(false)
+  const [driveOk, setDriveOk]                             = useState(false)
+
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
     if (cargandoRef.current) return   // evita ejecuciones concurrentes
@@ -752,6 +759,23 @@ export default function ConfigVentasPage() {
   }, [profile?.tenant_id])
 
   useEffect(() => { cargar() }, [cargar])
+
+  useEffect(() => {
+    if (loading) return
+    fetch('/api/admin/ventas/config-drive')
+      .then(r => r.json())
+      .then(d => {
+        setVentasFolderConfigured(d.ventas_drive_folder_id ?? null)
+        setDriveConnected(d.drive_connected ?? false)
+        if (d.ventas_drive_folder_id) setVentasFolderUrl(d.ventas_drive_folder_id)
+      })
+      .catch(() => {})
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('drive_ok') === '1') {
+      window.history.replaceState({}, '', '/admin/config-ventas')
+      setDriveConnected(true)
+    }
+  }, [loading])
 
   useEffect(() => {
     if (!profile?.tenant_id || loading) return
@@ -1756,6 +1780,75 @@ export default function ConfigVentasPage() {
               {savingAgente ? 'Creando…' : '+ Crear agente IA'}
             </button>
           </div>
+        </div>
+      </SeccionColapsable>
+
+      {/* ── Archivos de clientes en Drive ── */}
+      <SeccionColapsable titulo="Archivos de clientes en Drive" icono="📁" defaultOpen={false}>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-400">
+            Vincula una carpeta de Google Drive donde se guardarán los archivos que subas en la pestaña <strong>Archivos</strong> de cada cliente en Seguimiento Ventas. Se crea automáticamente una subcarpeta por cliente dentro de esta carpeta.
+          </p>
+
+          {!driveConnected && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <p className="text-sm font-semibold text-amber-800">Google Drive no conectado</p>
+              <p className="text-xs text-amber-700 mt-1">Conecta tu cuenta de Google para habilitar el almacenamiento de archivos en Drive.</p>
+              <a href="/api/drive/connect?redirect_to=config-ventas"
+                className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-lg transition-colors">
+                Conectar Google Drive
+              </a>
+            </div>
+          )}
+
+          {driveConnected && (
+            <div className="space-y-3">
+              {ventasFolderConfigured && (
+                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                  <span className="text-green-600 text-lg flex-shrink-0">✓</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-green-800">Carpeta configurada</p>
+                    <p className="text-[10px] text-green-700 font-mono truncate">{ventasFolderConfigured}</p>
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">URL de la carpeta en Google Drive</label>
+                <input
+                  value={ventasFolderUrl}
+                  onChange={e => setVentasFolderUrl(e.target.value)}
+                  placeholder="https://drive.google.com/drive/folders/..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-[10px] text-gray-400 mt-1">Abre la carpeta en Google Drive, copia la URL completa y pégala aquí.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={async () => {
+                    setSavingDrive(true)
+                    const res = await fetch('/api/admin/ventas/config-drive', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ folder_url: ventasFolderUrl }),
+                    })
+                    const d = await res.json()
+                    setSavingDrive(false)
+                    if (res.ok) {
+                      setVentasFolderConfigured(d.folder_id)
+                      setDriveOk(true)
+                      setTimeout(() => setDriveOk(false), 2500)
+                    } else {
+                      alert('Error: ' + (d.error ?? 'Error desconocido'))
+                    }
+                  }}
+                  disabled={savingDrive || !ventasFolderUrl.trim()}
+                  className="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors"
+                >
+                  {savingDrive ? 'Guardando...' : 'Guardar carpeta'}
+                </button>
+                {driveOk && <span className="text-xs text-green-600 font-semibold">✓ Guardado</span>}
+              </div>
+            </div>
+          )}
         </div>
       </SeccionColapsable>
     </div>

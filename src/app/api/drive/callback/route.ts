@@ -13,7 +13,9 @@ export async function GET(req: NextRequest) {
   const base = origin || req.nextUrl.origin
   const returnUrl = redirectTo === 'control_total'
     ? `${base}/control_total/storage`
-    : `${base}/admin/config-servicio`
+    : redirectTo === 'config-ventas'
+      ? `${base}/admin/config-ventas`
+      : `${base}/admin/config-servicio`
 
   if (error || !code || !tenantId) {
     return NextResponse.redirect(`${returnUrl}?drive_error=${encodeURIComponent(error ?? 'oauth_cancelled')}`)
