@@ -399,6 +399,16 @@ export default function AdminOrdenDetallePage() {
           ord = { ...ord, estado: 'pagado' }
         }
       }
+      // Auto-habilitar pago a proveedor si la orden tiene repuestos externos o lavado
+      // pero el flag no estaba seteado (ej. órdenes creadas antes del deploy)
+      if (!ord.gestiona_pago_proveedor) {
+        const tieneExt = (i as unknown as { origen: string }[] ?? []).some((it) => it.origen === 'externo')
+        const tieneLav = ((lmOrd ?? []) as unknown[] as { id: string }[]).length > 0
+        if (tieneExt || tieneLav) {
+          supabase.from('ordenes').update({ gestiona_pago_proveedor: true }).eq('id', ordenId).then(() => {})
+          ord = { ...ord, gestiona_pago_proveedor: true }
+        }
+      }
       setOrden(ord)
       if (ord.cliente_id) {
         supabase.from('clientes').select('en_seguimiento_ventas').eq('id', ord.cliente_id).single()
@@ -822,6 +832,9 @@ export default function AdminOrdenDetallePage() {
     repuesto_externo_id?: string; cantidad: number; costo: number; precio_venta: number;
     metodo_pago_id?: string | null;
   }) => {
+    if (item.origen === 'externo' && !gestionaProveedor) {
+      supabase.from('ordenes').update({ gestiona_pago_proveedor: true }).eq('id', ordenId).then(() => {})
+    }
     const { data, error } = await supabase.from('items_orden').insert({
       orden_id: ordenId,
       ...item,
@@ -964,6 +977,9 @@ export default function AdminOrdenDetallePage() {
   const confirmarAgregarLavado = async () => {
     if (!lavadoFormListo || guardandoLavado) return
     setGuardandoLavado(true)
+    if (!gestionaProveedor) {
+      supabase.from('ordenes').update({ gestiona_pago_proveedor: true }).eq('id', ordenId).then(() => {})
+    }
     try {
       const cantidadLav = parseInt(lavadoQuick.cantidad || '0', 10) || 1
       const costoLav = parseInt(lavadoQuick.costo.replace(/\D/g, '') || '0', 10)
