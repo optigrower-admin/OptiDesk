@@ -341,94 +341,97 @@ async function ordenesActivas(
   return `📋 *Órdenes activas (${data.length}):*\n\n${lineas}`
 }
 
-// ── Saldo actual en caja (solo gerencia/dueño) ─────────────────────────────────
-// Replica la misma lógica de saldosCuentas + saldoCajaFuerte del módulo de Caja.
+// ── Saldo actual en caja ───────────────────────────────────────────────────────
+// Usa query separada de metodos_pago para resolver nombres (sin joins FK),
+// ya que el admin client (plain supabase-js) puede fallar silenciosamente con
+// el sintaxis de join metodos_pago(nombre) cuando RLS está activo en esa tabla.
 
 async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte: boolean): Promise<string> {
-  type WithMetodo = { metodos_pago: { nombre: string } | null; monto: number }
-  type GastoRow   = WithMetodo & { descripcion: string }
-  type AjusteRow  = WithMetodo & { cuenta_especial: string | null }
-  type LavadoRow  = { metodos_pago: { nombre: string } | null; precio_venta_unitario: number; cantidad: number }
+  // 1. Cargar métodos de pago como lookup id→nombre
+  const { data: metodos } = await supabase
+    .from('metodos_pago')
+    .select('id, nombre')
+    .eq('tenant_id', tenantId)
 
+  const byId = new Map<string, string>(
+    ((metodos ?? []) as { id: string; nombre: string }[]).map(m => [m.id, m.nombre.trim().toLowerCase()])
+  )
+  const metodName = (id: string | null) => (id ? byId.get(id) ?? 'otro' : 'otro')
+
+  // 2. Consultar todos los movimientos de caja (sin join — solo metodo_pago_id)
   const [
-    { data: pagos },
-    { data: gastos },
-    { data: ingresos },
-    { data: ajustes },
-    { data: pagosProveedor },
-    { data: lavados },
+    { data: pagos,         error: e1 },
+    { data: gastos,        error: e2 },
+    { data: ingresos,      error: e3 },
+    { data: ajustes,       error: e4 },
+    { data: pagosProveedor,error: e5 },
+    { data: lavados,       error: e6 },
   ] = await Promise.all([
     supabase.from('pagos_orden')
-      .select('monto, metodos_pago(nombre)')
-      .eq('tenant_id', tenantId).gt('monto', 0),
+      .select('monto, metodo_pago_id').eq('tenant_id', tenantId).gt('monto', 0),
     supabase.from('gastos_caja')
-      .select('monto, descripcion, metodos_pago(nombre)')
-      .eq('tenant_id', tenantId),
+      .select('monto, descripcion, metodo_pago_id').eq('tenant_id', tenantId),
     supabase.from('ingresos_caja')
-      .select('monto, metodos_pago(nombre)')
-      .eq('tenant_id', tenantId),
+      .select('monto, metodo_pago_id').eq('tenant_id', tenantId),
     supabase.from('ajustes_caja')
-      .select('monto, metodos_pago(nombre), cuenta_especial')
-      .eq('tenant_id', tenantId),
+      .select('monto, metodo_pago_id, cuenta_especial').eq('tenant_id', tenantId),
     supabase.from('pagos_proveedor')
-      .select('monto, metodos_pago(nombre)')
-      .eq('tenant_id', tenantId),
+      .select('monto, metodo_pago_id').eq('tenant_id', tenantId),
     supabase.from('lava_moto_ordenes')
-      .select('precio_venta_unitario, cantidad, metodos_pago(nombre)')
-      .eq('tenant_id', tenantId),
+      .select('precio_venta_unitario, cantidad, metodo_pago_id').eq('tenant_id', tenantId),
   ])
 
-  const mp = (row: { metodos_pago: { nombre: string } | null }) =>
-    (row.metodos_pago as { nombre: string } | null)?.nombre?.trim().toLowerCase() ?? 'otro'
+  if (e1 || e2 || e3 || e4 || e5 || e6) {
+    const msg = [e1, e2, e3, e4, e5, e6]
+      .filter(Boolean).map(e => e!.message).join('; ')
+    return `❌ Error al consultar caja: ${msg}`
+  }
 
-  // saldo por cuenta (excluye caja fuerte)
+  // 3. Acumular saldo por cuenta
   const saldo = new Map<string, number>()
   let saldoCF = 0
 
-  const add = (key: string, cuentaEsp: string | null, monto: number) => {
+  const add = (id: string | null, cuentaEsp: string | null, monto: number) => {
     if (cuentaEsp === 'caja_fuerte') { saldoCF += monto; return }
+    const key = metodName(id)
     saldo.set(key, (saldo.get(key) ?? 0) + monto)
   }
 
-  // Ingresos de clientes (pagos en órdenes)
-  for (const p of (pagos ?? []) as WithMetodo[])
-    add(mp(p), null, p.monto)
+  for (const p of (pagos ?? []) as { monto: number; metodo_pago_id: string | null }[])
+    add(p.metodo_pago_id, null, p.monto)
 
-  // Gastos (si es transferencia a CF, suma a CF y resta de la cuenta origen)
-  for (const g of (gastos ?? []) as GastoRow[]) {
-    const desc = g.descripcion?.trim().toLowerCase() ?? ''
-    add(mp(g), null, -g.monto)
+  for (const g of (gastos ?? []) as { monto: number; descripcion: string; metodo_pago_id: string | null }[]) {
+    const desc = (g.descripcion ?? '').trim().toLowerCase()
+    add(g.metodo_pago_id, null, -g.monto)
     if (desc.startsWith('transferencia a caja fuerte'))
       saldoCF += Math.abs(g.monto)
   }
 
-  // Ingresos manuales a caja
-  for (const i of (ingresos ?? []) as WithMetodo[])
-    add(mp(i), null, i.monto)
+  for (const i of (ingresos ?? []) as { monto: number; metodo_pago_id: string | null }[])
+    add(i.metodo_pago_id, null, i.monto)
 
-  // Ajustes (pueden afectar caja fuerte via cuenta_especial)
-  for (const a of (ajustes ?? []) as AjusteRow[])
-    add(mp(a), a.cuenta_especial, a.monto)
+  for (const a of (ajustes ?? []) as { monto: number; metodo_pago_id: string | null; cuenta_especial: string | null }[])
+    add(a.metodo_pago_id, a.cuenta_especial, a.monto)
 
-  // Pagos a proveedor (egresos)
-  for (const p of (pagosProveedor ?? []) as WithMetodo[])
-    add(mp(p), null, -p.monto)
+  for (const p of (pagosProveedor ?? []) as { monto: number; metodo_pago_id: string | null }[])
+    add(p.metodo_pago_id, null, -p.monto)
 
-  // Lavado: solo el ingreso (precio_venta) — costo se omite para simplificar
-  for (const l of (lavados ?? []) as LavadoRow[])
-    add(mp(l), null, l.precio_venta_unitario * l.cantidad)
+  for (const l of (lavados ?? []) as { precio_venta_unitario: number; cantidad: number; metodo_pago_id: string | null }[])
+    add(l.metodo_pago_id, null, l.precio_venta_unitario * l.cantidad)
 
-  // Formatear respuesta
+  // 4. Formatear respuesta
   const COP = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`
   const ICON: Record<string, string> = { efectivo: '💵', nequi: '📲' }
   const PRIO = ['efectivo', 'nequi']
 
-  const entries = [...saldo.entries()].sort((a, b) => {
-    const ai = PRIO.indexOf(a[0]), bi = PRIO.indexOf(b[0])
-    if (ai >= 0 && bi >= 0) return ai - bi
-    if (ai >= 0) return -1; if (bi >= 0) return 1
-    return a[0].localeCompare(b[0])
-  })
+  const entries = [...saldo.entries()]
+    .filter(([, v]) => v !== 0)
+    .sort((a, b) => {
+      const ai = PRIO.indexOf(a[0]), bi = PRIO.indexOf(b[0])
+      if (ai >= 0 && bi >= 0) return ai - bi
+      if (ai >= 0) return -1; if (bi >= 0) return 1
+      return a[0].localeCompare(b[0])
+    })
 
   const totalCuentas = entries.reduce((s, [, v]) => s + v, 0)
   const totalGeneral = totalCuentas + (mostrarCajaFuerte ? saldoCF : 0)
