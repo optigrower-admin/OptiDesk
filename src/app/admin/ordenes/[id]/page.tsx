@@ -155,6 +155,7 @@ interface OrdenDetalle {
   usuarios: { nombre: string } | null
   moto_id: string | null
   motos: { id: string; marca: string | null; modelo: string | null; año: number | null; color: string | null; kilometraje: number | null } | null
+  gestiona_pago_proveedor: boolean
 }
 
 interface ItemOrden {
