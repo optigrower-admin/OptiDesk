@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, ETAPAS_NECESITAN_FACTURA, ETAPAS_POSVENTA, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, ETAPAS_NECESITAN_FACTURA, ETAPAS_NECESITAN_FECHA_ENTREGA, ETAPAS_POSVENTA, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import VincularClienteModal from './VincularClienteModal'
 import EtiquetasPicker, { type Etiqueta } from './EtiquetasPicker'
@@ -49,7 +49,7 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_factura?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[] }) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_factura?: string | null; fecha_entrega?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[] }) => void
   onLeadDelete?: (id: string) => void
 }
 
@@ -156,6 +156,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [editandoFactura, setEditandoFactura] = useState(false)
   const [savingFactura, setSavingFactura]   = useState(false)
 
+  // Fecha de entrega
+  const [fechaEntregaActual, setFechaEntregaActual] = useState(lead.fecha_entrega ?? '')
+  const [fechaEntregaInput, setFechaEntregaInput]   = useState(lead.fecha_entrega ?? '')
+  const [editandoFechaEntrega, setEditandoFechaEntrega] = useState(false)
+  const [savingFechaEntrega, setSavingFechaEntrega] = useState(false)
+
   // Alistamiento manual
   const [alistamientoOrdenId, setAlistamientoOrdenId] = useState<string | null>(lead.alistamientoOrdenId ?? null)
   const [editandoAlistamiento, setEditandoAlistamiento] = useState(false)
@@ -166,9 +172,10 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   // Derivados de alerta
   const sinCelular          = (ETAPAS_LEADS as EtapaVenta[]).includes(lead.etapa_venta) && !celularActual
   const enEtapaConPlaca     = (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(lead.etapa_venta)
-  const enEtapaAlistamiento = lead.etapa_venta === 'espera_entrega' || lead.etapa_venta === 'entregada'
+  const enEtapaAlistamiento    = lead.etapa_venta === 'espera_entrega' || lead.etapa_venta === 'entregada'
   const tieneAlistamientoFinal = lead.tieneAlistamiento === true || !!alistamientoOrdenId
-  const enEtapaFactura      = (ETAPAS_NECESITAN_FACTURA as EtapaVenta[]).includes(lead.etapa_venta)
+  const enEtapaFactura         = (ETAPAS_NECESITAN_FACTURA as EtapaVenta[]).includes(lead.etapa_venta)
+  const enEtapaFechaEntrega    = (ETAPAS_NECESITAN_FECHA_ENTREGA as EtapaVenta[]).includes(lead.etapa_venta)
 
   // Campos editables — tab Resumen
   const [etapa, setEtapa]         = useState<EtapaVenta>(lead.etapa_venta)
@@ -381,6 +388,25 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       mostrarGuardado()
     }
     setSavingFactura(false)
+  }
+
+  const guardarFechaEntrega = async () => {
+    const fecha = fechaEntregaInput.trim()
+    if (!fecha || fecha === fechaEntregaActual) { setEditandoFechaEntrega(false); return }
+    setSavingFechaEntrega(true)
+    const { error } = await supabase.from('clientes').update({ fecha_entrega: fecha }).eq('id', lead.id).eq('tenant_id', tenantId)
+    if (error) {
+      alert(`No se pudo guardar la fecha de entrega: ${error.message}`)
+      setFechaEntregaInput(fechaEntregaActual)
+    } else {
+      await logCambio('fecha_entrega', fechaEntregaActual || null, fecha)
+      setFechaEntregaActual(fecha)
+      setFechaEntregaInput(fecha)
+      setEditandoFechaEntrega(false)
+      onLeadUpdate?.(lead.id, { fecha_entrega: fecha })
+      mostrarGuardado()
+    }
+    setSavingFechaEntrega(false)
   }
 
   const cargarOrdenesUMA = async () => {
@@ -937,8 +963,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
           <div className={`flex-1 overflow-y-auto p-4 ${tabDer === 'chats' ? 'hidden' : ''}`}>
 
-            {/* ── Barra: Placa · Alistamiento · Factura · Aprobación ── */}
-            {(enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || lead.etapa_venta === 'aprobado_matricula') && (
+            {/* ── Barra: Placa · Alistamiento · Factura · Fecha entrega · Aprobación ── */}
+            {(enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || lead.etapa_venta === 'aprobado_matricula') && (
               <div className="mb-4 space-y-2">
 
                 {/* Fila de pills */}
@@ -982,6 +1008,19 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                       {facturaActual ? `🧾 ${facturaActual}` : '⚠ Sin factura'}
                       {esGerencia && facturaActual && (
                         <button onClick={() => setEditandoFactura(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
+                      )}
+                    </span>
+                  )}
+
+                  {enEtapaFechaEntrega && !editandoFechaEntrega && (
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
+                      fechaEntregaActual ? 'bg-teal-50 border-teal-200 text-teal-800' : 'bg-orange-50 border-orange-200 text-orange-700'
+                    }`}>
+                      {fechaEntregaActual
+                        ? `📅 ${new Date(fechaEntregaActual + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                        : '⚠ Sin fecha entrega'}
+                      {fechaEntregaActual && (
+                        <button onClick={() => setEditandoFechaEntrega(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
                       )}
                     </span>
                   )}
@@ -1123,6 +1162,27 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                       {editandoFactura && !savingFactura && (
                         <button onClick={() => { setEditandoFactura(false); setFacturaInput(facturaActual) }}
                           className="px-2.5 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">✕</button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Formulario inline: Fecha de entrega */}
+                {enEtapaFechaEntrega && (!fechaEntregaActual || editandoFechaEntrega) && (
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+                    {!fechaEntregaActual && <p className="text-[11px] text-sky-600 mb-1.5">Ingresa la fecha de entrega de la moto al cliente.</p>}
+                    <div className="flex gap-2">
+                      <input type="date" value={fechaEntregaInput} onChange={e => setFechaEntregaInput(e.target.value)}
+                        onBlur={guardarFechaEntrega}
+                        className="flex-1 border border-sky-300 bg-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+                      {savingFechaEntrega && <span className="text-xs text-sky-500 self-center">Guardando...</span>}
+                      {editandoFechaEntrega && !savingFechaEntrega && (
+                        <button onClick={() => { setEditandoFechaEntrega(false); setFechaEntregaInput(fechaEntregaActual) }}
+                          className="px-2.5 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">✕</button>
+                      )}
+                      {!editandoFechaEntrega && fechaEntregaInput && (
+                        <button onClick={guardarFechaEntrega}
+                          className="px-2.5 py-1.5 bg-sky-600 text-white rounded-lg text-sm hover:bg-sky-700 font-bold">Guardar</button>
                       )}
                     </div>
                   </div>

@@ -358,15 +358,14 @@ async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte
   )
   const metodName = (id: string | null) => (id ? byId.get(id) ?? 'otro' : 'otro')
 
-  // 2. Consultar todos los movimientos de caja (sin join — solo metodo_pago_id)
-  // lava_moto_ordenes se excluye: su ingreso ya está en pagos_orden y su costo
-  // requiere lógica condicional (mostrarItemsPorSeparado) que no se puede replicar aquí.
+  // 2. Consultar movimientos principales + lista de órdenes del tenant
   const [
     { data: pagos,         error: e1 },
     { data: gastos,        error: e2 },
     { data: ingresos,      error: e3 },
     { data: ajustes,       error: e4 },
     { data: pagosProveedor,error: e5 },
+    { data: ordenesList,   error: e6 },
   ] = await Promise.all([
     supabase.from('pagos_orden')
       .select('monto, metodo_pago_id').eq('tenant_id', tenantId).gt('monto', 0),
@@ -378,15 +377,48 @@ async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte
       .select('monto, metodo_pago_id, cuenta_especial').eq('tenant_id', tenantId),
     supabase.from('pagos_proveedor')
       .select('monto, metodo_pago_id').eq('tenant_id', tenantId),
+    supabase.from('ordenes')
+      .select('id, gestiona_pago_proveedor').eq('tenant_id', tenantId),
   ])
 
-  if (e1 || e2 || e3 || e4 || e5) {
-    const msg = [e1, e2, e3, e4, e5]
+  if (e1 || e2 || e3 || e4 || e5 || e6) {
+    const msg = [e1, e2, e3, e4, e5, e6]
       .filter(Boolean).map(e => e!.message).join('; ')
     return `❌ Error al consultar caja: ${msg}`
   }
 
-  // 3. Acumular saldo por cuenta
+  // Órdenes sin gestión de proveedor activa (antiguas): la UI usa costo_externo de items_orden,
+  // no pagos_proveedor. El bot debe hacer lo mismo para que los saldos coincidan.
+  const todasOrdenesRows = (ordenesList ?? []) as { id: string; gestiona_pago_proveedor: boolean | null }[]
+  const ordenIdsAnteriores = todasOrdenesRows.filter(o => !o.gestiona_pago_proveedor).map(o => o.id)
+  const todosOrdenIds      = todasOrdenesRows.map(o => o.id)
+
+  // 3. Costos de repuestos externos (órdenes antiguas) y lavados (todos)
+  const [
+    { data: costosExt, error: e7 },
+    { data: lavados,   error: e8 },
+  ] = await Promise.all([
+    ordenIdsAnteriores.length > 0
+      ? supabase.from('items_orden')
+          .select('costo, cantidad, metodo_pago_id')
+          .eq('origen', 'externo')
+          .in('orden_id', ordenIdsAnteriores)
+          .gt('costo', 0)
+      : Promise.resolve({ data: [] as { costo: number; cantidad: number; metodo_pago_id: string | null }[], error: null }),
+    todosOrdenIds.length > 0
+      ? supabase.from('lava_moto_ordenes')
+          .select('costo_unitario, cantidad, metodo_pago_id')
+          .in('orden_id', todosOrdenIds)
+          .gt('costo_unitario', 0)
+      : Promise.resolve({ data: [] as { costo_unitario: number; cantidad: number; metodo_pago_id: string | null }[], error: null }),
+  ])
+
+  if (e7 || e8) {
+    const msg = [e7, e8].filter(Boolean).map(e => e!.message).join('; ')
+    return `❌ Error al consultar costos externos: ${msg}`
+  }
+
+  // 4. Acumular saldo por cuenta
   const saldo = new Map<string, number>()
   let saldoCF = 0
 
@@ -412,10 +444,20 @@ async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte
   for (const a of (ajustes ?? []) as { monto: number; metodo_pago_id: string | null; cuenta_especial: string | null }[])
     add(a.metodo_pago_id, a.cuenta_especial, a.monto)
 
+  // pagos_proveedor: solo aplica a órdenes con gestiona=true (provisionales/parcialmente pagadas)
+  // Para órdenes antiguas (gestiona=false/null) no hay registros en esta tabla, así que no hay riesgo de doble conteo
   for (const p of (pagosProveedor ?? []) as { monto: number; metodo_pago_id: string | null }[])
     add(p.metodo_pago_id, null, -p.monto)
 
-  // 4. Formatear respuesta
+  // costo_externo: repuestos de terceros en órdenes antiguas (UI los muestra por ítem, no como pagos_proveedor)
+  for (const c of (costosExt ?? []) as { costo: number; cantidad: number; metodo_pago_id: string | null }[])
+    add(c.metodo_pago_id, null, -(c.costo * c.cantidad))
+
+  // costo_lavado: costo del servicio de lavado para el taller (ingreso ya incluido en pagos_orden)
+  for (const l of (lavados ?? []) as { costo_unitario: number; cantidad: number; metodo_pago_id: string | null }[])
+    add(l.metodo_pago_id, null, -(l.costo_unitario * l.cantidad))
+
+  // 5. Formatear respuesta
   const COP = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`
   const ICON: Record<string, string> = { efectivo: '💵', nequi: '📲' }
   const PRIO = ['efectivo', 'nequi']

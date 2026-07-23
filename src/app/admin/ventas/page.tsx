@@ -44,6 +44,7 @@ export default function VentasPage() {
           alistamiento_orden_id,
           placa,
           numero_factura,
+          fecha_entrega,
           automatizado,
           flujo_activo_id,
           updated_at,
@@ -81,7 +82,7 @@ export default function VentasPage() {
         const ids = (raw ?? []).map((c) => c.id as string)
         const { data: extras } = await supabase
           .from('clientes')
-          .select('id, primer_apellido, cedula, email, estado_aprobacion_matricula, placa, numero_factura')
+          .select('id, primer_apellido, cedula, email, estado_aprobacion_matricula, placa, numero_factura, fecha_entrega')
           .in('id', ids)
         for (const e of extras ?? []) extraMap[e.id as string] = e
       }
@@ -224,6 +225,7 @@ export default function VentasPage() {
             ? !!((c as Record<string, unknown>).placa ?? ex.placa)
             : undefined,
           numero_factura: ((c as Record<string, unknown>).numero_factura ?? ex.numero_factura ?? null) as string | null,
+          fecha_entrega: ((c as Record<string, unknown>).fecha_entrega ?? ex.fecha_entrega ?? null) as string | null,
           creditoAprobadoEntidad: creditoMap[c.id as string]?.aprobada ?? null,
           creditoRechazadoEntidades: creditoMap[c.id as string]?.rechazadas ?? [],
           automatizado: (c as Record<string, unknown>).automatizado === true,

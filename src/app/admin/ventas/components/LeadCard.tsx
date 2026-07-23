@@ -32,6 +32,7 @@ export type LeadData = {
   estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'
   tienePlaca?: boolean
   numero_factura?: string | null
+  fecha_entrega?: string | null
   creditoAprobadoEntidad?: string | null
   creditoRechazadoEntidades?: string[]
   automatizado?: boolean

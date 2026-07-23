@@ -75,6 +75,12 @@ export const ETAPAS_NECESITAN_PLACA: EtapaVenta[] = [
   'primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado',
 ]
 
+// Desde Espera entrega en adelante: campo fecha de entrega de la moto
+export const ETAPAS_NECESITAN_FECHA_ENTREGA: EtapaVenta[] = [
+  'espera_entrega', 'entregada',
+  'primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado',
+]
+
 // Desde Vendida en adelante: necesitan número de factura
 export const ETAPAS_NECESITAN_FACTURA: EtapaVenta[] = [
   'ganado', 'aprobado_matricula', 'en_matricula', 'alistamiento', 'espera_entrega', 'entregada',
