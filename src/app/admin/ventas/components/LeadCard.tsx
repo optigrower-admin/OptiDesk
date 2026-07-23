@@ -36,6 +36,7 @@ export type LeadData = {
   creditoRechazadoEntidades?: string[]
   automatizado?: boolean
   flujo_nombre?: string | null
+  updated_at?: string | null
 }
 
 const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
@@ -47,6 +48,14 @@ const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> 
 
 function formatHora(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+}
+
+function diasMovimientoBadge(dias: number): { bg: string; text: string; pulse: boolean } {
+  if (dias <= 2)  return { bg: '#f3f4f6', text: '#9ca3af', pulse: false }
+  if (dias <= 5)  return { bg: '#fef3c7', text: '#d97706', pulse: false }
+  if (dias <= 9)  return { bg: '#fed7aa', text: '#ea580c', pulse: false }
+  if (dias <= 14) return { bg: '#fee2e2', text: '#dc2626', pulse: false }
+  return { bg: '#dc2626', text: '#ffffff', pulse: true }
 }
 
 interface Props {
@@ -77,6 +86,10 @@ export default function LeadCard({ lead, onClick, overlay, asignado, onQuickDone
     transition,
     opacity: isDragging ? 0.4 : 1,
   }
+
+  const diasSinMovimiento = lead.updated_at
+    ? Math.floor((Date.now() - new Date(lead.updated_at).getTime()) / 86_400_000)
+    : null
 
   const sinResponder     = tiempoSinResponder(lead.sin_respuesta_asesor_desde)
   const seguimiento      = estadoSeguimiento(lead.proxima_accion_fecha)
@@ -192,7 +205,7 @@ export default function LeadCard({ lead, onClick, overlay, asignado, onQuickDone
         </p>
       )}
 
-      {/* Nombre + indicador datos + no leídos */}
+      {/* Nombre + indicador datos + no leídos + días sin movimiento */}
       <div className="flex items-start justify-between gap-1 mb-1.5">
         <div className="flex items-center gap-1.5 min-w-0">
           {datosCompletos ? (
@@ -208,11 +221,25 @@ export default function LeadCard({ lead, onClick, overlay, asignado, onQuickDone
             {lead.cliente?.nombre ?? 'Sin nombre'}
           </p>
         </div>
-        {lead.no_leidos_count > 0 && (
-          <span className="flex-shrink-0 w-5 h-5 bg-green-500 text-white rounded-full text-xs flex items-center justify-center font-bold">
-            {lead.no_leidos_count > 9 ? '9+' : lead.no_leidos_count}
-          </span>
-        )}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {diasSinMovimiento !== null && diasSinMovimiento >= 0 && (() => {
+            const { bg, text, pulse } = diasMovimientoBadge(diasSinMovimiento)
+            return (
+              <span
+                title={`${diasSinMovimiento} día${diasSinMovimiento === 1 ? '' : 's'} sin movimiento`}
+                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none${pulse ? ' animate-pulse' : ''}`}
+                style={{ background: bg, color: text }}
+              >
+                🕐 {diasSinMovimiento}d
+              </span>
+            )
+          })()}
+          {lead.no_leidos_count > 0 && (
+            <span className="w-5 h-5 bg-green-500 text-white rounded-full text-xs flex items-center justify-center font-bold">
+              {lead.no_leidos_count > 9 ? '9+' : lead.no_leidos_count}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Moto de interés */}

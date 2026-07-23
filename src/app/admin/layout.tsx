@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { usePermisos } from '@/hooks/usePermisos'
 import { cn } from '@/lib/utils'
+import ManualButton from '@/components/ManualButton'
 
 type NavItem = {
   href: string
@@ -29,8 +30,8 @@ const NAV_GROUPS: NavGroup[] = [
     key: 'dashboard',
     label: 'Dashboard',
     items: [
-      { href: '/admin/dashboard/servicio-tecnico', label: 'Dashboard Serv. Técnico', seccion: 'dashboard_servicio_tecnico', soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 5 },
-      { href: '/admin/dashboard/repuestos',        label: 'Dashboard Repuestos',     seccion: 'dashboard_repuestos',        soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 6 },
+      { href: '/admin/dashboard/servicio-tecnico', label: 'Servicio Técnico', seccion: 'dashboard_servicio_tecnico', soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 5 },
+      { href: '/admin/dashboard/repuestos',        label: 'Repuestos',       seccion: 'dashboard_repuestos',        soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 6 },
     ],
   },
   {
@@ -83,8 +84,9 @@ const STANDALONE_NAV: NavItem[] = [
   { href: '/admin/auditoria',   label: 'Auditoría',         seccion: 'auditoria',  soloGerencia: false, defaultOrden: 70  },
   { href: '/admin/equipo',      label: 'Mi equipo',         seccion: 'mi_equipo',  soloGerencia: true,  defaultOrden: 80  },
   { href: '/admin/documentos',   label: 'Documentos Internos', seccion: null,       soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 85 },
-  { href: '/admin/credenciales', label: 'Credenciales',        seccion: null,       soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 86 },
-  { href: '/admin/perfil',      label: 'Mi perfil',         seccion: null,         soloGerencia: false, defaultOrden: 999 },
+  { href: '/admin/credenciales',   label: 'Credenciales',   seccion: null, soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 86  },
+  { href: '/admin/config-general', label: 'Config General', seccion: null, soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 998 },
+  { href: '/admin/perfil',         label: 'Mi perfil',      seccion: null, soloGerencia: false,                                        defaultOrden: 999 },
 ]
 
 const CANAL_LABEL: Record<string, string> = {
@@ -728,8 +730,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {sidebarContent}
       </aside>
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto relative">
         {children}
+        <ManualButton />
       </main>
 
       {/* Toast in-app */}

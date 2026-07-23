@@ -21,6 +21,509 @@ function fmtFecha(iso: string) {
   return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+// ── PDF encoder: wraps a JPEG blob into a single-page PDF ─────────────────────
+async function jpegToPdf(jpegBlob: Blob, imgW: number, imgH: number): Promise<Blob> {
+  const jpg = new Uint8Array(await jpegBlob.arrayBuffer())
+  const e = new TextEncoder()
+  const pageW = 595
+  const pageH = Math.min(842, Math.round(595 * imgH / imgW))
+  const stream = `q ${pageW} 0 0 ${pageH} 0 0 cm /Im Do Q\n`
+  const objs: Uint8Array[] = [
+    e.encode(`1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n`),
+    e.encode(`2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n`),
+    e.encode(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Contents 4 0 R /Resources << /XObject << /Im 5 0 R >> >> >>\nendobj\n`),
+    e.encode(`4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}endstream\nendobj\n`),
+  ]
+  const hdr5 = e.encode(`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${imgW} /Height ${imgH} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`)
+  const ftr5 = e.encode(`\nendstream\nendobj\n`)
+  const hdr = e.encode('%PDF-1.4\n')
+  let pos = hdr.length
+  const offs: number[] = []
+  for (const b of objs) { offs.push(pos); pos += b.length }
+  offs.push(pos); pos += hdr5.length + jpg.length + ftr5.length
+  const xrefPos = pos
+  const xr = e.encode(['xref\n0 6\n', '0000000000 65535 f \n', ...offs.map(n => `${String(n).padStart(10, '0')} 00000 n \n`)].join(''))
+  const tr = e.encode(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`)
+  const parts = [hdr, ...objs, hdr5, jpg, ftr5, xr, tr]
+  const buf = new Uint8Array(parts.reduce((s, p) => s + p.length, 0))
+  let off = 0
+  for (const p of parts) { buf.set(p, off); off += p.length }
+  return new Blob([buf], { type: 'application/pdf' })
+}
+
+// ── Gaussian elimination (8×8) to solve for homography coefficients ───────────
+function solveH(
+  dstPts: [number, number][],
+  srcPts: [number, number][]
+): Float64Array {
+  const A: number[][] = []
+  for (let i = 0; i < 4; i++) {
+    const [dx, dy] = dstPts[i]
+    const [sx, sy] = srcPts[i]
+    A.push([dx, dy, 1, 0, 0, 0, -dx * sx, -dy * sx, sx])
+    A.push([0, 0, 0, dx, dy, 1, -dx * sy, -dy * sy, sy])
+  }
+  for (let col = 0; col < 8; col++) {
+    let maxRow = col
+    for (let row = col + 1; row < 8; row++) {
+      if (Math.abs(A[row][col]) > Math.abs(A[maxRow][col])) maxRow = row
+    }
+    ;[A[col], A[maxRow]] = [A[maxRow], A[col]]
+    const pivot = A[col][col]
+    if (Math.abs(pivot) < 1e-10) throw new Error('Singular')
+    for (let row = col + 1; row < 8; row++) {
+      const f = A[row][col] / pivot
+      for (let k = col; k <= 8; k++) A[row][k] -= f * A[col][k]
+    }
+  }
+  const x = new Float64Array(8)
+  for (let i = 7; i >= 0; i--) {
+    x[i] = A[i][8]
+    for (let j = i + 1; j < 8; j++) x[i] -= A[i][j] * x[j]
+    x[i] /= A[i][i]
+  }
+  return x
+}
+
+// ── Perspective warp: extracts the quadrilateral defined by corners ───────────
+function warpPerspective(
+  src: HTMLCanvasElement,
+  corners: { x: number; y: number }[]  // tl, tr, br, bl in source coords
+): HTMLCanvasElement {
+  const [tl, tr, br, bl] = corners
+  const outW = Math.round(Math.max(
+    Math.hypot(tr.x - tl.x, tr.y - tl.y),
+    Math.hypot(br.x - bl.x, br.y - bl.y)
+  ))
+  const outH = Math.round(Math.max(
+    Math.hypot(bl.x - tl.x, bl.y - tl.y),
+    Math.hypot(br.x - tr.x, br.y - tr.y)
+  ))
+
+  // Inverse mapping: output pixel → source pixel
+  const dstPts: [number, number][] = [[0, 0], [outW, 0], [outW, outH], [0, outH]]
+  const srcPts: [number, number][] = [
+    [tl.x, tl.y], [tr.x, tr.y], [br.x, br.y], [bl.x, bl.y],
+  ]
+  const h = solveH(dstPts, srcPts)
+
+  const out = document.createElement('canvas')
+  out.width = outW; out.height = outH
+  const ctx = out.getContext('2d')!
+  const srcCtx = src.getContext('2d')!
+  const srcData = srcCtx.getImageData(0, 0, src.width, src.height)
+  const outData = ctx.createImageData(outW, outH)
+  const sd = srcData.data, od = outData.data
+  const W = src.width, H = src.height
+
+  for (let oy = 0; oy < outH; oy++) {
+    for (let ox = 0; ox < outW; ox++) {
+      const denom = h[6] * ox + h[7] * oy + 1
+      const sx = (h[0] * ox + h[1] * oy + h[2]) / denom
+      const sy = (h[3] * ox + h[4] * oy + h[5]) / denom
+      const x0 = Math.floor(sx), y0 = Math.floor(sy)
+      const x1 = x0 + 1, y1 = y0 + 1
+      if (x0 < 0 || y0 < 0 || x1 >= W || y1 >= H) continue
+      const fx = sx - x0, fy = sy - y0
+      const oi = (oy * outW + ox) * 4
+      for (let c = 0; c < 3; c++) {
+        const s00 = sd[(y0 * W + x0) * 4 + c]
+        const s10 = sd[(y0 * W + x1) * 4 + c]
+        const s01 = sd[(y1 * W + x0) * 4 + c]
+        const s11 = sd[(y1 * W + x1) * 4 + c]
+        od[oi + c] = Math.round(s00 * (1 - fx) * (1 - fy) + s10 * fx * (1 - fy) + s01 * (1 - fx) * fy + s11 * fx * fy)
+      }
+      od[oi + 3] = 255
+    }
+  }
+  ctx.putImageData(outData, 0, 0)
+  return out
+}
+
+// ── Document edge auto-detection ─────────────────────────────────────────────
+function detectDocumentCorners(
+  canvas: HTMLCanvasElement
+): { x: number; y: number }[] {
+  const W = canvas.width, H = canvas.height
+  const ctx = canvas.getContext('2d')!
+  const { data } = ctx.getImageData(0, 0, W, H)
+
+  const rowAvg = new Float32Array(H)
+  const colAvg = new Float32Array(W)
+  for (let y = 0; y < H; y++) {
+    let sum = 0
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4
+      sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+    }
+    rowAvg[y] = sum / W
+  }
+  for (let x = 0; x < W; x++) {
+    let sum = 0
+    for (let y = 0; y < H; y++) {
+      const i = (y * W + x) * 4
+      sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+    }
+    colAvg[x] = sum / H
+  }
+
+  const threshold = 175
+  let top = 0, bottom = H - 1, left = 0, right = W - 1
+  while (top < H - 1 && rowAvg[top] < threshold) top++
+  while (bottom > 0 && rowAvg[bottom] < threshold) bottom--
+  while (left < W - 1 && colAvg[left] < threshold) left++
+  while (right > 0 && colAvg[right] < threshold) right--
+
+  // Expand slightly + validate
+  const mx = W * 0.015, my = H * 0.015
+  top    = Math.max(0, top - my)
+  bottom = Math.min(H - 1, bottom + my)
+  left   = Math.max(0, left - mx)
+  right  = Math.min(W - 1, right + mx)
+
+  const goodDetection = right - left > W * 0.2 && bottom - top > H * 0.2
+  if (!goodDetection) {
+    const ix = W * 0.05, iy = H * 0.05
+    return [
+      { x: ix,     y: iy },
+      { x: W - ix, y: iy },
+      { x: W - ix, y: H - iy },
+      { x: ix,     y: H - iy },
+    ]
+  }
+  return [
+    { x: left,  y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left,  y: bottom },
+  ]
+}
+
+// ── Crop editor with 4 draggable corner handles ───────────────────────────────
+interface CropEditorProps {
+  imageData: { dataUrl: string; w: number; h: number }
+  onConfirm: (corners: { x: number; y: number }[]) => void
+  onRetake: () => void
+}
+
+function CropEditor({ imageData, onConfirm, onRetake }: CropEditorProps) {
+  const imgRef       = useRef<HTMLImageElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const detectCanvas = useRef<HTMLCanvasElement>(null)
+  const [corners, setCorners] = useState([
+    { x: 0.05, y: 0.05 },
+    { x: 0.95, y: 0.05 },
+    { x: 0.95, y: 0.95 },
+    { x: 0.05, y: 0.95 },
+  ])
+  const [display, setDisplay] = useState({ w: 0, h: 0, offX: 0, offY: 0 })
+  const dragging = useRef<number | null>(null)
+
+  const refreshDisplay = useCallback(() => {
+    const con = containerRef.current
+    if (!con) return
+    const cW = con.clientWidth, cH = con.clientHeight
+    const scale = Math.min(cW / imageData.w, cH / imageData.h)
+    const dW = imageData.w * scale, dH = imageData.h * scale
+    setDisplay({ w: dW, h: dH, offX: (cW - dW) / 2, offY: (cH - dH) / 2 })
+  }, [imageData.w, imageData.h])
+
+  const onImgLoad = () => {
+    refreshDisplay()
+    const c = detectCanvas.current, img = imgRef.current
+    if (!c || !img) return
+    // Downscale for detection speed
+    const scale = Math.min(1, 600 / Math.max(imageData.w, imageData.h))
+    c.width  = Math.round(imageData.w * scale)
+    c.height = Math.round(imageData.h * scale)
+    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
+    const detected = detectDocumentCorners(c)
+    setCorners(detected.map(p => ({
+      x: p.x / c.width,
+      y: p.y / c.height,
+    })))
+  }
+
+  useEffect(() => {
+    const ro = new ResizeObserver(refreshDisplay)
+    if (containerRef.current) ro.observe(containerRef.current)
+    return () => ro.disconnect()
+  }, [refreshDisplay])
+
+  const getPos = (e: React.TouchEvent | React.MouseEvent) => {
+    const con = containerRef.current
+    if (!con) return { x: 0, y: 0 }
+    const rect = con.getBoundingClientRect()
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    return { x: clientX - rect.left, y: clientY - rect.top }
+  }
+
+  const onMove = (e: React.TouchEvent | React.MouseEvent) => {
+    if (dragging.current === null || !display.w) return
+    e.preventDefault()
+    const { x, y } = getPos(e)
+    const fx = Math.max(0, Math.min(1, (x - display.offX) / display.w))
+    const fy = Math.max(0, Math.min(1, (y - display.offY) / display.h))
+    const idx = dragging.current
+    setCorners(prev => prev.map((c, i) => i === idx ? { x: fx, y: fy } : c))
+  }
+
+  const { w: dW, h: dH, offX, offY } = display
+  const cornerIcons = ['↖', '↗', '↘', '↙']
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black flex flex-col select-none">
+      <div
+        ref={containerRef}
+        className="relative flex-1 overflow-hidden"
+        onMouseMove={onMove} onTouchMove={onMove}
+        onMouseUp={() => { dragging.current = null }}
+        onTouchEnd={() => { dragging.current = null }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          ref={imgRef}
+          src={imageData.dataUrl}
+          alt="Recortar"
+          onLoad={onImgLoad}
+          style={{ position: 'absolute', left: offX, top: offY, width: dW, height: dH, objectFit: 'fill', userSelect: 'none' }}
+        />
+
+        {dW > 0 && (
+          <>
+            <svg
+              style={{ position: 'absolute', left: offX, top: offY, width: dW, height: dH, pointerEvents: 'none', overflow: 'visible' }}>
+              <polygon
+                points={corners.map(c => `${c.x * dW},${c.y * dH}`).join(' ')}
+                fill="rgba(59,130,246,0.18)"
+                stroke="#3b82f6"
+                strokeWidth="2"
+              />
+            </svg>
+
+            {corners.map((c, i) => (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: offX + c.x * dW - 20,
+                  top: offY + c.y * dH - 20,
+                  width: 40, height: 40,
+                  touchAction: 'none',
+                  zIndex: 10,
+                }}
+                className="flex items-center justify-center cursor-grab"
+                onMouseDown={() => { dragging.current = i }}
+                onTouchStart={() => { dragging.current = i }}
+              >
+                <div className="w-8 h-8 rounded-full bg-blue-500 border-2 border-white shadow-xl flex items-center justify-center text-white text-[11px] font-bold">
+                  {cornerIcons[i]}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        <p className="absolute top-4 left-0 right-0 text-center text-white/80 text-xs pointer-events-none drop-shadow">
+          Arrastra los puntos azules para ajustar el recorte
+        </p>
+      </div>
+
+      <div className="bg-gray-900 px-5 py-5 flex gap-3 flex-shrink-0">
+        <button
+          onClick={onRetake}
+          className="flex-1 py-3 border border-white/30 text-white rounded-xl font-medium text-sm">
+          Repetir foto
+        </button>
+        <button
+          onClick={() => onConfirm(corners.map(c => ({ x: c.x * imageData.w, y: c.y * imageData.h })))}
+          className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm">
+          Recortar y usar
+        </button>
+      </div>
+
+      <canvas ref={detectCanvas} className="hidden" />
+    </div>
+  )
+}
+
+// ── Scanner modal ─────────────────────────────────────────────────────────────
+interface ScannerModalProps {
+  onClose: () => void
+  onUpload: (file: File) => Promise<void>
+}
+
+function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
+  const videoRef   = useRef<HTMLVideoElement>(null)
+  const canvasRef  = useRef<HTMLCanvasElement>(null)
+  const streamRef  = useRef<MediaStream | null>(null)
+  const [phase,     setPhase]     = useState<'camera' | 'crop' | 'preview'>('camera')
+  const [captured,  setCaptured]  = useState<{ dataUrl: string; w: number; h: number } | null>(null)
+  const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null)
+  const [cropped,   setCropped]   = useState<{ dataUrl: string; blob: Blob; w: number; h: number } | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [camError,  setCamError]  = useState('')
+
+  useEffect(() => {
+    if (phase !== 'camera') return
+    let active = true
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 2048 }, height: { ideal: 2048 } },
+    }).then(stream => {
+      if (!active) { stream.getTracks().forEach(t => t.stop()); return }
+      streamRef.current = stream
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play().catch(() => {}) }
+    }).catch(() => setCamError('No se pudo acceder a la cámara. Permite el acceso en la configuración del navegador.'))
+    return () => {
+      active = false
+      streamRef.current?.getTracks().forEach(t => t.stop())
+    }
+  }, [phase])
+
+  function takePhoto() {
+    if (!videoRef.current || !canvasRef.current) return
+    const v = videoRef.current, c = canvasRef.current
+    const scale = Math.min(1, 1600 / (v.videoWidth || 1600))
+    c.width  = Math.round(v.videoWidth * scale)
+    c.height = Math.round(v.videoHeight * scale)
+    c.getContext('2d')!.drawImage(v, 0, 0, c.width, c.height)
+    c.toBlob(blob => {
+      if (!blob) return
+      setCapturedBlob(blob)
+      setCaptured({ dataUrl: c.toDataURL('image/jpeg', 0.9), w: c.width, h: c.height })
+      streamRef.current?.getTracks().forEach(t => t.stop())
+      setPhase('crop')
+    }, 'image/jpeg', 0.9)
+  }
+
+  async function handleCropConfirm(corners: { x: number; y: number }[]) {
+    if (!captured) return
+    try {
+      const img = new Image()
+      img.src = captured.dataUrl
+      await new Promise<void>(r => { img.onload = () => r() })
+      const srcCanvas = document.createElement('canvas')
+      srcCanvas.width = captured.w; srcCanvas.height = captured.h
+      srcCanvas.getContext('2d')!.drawImage(img, 0, 0)
+      const warped = warpPerspective(srcCanvas, corners)
+      warped.toBlob(blob => {
+        if (!blob) { useCaptured(); return }
+        setCropped({ dataUrl: warped.toDataURL('image/jpeg', 0.85), blob, w: warped.width, h: warped.height })
+        setPhase('preview')
+      }, 'image/jpeg', 0.85)
+    } catch {
+      useCaptured()
+    }
+  }
+
+  function useCaptured() {
+    if (!capturedBlob || !captured) return
+    setCropped({ dataUrl: captured.dataUrl, blob: capturedBlob, w: captured.w, h: captured.h })
+    setPhase('preview')
+  }
+
+  async function confirm() {
+    if (!cropped) return
+    setUploading(true)
+    try {
+      const pdfBlob = await jpegToPdf(cropped.blob, cropped.w, cropped.h)
+      const file = new File([pdfBlob], `escan_${Date.now()}.pdf`, { type: 'application/pdf' })
+      await onUpload(file)
+      onClose()
+    } catch {
+      setUploading(false)
+    }
+  }
+
+  // Crop phase
+  if (phase === 'crop' && captured) {
+    return (
+      <CropEditor
+        imageData={captured}
+        onConfirm={handleCropConfirm}
+        onRetake={() => { setCaptured(null); setCapturedBlob(null); setPhase('camera') }}
+      />
+    )
+  }
+
+  // Preview phase
+  if (phase === 'preview' && cropped) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+        <div className="flex-1 flex items-center justify-center bg-black p-4 min-h-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={cropped.dataUrl} alt="Escaneo" className="max-w-full max-h-full object-contain rounded-lg" />
+        </div>
+        <div className="bg-gray-900 px-5 py-5 flex gap-3 flex-shrink-0">
+          <button onClick={() => setPhase('crop')}
+            className="flex-1 py-3 border border-white/30 text-white rounded-xl font-medium text-sm">
+            Ajustar recorte
+          </button>
+          <button onClick={confirm} disabled={uploading}
+            className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm disabled:opacity-50">
+            {uploading ? 'Subiendo...' : 'Usar esta foto'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Camera phase
+  const frameCorners = [
+    'top-0 left-0 border-l-2 border-t-2 rounded-tl',
+    'top-0 right-0 border-r-2 border-t-2 rounded-tr',
+    'bottom-0 left-0 border-l-2 border-b-2 rounded-bl',
+    'bottom-0 right-0 border-r-2 border-b-2 rounded-br',
+  ]
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+      {camError ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-5">
+          <p className="text-white text-base">{camError}</p>
+          <button onClick={onClose}
+            className="px-6 py-3 bg-white text-gray-900 rounded-xl font-semibold text-sm">
+            Cerrar
+          </button>
+        </div>
+      ) : (
+        <>
+          <video ref={videoRef} autoPlay playsInline muted
+            className="absolute inset-0 w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/30 pointer-events-none" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <div className="relative" style={{ width: '86%', height: '60%' }}>
+              {frameCorners.map((cls, i) => (
+                <div key={i} className={`absolute ${cls} w-7 h-7 border-white`} />
+              ))}
+              <p className="absolute -bottom-8 left-0 right-0 text-center text-white/80 text-xs">
+                Centra el documento dentro del marco
+              </p>
+            </div>
+          </div>
+          <div className="absolute bottom-0 inset-x-0">
+            <div className="flex items-center justify-around py-6 px-8 bg-black/60">
+              <button onClick={onClose}
+                className="text-white text-sm font-medium px-3 py-2 rounded-lg bg-white/10">
+                Cancelar
+              </button>
+              <button onClick={takePhoto}
+                className="flex items-center justify-center rounded-full border-4 border-white bg-transparent"
+                style={{ width: 72, height: 72 }}>
+                <div className="rounded-full bg-white" style={{ width: 56, height: 56 }} />
+              </button>
+              <div className="w-16" />
+            </div>
+          </div>
+        </>
+      )}
+      <canvas ref={canvasRef} className="hidden" />
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 export default function ArchivosTab({ clienteId }: Props) {
   const supabase = createClient()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -28,6 +531,12 @@ export default function ArchivosTab({ clienteId }: Props) {
   const [loading, setLoading]   = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError]       = useState('')
+  const [showScanner, setShowScanner] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    setIsMobile('ontouchstart' in window || navigator.maxTouchPoints > 0)
+  }, [])
 
   const cargar = useCallback(async () => {
     const { data } = await supabase.from('archivos_cliente')
@@ -40,26 +549,28 @@ export default function ArchivosTab({ clienteId }: Props) {
 
   useEffect(() => { cargar() }, [cargar])
 
-  async function onFiles(files: FileList | null) {
-    if (!files || files.length === 0) return
+  async function uploadFile(file: File) {
     setError('')
     setUploading(true)
     try {
-      for (const file of Array.from(files)) {
-        const fd = new FormData()
-        fd.append('file', file)
-        fd.append('cliente_id', clienteId)
-        const res = await fetch('/api/admin/ventas/archivos/subir', { method: 'POST', body: fd })
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          throw new Error(j.error ?? `Error subiendo ${file.name}`)
-        }
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('cliente_id', clienteId)
+      const res = await fetch('/api/admin/ventas/archivos/subir', { method: 'POST', body: fd })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? `Error subiendo ${file.name}`)
       }
       await cargar()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al subir')
     }
     setUploading(false)
+  }
+
+  async function onFiles(files: FileList | null) {
+    if (!files || files.length === 0) return
+    for (const file of Array.from(files)) await uploadFile(file)
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -73,14 +584,35 @@ export default function ArchivosTab({ clienteId }: Props) {
 
   return (
     <div className="space-y-3">
+      {showScanner && (
+        <ScannerModal
+          onClose={() => setShowScanner(false)}
+          onUpload={async (file) => { await uploadFile(file) }}
+        />
+      )}
+
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Archivos</p>
 
       <input ref={fileRef} type="file" multiple accept=".pdf,.xls,.xlsx,.csv,.doc,.docx,image/*"
         onChange={e => onFiles(e.target.files)} className="hidden" />
-      <button onClick={() => fileRef.current?.click()} disabled={uploading}
-        className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors disabled:opacity-50">
-        {uploading ? 'Subiendo...' : '+ Subir PDF, imagen, Excel o Word'}
-      </button>
+
+      <div className="flex gap-2">
+        <button onClick={() => fileRef.current?.click()} disabled={uploading}
+          className="flex-1 py-2.5 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors disabled:opacity-50">
+          {uploading ? 'Subiendo...' : '+ Subir PDF, imagen, Excel o Word'}
+        </button>
+        {isMobile && (
+          <button onClick={() => setShowScanner(true)} disabled={uploading}
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            Escanear
+          </button>
+        )}
+      </div>
+
       {error && <p className="text-xs text-red-600">{error}</p>}
 
       {archivos.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Sin archivos aún</p>}

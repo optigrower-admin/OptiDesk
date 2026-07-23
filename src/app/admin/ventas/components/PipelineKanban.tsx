@@ -14,85 +14,75 @@ import LeadCard, { type LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
 import ModalPerdida from './ModalPerdida'
 
-/* ─── Fases ──────────────────────────────────────────────────────────────────── */
-const FASES_KANBAN: {
-  id: string; label: string; color: string; bg: string; border: string
+// ─── Pipeline definitions ──────────────────────────────────────────────────────
+
+type GrupoConfig = {
+  grupoId: string
+  grupoLabel: string
+  color: string  // hex
+  bg: string     // hex
   etapas: EtapaVenta[]
-}[] = [
+}
+
+const PIPELINE_VENTAS: GrupoConfig[] = [
   {
-    id: 'prospectos', label: 'Prospectos', color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE',
+    grupoId: 'prospectos', grupoLabel: 'Prospectos',
+    color: '#2563EB', bg: '#EFF6FF',
     etapas: ['nuevo_mensaje', 'nuevo', 'con_interes', 'con_objecion'],
   },
   {
-    id: 'en_proceso', label: 'En proceso', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE',
-    etapas: ['propuesta', 'demo', 'seguimiento', 'buscando_credito', 'en_proceso_credito', 'negociacion'],
+    grupoId: 'proceso', grupoLabel: 'En Proceso',
+    color: '#7C3AED', bg: '#F5F3FF',
+    etapas: ['propuesta', 'seguimiento', 'buscando_credito', 'en_proceso_credito'],
   },
   {
-    id: 'vendido', label: 'Vendido', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0',
-    etapas: ['ganado', 'aprobado_matricula', 'en_matricula'],
+    grupoId: 'vendida', grupoLabel: 'Vendida',
+    color: '#16A34A', bg: '#DCFCE7',
+    etapas: ['ganado'],
   },
   {
-    id: 'entrega', label: 'Entrega', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A',
-    etapas: ['alistamiento', 'espera_entrega'],
+    grupoId: 'entrega', grupoLabel: 'Entrega',
+    color: '#D97706', bg: '#FFFBEB',
+    etapas: ['aprobado_matricula', 'en_matricula', 'alistamiento', 'espera_entrega'],
   },
   {
-    id: 'revisiones', label: 'Revisiones', color: '#4338CA', bg: '#EEF2FF', border: '#C7D2FE',
-    etapas: ['entregada', 'primera_revision', 'segunda_revision', 'tercera_revision'],
+    grupoId: 'entregada', grupoLabel: 'Entregada',
+    color: '#15803D', bg: '#ECFDF5',
+    etapas: ['entregada'],
   },
   {
-    id: 'finalizado', label: 'Finalizado', color: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB',
-    etapas: ['proceso_finalizado'],
-  },
-  {
-    id: 'perdido', label: 'Perdido', color: '#DC2626', bg: '#FEF2F2', border: '#FECACA',
+    grupoId: 'perdido', grupoLabel: 'Perdido',
+    color: '#DC2626', bg: '#FEF2F2',
     etapas: ['perdido'],
   },
 ]
 
-// Orden lógico del flujo de ventas (para avanzar etapa)
-const FLUJO_ORDEN: EtapaVenta[] = [
+const PIPELINE_POSTVENTA: GrupoConfig[] = [
+  {
+    grupoId: 'revisiones', grupoLabel: 'Post-Venta',
+    color: '#4338CA', bg: '#EEF2FF',
+    etapas: ['primera_revision', 'segunda_revision', 'tercera_revision'],
+  },
+]
+
+// Flujo de avance (omite demo y negociacion para "Siguiente etapa")
+const FLUJO_AVANCE: EtapaVenta[] = [
   'nuevo_mensaje', 'nuevo', 'con_interes', 'con_objecion',
-  'propuesta', 'demo', 'seguimiento', 'buscando_credito', 'en_proceso_credito',
-  'negociacion', 'ganado', 'aprobado_matricula', 'en_matricula',
+  'propuesta', 'seguimiento', 'buscando_credito', 'en_proceso_credito',
+  'ganado', 'aprobado_matricula', 'en_matricula',
   'alistamiento', 'espera_entrega', 'entregada',
-  'primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado',
+  'primera_revision', 'segunda_revision', 'tercera_revision',
 ]
 
 function nextEtapa(etapa: EtapaVenta): EtapaVenta | null {
-  const idx = FLUJO_ORDEN.indexOf(etapa)
-  if (idx === -1 || idx >= FLUJO_ORDEN.length - 1) return null
-  return FLUJO_ORDEN[idx + 1]
+  const idx = FLUJO_AVANCE.indexOf(etapa)
+  if (idx === -1 || idx >= FLUJO_AVANCE.length - 1) return null
+  return FLUJO_AVANCE[idx + 1]
 }
 
-/* ─── Sub-componentes ─────────────────────────────────────────────────────────── */
-function ConfirmMoveModal({ to, onConfirm, onCancel }: {
-  to: typeof ETAPAS[0]; onConfirm: () => void; onCancel: () => void
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
-        <h2 className="font-bold text-gray-900 mb-2">¿Cambiar etapa?</h2>
-        <p className="text-sm text-gray-600 mb-5">
-          ¿Mover a{' '}
-          <span className="font-semibold" style={{ color: to.color }}>{to.label}</span>?
-        </p>
-        <div className="flex gap-2">
-          <button onClick={onCancel}
-            className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
-            Cancelar
-          </button>
-          <button onClick={onConfirm}
-            className="flex-1 py-2 text-white rounded-lg text-sm font-semibold"
-            style={{ background: to.color }}>
-            Sí, mover
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
+// ─── KanbanColumn ──────────────────────────────────────────────────────────────
 
-function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuarioId, onQuickDone, onQuickNote, onQuickReminder, onQuickNext }: {
+function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuarioId, onQuickDone, onQuickNote, onQuickReminder, onQuickNext, grupoBg }: {
   etapaConfig: typeof ETAPAS[0]
   leads: LeadData[]
   onOpen: (id: string) => void
@@ -103,13 +93,15 @@ function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuar
   onQuickNote: (id: string, text: string) => void
   onQuickReminder: (id: string, nota: string, fecha: string) => void
   onQuickNext: (id: string) => void
+  grupoBg?: string
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: etapaConfig.id })
   return (
     <div className={`flex-shrink-0 w-60 rounded-2xl flex flex-col border-2 transition-colors bg-white h-full ${
       isOver ? `${etapaConfig.border} ring-2 ring-offset-1` : etapaConfig.border
     }`}>
-      <div className={`px-3 pt-3 pb-2 border-b border-gray-100 rounded-t-2xl flex-shrink-0 ${etapaConfig.bg}`}>
+      <div className={`px-3 pt-3 pb-2 border-b border-gray-100 rounded-t-2xl flex-shrink-0 ${etapaConfig.bg}`}
+        style={grupoBg ? { background: grupoBg } : {}}>
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: etapaConfig.color }} />
           <span className="font-semibold text-xs text-gray-800 truncate">{etapaConfig.label}</span>
@@ -145,81 +137,37 @@ function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuar
   )
 }
 
-/* Fase colapsada — tarjeta resumen */
-function FaseCard({ fase, leads, onExpand, usuariosMap, onOpenLead }: {
-  fase: typeof FASES_KANBAN[0]
-  leads: LeadData[]
-  onExpand: () => void
-  usuariosMap: Record<string, string>
-  onOpenLead: (id: string) => void
-}) {
-  const conAlerta = leads.filter(l =>
-    l.tieneAlistamiento === false || l.tienePlaca === false ||
-    (l.sin_respuesta_asesor_desde && (Date.now() - new Date(l.sin_respuesta_asesor_desde).getTime()) > 15 * 60000)
-  )
-  const noLeidos = leads.reduce((s, l) => s + l.no_leidos_count, 0)
-  const urgentes = leads.filter(l => l.proxima_accion_fecha && new Date(l.proxima_accion_fecha) < new Date())
-  const top4 = [...leads].sort((a, b) => {
-    const urgA = a.sin_respuesta_asesor_desde ? Date.now() - new Date(a.sin_respuesta_asesor_desde).getTime() : 0
-    const urgB = b.sin_respuesta_asesor_desde ? Date.now() - new Date(b.sin_respuesta_asesor_desde).getTime() : 0
-    return urgB - urgA
-  }).slice(0, 4)
+// ─── ConfirmMoveModal ──────────────────────────────────────────────────────────
 
+function ConfirmMoveModal({ to, onConfirm, onCancel }: {
+  to: typeof ETAPAS[0]; onConfirm: () => void; onCancel: () => void
+}) {
   return (
-    <div className="flex-shrink-0 w-44 rounded-2xl flex flex-col border-2 bg-white overflow-hidden"
-      style={{ borderColor: fase.color }}>
-      {/* Header */}
-      <div className="px-3 pt-3 pb-2" style={{ background: fase.bg }}>
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: fase.color }} />
-          <span className="font-bold text-xs" style={{ color: fase.color }}>{fase.label}</span>
-        </div>
-        <div className="flex items-end gap-2">
-          <span className="text-3xl font-black leading-none" style={{ color: fase.color }}>{leads.length}</span>
-          <div className="flex flex-col gap-0.5 pb-0.5">
-            {noLeidos > 0   && <span className="text-[10px] font-bold text-green-700 bg-green-100 px-1.5 rounded-full">📱 {noLeidos}</span>}
-            {urgentes.length > 0 && <span className="text-[10px] font-bold text-red-700 bg-red-100 px-1.5 rounded-full">⏰ {urgentes.length}</span>}
-            {conAlerta.length > 0 && <span className="text-[10px] font-bold text-orange-700 bg-orange-100 px-1.5 rounded-full">⚠ {conAlerta.length}</span>}
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h2 className="font-bold text-gray-900 mb-2">¿Cambiar etapa?</h2>
+        <p className="text-sm text-gray-600 mb-5">
+          ¿Mover a{' '}
+          <span className="font-semibold" style={{ color: to.color }}>{to.label}</span>?
+        </p>
+        <div className="flex gap-2">
+          <button onClick={onCancel}
+            className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={onConfirm}
+            className="flex-1 py-2 text-white rounded-lg text-sm font-semibold"
+            style={{ background: to.color }}>
+            Sí, mover
+          </button>
         </div>
       </div>
-
-      {/* Mini client list */}
-      {top4.length > 0 && (
-        <div className="px-2 py-1.5 space-y-1 border-b border-gray-100">
-          {top4.map(l => (
-            <button key={l.id} onClick={() => onOpenLead(l.id)}
-              className="w-full text-left px-2 py-1 rounded-lg hover:bg-gray-50 flex items-center gap-1.5 transition-colors">
-              {l.no_leidos_count > 0 && (
-                <span className="w-3.5 h-3.5 bg-green-500 text-white rounded-full text-[8px] flex items-center justify-center font-bold flex-shrink-0">
-                  {l.no_leidos_count > 9 ? '9+' : l.no_leidos_count}
-                </span>
-              )}
-              <span className="text-[11px] font-medium text-gray-800 truncate flex-1">
-                {l.cliente?.nombre ?? 'Sin nombre'}
-              </span>
-            </button>
-          ))}
-          {leads.length > 4 && (
-            <p className="text-[10px] text-gray-400 text-center">+{leads.length - 4} más</p>
-          )}
-        </div>
-      )}
-      {leads.length === 0 && (
-        <div className="px-3 py-4 text-center text-[10px] text-gray-400">Sin clientes</div>
-      )}
-
-      {/* Expand button */}
-      <button onClick={onExpand}
-        className="w-full py-2 text-[11px] font-bold transition-colors hover:opacity-80"
-        style={{ color: fase.color, background: fase.bg }}>
-        Ver columnas ▼
-      </button>
     </div>
   )
 }
 
-/* ─── Props ───────────────────────────────────────────────────────────────────── */
+// ─── Props ─────────────────────────────────────────────────────────────────────
+
 interface Props {
   leadsIniciales: LeadData[]
   tenantId: string
@@ -227,7 +175,8 @@ interface Props {
   abrirClienteId?: string
 }
 
-/* ─── Componente principal ────────────────────────────────────────────────────── */
+// ─── Componente principal ──────────────────────────────────────────────────────
+
 export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId }: Props) {
   const supabase = createClient()
   const { profile } = useAuth()
@@ -236,13 +185,13 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [perdidaId, setPerdidaId]     = useState<string | null>(null)
   const [pendingMove, setPendingMove] = useState<{ leadId: string; targetEtapa: typeof ETAPAS[0] } | null>(null)
-  const [fasesExpandidas, setFasesExpandidas] = useState<Set<string>>(new Set())
-  const fasesPreDragRef = useRef<Set<string> | null>(null)
+  const [activePipeline, setActivePipeline] = useState<'ventas' | 'postventa'>('ventas')
 
-  // Sincronizar carga inicial: cuando VentasPage termina de cargar y pasa los leads
-  // reales por primera vez, los internalizamos. Recargas de fondo no tocan este estado.
+  // Keep local leads in sync with filtered leadsIniciales from parent
+  const lastIniciales = useRef<LeadData[]>(leadsIniciales)
   useEffect(() => {
-    if (leads.length === 0 && leadsIniciales.length > 0) {
+    if (lastIniciales.current !== leadsIniciales) {
+      lastIniciales.current = leadsIniciales
       setLeads(leadsIniciales)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -258,14 +207,6 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   const leadsEn     = useCallback((etapa: EtapaVenta) => leads.filter(l => l.etapa_venta === etapa), [leads])
   const activeLead  = activeId ? leads.find(l => l.id === activeId) ?? null : null
   const fichaLead   = fichaId  ? leads.find(l => l.id === fichaId)  ?? null : null
-
-  function toggleFase(faseId: string) {
-    setFasesExpandidas(prev => {
-      const next = new Set(prev)
-      next.has(faseId) ? next.delete(faseId) : next.add(faseId)
-      return next
-    })
-  }
 
   function moverLead(id: string, nuevaEtapa: EtapaVenta) {
     setLeads(prev => prev.map(l => l.id === id ? { ...l, etapa_venta: nuevaEtapa } : l))
@@ -287,16 +228,10 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
 
   function onDragStart({ active }: DragStartEvent) {
     setActiveId(active.id as string)
-    fasesPreDragRef.current = new Set(fasesExpandidas)
-    setFasesExpandidas(new Set(FASES_KANBAN.map(f => f.id)))
   }
 
   function onDragEnd({ active, over }: DragEndEvent) {
     setActiveId(null)
-    if (fasesPreDragRef.current !== null) {
-      setFasesExpandidas(fasesPreDragRef.current)
-      fasesPreDragRef.current = null
-    }
     if (!over) return
     const leadId = active.id as string
     const overId = over.id as string
@@ -373,10 +308,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
 
   function handleLeadDelete(id: string) { setLeads(prev => prev.filter(l => l.id !== id)); setFichaId(null) }
 
-  /* ── Quick actions desde hover ─── */
   async function handleQuickDone(leadId: string) {
-    const lead = leads.find(l => l.id === leadId)
-    if (!lead) return
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, proxima_accion: null, proxima_accion_fecha: null } : l))
     await supabase.from('clientes').update({ proxima_accion: null, proxima_accion_fecha: null }).eq('id', leadId)
   }
@@ -425,6 +357,148 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     onQuickNext: handleQuickNext,
   }
 
+  const pipeline = activePipeline === 'ventas' ? PIPELINE_VENTAS : PIPELINE_POSTVENTA
+
+  // Counts for tab labels
+  const etapasVentas   = new Set<EtapaVenta>(PIPELINE_VENTAS.flatMap(g => g.etapas))
+  const etapasPostventa = new Set<EtapaVenta>(PIPELINE_POSTVENTA.flatMap(g => g.etapas))
+  const cntVentas    = leads.filter(l => etapasVentas.has(l.etapa_venta)).length
+  const cntPostventa = leads.filter(l => etapasPostventa.has(l.etapa_venta)).length
+
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // ── Pipeline tab switcher (shared between mobile and desktop) ──
+  const PipelineTabs = (
+    <div className="flex items-center gap-0 mb-3 bg-white border border-gray-200 rounded-xl overflow-hidden w-fit shadow-sm">
+      {([
+        { key: 'ventas',    label: 'Pipeline Ventas',     count: cntVentas,    color: '#2563EB' },
+        { key: 'postventa', label: 'Pipeline Post-Venta', count: cntPostventa, color: '#4338CA' },
+      ] as const).map(tab => (
+        <button
+          key={tab.key}
+          onClick={() => setActivePipeline(tab.key)}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
+            activePipeline === tab.key ? 'text-white' : 'text-gray-600 hover:bg-gray-50'
+          }`}
+          style={activePipeline === tab.key ? { background: tab.color } : {}}
+        >
+          {tab.label}
+          <span className={`text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center ${
+            activePipeline === tab.key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+          }`}>
+            {tab.count}
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+
+  // ── Mobile view ────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <>
+        {fichaLead && (
+          <FichaProspecto
+            lead={fichaLead}
+            tenantId={tenantId}
+            onClose={() => setFichaId(null)}
+            onEtapaChange={handleEtapaChange}
+            onLeadUpdate={handleLeadUpdate}
+            onLeadDelete={handleLeadDelete}
+          />
+        )}
+        {pendingMove && (
+          <ConfirmMoveModal to={pendingMove.targetEtapa} onConfirm={confirmarMove} onCancel={() => setPendingMove(null)} />
+        )}
+        {perdidaId && (
+          <ModalPerdida tenantId={tenantId} onConfirm={confirmarPerdida} onCancel={cancelarPerdida} />
+        )}
+
+        {PipelineTabs}
+
+        {activePipeline === 'postventa' && (
+          <p className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 mb-3">
+            Clientes entregados en revisiones de mantenimiento (1era, 2da, 3cera).
+          </p>
+        )}
+
+        <div className="space-y-4 pb-8">
+          {pipeline.map(grupo => {
+            const grupoLeads = grupo.etapas.flatMap(e => leads.filter(l => l.etapa_venta === e))
+            if (grupoLeads.length === 0) return null
+            return (
+              <div key={grupo.grupoId}>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-2"
+                  style={{ background: grupo.bg, borderLeft: `4px solid ${grupo.color}` }}>
+                  <span className="text-sm font-bold" style={{ color: grupo.color }}>{grupo.grupoLabel}</span>
+                  <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
+                    style={{ background: grupo.color + '22', color: grupo.color }}>{grupoLeads.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {grupoLeads.map(lead => {
+                    const asignado = lead.assigned_to ? (usuariosMap[lead.assigned_to] ?? null) : null
+                    const dias = lead.updated_at
+                      ? Math.floor((Date.now() - new Date(lead.updated_at).getTime()) / 86_400_000)
+                      : null
+                    return (
+                      <div key={lead.id}
+                        onClick={() => setFichaId(lead.id)}
+                        className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 cursor-pointer active:bg-gray-50 transition-colors">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <p className="font-semibold text-sm text-gray-900 truncate">
+                            {lead.cliente?.nombre ?? 'Sin nombre'}
+                          </p>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {dias !== null && dias > 2 && (
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                dias <= 5 ? 'bg-amber-100 text-amber-700' :
+                                dias <= 9 ? 'bg-orange-100 text-orange-700' :
+                                dias <= 14 ? 'bg-red-100 text-red-700' :
+                                'bg-red-600 text-white animate-pulse'
+                              }`}>🕐 {dias}d</span>
+                            )}
+                            {lead.no_leidos_count > 0 && (
+                              <span className="w-5 h-5 bg-green-500 text-white rounded-full text-xs flex items-center justify-center font-bold">
+                                {lead.no_leidos_count > 9 ? '9+' : lead.no_leidos_count}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-white"
+                            style={{ background: ETAPA_MAP[lead.etapa_venta].color }}>
+                            {ETAPA_MAP[lead.etapa_venta].label}
+                          </span>
+                          {asignado && <span className="text-[10px] text-gray-500">{asignado}</span>}
+                          {lead.moto_interes && (
+                            <span className="text-[10px] text-gray-400 truncate max-w-[120px]">🏍️ {lead.moto_interes}</span>
+                          )}
+                        </div>
+                        {lead.proxima_accion && (
+                          <p className="text-[11px] text-blue-600 font-medium mt-1 truncate">📌 {lead.proxima_accion}</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+          {pipeline.flatMap(g => g.etapas).every(e => !leads.some(l => l.etapa_venta === e)) && (
+            <p className="text-sm text-gray-400 text-center py-8">Sin leads en este pipeline</p>
+          )}
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       {pendingMove && (
@@ -435,53 +509,52 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
         />
       )}
 
+      {PipelineTabs}
+
+      {/* Post-Venta hint */}
+      {activePipeline === 'postventa' && (
+        <p className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 mb-3 w-fit">
+          Muestra clientes entregados activos en revisiones de mantenimiento (1era, 2da, 3cera).
+          Pasa un cliente a revisión desde la columna <strong>Entregada</strong> en el pipeline Ventas.
+        </p>
+      )}
+
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="flex gap-3 overflow-x-auto pb-4 h-[calc(100vh-200px)]">
-          {FASES_KANBAN.map(fase => {
-            const leadsEnFase  = leads.filter(l => fase.etapas.includes(l.etapa_venta))
-            const expandida    = fasesExpandidas.has(fase.id)
-
-            if (expandida) {
-              return (
-                <div key={fase.id} className="flex-shrink-0 flex flex-col gap-2 h-full">
-                  {/* Barra de fase expandida */}
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border flex-shrink-0"
-                    style={{ background: fase.bg, borderColor: fase.border }}>
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: fase.color }} />
-                    <span className="font-bold text-xs" style={{ color: fase.color }}>{fase.label}</span>
-                    <span className="text-[10px] text-gray-500 ml-1">({leadsEnFase.length})</span>
-                    <button onClick={() => toggleFase(fase.id)}
-                      className="ml-auto text-[11px] font-semibold hover:opacity-70 transition-opacity"
-                      style={{ color: fase.color }}>
-                      ▲ Colapsar
-                    </button>
-                  </div>
-                  {/* Columnas individuales */}
-                  <div className="flex gap-3 flex-1 min-h-0">
-                    {fase.etapas.map(etapa => (
-                      <KanbanColumn
-                        key={etapa}
-                        etapaConfig={ETAPA_MAP[etapa]}
-                        leads={leadsEn(etapa)}
-                        onOpen={setFichaId}
-                        usuariosMap={usuariosMap}
-                        {...colCallbacks}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )
-            }
-
+        <div className="flex gap-5 overflow-x-auto pb-4 h-[calc(100vh-250px)] items-start">
+          {pipeline.map(grupo => {
+            const totalGrupo = grupo.etapas.reduce((s, e) => s + leadsEn(e).length, 0)
             return (
-              <FaseCard
-                key={fase.id}
-                fase={fase}
-                leads={leadsEnFase}
-                onExpand={() => toggleFase(fase.id)}
-                usuariosMap={usuariosMap}
-                onOpenLead={setFichaId}
-              />
+              <div key={grupo.grupoId} className="flex flex-col gap-2 flex-shrink-0 h-full">
+                {/* Group banner */}
+                <div
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg flex-shrink-0"
+                  style={{ background: grupo.bg, borderLeft: `4px solid ${grupo.color}` }}
+                >
+                  <span className="text-xs font-bold" style={{ color: grupo.color }}>
+                    {grupo.grupoLabel}
+                  </span>
+                  <span
+                    className="text-[10px] font-bold rounded-full px-1.5 py-0.5 ml-1"
+                    style={{ background: grupo.color + '22', color: grupo.color }}
+                  >
+                    {totalGrupo}
+                  </span>
+                </div>
+                {/* Columns */}
+                <div className="flex gap-3 flex-1 min-h-0">
+                  {grupo.etapas.map(etapa => (
+                    <KanbanColumn
+                      key={etapa}
+                      etapaConfig={ETAPA_MAP[etapa]}
+                      leads={leadsEn(etapa)}
+                      onOpen={setFichaId}
+                      usuariosMap={usuariosMap}
+                      grupoBg={grupo.bg}
+                      {...colCallbacks}
+                    />
+                  ))}
+                </div>
+              </div>
             )
           })}
         </div>

@@ -588,6 +588,11 @@ export default function ConfigVentasPage() {
   const [savingAgente, setSavingAgente]       = useState(false)
   const [editAgente, setEditAgente]           = useState<string | null>(null)
 
+  // ── Asesores asignables ───────────────────────────────────────────────────
+  type UsuarioEquipo = { id: string; nombre: string | null; email: string | null; es_asesor: boolean }
+  const [usuariosEquipo, setUsuariosEquipo]               = useState<UsuarioEquipo[]>([])
+  const [togglingAsesor, setTogglingAsesor]               = useState<string | null>(null)
+
   // ── Drive para archivos de clientes ───────────────────────────────────────
   const [ventasFolderUrl, setVentasFolderUrl]             = useState('')
   const [ventasFolderConfigured, setVentasFolderConfigured] = useState<string | null>(null)
@@ -756,6 +761,19 @@ export default function ConfigVentasPage() {
       .order('nombre')
     setEtiquetas(etqs ?? [])
 
+    // Usuarios del equipo (para configurar quiénes son asesores asignables en ventas)
+    const { data: equipo } = await supabase
+      .from('usuarios')
+      .select('id, nombre, email, es_asesor')
+      .eq('tenant_id', profile.tenant_id)
+      .order('nombre')
+    setUsuariosEquipo((equipo ?? []).map(u => ({
+      id: u.id as string,
+      nombre: u.nombre as string | null,
+      email: u.email as string | null,
+      es_asesor: (u.es_asesor ?? false) as boolean,
+    })))
+
     setLoading(false)
     cargandoRef.current = false
   }, [profile?.tenant_id])
@@ -849,6 +867,14 @@ export default function ConfigVentasPage() {
     await supabase.from('entidades_financieras').update({ nombre: editandoEntidadNombre.trim() }).eq('id', editandoEntidadId)
     setEntidades(p => p.map(e => e.id === editandoEntidadId ? { ...e, nombre: editandoEntidadNombre.trim() } : e))
     setEditandoEntidadId(null); setEditandoEntidadNombre('')
+  }
+
+  /* ── Asesores ── */
+  async function toggleAsesor(id: string, actual: boolean) {
+    setTogglingAsesor(id)
+    await supabase.from('usuarios').update({ es_asesor: !actual }).eq('id', id)
+    setUsuariosEquipo(p => p.map(u => u.id === id ? { ...u, es_asesor: !actual } : u))
+    setTogglingAsesor(null)
   }
 
   /* ── Motos ── */
@@ -1782,6 +1808,45 @@ export default function ConfigVentasPage() {
               {savingAgente ? 'Creando…' : '+ Crear agente IA'}
             </button>
           </div>
+        </div>
+      </SeccionColapsable>
+
+      {/* ── Asesores asignables en ventas ── */}
+      <SeccionColapsable titulo="Asesores asignables en ventas" icono="👥" defaultOpen={false}>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-gray-400">
+            Activa o desactiva quién aparece como opción al asignar un asesor en Seguimiento Ventas. Solo los usuarios con este switch activo aparecen en el filtro y en el desplegable de asignación.
+          </p>
+          {usuariosEquipo.length === 0 ? (
+            <p className="text-sm text-gray-400">Cargando usuarios...</p>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {usuariosEquipo.map(u => (
+                <div key={u.id} className="flex items-center justify-between py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {u.nombre ?? u.email ?? 'Usuario sin nombre'}
+                    </p>
+                    {u.nombre && u.email && (
+                      <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => toggleAsesor(u.id, u.es_asesor)}
+                    disabled={togglingAsesor === u.id}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+                      u.es_asesor ? 'bg-blue-600' : 'bg-gray-200'
+                    }`}
+                    title={u.es_asesor ? 'Desactivar como asesor asignable' : 'Activar como asesor asignable'}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      u.es_asesor ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </SeccionColapsable>
 

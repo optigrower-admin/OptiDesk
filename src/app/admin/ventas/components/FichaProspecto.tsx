@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, ETAPAS_NECESITAN_FACTURA, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, ETAPAS_NECESITAN_FACTURA, ETAPAS_POSVENTA, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import VincularClienteModal from './VincularClienteModal'
 import EtiquetasPicker, { type Etiqueta } from './EtiquetasPicker'
@@ -64,7 +64,7 @@ const ROL_LABEL: Record<string, string> = {
   admin: 'Admin', superadmin: 'SuperAdmin', mecanico: 'Mecánico', gerencia: 'Gerencia', control_total: 'Control total',
 }
 
-type TabDerecha = 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizacion' | 'archivos' | 'pasos' | 'historial' | 'visibilidad'
+type TabDerecha = 'gestion' | 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizacion' | 'archivos' | 'pasos' | 'historial' | 'visibilidad'
 
 const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'resumen',    label: 'Resumen',    icon: '📋' },
@@ -125,6 +125,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [showReminder,    setShowReminder]     = useState(false)
   const [savingPanel,     setSavingPanel]      = useState(false)
   const [savedPanel,      setSavedPanel]       = useState(false)
+  const [isMobile,        setIsMobile]         = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   // Actividad (registro + cambios de etapa)
   type EtapaMovimiento = { etapa_anterior: string | null; etapa_nueva: string; created_at: string }
@@ -459,6 +467,22 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   const etapaActual = ETAPA_MAP[etapa]
 
+  const posventaSet = new Set<EtapaVenta>(['primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado'])
+  const gruposEtapa = (
+    <>
+      <optgroup label="── Etapas de Ventas ──">
+        {ETAPAS.filter(e => !posventaSet.has(e.id)).map(e => (
+          <option key={e.id} value={e.id} style={{ background: e.color, color: '#fff' }}>{e.label}</option>
+        ))}
+      </optgroup>
+      <optgroup label="── Post-Venta ──">
+        {ETAPAS.filter(e => posventaSet.has(e.id)).map(e => (
+          <option key={e.id} value={e.id} style={{ background: e.color, color: '#fff' }}>{e.label}</option>
+        ))}
+      </optgroup>
+    </>
+  )
+
   return (
     <>
     {/* Modal selección de flujo */}
@@ -503,8 +527,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         onCancel={() => setVincularOpen(false)}
       />
     )}
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 sm:p-4">
+      <div className="bg-white sm:rounded-2xl shadow-2xl w-full sm:max-w-6xl h-full sm:h-[92vh] flex flex-col overflow-hidden">
 
         {/* Modal confirmar eliminación */}
         {confirmDelete && (
@@ -602,10 +626,10 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         </div>
 
         {/* Body con panel izquierdo */}
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 flex-col sm:flex-row">
 
-          {/* ── Panel izquierdo oscuro ── */}
-          <div className="w-64 flex-shrink-0 bg-[#1a2235] border-r border-[#2a3550] flex flex-col overflow-y-auto">
+          {/* ── Panel izquierdo oscuro — oculto en móvil ── */}
+          <div className="hidden sm:flex sm:w-64 flex-shrink-0 bg-[#1a2235] border-r border-[#2a3550] flex-col overflow-y-auto">
             {/* Saved toast */}
             {savedPanel && (
               <div className="absolute top-3 left-16 z-10 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">✓ Guardado</div>
@@ -619,9 +643,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)} disabled={saving}
                   className="w-full text-xs rounded-lg px-2 py-1.5 font-bold text-white border border-[#2a3550] focus:outline-none disabled:opacity-60"
                   style={{ background: etapaActual.color }}>
-                  {ETAPAS.map(e => (
-                    <option key={e.id} value={e.id} style={{ background: e.color }}>{e.label}</option>
-                  ))}
+                  {gruposEtapa}
                 </select>
               </div>
 
@@ -735,6 +757,16 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
           {/* ── Tabs en fila única ── */}
           <div className="flex border-b flex-shrink-0 overflow-x-auto">
+            {isMobile && (
+              <button onClick={() => setTabDer('gestion')}
+                className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-2 text-[10px] font-semibold whitespace-nowrap border-b-2 transition-colors ${
+                  tabDer === 'gestion'
+                    ? 'border-blue-600 bg-blue-50 text-blue-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                }`}>
+                ⚙️ Gestión
+              </button>
+            )}
             {[...TABS, ...(esGerencia ? TABS_GERENCIA : [])].map(t => (
               <button key={t.id} onClick={() => setTabDer(t.id)}
                 className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-2 text-[10px] font-semibold whitespace-nowrap border-b-2 transition-colors ${
@@ -1175,6 +1207,97 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'historial'  && <HistorialTab clienteId={lead.id} />}
               {tabDer === 'visibilidad' && esGerencia && <VisibilidadTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
+
+              {tabDer === 'gestion' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Etapa</label>
+                    <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)} disabled={saving}
+                      className="w-full text-sm rounded-xl px-3 py-2.5 font-bold text-white border-0 focus:outline-none"
+                      style={{ background: etapaActual.color }}>
+                      {gruposEtapa}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Asesor</label>
+                    {esGerencia ? (
+                      <select value={assignedTo} onChange={e => autoSaveAssigned(e.target.value)} disabled={saving}
+                        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none">
+                        <option value="">Sin asignar</option>
+                        {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      </select>
+                    ) : (
+                      <p className="text-sm text-gray-700 py-1">{usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'}</p>
+                    )}
+                  </div>
+
+                  <hr className="border-gray-200" />
+
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Próxima acción</label>
+                    <input value={proximaAccion} onChange={e => setProximaAccion(e.target.value)}
+                      placeholder="Acción a seguir..."
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <input type="datetime-local" value={proximaFecha} onChange={e => setProximaFecha(e.target.value)}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <button onClick={guardarProximaAccionPanel} disabled={savingPanel}
+                      className="w-full py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors disabled:opacity-40">
+                      {savingPanel ? '...' : 'Guardar acción'}
+                    </button>
+                  </div>
+
+                  <hr className="border-gray-200" />
+
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Nota rápida</label>
+                    <textarea value={notaRapida} onChange={e => setNotaRapida(e.target.value)}
+                      rows={3} placeholder="Nota interna..."
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+                    <button onClick={guardarNotaRapidaPanel} disabled={savingPanel || !notaRapida.trim()}
+                      className="w-full py-2.5 text-sm font-bold bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl transition-colors disabled:opacity-40">
+                      💬 Guardar nota
+                    </button>
+                  </div>
+
+                  <div>
+                    <button onClick={() => setShowReminder(v => !v)}
+                      className="w-full py-2.5 text-sm font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl transition-colors">
+                      ⏰ {showReminder ? 'Cancelar recordatorio' : 'Crear recordatorio'}
+                    </button>
+                    {showReminder && (
+                      <div className="mt-2 space-y-2">
+                        <input type="datetime-local" value={reminderFecha} onChange={e => setReminderFecha(e.target.value)}
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none" />
+                        <input type="text" value={reminderNota} onChange={e => setReminderNota(e.target.value)}
+                          placeholder="Nota del recordatorio"
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none" />
+                        <button onClick={guardarReminderPanel} disabled={savingPanel || !reminderFecha}
+                          className="w-full py-2.5 text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl transition-colors disabled:opacity-40">
+                          Crear recordatorio
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {(sinCelular || (enEtapaConPlaca && !placaActual) || (enEtapaAlistamiento && !tieneAlistamientoFinal) || (enEtapaFactura && !facturaActual)) && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Alertas</p>
+                      {sinCelular && <button onClick={() => setTabDer('datos')} className="w-full text-left text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">⚠ Sin celular → Datos</button>}
+                      {enEtapaConPlaca && !placaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">⚠ Sin placa → Resumen</button>}
+                      {enEtapaAlistamiento && !tieneAlistamientoFinal && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">⚠ Sin alistamiento → Resumen</button>}
+                      {enEtapaFactura && !facturaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2.5">⚠ Sin factura → Resumen</button>}
+                    </div>
+                  )}
+
+                  {(rolNorm === 'gerencia' || rolNorm === 'dueno') && (
+                    <button onClick={() => { setConfirmDeleteInput(''); setConfirmDelete(true) }}
+                      className="w-full py-2.5 text-sm font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 rounded-xl transition-colors">
+                      🗑 Sacar de seguimiento
+                    </button>
+                  )}
+                </div>
+              )}
           </div>
           </div>{/* /right panel */}
         </div>{/* /body */}

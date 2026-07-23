@@ -195,7 +195,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [tab, setTab] = useState<Tab>('kanban')
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [usuarios, setUsuarios] = useState<UsuarioFiltro[]>([])
-  const [usuarioFiltro, setUsuarioFiltro] = useState<string | null>(null) // null = todos
+  const [usuariosFiltro, setUsuariosFiltro] = useState<Set<string>>(new Set())
   const [abrirClienteId, setAbrirClienteId] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
   const [whatsappOpen, setWhatsappOpen] = useState(false)
@@ -262,7 +262,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   )
 
   const leadsFiltrados = useMemo(() => {
-    let lista = usuarioFiltro ? leadsIniciales.filter(l => l.assigned_to === usuarioFiltro) : leadsIniciales
+    let lista = usuariosFiltro.size > 0 ? leadsIniciales.filter(l => usuariosFiltro.has(l.assigned_to ?? '')) : leadsIniciales
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase().trim()
       lista = lista.filter(l =>
@@ -276,7 +276,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       )
     }
     return lista
-  }, [leadsIniciales, usuarioFiltro, busqueda, idsExtraSearch])
+  }, [leadsIniciales, usuariosFiltro, busqueda, idsExtraSearch])
 
   const sinSeguim = activos.filter(l => !l.proxima_accion_fecha).length
 
@@ -334,33 +334,41 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         </div>
       </div>
 
-      {/* Filtro por usuario */}
-      {tab !== 'bandeja' && usuarios.length > 1 && (
+      {/* Filtro por usuario (multi-select) */}
+      {usuarios.length > 1 && (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="text-xs text-gray-500 font-medium">Asesor:</span>
           <button
-            onClick={() => setUsuarioFiltro(null)}
+            onClick={() => setUsuariosFiltro(new Set())}
             className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-              usuarioFiltro === null
+              usuariosFiltro.size === 0
                 ? 'bg-blue-700 text-white border-blue-700'
                 : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
             }`}
           >
             Todos
           </button>
-          {usuarios.map(u => (
-            <button
-              key={u.id}
-              onClick={() => setUsuarioFiltro(u.id)}
-              className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-                usuarioFiltro === u.id
-                  ? 'bg-blue-700 text-white border-blue-700'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
-              }`}
-            >
-              {u.nombre}
-            </button>
-          ))}
+          {usuarios.map(u => {
+            const activo = usuariosFiltro.has(u.id)
+            return (
+              <button
+                key={u.id}
+                onClick={() => setUsuariosFiltro(prev => {
+                  const next = new Set(prev)
+                  if (next.has(u.id)) next.delete(u.id)
+                  else next.add(u.id)
+                  return next
+                })}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                  activo
+                    ? 'bg-blue-700 text-white border-blue-700'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+                }`}
+              >
+                {u.nombre}
+              </button>
+            )
+          })}
         </div>
       )}
 
@@ -399,7 +407,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} />
       )}
       {tab === 'bandeja' && (
-        <VistaBandeja leads={leadsIniciales} tenantId={tenantId} usuarios={usuarios} />
+        <VistaBandeja leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} />
       )}
       {tab === 'hoy' && (
         <VistaHoy leads={leadsFiltrados} tenantId={tenantId} />
