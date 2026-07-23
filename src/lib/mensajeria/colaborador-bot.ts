@@ -342,83 +342,115 @@ async function ordenesActivas(
 }
 
 // ── Saldo actual en caja ───────────────────────────────────────────────────────
-// Usa query separada de metodos_pago para resolver nombres (sin joins FK),
-// ya que el admin client (plain supabase-js) puede fallar silenciosamente con
-// el sintaxis de join metodos_pago(nombre) cuando RLS está activo en esa tabla.
+// Replica la lógica de mostrarItemsPorSeparado() de caja/page.tsx:
+// - Órdenes antiguas (gestiona=false/null): siempre muestra costo_externo + costo_lavado
+// - Órdenes nuevas (gestiona=true) no finalizadas: muestra pagos_proveedor solamente
+// - Órdenes nuevas finalizadas (listo/pagado + cliente pagado + proveedor pagado):
+//   muestra costo_externo + costo_lavado (igual que antiguas)
 
 async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte: boolean): Promise<string> {
-  // 1. Cargar métodos de pago como lookup id→nombre
+  // 1. Métodos de pago como lookup id→nombre
   const { data: metodos } = await supabase
-    .from('metodos_pago')
-    .select('id, nombre')
-    .eq('tenant_id', tenantId)
+    .from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId)
 
   const byId = new Map<string, string>(
     ((metodos ?? []) as { id: string; nombre: string }[]).map(m => [m.id, m.nombre.trim().toLowerCase()])
   )
   const metodName = (id: string | null) => (id ? byId.get(id) ?? 'otro' : 'otro')
 
-  // 2. Consultar movimientos principales + lista de órdenes del tenant
+  // 2. Movimientos contables + lista de órdenes con estado
   const [
-    { data: pagos,         error: e1 },
-    { data: gastos,        error: e2 },
-    { data: ingresos,      error: e3 },
-    { data: ajustes,       error: e4 },
-    { data: pagosProveedor,error: e5 },
-    { data: ordenesList,   error: e6 },
+    { data: pagos,    error: e1 },
+    { data: gastos,   error: e2 },
+    { data: ingresos, error: e3 },
+    { data: ajustes,  error: e4 },
+    { data: ordList,  error: e5 },
   ] = await Promise.all([
-    supabase.from('pagos_orden')
-      .select('monto, metodo_pago_id').eq('tenant_id', tenantId).gt('monto', 0),
-    supabase.from('gastos_caja')
-      .select('monto, descripcion, metodo_pago_id').eq('tenant_id', tenantId),
-    supabase.from('ingresos_caja')
-      .select('monto, metodo_pago_id').eq('tenant_id', tenantId),
-    supabase.from('ajustes_caja')
-      .select('monto, metodo_pago_id, cuenta_especial').eq('tenant_id', tenantId),
-    supabase.from('pagos_proveedor')
-      .select('monto, metodo_pago_id').eq('tenant_id', tenantId),
-    supabase.from('ordenes')
-      .select('id, gestiona_pago_proveedor').eq('tenant_id', tenantId),
+    supabase.from('pagos_orden').select('monto, metodo_pago_id').eq('tenant_id', tenantId).gt('monto', 0),
+    supabase.from('gastos_caja').select('monto, descripcion, metodo_pago_id').eq('tenant_id', tenantId),
+    supabase.from('ingresos_caja').select('monto, metodo_pago_id').eq('tenant_id', tenantId),
+    supabase.from('ajustes_caja').select('monto, metodo_pago_id, cuenta_especial').eq('tenant_id', tenantId),
+    supabase.from('ordenes').select('id, gestiona_pago_proveedor, estado, estado_pago').eq('tenant_id', tenantId),
   ])
 
-  if (e1 || e2 || e3 || e4 || e5 || e6) {
-    const msg = [e1, e2, e3, e4, e5, e6]
-      .filter(Boolean).map(e => e!.message).join('; ')
+  if (e1 || e2 || e3 || e4 || e5) {
+    const msg = [e1, e2, e3, e4, e5].filter(Boolean).map(e => e!.message).join('; ')
     return `❌ Error al consultar caja: ${msg}`
   }
 
-  // Órdenes sin gestión de proveedor activa (antiguas): la UI usa costo_externo de items_orden,
-  // no pagos_proveedor. El bot debe hacer lo mismo para que los saldos coincidan.
-  const todasOrdenesRows = (ordenesList ?? []) as { id: string; gestiona_pago_proveedor: boolean | null }[]
-  const ordenIdsAnteriores = todasOrdenesRows.filter(o => !o.gestiona_pago_proveedor).map(o => o.id)
-  const todosOrdenIds      = todasOrdenesRows.map(o => o.id)
+  type OrdRow = { id: string; gestiona_pago_proveedor: boolean | null; estado: string | null; estado_pago: string | null }
+  const ordenesRows = (ordList ?? []) as OrdRow[]
+  const todosIds  = ordenesRows.map(o => o.id)
+  const viejasIds = ordenesRows.filter(o => !o.gestiona_pago_proveedor).map(o => o.id)
+  const nuevasIds = ordenesRows.filter(o => !!o.gestiona_pago_proveedor).map(o => o.id)
 
-  // 3. Costos de repuestos externos (órdenes antiguas) y lavados (todos)
+  // 3. Costos por tipo de orden + pagos a proveedor
+  type ItemExt  = { orden_id?: string; costo: number; cantidad: number; metodo_pago_id: string | null }
+  type LavRow   = { orden_id: string; costo_unitario: number; cantidad: number; metodo_pago_id: string | null }
+  type PagosProv= { orden_id: string; monto: number; metodo_pago_id: string | null }
+
+  const empty_e = <T>() => Promise.resolve({ data: [] as T[], error: null })
+
   const [
-    { data: costosExt, error: e7 },
-    { data: lavados,   error: e8 },
+    { data: costosViejos, error: e6 },
+    { data: costosNuevos, error: e7 },
+    { data: lavados,      error: e8 },
+    { data: pagosProv,    error: e9 },
   ] = await Promise.all([
-    ordenIdsAnteriores.length > 0
-      ? supabase.from('items_orden')
-          .select('costo, cantidad, metodo_pago_id')
-          .eq('origen', 'externo')
-          .in('orden_id', ordenIdsAnteriores)
-          .gt('costo', 0)
-      : Promise.resolve({ data: [] as { costo: number; cantidad: number; metodo_pago_id: string | null }[], error: null }),
-    todosOrdenIds.length > 0
-      ? supabase.from('lava_moto_ordenes')
-          .select('costo_unitario, cantidad, metodo_pago_id')
-          .in('orden_id', todosOrdenIds)
-          .gt('costo_unitario', 0)
-      : Promise.resolve({ data: [] as { costo_unitario: number; cantidad: number; metodo_pago_id: string | null }[], error: null }),
+    viejasIds.length > 0
+      ? supabase.from('items_orden').select('costo, cantidad, metodo_pago_id')
+          .eq('origen', 'externo').in('orden_id', viejasIds).gt('costo', 0)
+      : empty_e<ItemExt>(),
+    nuevasIds.length > 0
+      ? supabase.from('items_orden').select('orden_id, costo, cantidad, metodo_pago_id')
+          .eq('origen', 'externo').in('orden_id', nuevasIds).gt('costo', 0)
+      : empty_e<ItemExt>(),
+    todosIds.length > 0
+      ? supabase.from('lava_moto_ordenes').select('orden_id, costo_unitario, cantidad, metodo_pago_id')
+          .in('orden_id', todosIds).gt('costo_unitario', 0)
+      : empty_e<LavRow>(),
+    nuevasIds.length > 0
+      ? supabase.from('pagos_proveedor').select('orden_id, monto, metodo_pago_id')
+          .eq('tenant_id', tenantId).in('orden_id', nuevasIds)
+      : empty_e<PagosProv>(),
   ])
 
-  if (e7 || e8) {
-    const msg = [e7, e8].filter(Boolean).map(e => e!.message).join('; ')
-    return `❌ Error al consultar costos externos: ${msg}`
+  if (e6 || e7 || e8 || e9) {
+    const msg = [e6, e7, e8, e9].filter(Boolean).map(e => e!.message).join('; ')
+    return `❌ Error al consultar costos: ${msg}`
   }
 
-  // 4. Acumular saldo por cuenta
+  // 4. Calcular mostrarItemsPorSeparado por orden nueva
+  type OrdInfo = { estado: string | null; estadoPago: string | null; costoTotal: number; pagadoTotal: number }
+  const ordenInfo = new Map<string, OrdInfo>()
+  for (const o of ordenesRows) {
+    if (o.gestiona_pago_proveedor)
+      ordenInfo.set(o.id, { estado: o.estado, estadoPago: o.estado_pago, costoTotal: 0, pagadoTotal: 0 })
+  }
+  for (const it of (costosNuevos ?? []) as ItemExt[]) {
+    const inf = ordenInfo.get(it.orden_id!)
+    if (inf) inf.costoTotal += it.costo * it.cantidad
+  }
+  for (const lm of (lavados ?? []) as LavRow[]) {
+    const inf = ordenInfo.get(lm.orden_id)
+    if (inf) inf.costoTotal += lm.costo_unitario * lm.cantidad
+  }
+  for (const pp of (pagosProv ?? []) as PagosProv[]) {
+    const inf = ordenInfo.get(pp.orden_id)
+    if (inf) inf.pagadoTotal += pp.monto
+  }
+
+  // Replica exacta de mostrarItemsPorSeparado() de caja/page.tsx
+  const porSeparado = (ordenId: string): boolean => {
+    const inf = ordenInfo.get(ordenId)
+    if (!inf) return true  // orden antigua: siempre por ítem
+    const finalizado  = inf.estado === 'listo' || inf.estado === 'pagado'
+    const clientePago = inf.estadoPago === 'pagado'
+    const provPago    = inf.costoTotal === 0 || inf.pagadoTotal >= inf.costoTotal
+    return finalizado && clientePago && provPago
+  }
+
+  // 5. Acumular saldo
   const saldo = new Map<string, number>()
   let saldoCF = 0
 
@@ -432,9 +464,8 @@ async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte
     add(p.metodo_pago_id, null, p.monto)
 
   for (const g of (gastos ?? []) as { monto: number; descripcion: string; metodo_pago_id: string | null }[]) {
-    const desc = (g.descripcion ?? '').trim().toLowerCase()
     add(g.metodo_pago_id, null, -g.monto)
-    if (desc.startsWith('transferencia a caja fuerte'))
+    if ((g.descripcion ?? '').trim().toLowerCase().startsWith('transferencia a caja fuerte'))
       saldoCF += Math.abs(g.monto)
   }
 
@@ -444,20 +475,26 @@ async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte
   for (const a of (ajustes ?? []) as { monto: number; metodo_pago_id: string | null; cuenta_especial: string | null }[])
     add(a.metodo_pago_id, a.cuenta_especial, a.monto)
 
-  // pagos_proveedor: solo aplica a órdenes con gestiona=true (provisionales/parcialmente pagadas)
-  // Para órdenes antiguas (gestiona=false/null) no hay registros en esta tabla, así que no hay riesgo de doble conteo
-  for (const p of (pagosProveedor ?? []) as { monto: number; metodo_pago_id: string | null }[])
-    add(p.metodo_pago_id, null, -p.monto)
-
-  // costo_externo: repuestos de terceros en órdenes antiguas (UI los muestra por ítem, no como pagos_proveedor)
-  for (const c of (costosExt ?? []) as { costo: number; cantidad: number; metodo_pago_id: string | null }[])
+  // Órdenes viejas: siempre descuenta costo_externo de items_orden
+  for (const c of (costosViejos ?? []) as ItemExt[])
     add(c.metodo_pago_id, null, -(c.costo * c.cantidad))
 
-  // costo_lavado: costo del servicio de lavado para el taller (ingreso ya incluido en pagos_orden)
-  for (const l of (lavados ?? []) as { costo_unitario: number; cantidad: number; metodo_pago_id: string | null }[])
-    add(l.metodo_pago_id, null, -(l.costo_unitario * l.cantidad))
+  // Órdenes nuevas finalizadas: descuenta costo_externo de items_orden (igual que viejas)
+  for (const c of (costosNuevos ?? []) as ItemExt[]) {
+    if (porSeparado(c.orden_id!)) add(c.metodo_pago_id, null, -(c.costo * c.cantidad))
+  }
 
-  // 5. Formatear respuesta
+  // Lavados: descuenta solo cuando la orden muestra ítems (vieja o nueva finalizada)
+  for (const lm of (lavados ?? []) as LavRow[]) {
+    if (porSeparado(lm.orden_id)) add(lm.metodo_pago_id, null, -(lm.costo_unitario * lm.cantidad))
+  }
+
+  // Órdenes nuevas no finalizadas: descuenta pagos_proveedor (en lugar de los ítems)
+  for (const pp of (pagosProv ?? []) as PagosProv[]) {
+    if (!porSeparado(pp.orden_id)) add(pp.metodo_pago_id, null, -pp.monto)
+  }
+
+  // 6. Formatear respuesta
   const COP = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`
   const ICON: Record<string, string> = { efectivo: '💵', nequi: '📲' }
   const PRIO = ['efectivo', 'nequi']
