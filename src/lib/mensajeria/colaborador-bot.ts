@@ -40,7 +40,9 @@ export async function procesarMensajeColaborador(
   const texto  = textoMensaje.trim()
   const lower  = texto.toLowerCase()
   const estado = usuario.bot_estado ?? null
-  const esGerencia = ['gerencia', 'dueno'].includes(usuario.rol)
+  const esGerencia  = ['gerencia', 'dueno'].includes(usuario.rol)
+  const esAdmin     = usuario.rol === 'admin'
+  const puedeVerCaja = esGerencia || esAdmin  // opción 5 disponible para estos roles
 
   // Actualizar sesión en todo mensaje recibido (reinicia la ventana de 24h)
   await supabase
@@ -52,7 +54,7 @@ export async function procesarMensajeColaborador(
   if (lower === 'ok' || lower === 'si' || lower === 'sí') {
     await enviarWADirecto(cfg, usuario.whatsapp_number,
       `✅ Perfecto ${usuario.nombre?.split(' ')[0] ?? ''}. Sesión activa por 24 horas.\n\n` +
-      buildMenu(usuario.nombre, esGerencia)
+      buildMenu(usuario.nombre, esGerencia, puedeVerCaja)
     )
     return
   }
@@ -74,10 +76,10 @@ export async function procesarMensajeColaborador(
   }
 
   // Opción de menú numérica
-  const maxOpcion = esGerencia ? 5 : 4
+  const maxOpcion = puedeVerCaja ? 5 : 4
   const opcion = parseInt(texto)
   if (!isNaN(opcion) && opcion >= 1 && opcion <= maxOpcion) {
-    const result = await ejecutarOpcion(supabase, tenantId, usuario, esGerencia, opcion)
+    const result = await ejecutarOpcion(supabase, tenantId, usuario, esGerencia, puedeVerCaja, opcion)
     await enviarWADirecto(cfg, usuario.whatsapp_number, result.texto)
     if (result.nuevoEstado !== undefined) {
       await supabase.from('usuarios').update({ bot_estado: result.nuevoEstado }).eq('id', usuario.id)
@@ -86,13 +88,14 @@ export async function procesarMensajeColaborador(
   }
 
   // Cualquier otro mensaje → mostrar menú
-  await enviarWADirecto(cfg, usuario.whatsapp_number, buildMenu(usuario.nombre, esGerencia))
+  await enviarWADirecto(cfg, usuario.whatsapp_number, buildMenu(usuario.nombre, esGerencia, puedeVerCaja))
 }
 
 // ── Menú ───────────────────────────────────────────────────────────────────────
 
-function buildMenu(nombre: string | null, esGerencia: boolean): string {
+function buildMenu(nombre: string | null, esGerencia: boolean, puedeVerCaja: boolean): string {
   const saludo = nombre ? `Hola *${nombre.split(' ')[0]}*! ` : ''
+  const opcion5 = puedeVerCaja ? `5. 💰 Saldo actual en caja\n\n` : `\n`
   if (esGerencia) {
     return (
       `${saludo}Panel de gerencia:\n\n` +
@@ -100,7 +103,7 @@ function buildMenu(nombre: string | null, esGerencia: boolean): string {
       `2. Recordatorios pendientes\n` +
       `3. Buscar cliente\n` +
       `4. Órdenes activas\n` +
-      `5. 💰 Saldo actual en caja\n\n` +
+      opcion5 +
       `_Responde con el número de la opción_`
     )
   }
@@ -109,7 +112,8 @@ function buildMenu(nombre: string | null, esGerencia: boolean): string {
     `1. Mis clientes por etapa\n` +
     `2. Mis recordatorios pendientes\n` +
     `3. Buscar cliente\n` +
-    `4. Órdenes activas\n\n` +
+    `4. Órdenes activas\n` +
+    opcion5 +
     `_Responde con el número de la opción_`
   )
 }
@@ -121,6 +125,7 @@ async function ejecutarOpcion(
   tenantId: string,
   usuario: UsuarioColaborador,
   esGerencia: boolean,
+  puedeVerCaja: boolean,
   opcion: number
 ): Promise<{ texto: string; nuevoEstado?: string | null }> {
   if (opcion === 1) {
@@ -141,11 +146,11 @@ async function ejecutarOpcion(
     const texto = await ordenesActivas(supabase, tenantId)
     return { texto }
   }
-  if (opcion === 5 && esGerencia) {
-    const texto = await saldoCaja(supabase, tenantId)
+  if (opcion === 5 && puedeVerCaja) {
+    const texto = await saldoCaja(supabase, tenantId, esGerencia)
     return { texto }
   }
-  return { texto: buildMenu(usuario.nombre, esGerencia) }
+  return { texto: buildMenu(usuario.nombre, esGerencia, puedeVerCaja) }
 }
 
 // ── Consultas ──────────────────────────────────────────────────────────────────
@@ -339,7 +344,7 @@ async function ordenesActivas(
 // ── Saldo actual en caja (solo gerencia/dueño) ─────────────────────────────────
 // Replica la misma lógica de saldosCuentas + saldoCajaFuerte del módulo de Caja.
 
-async function saldoCaja(supabase: Supabase, tenantId: string): Promise<string> {
+async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte: boolean): Promise<string> {
   type WithMetodo = { metodos_pago: { nombre: string } | null; monto: number }
   type GastoRow   = WithMetodo & { descripcion: string }
   type AjusteRow  = WithMetodo & { cuenta_especial: string | null }
@@ -426,14 +431,14 @@ async function saldoCaja(supabase: Supabase, tenantId: string): Promise<string> 
   })
 
   const totalCuentas = entries.reduce((s, [, v]) => s + v, 0)
-  const totalGeneral = totalCuentas + saldoCF
+  const totalGeneral = totalCuentas + (mostrarCajaFuerte ? saldoCF : 0)
 
   let msg = `💰 *Saldo Actual en Caja*\n━━━━━━━━━━━━━━━━━\n\n`
   for (const [k, v] of entries) {
     const ic = ICON[k] ?? '💳'
     msg += `${ic} *${k.charAt(0).toUpperCase() + k.slice(1)}:* ${COP(v)}\n`
   }
-  if (saldoCF !== 0)
+  if (mostrarCajaFuerte && saldoCF !== 0)
     msg += `🔒 *Caja Fuerte:* ${COP(saldoCF)}\n`
   msg += `\n*Total general:* ${COP(totalGeneral)}\n`
 
