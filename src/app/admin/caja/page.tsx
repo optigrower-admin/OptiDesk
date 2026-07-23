@@ -1,7 +1,7 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/utils'
@@ -1321,6 +1321,44 @@ export default function CajaPage() {
   }, [profile?.tenant_id, supabase, desde, hasta])
 
   useEffect(() => { cargar() }, [cargar])
+
+  // Ref que siempre apunta al cargar más reciente (con el período actual).
+  // Así el canal realtime no se tiene que recrear cuando cambia el período.
+  const cargarRef = useRef(cargar)
+  useEffect(() => { cargarRef.current = cargar }, [cargar])
+
+  // Realtime: recarga automática cuando cualquier tabla de caja cambia en la BD.
+  // Debounce de 400 ms para agrupar rafagas de eventos (ej. bulk insert).
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!profile?.tenant_id) return
+    const tid = profile.tenant_id
+
+    const trigger = () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => cargarRef.current(), 400)
+    }
+
+    const ch = supabase
+      .channel(`caja-rt-${tid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_orden',       filter: `tenant_id=eq.${tid}` }, trigger)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_proveedor',   filter: `tenant_id=eq.${tid}` }, trigger)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_caja',       filter: `tenant_id=eq.${tid}` }, trigger)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ingresos_caja',     filter: `tenant_id=eq.${tid}` }, trigger)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ajustes_caja',      filter: `tenant_id=eq.${tid}` }, trigger)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lava_moto_ordenes', filter: `tenant_id=eq.${tid}` }, trigger)
+      .subscribe()
+
+    // Polling de seguridad cada 60 s por si algún evento realtime se pierde
+    const pollId = setInterval(() => cargarRef.current(), 60_000)
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      supabase.removeChannel(ch)
+      clearInterval(pollId)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.tenant_id])
 
   const filtrados = useMemo(() => {
     let r = movimientos
