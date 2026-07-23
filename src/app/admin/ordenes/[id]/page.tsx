@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { ConsultaRepuestos } from '@/components/ConsultaRepuestos'
+import { ImportarCotizacionModal, type ItemToImport } from '@/components/ImportarCotizacionModal'
 import { MediaGallery } from '@/components/MediaGallery'
 import SeguimientoModal from '@/components/SeguimientoModal'
 import { OrderStatus } from '@/components/OrderStatus'
@@ -239,6 +240,7 @@ export default function AdminOrdenDetallePage() {
   // (modal ConsultaRepuestos), quedan en una lista (varios por orden) y se guardan
   // de inmediato, sin esperar a "Guardar cambios".
   const [showAgregarRepuesto, setShowAgregarRepuesto] = useState(false)
+  const [showImportarCot, setShowImportarCot] = useState(false)
   const [editingItem, setEditingItem] = useState<{ id: string; descripcion: string; codigoPrefix: string; costo: string; precio: string; metodo_pago_id: string; precioMin: number | null; errMsg: string; cantidad: string } | null>(null)
 
   // Lavado de moto — botón "+ Agregar lavado" en la tarjeta de Pagos, con envío explícito
@@ -872,6 +874,22 @@ export default function AdminOrdenDetallePage() {
         }),
       ])
       await cargar()
+    }
+  }
+
+  const handleImportarCotizacion = async (cotItems: ItemToImport[]) => {
+    for (const item of cotItems) {
+      const origen = item.tipo === 'repuesto_uma' ? 'uma'
+        : item.tipo === 'repuesto_externo' ? 'externo'
+        : 'mano_obra' as 'uma' | 'externo' | 'insumo'
+      await handleAddItem({
+        descripcion: item.descripcion,
+        origen,
+        repuesto_uma_id: item.uma_id ?? undefined,
+        cantidad: item.cantidad,
+        costo: item.costo,
+        precio_venta: item.precio_venta,
+      })
     }
   }
 
@@ -2661,17 +2679,27 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
 
             {abiertoRepuestos && (
             <div className="bg-white">
-              {/* Botón para agregar repuesto */}
-              <div className="p-3 border-b border-gray-100">
+              {/* Botones para agregar / importar repuestos */}
+              <div className="p-3 border-b border-gray-100 flex gap-2">
                 <button
                   type="button"
                   onClick={() => setShowAgregarRepuesto(true)}
-                  className="w-full py-2.5 px-3 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 text-blue-600 hover:text-blue-800 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 px-3 border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 text-blue-600 hover:text-blue-800 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-1.5"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   Agregar repuesto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowImportarCot(true)}
+                  className="py-2.5 px-3 border-2 border-dashed border-green-300 hover:border-green-500 hover:bg-green-50 text-green-700 hover:text-green-900 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Importar cotización
                 </button>
               </div>
 
@@ -2810,6 +2838,13 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               permitirInsumos
             />
           )}
+
+          {/* Modal "Importar cotización S.T." */}
+          <ImportarCotizacionModal
+            open={showImportarCot}
+            onClose={() => setShowImportarCot(false)}
+            onImport={handleImportarCotizacion}
+          />
 
           {/* ── MANO DE OBRA — no aplica a venta directa de repuestos ── */}
           {!esVenta && (
