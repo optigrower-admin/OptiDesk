@@ -185,6 +185,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [perdidaId, setPerdidaId]     = useState<string | null>(null)
   const [pendingMove, setPendingMove] = useState<{ leadId: string; targetEtapa: typeof ETAPAS[0] } | null>(null)
+  const [bloqueoMsg, setBloqueoMsg]   = useState<string | null>(null)
   const [activePipeline, setActivePipeline] = useState<'ventas' | 'postventa'>('ventas')
 
   // Keep local leads in sync with filtered leadsIniciales from parent
@@ -245,6 +246,13 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
       targetEtapa = targetLead?.etapa_venta ?? null
     }
     if (!targetEtapa || targetEtapa === lead.etapa_venta) return
+    // Bloquear avance desde aprobado_matricula si la matrícula no está aprobada
+    if (lead.etapa_venta === 'aprobado_matricula' &&
+        ETAPA_ORDEN[targetEtapa] > ETAPA_ORDEN['aprobado_matricula'] &&
+        lead.estadoAprobacionMatricula !== 'aprobado') {
+      setBloqueoMsg(`No se puede mover a "${ETAPA_MAP[targetEtapa]?.label ?? targetEtapa}" — la matrícula de este cliente aún no ha sido aprobada. Cambia el estado a ✅ Aprobado en la ficha del cliente.`)
+      return
+    }
     setPendingMove({ leadId, targetEtapa: ETAPA_MAP[targetEtapa] })
   }
 
@@ -584,6 +592,23 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
           onConfirm={confirmarPerdida}
           onCancel={cancelarPerdida}
         />
+      )}
+
+      {/* Modal de bloqueo: matrícula no aprobada */}
+      {bloqueoMsg && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-3xl">🔒</span>
+              <h2 className="font-bold text-gray-900 text-base">Acción bloqueada</h2>
+            </div>
+            <p className="text-sm text-gray-600 mb-5">{bloqueoMsg}</p>
+            <button onClick={() => setBloqueoMsg(null)}
+              className="w-full py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-colors">
+              Entendido
+            </button>
+          </div>
+        </div>
       )}
     </>
   )

@@ -113,6 +113,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [aprobacionStatus, setAprobacionStatus] = useState<'pendiente' | 'aprobado' | 'rechazado'>(
     lead.estadoAprobacionMatricula ?? 'pendiente'
   )
+  const [bloqueoMsg, setBloqueoMsg] = useState<string | null>(null)
 
   // Panel lateral izquierdo
   const [proximaAccion,   setProximaAccion]   = useState(lead.proxima_accion ?? '')
@@ -284,6 +285,13 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   // Auto-guarda etapa al cambiarla en el select
   const autoSaveEtapa = async (newEtapa: EtapaVenta) => {
+    // Bloquear avance desde aprobado_matricula si la matrícula no está aprobada
+    if (lead.etapa_venta === 'aprobado_matricula' &&
+        ETAPA_ORDEN[newEtapa] > ETAPA_ORDEN['aprobado_matricula'] &&
+        aprobacionStatus !== 'aprobado') {
+      setBloqueoMsg(`No se puede pasar a "${ETAPA_MAP[newEtapa]?.label ?? newEtapa}" — la matrícula aún no ha sido aprobada. Cambia el estado a ✅ Aprobado primero.`)
+      return
+    }
     const prev = etapa
     setEtapa(newEtapa)
     setSaving(true)
@@ -439,6 +447,10 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const actualizarAprobacion = async (status: 'pendiente' | 'aprobado' | 'rechazado') => {
+    if (!esGerencia) {
+      setBloqueoMsg('Solo gerencia o el dueño pueden aprobar o rechazar la matrícula. Pídeles que cambien el estado.')
+      return
+    }
     setAprobacionStatus(status)
     await supabase
       .from('clientes')
@@ -1383,6 +1395,22 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         </div>{/* /body */}
       </div>
     </div>
+      {/* Modal de bloqueo: matrícula no aprobada / sin permiso */}
+      {bloqueoMsg && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-3xl">🔒</span>
+              <h2 className="font-bold text-gray-900 text-base">Acción bloqueada</h2>
+            </div>
+            <p className="text-sm text-gray-600 mb-5">{bloqueoMsg}</p>
+            <button onClick={() => setBloqueoMsg(null)}
+              className="w-full py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-colors">
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
     </>
   )
 }
