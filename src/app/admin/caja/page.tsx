@@ -863,9 +863,6 @@ async function construirMovimientos(
   // En cualquier otro caso, mostrar filas de pagos_proveedor (una por abono).
   function mostrarItemsPorSeparado(ordenId: string): boolean {
     if (!ordenesConGestion.has(ordenId)) return true  // orden antigua: siempre por ítem
-    // Si aún no hay ningún pago al proveedor, mostrar ítems individualmente
-    // (evita que activar el flag vacíe los costos externos de la caja)
-    if ((totalPagadoPorOrden.get(ordenId) ?? 0) === 0) return true
     const estado = estadoPorOrden.get(ordenId) ?? ''
     const estadoPago = estadoPagoPorOrden.get(ordenId) ?? ''
     const finalizado = estado === 'listo' || estado === 'pagado'

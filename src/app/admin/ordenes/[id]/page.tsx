@@ -837,6 +837,7 @@ export default function AdminOrdenDetallePage() {
   }) => {
     if (item.origen === 'externo' && !gestionaProveedor) {
       supabase.from('ordenes').update({ gestiona_pago_proveedor: true }).eq('id', ordenId).then(() => {})
+      setOrden(prev => prev ? { ...prev, gestiona_pago_proveedor: true } : null)
     }
     const { data, error } = await supabase.from('items_orden').insert({
       orden_id: ordenId,
@@ -998,6 +999,7 @@ export default function AdminOrdenDetallePage() {
     setGuardandoLavado(true)
     if (!gestionaProveedor) {
       supabase.from('ordenes').update({ gestiona_pago_proveedor: true }).eq('id', ordenId).then(() => {})
+      setOrden(prev => prev ? { ...prev, gestiona_pago_proveedor: true } : null)
     }
     try {
       const cantidadLav = parseInt(lavadoQuick.cantidad || '0', 10) || 1
