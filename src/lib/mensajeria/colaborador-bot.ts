@@ -74,8 +74,9 @@ export async function procesarMensajeColaborador(
   }
 
   // Opción de menú numérica
+  const maxOpcion = esGerencia ? 5 : 4
   const opcion = parseInt(texto)
-  if (!isNaN(opcion) && opcion >= 1 && opcion <= 4) {
+  if (!isNaN(opcion) && opcion >= 1 && opcion <= maxOpcion) {
     const result = await ejecutarOpcion(supabase, tenantId, usuario, esGerencia, opcion)
     await enviarWADirecto(cfg, usuario.whatsapp_number, result.texto)
     if (result.nuevoEstado !== undefined) {
@@ -98,7 +99,8 @@ function buildMenu(nombre: string | null, esGerencia: boolean): string {
       `1. Clientes por etapa (todo el equipo)\n` +
       `2. Recordatorios pendientes\n` +
       `3. Buscar cliente\n` +
-      `4. Órdenes activas\n\n` +
+      `4. Órdenes activas\n` +
+      `5. 💰 Saldo actual en caja\n\n` +
       `_Responde con el número de la opción_`
     )
   }
@@ -137,6 +139,10 @@ async function ejecutarOpcion(
   }
   if (opcion === 4) {
     const texto = await ordenesActivas(supabase, tenantId)
+    return { texto }
+  }
+  if (opcion === 5 && esGerencia) {
+    const texto = await saldoCaja(supabase, tenantId)
     return { texto }
   }
   return { texto: buildMenu(usuario.nombre, esGerencia) }
@@ -328,4 +334,123 @@ async function ordenesActivas(
   }).join('\n')
 
   return `📋 *Órdenes activas (${data.length}):*\n\n${lineas}`
+}
+
+// ── Saldo actual en caja (solo gerencia/dueño) ─────────────────────────────────
+// Replica la misma lógica de saldosCuentas + saldoCajaFuerte del módulo de Caja.
+
+async function saldoCaja(supabase: Supabase, tenantId: string): Promise<string> {
+  type WithMetodo = { metodos_pago: { nombre: string } | null; monto: number }
+  type PagoRow    = WithMetodo & { ordenes: { tipo_orden: string } | null }
+  type GastoRow   = WithMetodo & { descripcion: string }
+  type AjusteRow  = WithMetodo & { cuenta_especial: string | null }
+  type LavadoRow  = { metodos_pago: { nombre: string } | null; precio_venta_unitario: number; costo_unitario: number; cantidad: number }
+
+  const [
+    { data: pagos },
+    { data: gastos },
+    { data: ingresos },
+    { data: ajustes },
+    { data: pagosProveedor },
+    { data: lavados },
+  ] = await Promise.all([
+    supabase.from('pagos_orden')
+      .select('monto, metodos_pago(nombre), ordenes!inner(tipo_orden)')
+      .eq('tenant_id', tenantId).gt('monto', 0),
+    supabase.from('gastos_caja')
+      .select('monto, descripcion, metodos_pago(nombre)')
+      .eq('tenant_id', tenantId),
+    supabase.from('ingresos_caja')
+      .select('monto, metodos_pago(nombre)')
+      .eq('tenant_id', tenantId),
+    supabase.from('ajustes_caja')
+      .select('monto, metodos_pago(nombre), cuenta_especial')
+      .eq('tenant_id', tenantId),
+    supabase.from('pagos_proveedor')
+      .select('monto, metodos_pago(nombre)')
+      .eq('tenant_id', tenantId),
+    supabase.from('lava_moto_ordenes')
+      .select('precio_venta_unitario, costo_unitario, cantidad, metodos_pago(nombre)')
+      .eq('tenant_id', tenantId),
+  ])
+
+  const mp = (row: { metodos_pago: { nombre: string } | null }) =>
+    (row.metodos_pago as { nombre: string } | null)?.nombre?.trim().toLowerCase() ?? 'otro'
+
+  // saldo por cuenta (excluye caja fuerte)
+  const saldo = new Map<string, number>()
+  let saldoCF = 0
+
+  const add = (key: string, cuentaEsp: string | null, monto: number) => {
+    if (cuentaEsp === 'caja_fuerte') { saldoCF += monto; return }
+    saldo.set(key, (saldo.get(key) ?? 0) + monto)
+  }
+
+  // Ingresos de clientes (pagos en órdenes)
+  for (const p of (pagos ?? []) as PagoRow[])
+    add(mp(p), null, p.monto)
+
+  // Gastos (si es transferencia a CF, suma a CF y resta de la cuenta origen)
+  for (const g of (gastos ?? []) as GastoRow[]) {
+    const desc = g.descripcion?.trim().toLowerCase() ?? ''
+    add(mp(g), null, -g.monto)
+    if (desc.startsWith('transferencia a caja fuerte'))
+      saldoCF += Math.abs(g.monto)
+  }
+
+  // Ingresos manuales a caja
+  for (const i of (ingresos ?? []) as WithMetodo[])
+    add(mp(i), null, i.monto)
+
+  // Ajustes (pueden afectar caja fuerte via cuenta_especial)
+  for (const a of (ajustes ?? []) as AjusteRow[])
+    add(mp(a), a.cuenta_especial, a.monto)
+
+  // Pagos a proveedor (egresos)
+  for (const p of (pagosProveedor ?? []) as WithMetodo[])
+    add(mp(p), null, -p.monto)
+
+  // Lavado: solo el ingreso (precio_venta) — costo se omite para simplificar
+  for (const l of (lavados ?? []) as LavadoRow[])
+    add(mp(l), null, l.precio_venta_unitario * l.cantidad)
+
+  // Desglose de ingresos: Serv. Técnico vs Repuestos
+  let ingST = 0, ingRep = 0
+  for (const p of (pagos ?? []) as PagoRow[]) {
+    const tipo = (p.ordenes as { tipo_orden: string } | null)?.tipo_orden ?? ''
+    if (tipo === 'venta_repuestos') ingRep += p.monto
+    else ingST += p.monto
+  }
+  for (const l of (lavados ?? []) as LavadoRow[])
+    ingST += l.precio_venta_unitario * l.cantidad
+
+  // Formatear respuesta
+  const COP = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`
+  const ICON: Record<string, string> = { efectivo: '💵', nequi: '📲' }
+  const PRIO = ['efectivo', 'nequi']
+
+  const entries = [...saldo.entries()].sort((a, b) => {
+    const ai = PRIO.indexOf(a[0]), bi = PRIO.indexOf(b[0])
+    if (ai >= 0 && bi >= 0) return ai - bi
+    if (ai >= 0) return -1; if (bi >= 0) return 1
+    return a[0].localeCompare(b[0])
+  })
+
+  const totalCuentas = entries.reduce((s, [, v]) => s + v, 0)
+  const totalGeneral = totalCuentas + saldoCF
+
+  let msg = `💰 *Saldo Actual en Caja*\n━━━━━━━━━━━━━━━━━\n\n`
+  for (const [k, v] of entries) {
+    const ic = ICON[k] ?? '💳'
+    msg += `${ic} *${k.charAt(0).toUpperCase() + k.slice(1)}:* ${COP(v)}\n`
+  }
+  if (saldoCF !== 0)
+    msg += `🔒 *Caja Fuerte:* ${COP(saldoCF)}\n`
+  msg += `\n*Total general:* ${COP(totalGeneral)}\n`
+  msg += `\n─────────────────\n`
+  msg += `📊 *Desglose ingresos:*\n`
+  msg += `🔧 Serv. Técnico: ${COP(ingST)}\n`
+  msg += `📦 Repuestos: ${COP(ingRep)}\n`
+
+  return msg
 }
