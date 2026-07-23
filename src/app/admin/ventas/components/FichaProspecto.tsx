@@ -1054,6 +1054,26 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   </div>
                 )}
 
+                {/* Alistamiento vinculado: acceso rápido a la entrada de S.T. */}
+                {enEtapaAlistamiento && alistamientoOrdenId && !editandoAlistamiento && (
+                  <a
+                    href={`/admin/ordenes/${alistamientoOrdenId}`}
+                    className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-bold text-green-700 hover:bg-green-100 hover:text-green-900 transition-colors group"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      🔧 Ver alistamiento vinculado
+                      {ordenesUMA.find(o => o.id === alistamientoOrdenId) && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${ordenesUMA.find(o => o.id === alistamientoOrdenId)?.estado === 'listo' ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'}`}>
+                          {ordenesUMA.find(o => o.id === alistamientoOrdenId)?.estado}
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-mono text-[11px] text-green-500 group-hover:text-green-700">
+                      #{alistamientoOrdenId.slice(-8).toUpperCase()} →
+                    </span>
+                  </a>
+                )}
+
                 {/* Panel edición de alistamiento — solo gerencia */}
                 {enEtapaAlistamiento && tieneAlistamientoFinal && esGerencia && editandoAlistamiento && (
                   <div className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 space-y-2">
