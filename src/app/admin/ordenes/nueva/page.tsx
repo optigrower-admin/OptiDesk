@@ -212,6 +212,7 @@ export default function NuevaOrdenAdminPage() {
           numero: 0,
           moto_id: motoId,
           cliente_id: clienteId,
+          gestiona_pago_proveedor: true,
         })
         .select('id')
         .single()

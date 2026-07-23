@@ -11,6 +11,7 @@ import { importarVentaRepuestos, previsualizarVentaRepuestos } from '@/lib/bulkI
 
 type Tab = 'catalogo' | 'ventas'
 type FiltroOrigen = 'todos' | 'uma' | 'terceros'
+type FiltroTipoOrden = 'todos' | 'st' | 'venta'
 
 // ─── CATÁLOGO ────────────────────────────────────────────────
 interface ItemCatalogo {
@@ -78,6 +79,7 @@ export default function AdminRepuestosPage() {
 
   const [tab, setTab] = useState<Tab>('ventas')
   const [filtroOrigen, setFiltroOrigen] = useState<FiltroOrigen>('todos')
+  const [filtroTipoOrden, setFiltroTipoOrden] = useState<FiltroTipoOrden>('todos')
   const [busqueda, setBusqueda] = useState('')
 
   // Catálogo — 3 buscadores independientes
@@ -178,6 +180,9 @@ export default function AdminRepuestosPage() {
     const { data } = await query
     let items = (data as unknown as ItemVenta[]) ?? []
 
+    if (filtroTipoOrden === 'st') items = items.filter((i) => i.ordenes?.tipo_orden === 'servicio')
+    else if (filtroTipoOrden === 'venta') items = items.filter((i) => i.ordenes?.tipo_orden === 'venta_repuestos')
+
     if (busqueda) {
       const b = busqueda.toLowerCase()
       items = items.filter((i) =>
@@ -191,7 +196,7 @@ export default function AdminRepuestosPage() {
 
     setVentas(items)
     setLoadingVentas(false)
-  }, [profile?.tenant_id, filtroOrigen, busqueda, fechaDesde, fechaHasta])
+  }, [profile?.tenant_id, filtroOrigen, filtroTipoOrden, busqueda, fechaDesde, fechaHasta])
 
   useEffect(() => {
     if (tab === 'catalogo') cargarCatalogo()
@@ -340,6 +345,23 @@ export default function AdminRepuestosPage() {
     </div>
   )
 
+  const FiltroTipo = () => (
+    <div className="flex gap-2 items-center">
+      <span className="text-xs text-gray-500 font-medium">Tipo:</span>
+      {([
+        { value: 'todos', label: 'Todos', color: 'bg-gray-800' },
+        { value: 'st',    label: 'S.T.',  color: 'bg-indigo-600' },
+        { value: 'venta', label: 'Venta', color: 'bg-green-600' },
+      ] as { value: FiltroTipoOrden; label: string; color: string }[]).map((f) => (
+        <button key={f.value} onClick={() => setFiltroTipoOrden(f.value)}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            filtroTipoOrden === f.value ? `${f.color} text-white` : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >{f.label}</button>
+      ))}
+    </div>
+  )
+
   const formatFechaHora = (iso: string) => {
     const d = new Date(iso)
     return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) +
@@ -368,7 +390,7 @@ export default function AdminRepuestosPage() {
           { value: 'catalogo', label: 'Catálogo' },
         ] as { value: Tab; label: string }[]).map((t) => (
           <button key={t.value}
-            onClick={() => { setTab(t.value); setBusqueda(''); setFiltroOrigen('todos'); limpiarBuscadoresCatalogo() }}
+            onClick={() => { setTab(t.value); setBusqueda(''); setFiltroOrigen('todos'); setFiltroTipoOrden('todos'); limpiarBuscadoresCatalogo() }}
             className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
               tab === t.value ? 'border-blue-700 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
@@ -384,6 +406,7 @@ export default function AdminRepuestosPage() {
             className="w-full max-w-sm px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
           />
           <FiltroOrigenes />
+          <FiltroTipo />
         </div>
       ) : (
         <div className="flex flex-wrap gap-2 items-center">

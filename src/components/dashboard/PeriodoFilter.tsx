@@ -1,7 +1,7 @@
 'use client'
 import { PERIODO_LABEL, type PeriodoPreset } from '@/lib/dashboard/periodos'
 
-const PRESETS: PeriodoPreset[] = ['hoy', 'ayer', '7d', '15d', 'mes', 'mes_anterior', 'anio', 'rango']
+const PRESETS: PeriodoPreset[] = ['hoy', 'ayer', '7d', 'semana', 'semana_anterior', '15d', 'mes', 'mes_anterior', 'anio', 'rango']
 
 interface PeriodoFilterProps {
   preset: PeriodoPreset

@@ -1,9 +1,11 @@
-export type PeriodoPreset = 'hoy' | 'ayer' | '7d' | '15d' | 'mes' | 'mes_anterior' | 'anio' | 'rango'
+export type PeriodoPreset = 'hoy' | 'ayer' | '7d' | 'semana' | 'semana_anterior' | '15d' | 'mes' | 'mes_anterior' | 'anio' | 'rango'
 
 export const PERIODO_LABEL: Record<PeriodoPreset, string> = {
   hoy: 'Hoy',
   ayer: 'Ayer',
   '7d': 'Últimos 7 días',
+  semana: 'Esta semana',
+  semana_anterior: 'Semana pasada',
   '15d': 'Últimos 15 días',
   mes: 'Este mes',
   mes_anterior: 'Mes anterior',
@@ -42,6 +44,21 @@ export function calcularRango(preset: PeriodoPreset, desdeManual?: string, hasta
   if (preset === '7d') {
     const desde = new Date(hoy); desde.setDate(hoy.getDate() - 6)
     return { desdeISO: inicioDia(desde).toISOString(), hastaISO: finDia(hoy).toISOString() }
+  }
+  if (preset === 'semana') {
+    // lunes de la semana actual
+    const lunes = new Date(hoy)
+    const dia = hoy.getDay() // 0=dom, 1=lun, ...
+    lunes.setDate(hoy.getDate() - (dia === 0 ? 6 : dia - 1))
+    return { desdeISO: inicioDia(lunes).toISOString(), hastaISO: finDia(hoy).toISOString() }
+  }
+  if (preset === 'semana_anterior') {
+    const lunes = new Date(hoy)
+    const dia = hoy.getDay()
+    lunes.setDate(hoy.getDate() - (dia === 0 ? 6 : dia - 1) - 7)
+    const domingo = new Date(lunes)
+    domingo.setDate(lunes.getDate() + 6)
+    return { desdeISO: inicioDia(lunes).toISOString(), hastaISO: finDia(domingo).toISOString() }
   }
   if (preset === '15d') {
     const desde = new Date(hoy); desde.setDate(hoy.getDate() - 14)

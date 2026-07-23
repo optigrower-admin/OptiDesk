@@ -9,7 +9,7 @@ import { registrarAuditoria } from '@/lib/audit'
 import PlanillaWorldOfficeModal from '@/components/PlanillaWorldOfficeModal'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
-type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'gasto' | 'ajuste' | 'porta_placas'
+type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'pago_proveedor' | 'gasto' | 'ajuste' | 'porta_placas'
 type FiltroGrupo = 'todos' | 'servicios_tecnicos' | 'venta_repuestos' | 'ingreso_caja' | 'gastos_caja' | 'transferencias' | 'ajuste_caja' | 'costos_externos' | 'costos_lavado' | 'porta_placas'
 type FiltroMetodo = 'todos' | 'efectivo' | 'nequi' | 'caja_fuerte'
 
@@ -61,6 +61,7 @@ const CATEGORIA_LABEL: Record<Categoria, string> = {
   ingreso_manual:  'Ingreso a Caja',
   costo_externo:   'Costo repuestos Externos/Terceros',
   costo_lavado:    'Costo Servicio de Lavado',
+  pago_proveedor:  'Pago proveedor (provisional)',
   gasto:           'Gastos de Caja',
   ajuste:          'Ajuste de Caja',
   porta_placas:    'Porta Placas',
@@ -75,6 +76,7 @@ const CATEGORIA_BADGE: Record<Categoria, string> = {
   ingreso_manual:  'bg-lime-100 text-lime-700',
   costo_externo:   'bg-amber-100 text-amber-700',
   costo_lavado:    'bg-teal-200 text-teal-800',
+  pago_proveedor:  'bg-amber-200 text-amber-800',
   gasto:           'bg-red-100 text-red-700',
   ajuste:          'bg-gray-700 text-white',
   porta_placas:    'bg-orange-100 text-orange-700',
@@ -730,7 +732,7 @@ function EditarAjusteModal({ tenantId, usuarioId, ajuste, onClose, onEditado }: 
   )
 }
 
-const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_manual', 'gasto', 'costo_lavado', 'costo_externo', 'ajuste']
+const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_manual', 'gasto', 'costo_lavado', 'costo_externo', 'pago_proveedor', 'ajuste']
 
 // Construye la lista de movimientos para un tenant. Si desdeISO/hastaISO son null no se
 // filtra por fecha (uso para el saldo histórico, que no depende del período seleccionado).
@@ -747,7 +749,7 @@ async function construirMovimientos(
   if (hastaISO) qPagos = qPagos.lte('fecha', hastaISO)
 
   let qCostosExt = supabase.from('items_orden')
-    .select('id, descripcion, costo, precio_venta, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
+    .select('id, orden_id, descripcion, costo, precio_venta, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
     .eq('origen', 'externo')
     .eq('ordenes.tenant_id', tenantId)
     .or('costo.gt.0,precio_venta.gt.0')
@@ -768,7 +770,7 @@ async function construirMovimientos(
   if (hastaISO) qInsumos = qInsumos.lte('created_at', hastaISO)
 
   let qLavados = supabase.from('lava_moto_ordenes')
-    .select('id, costo_unitario, precio_venta_unitario, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
+    .select('id, orden_id, costo_unitario, precio_venta_unitario, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
     .eq('ordenes.tenant_id', tenantId)
     .or('costo_unitario.gt.0,precio_venta_unitario.gt.0')
   if (desdeISO) qLavados = qLavados.gte('created_at', desdeISO)
@@ -794,10 +796,79 @@ async function construirMovimientos(
   if (desdeISO) qIngresos = qIngresos.gte('fecha', desdeISO)
   if (hastaISO) qIngresos = qIngresos.lte('fecha', hastaISO)
 
-  const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }, { data: ajustes }, { data: ingresos }] =
-    await Promise.all([qPagos, qCostosExt, qGastos, qInsumos, qLavados, qVentaDirecta, qAjustes, qIngresos])
+  let qPagosProvPeriodo = supabase.from('pagos_proveedor')
+    .select('id, orden_id, monto, fecha, metodo_pago_id, metodos_pago(nombre), ordenes(numero, placa, cliente)')
+    .eq('tenant_id', tenantId)
+  if (desdeISO) qPagosProvPeriodo = qPagosProvPeriodo.gte('fecha', desdeISO)
+  if (hastaISO) qPagosProvPeriodo = qPagosProvPeriodo.lte('fecha', hastaISO)
+
+  const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }, { data: ajustes }, { data: ingresos }, { data: pagosProvPeriodo }] =
+    await Promise.all([qPagos, qCostosExt, qGastos, qInsumos, qLavados, qVentaDirecta, qAjustes, qIngresos, qPagosProvPeriodo])
 
   const lista: Movimiento[] = []
+
+  // ── Determinar estado de pago a proveedor por orden ─────────────────────────
+  // Colectamos los orden_ids que tienen costos externos o lavado en el período.
+  const ordenIdsConCosto = new Set<string>()
+  for (const it of (costosExt ?? []) as unknown as { orden_id: string; costo: number }[]) {
+    if (it.costo > 0) ordenIdsConCosto.add(it.orden_id)
+  }
+  for (const lm of (lavados ?? []) as unknown as { orden_id: string; costo_unitario: number }[]) {
+    if (lm.costo_unitario > 0) ordenIdsConCosto.add(lm.orden_id)
+  }
+  // También incluir las órdenes de pagos_proveedor del período para el cálculo.
+  for (const pp of (pagosProvPeriodo ?? []) as unknown as { orden_id: string }[]) {
+    ordenIdsConCosto.add(pp.orden_id)
+  }
+
+  const totalCostoPorOrden = new Map<string, number>()
+  const totalPagadoPorOrden = new Map<string, number>()
+  const ordenesConGestion = new Set<string>()
+  const estadoPorOrden = new Map<string, string>()
+  const estadoPagoPorOrden = new Map<string, string>()
+
+  if (ordenIdsConCosto.size > 0) {
+    const ordenIds = [...ordenIdsConCosto]
+    const [r1, r2, r3, r4] = await Promise.all([
+      supabase.from('items_orden').select('orden_id, costo, cantidad').eq('origen', 'externo').in('orden_id', ordenIds),
+      supabase.from('lava_moto_ordenes').select('orden_id, costo_unitario, cantidad').in('orden_id', ordenIds),
+      supabase.from('pagos_proveedor').select('orden_id, monto').in('orden_id', ordenIds).eq('tenant_id', tenantId),
+      supabase.from('ordenes').select('id, gestiona_pago_proveedor, estado, estado_pago').in('id', ordenIds),
+    ])
+    for (const it of (r1.data ?? []) as { orden_id: string; costo: number; cantidad: number }[]) {
+      totalCostoPorOrden.set(it.orden_id, (totalCostoPorOrden.get(it.orden_id) ?? 0) + it.costo * it.cantidad)
+    }
+    for (const lm of (r2.data ?? []) as { orden_id: string; costo_unitario: number; cantidad: number }[]) {
+      totalCostoPorOrden.set(lm.orden_id, (totalCostoPorOrden.get(lm.orden_id) ?? 0) + lm.costo_unitario * lm.cantidad)
+    }
+    for (const pp of (r3.data ?? []) as { orden_id: string; monto: number }[]) {
+      totalPagadoPorOrden.set(pp.orden_id, (totalPagadoPorOrden.get(pp.orden_id) ?? 0) + pp.monto)
+    }
+    for (const ord of (r4.data ?? []) as { id: string; gestiona_pago_proveedor: boolean; estado: string; estado_pago: string }[]) {
+      if (ord.gestiona_pago_proveedor) ordenesConGestion.add(ord.id)
+      estadoPorOrden.set(ord.id, ord.estado ?? '')
+      estadoPagoPorOrden.set(ord.id, ord.estado_pago ?? '')
+    }
+  }
+
+  function esProveedorPagado(ordenId: string): boolean {
+    if (!ordenesConGestion.has(ordenId)) return true  // orden antigua: comportamiento previo
+    const costo = totalCostoPorOrden.get(ordenId) ?? 0
+    if (costo === 0) return true
+    return (totalPagadoPorOrden.get(ordenId) ?? 0) >= costo
+  }
+
+  // Mostrar ítems individuales solo cuando la orden está cerrada completamente:
+  // finalizada + cliente pagado 100% + proveedor pagado 100%.
+  // En cualquier otro caso, mostrar filas de pagos_proveedor (una por abono).
+  function mostrarItemsPorSeparado(ordenId: string): boolean {
+    if (!ordenesConGestion.has(ordenId)) return true  // orden antigua: siempre por ítem
+    const estado = estadoPorOrden.get(ordenId) ?? ''
+    const estadoPago = estadoPagoPorOrden.get(ordenId) ?? ''
+    const finalizado = estado === 'listo' || estado === 'pagado'
+    const clientePagado = estadoPago === 'pagado'
+    return finalizado && clientePagado && esProveedorPagado(ordenId)
+  }
 
   // Una venta directa de repuestos puede recibir su pago desde la pantalla
   // general de la orden (que registra en pagos_orden) en vez de la pantalla
@@ -844,10 +915,10 @@ async function construirMovimientos(
     })
   }
 
-  for (const it of (costosExt ?? []) as unknown as { id: string; descripcion: string; costo: number; precio_venta: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
+  for (const it of (costosExt ?? []) as unknown as { id: string; orden_id: string; descripcion: string; costo: number; precio_venta: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
     const ord = it.ordenes
     const concepto = `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
-    if (it.costo > 0) {
+    if (it.costo > 0 && mostrarItemsPorSeparado(it.orden_id)) {
       lista.push({
         id: `extcosto_${it.id}`,
         rawId: it.id,
@@ -885,10 +956,10 @@ async function construirMovimientos(
     }
   }
 
-  for (const lm of (lavados ?? []) as unknown as { id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
+  for (const lm of (lavados ?? []) as unknown as { id: string; orden_id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
     const ord = lm.ordenes
     const concepto = `Servicio de lavado · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
-    if (lm.costo_unitario > 0) {
+    if (lm.costo_unitario > 0 && mostrarItemsPorSeparado(lm.orden_id)) {
       lista.push({
         id: `lavadocosto_${lm.id}`,
         rawId: lm.id,
@@ -924,6 +995,27 @@ async function construirMovimientos(
     }
   }
 
+  // Pagos a proveedor en el período: aparecen como provisional cuando el proveedor
+  // no está pagado al 100%, o se omiten cuando ya aparecen los ítems individuales.
+  for (const pp of (pagosProvPeriodo ?? []) as unknown as { id: string; orden_id: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
+    if (mostrarItemsPorSeparado(pp.orden_id)) continue
+    const ord = pp.ordenes
+    lista.push({
+      id: `pagoprov_${pp.id}`,
+      rawId: pp.id,
+      fecha: pp.fecha,
+      categoria: 'pago_proveedor',
+      concepto: `Pago proveedor · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'}) · ${ord?.cliente ?? 'Cliente'}`,
+      nombre: ord?.cliente ?? null,
+      codigo: ord?.placa ?? null,
+      monto: -pp.monto,
+      metodoPagoId: pp.metodo_pago_id,
+      metodoPago: pp.metodos_pago?.nombre ?? null,
+      cuentaEspecial: null,
+      grupo: grupoOrden(ord),
+    })
+  }
+
   for (const g of (gastos ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null }[]) {
     lista.push({
       id: `gasto_${g.id}`,
@@ -946,8 +1038,8 @@ async function construirMovimientos(
     const concepto = `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
     const esPortaPlacas = it.descripcion === 'Porta Placas'
     // Insumos de servicio técnico ya están en el pago total (ingreso_st); se
-    // omiten para no duplicar. Porta Placas es excepción: se muestra por separado.
-    if (ord?.tipo_orden === 'servicio' && !esPortaPlacas) continue
+    // omiten para no duplicar. Porta Placas también aplica esta regla.
+    if (ord?.tipo_orden === 'servicio') continue
     lista.push({
       id: `insumo_${it.id}`,
       rawId: it.id,
@@ -1241,7 +1333,7 @@ export default function CajaPage() {
           case 'porta_placas':      return m.categoria === 'porta_placas'
           case 'ingreso_caja':      return m.categoria === 'ingreso_manual' && !esTransfer
           case 'gastos_caja':       return m.categoria === 'gasto' && !esTransfer
-          case 'costos_externos':   return m.categoria === 'costo_externo'
+          case 'costos_externos':   return m.categoria === 'costo_externo' || m.categoria === 'pago_proveedor'
           case 'costos_lavado':     return m.categoria === 'costo_lavado'
           case 'transferencias':    return esTransfer
           case 'ajuste_caja':       return m.categoria === 'ajuste' && !esTransfer

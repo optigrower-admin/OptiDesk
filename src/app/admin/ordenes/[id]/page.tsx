@@ -188,6 +188,23 @@ interface PagoOrden {
   metodos_pago: { nombre: string } | null
 }
 
+interface PagoProveedor {
+  id: string
+  monto: number
+  notas: string | null
+  fecha: string
+  metodo_pago_id: string | null
+  metodos_pago: { nombre: string } | null
+}
+
+interface ComentarioOrden {
+  id: string
+  comentario: string
+  created_at: string
+  usuario_id: string | null
+  usuarios: { nombre: string } | null
+}
+
 interface LavaMotoConfig { id?: string; costo: number; precio_venta: number; activo: boolean }
 interface LavaMotoOrden {
   id: string
@@ -298,6 +315,15 @@ export default function AdminOrdenDetallePage() {
   // Lava moto
   const [lavaMotoConfig, setLavaMotoConfig] = useState<LavaMotoConfig | null>(null)
   const [lavaMotoOrdenes, setLavaMotoOrdenes] = useState<LavaMotoOrden[]>([])
+  const [pagosProveedor, setPagosProveedor] = useState<PagoProveedor[]>([])
+  const [nuevoPagoProvMonto, setNuevoPagoProvMonto] = useState('')
+  const [nuevoPagoProvMetodo, setNuevoPagoProvMetodo] = useState('')
+  const [nuevoPagoProvNotas, setNuevoPagoProvNotas] = useState('')
+  const [savingPagosProv, setSavingPagosProv] = useState(false)
+  const [pagoProvError, setPagoProvError] = useState('')
+  const [comentariosOrden, setComentariosOrden] = useState<ComentarioOrden[]>([])
+  const [nuevoComentario, setNuevoComentario] = useState('')
+  const [savingComentario, setSavingComentario] = useState(false)
   const fileInputMedioRef = useRef<HTMLInputElement>(null)
   const fileInputVideoRef = useRef<HTMLInputElement>(null)
   // Edición de fecha entrada/salida (solo gerencia) y eliminación de la entrada
@@ -319,9 +345,9 @@ export default function AdminOrdenDetallePage() {
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
-    const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }, { data: lmCfg }, { data: lmOrd }] = await Promise.all([
+    const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }, { data: lmCfg }, { data: lmOrd }, { data: pprov }, { data: coments }] = await Promise.all([
       supabase.from('ordenes')
-        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id, cliente_id,
+        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id, cliente_id, gestiona_pago_proveedor,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
         .eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto, metodo_pago_id, created_at').eq('orden_id', ordenId),
@@ -331,6 +357,8 @@ export default function AdminOrdenDetallePage() {
       supabase.from('pagos_orden').select('id, monto, metodo_pago_id, fecha, notas, metodos_pago(nombre)').eq('orden_id', ordenId).order('fecha', { ascending: true }),
       supabase.from('lava_moto_config').select('id, costo, precio_venta, activo').eq('tenant_id', profile.tenant_id).maybeSingle(),
       supabase.from('lava_moto_ordenes').select('id, cantidad, costo_unitario, precio_venta_unitario, metodo_pago_id, pago_costo_id, created_at, metodos_pago(nombre)').eq('orden_id', ordenId).order('created_at'),
+      supabase.from('pagos_proveedor').select('id, monto, notas, fecha, metodo_pago_id, metodos_pago(nombre)').eq('orden_id', ordenId).order('fecha', { ascending: true }),
+      supabase.from('comentarios_orden').select('id, comentario, created_at, usuario_id, usuarios:usuario_id(nombre)').eq('orden_id', ordenId).order('created_at', { ascending: true }),
     ])
     if (o) {
       let ord = o as unknown as OrdenDetalle
@@ -407,6 +435,8 @@ export default function AdminOrdenDetallePage() {
     setPagosOrden((pg as unknown as PagoOrden[]) ?? [])
     setLavaMotoConfig((lmCfg as LavaMotoConfig | null) ?? null)
     setLavaMotoOrdenes((lmOrd as unknown as LavaMotoOrden[]) ?? [])
+    setPagosProveedor((pprov as unknown as PagoProveedor[]) ?? [])
+    setComentariosOrden((coments as unknown as ComentarioOrden[]) ?? [])
   }, [ordenId, profile?.tenant_id])
 
   useEffect(() => { cargar() }, [cargar])
@@ -1293,6 +1323,60 @@ export default function AdminOrdenDetallePage() {
     await cargar()
   }
 
+  const handleAddPagoProveedor = async () => {
+    const monto = parseInt(nuevoPagoProvMonto.replace(/\D/g, ''), 10)
+    if (!monto || !orden) return
+    if (!nuevoPagoProvMetodo) { setPagoProvError('Selecciona un método de pago.'); return }
+    setSavingPagosProv(true)
+    setPagoProvError('')
+    try {
+      const { error } = await supabase.from('pagos_proveedor').insert({
+        orden_id: ordenId,
+        tenant_id: orden.tenant_id,
+        monto,
+        notas: nuevoPagoProvNotas.trim() || null,
+        metodo_pago_id: nuevoPagoProvMetodo || null,
+        registrado_por: profile?.id ?? null,
+      })
+      if (error) { setPagoProvError(error.message); return }
+      setNuevoPagoProvMonto('')
+      setNuevoPagoProvMetodo('')
+      setNuevoPagoProvNotas('')
+      await cargar()
+    } finally {
+      setSavingPagosProv(false)
+    }
+  }
+
+  const handleAddComentario = async () => {
+    if (!nuevoComentario.trim() || !orden) return
+    setSavingComentario(true)
+    try {
+      await supabase.from('comentarios_orden').insert({
+        orden_id: ordenId,
+        tenant_id: orden.tenant_id,
+        comentario: nuevoComentario.trim(),
+        usuario_id: profile?.id ?? null,
+      })
+      setNuevoComentario('')
+      await cargar()
+    } finally {
+      setSavingComentario(false)
+    }
+  }
+
+  const handleDeleteComentario = async (id: string) => {
+    if (!confirm('¿Eliminar este comentario?')) return
+    await supabase.from('comentarios_orden').delete().eq('id', id)
+    await cargar()
+  }
+
+  const handleDeletePagoProveedor = async (id: string) => {
+    if (!confirm('¿Eliminar este pago a proveedor?')) return
+    await supabase.from('pagos_proveedor').delete().eq('id', id)
+    await cargar()
+  }
+
   // ── Edición de fecha de un pago (exclusivo gerencia) ─────────────────────────
   const abrirEditarFechaPago = (pago: PagoOrden) => {
     setPagoFechaInputValue(isoToDatetimeLocal(pago.fecha))
@@ -1540,6 +1624,10 @@ export default function AdminOrdenDetallePage() {
   const totalLavado = lavaMotoOrdenes.reduce((s, r) => s + r.precio_venta_unitario * r.cantidad, 0)
   const totalCostoLavado = lavaMotoOrdenes.reduce((s, r) => s + r.costo_unitario * r.cantidad, 0)
   const totalCostoProveedorLive = totalCostoProveedor + totalCostoLavado
+  const gestionaProveedor = orden?.gestiona_pago_proveedor ?? false
+  const totalPagadoProveedor = pagosProveedor.reduce((s, p) => s + p.monto, 0)
+  const proveedorPagadoCompleto = !gestionaProveedor || totalCostoProveedorLive === 0 || totalPagadoProveedor >= totalCostoProveedorLive
+  const saldoPendienteProveedor = Math.max(0, totalCostoProveedorLive - totalPagadoProveedor)
   const totalVentaLive = totalRepuestos + totalLavado
   const totalRepuestosLive = totalRepuestos
   const totalManoObraLive = totalManoObra
@@ -2410,6 +2498,65 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             )}
           </div>
 
+          {/* ── COMENTARIOS ── */}
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">
+                Comentarios {comentariosOrden.length > 0 && <span className="text-xs font-normal text-gray-400">({comentariosOrden.length})</span>}
+              </h2>
+            </div>
+            <div className="p-4 space-y-3">
+              {comentariosOrden.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-3">Sin comentarios todavía.</p>
+              )}
+              {comentariosOrden.map((c) => (
+                <div key={c.id} className="flex gap-3 group">
+                  <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                    {(c.usuarios?.nombre ?? 'U').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-xs font-semibold text-gray-800">{c.usuarios?.nombre ?? 'Usuario'}</span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(c.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {' · '}{new Date(c.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-700 mt-0.5 break-words">{c.comentario}</p>
+                  </div>
+                  {(esGerencia || c.usuario_id === profile?.id) && (
+                    <button
+                      onClick={() => handleDeleteComentario(c.id)}
+                      className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1 flex-shrink-0 self-start mt-0.5"
+                      title="Eliminar comentario"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ))}
+              <div className="flex gap-2 pt-1 border-t border-gray-100">
+                <textarea
+                  value={nuevoComentario}
+                  onChange={(e) => setNuevoComentario(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddComentario() } }}
+                  placeholder="Escribe un comentario... (Enter para enviar)"
+                  rows={2}
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                <button
+                  onClick={handleAddComentario}
+                  disabled={savingComentario || !nuevoComentario.trim()}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-sm font-semibold transition-colors self-end"
+                >
+                  {savingComentario ? '...' : 'Enviar'}
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* ── LAVADO DE MOTO — no aplica a venta directa de repuestos ── */}
           {!esVenta && (
           <div className="rounded-xl border-2 border-cyan-100 overflow-hidden">
@@ -2601,11 +2748,14 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         </td>
                       </tr>
                     ) : (
-                      <tr key={item.id} className="border-b hover:bg-gray-50">
+                      <tr key={item.id} className={`border-b hover:bg-gray-50 ${gestionaProveedor && !proveedorPagadoCompleto && item.origen === 'externo' ? 'bg-yellow-50' : ''}`}>
                         <td className="py-1.5 px-2">
                           <div className="flex flex-col gap-0.5">
                             <Badge variant={tipoColor}>{tipoLabel}</Badge>
                             {refCode !== '—' && <span className="text-xs font-mono font-semibold text-gray-600 leading-none">{refCode}</span>}
+                            {gestionaProveedor && !proveedorPagadoCompleto && item.origen === 'externo' && (
+                              <span className="text-xs text-amber-600 font-medium">⏳ prov. pendiente</span>
+                            )}
                           </div>
                         </td>
                         <td className="py-1.5 px-2 text-gray-800 truncate" title={descClean}>{descClean}</td>
@@ -3105,6 +3255,118 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             )
           })()}
 
+          {/* Pago a proveedor (terceros) */}
+          {gestionaProveedor && (repuestosItems.some(i => i.origen === 'externo') || lavaMotoOrdenes.length > 0) && (
+            <div className="bg-white rounded-xl border border-amber-200 p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-gray-900">Pago a proveedor</h2>
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                  proveedorPagadoCompleto
+                    ? 'bg-green-100 text-green-700 border-green-200'
+                    : totalPagadoProveedor > 0
+                      ? 'bg-amber-100 text-amber-700 border-amber-200'
+                      : 'bg-gray-100 text-gray-600 border-gray-200'
+                }`}>
+                  {proveedorPagadoCompleto ? 'Proveedor pagado' : totalPagadoProveedor > 0 ? 'Pago parcial' : 'Pendiente'}
+                </span>
+              </div>
+
+              {/* Resumen */}
+              <div className="bg-amber-50 rounded-lg p-3 space-y-1.5">
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>Total a pagar al proveedor</span>
+                  <span className="font-semibold text-gray-900">{formatCOP(totalCostoProveedorLive)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>Total pagado</span>
+                  <span className="font-semibold text-green-700">{formatCOP(totalPagadoProveedor)}</span>
+                </div>
+                {saldoPendienteProveedor > 0 && (
+                  <div className="flex justify-between text-xs font-semibold border-t border-amber-200 pt-1.5">
+                    <span className="text-red-600">Saldo pendiente proveedor</span>
+                    <span className="text-red-600">{formatCOP(saldoPendienteProveedor)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Historial de pagos a proveedor */}
+              {pagosProveedor.length > 0 && (
+                <div className="space-y-1.5">
+                  {pagosProveedor.map((p, idx) => (
+                    <div key={p.id} className="flex items-center justify-between p-2.5 rounded-lg border bg-amber-50 border-amber-100 group">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-semibold text-gray-500">#{idx + 1}</span>
+                          <span className="text-sm font-bold text-amber-800">{formatCOP(p.monto)}</span>
+                          {p.metodos_pago && (
+                            <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-white border border-amber-200 text-amber-700">
+                              {(p.metodos_pago as { nombre: string }).nombre}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {new Date(p.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {' · '}{new Date(p.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                        </p>
+                        {p.notas && <p className="text-xs italic text-gray-500 mt-0.5">{p.notas}</p>}
+                      </div>
+                      <button
+                        onClick={() => handleDeletePagoProveedor(p.id)}
+                        className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1 flex-shrink-0"
+                        title="Eliminar pago"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Formulario nuevo pago a proveedor */}
+              {!proveedorPagadoCompleto && (
+                <div className="space-y-2 border-t border-amber-100 pt-3">
+                  <p className="text-xs font-medium text-gray-600">Registrar pago a proveedor</p>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={nuevoPagoProvMonto ? '$' + parseInt(nuevoPagoProvMonto.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO') : ''}
+                    onChange={(e) => setNuevoPagoProvMonto(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Monto ($)"
+                    className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                  <select
+                    value={nuevoPagoProvMetodo}
+                    onChange={(e) => setNuevoPagoProvMetodo(e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-lg text-sm ${!nuevoPagoProvMetodo ? 'border-amber-200 text-gray-400' : 'border-amber-200 text-gray-900'}`}
+                  >
+                    <option value="">Método de pago *</option>
+                    {metodosPago.map((m) => (
+                      <option key={m.id} value={m.id}>{m.nombre}</option>
+                    ))}
+                  </select>
+                  <input
+                    value={nuevoPagoProvNotas}
+                    onChange={(e) => setNuevoPagoProvNotas(e.target.value)}
+                    placeholder="Notas (opcional)"
+                    className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm"
+                  />
+                  <button
+                    onClick={handleAddPagoProveedor}
+                    disabled={savingPagosProv || !nuevoPagoProvMonto || !nuevoPagoProvMetodo}
+                    className="w-full py-2 px-3 disabled:bg-gray-200 disabled:text-gray-400 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition-colors"
+                  >
+                    {savingPagosProv ? 'Registrando...' : '+ Registrar pago a proveedor'}
+                  </button>
+                  {pagoProvError && (
+                    <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{pagoProvError}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Notas internas */}
           <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-2">
             <h2 className="font-semibold text-gray-900 text-sm">Notas internas</h2>
@@ -3140,11 +3402,14 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 const pagoIncompleto = s.value === 'listo' && totalPagadoOrden < valorConLMBtn
                 const umaIncompleto = s.value === 'listo' && esUMA && numerosOrdenUMA.length === 0
                 const pagadoBloqueado = s.value === 'pagado' && totalPagadoOrden < valorConLMBtn
-                const bloqueado = tieneRepPendientes || pagoIncompleto || umaIncompleto || pagadoBloqueado
+                const proveedorIncompleto = s.value === 'listo' && gestionaProveedor && !proveedorPagadoCompleto && totalCostoProveedorLive > 0
+                const bloqueado = tieneRepPendientes || pagoIncompleto || umaIncompleto || pagadoBloqueado || proveedorIncompleto
                 const titleMsg = tieneRepPendientes
                   ? 'Hay repuestos marcados como Pedido que aún no han llegado'
                   : pagoIncompleto
-                  ? `Saldo pendiente: ${formatCOP(valorConLMBtn - totalPagadoOrden)}`
+                  ? `Saldo pendiente cliente: ${formatCOP(valorConLMBtn - totalPagadoOrden)}`
+                  : proveedorIncompleto
+                  ? `Saldo pendiente proveedor: ${formatCOP(saldoPendienteProveedor)}`
                   : umaIncompleto
                   ? 'Agrega el # de Orden UMA o selecciona "No aplica" antes de finalizar'
                   : pagadoBloqueado
@@ -3172,7 +3437,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     {!tieneRepPendientes && pagoIncompleto && (
                       <span className="ml-2 text-xs text-red-300">saldo pendiente</span>
                     )}
-                    {!tieneRepPendientes && !pagoIncompleto && umaIncompleto && (
+                    {!tieneRepPendientes && !pagoIncompleto && proveedorIncompleto && (
+                      <span className="ml-2 text-xs text-amber-400">⚠ proveedor pendiente</span>
+                    )}
+                    {!tieneRepPendientes && !pagoIncompleto && !proveedorIncompleto && umaIncompleto && (
                       <span className="ml-2 text-xs text-amber-400">⚠ # UMA</span>
                     )}
                     {pagadoBloqueado && (
