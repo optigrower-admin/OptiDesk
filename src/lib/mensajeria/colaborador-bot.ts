@@ -359,13 +359,14 @@ async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte
   const metodName = (id: string | null) => (id ? byId.get(id) ?? 'otro' : 'otro')
 
   // 2. Consultar todos los movimientos de caja (sin join — solo metodo_pago_id)
+  // lava_moto_ordenes se excluye: su ingreso ya está en pagos_orden y su costo
+  // requiere lógica condicional (mostrarItemsPorSeparado) que no se puede replicar aquí.
   const [
     { data: pagos,         error: e1 },
     { data: gastos,        error: e2 },
     { data: ingresos,      error: e3 },
     { data: ajustes,       error: e4 },
     { data: pagosProveedor,error: e5 },
-    { data: lavados,       error: e6 },
   ] = await Promise.all([
     supabase.from('pagos_orden')
       .select('monto, metodo_pago_id').eq('tenant_id', tenantId).gt('monto', 0),
@@ -377,12 +378,10 @@ async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte
       .select('monto, metodo_pago_id, cuenta_especial').eq('tenant_id', tenantId),
     supabase.from('pagos_proveedor')
       .select('monto, metodo_pago_id').eq('tenant_id', tenantId),
-    supabase.from('lava_moto_ordenes')
-      .select('precio_venta_unitario, cantidad, metodo_pago_id').eq('tenant_id', tenantId),
   ])
 
-  if (e1 || e2 || e3 || e4 || e5 || e6) {
-    const msg = [e1, e2, e3, e4, e5, e6]
+  if (e1 || e2 || e3 || e4 || e5) {
+    const msg = [e1, e2, e3, e4, e5]
       .filter(Boolean).map(e => e!.message).join('; ')
     return `❌ Error al consultar caja: ${msg}`
   }
@@ -415,9 +414,6 @@ async function saldoCaja(supabase: Supabase, tenantId: string, mostrarCajaFuerte
 
   for (const p of (pagosProveedor ?? []) as { monto: number; metodo_pago_id: string | null }[])
     add(p.metodo_pago_id, null, -p.monto)
-
-  for (const l of (lavados ?? []) as { precio_venta_unitario: number; cantidad: number; metodo_pago_id: string | null }[])
-    add(l.metodo_pago_id, null, l.precio_venta_unitario * l.cantidad)
 
   // 4. Formatear respuesta
   const COP = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`
