@@ -296,7 +296,16 @@ export default function VistaBandeja({ leads, tenantId, usuarios }: Props) {
   }
 
   function handleLeadUpdate(id: string, updates: Record<string, unknown>) {
-    setLeadsLocal(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l))
+    setLeadsLocal(prev => prev.map(l => {
+      if (l.id !== id) return l
+      const updated = { ...l, ...updates }
+      // placa y celular viven en el objeto cliente anidado además del top-level
+      if ('placa' in updates)
+        updated.cliente = l.cliente ? { ...l.cliente, placa: (updates.placa as string | null) ?? null } : l.cliente
+      if ('celular' in updates)
+        updated.cliente = updated.cliente ? { ...updated.cliente, celular: (updates.celular as string | null) ?? null } : updated.cliente
+      return updated
+    }))
   }
 
   const fichaLead = fichaId ? leadsLocal.find(l => l.id === fichaId) ?? null : null

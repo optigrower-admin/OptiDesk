@@ -42,6 +42,8 @@ export default function VentasPage() {
           assigned_to,
           nombre_pendiente_aprobacion,
           alistamiento_orden_id,
+          placa,
+          numero_factura,
           automatizado,
           flujo_activo_id,
           updated_at,
@@ -205,7 +207,7 @@ export default function VentasPage() {
           no_leidos_count:            noLeidos,
           sin_respuesta_asesor_desde: (c.sin_respuesta_asesor_desde ?? null) as string | null,
           assigned_to:                (c.assigned_to ?? null) as string | null,
-          cliente:                      { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null, placa: (ex.placa ?? null) as string | null },
+          cliente:                      { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null, placa: ((c as Record<string, unknown>).placa ?? ex.placa ?? null) as string | null },
           alistamientoOrdenId:          ((c as Record<string, unknown>).alistamiento_orden_id ?? null) as string | null,
           cliente_apellido:             (ex.primer_apellido ?? null) as string | null,
           cliente_documento:            (ex.cedula ?? null) as string | null,
@@ -219,9 +221,9 @@ export default function VentasPage() {
             : undefined,
           estadoAprobacionMatricula: ((ex.estado_aprobacion_matricula ?? 'pendiente') as 'pendiente' | 'aprobado' | 'rechazado'),
           tienePlaca: (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(c.etapa_venta as EtapaVenta)
-            ? !!(ex.placa)
+            ? !!((c as Record<string, unknown>).placa ?? ex.placa)
             : undefined,
-          numero_factura: (ex.numero_factura ?? null) as string | null,
+          numero_factura: ((c as Record<string, unknown>).numero_factura ?? ex.numero_factura ?? null) as string | null,
           creditoAprobadoEntidad: creditoMap[c.id as string]?.aprobada ?? null,
           creditoRechazadoEntidades: creditoMap[c.id as string]?.rechazadas ?? [],
           automatizado: (c as Record<string, unknown>).automatizado === true,
