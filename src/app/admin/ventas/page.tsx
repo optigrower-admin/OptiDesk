@@ -48,6 +48,10 @@ export default function VentasPage() {
           automatizado,
           flujo_activo_id,
           updated_at,
+          primer_apellido,
+          cedula,
+          email,
+          estado_aprobacion_matricula,
           conversaciones ( id, canal, no_leidos_count )
         `)
         .eq('tenant_id', profile.tenant_id)
@@ -74,117 +78,100 @@ export default function VentasPage() {
 
       const { data: raw } = await query
 
-      // Datos extra (apellido, documento, email) en query defensiva separada
-      // Si las columnas no existen aún no rompe la carga principal
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const extraMap: Record<string, Record<string, any>> = {}
-      if ((raw ?? []).length > 0) {
-        const ids = (raw ?? []).map((c) => c.id as string)
-        const { data: extras } = await supabase
-          .from('clientes')
-          .select('id, primer_apellido, cedula, email, estado_aprobacion_matricula, placa, numero_factura, fecha_entrega')
-          .in('id', ids)
-        for (const e of extras ?? []) extraMap[e.id as string] = e
-      }
+      const ids = (raw ?? []).map((c) => c.id as string)
+      const idsEnEspera = (raw ?? [])
+        .filter(c => c.etapa_venta === 'espera_entrega' || c.etapa_venta === 'entregada')
+        .map(c => c.id as string)
 
-      // Etiquetas en query separada y defensiva — no rompe si la migración aún no se corrió
-      type EtiquetaRow = { id: string; nombre: string; color: string }
-      const etiquetasMap: Record<string, EtiquetaRow[]> = {}
-      if ((raw ?? []).length > 0) {
-        try {
-          const ids = (raw ?? []).map((c) => c.id as string)
-          const { data: etRows } = await supabase
-            .from('clientes_etiquetas')
-            .select('cliente_id, etiquetas_venta(id, nombre, color)')
-            .in('cliente_id', ids)
-          for (const row of (etRows ?? []) as unknown as { cliente_id: string; etiquetas_venta: EtiquetaRow | null }[]) {
-            if (!row.etiquetas_venta) continue
-            if (!etiquetasMap[row.cliente_id]) etiquetasMap[row.cliente_id] = []
-            etiquetasMap[row.cliente_id].push(row.etiquetas_venta)
-          }
-        } catch {
-          // tablas de etiquetas aún no existen — ignorar
-        }
-      }
-
-      // Estudio de crédito por entidad — aprobado (verde) y rechazado (rojo tachado) en la carta
-      // Dos queries separadas para evitar dependencia de FK nombradas en PostgREST
-      const creditoMap: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
-      if ((raw ?? []).length > 0) {
-        try {
-          const ids = (raw ?? []).map((c) => c.id as string)
-          const { data: estudiosRows } = await supabase
-            .from('clientes_credito_estudio')
-            .select('cliente_id, entidad_id, estado')
-            .in('cliente_id', ids)
-            .in('estado', ['aprobado', 'rechazado'])
-          if ((estudiosRows ?? []).length > 0) {
-            const entidadIds = [...new Set((estudiosRows ?? []).map(r => r.entidad_id as string))]
-            const { data: entRows } = await supabase
-              .from('entidades_financieras')
-              .select('id, nombre')
-              .in('id', entidadIds)
-            const entNombreMap: Record<string, string> = {}
-            for (const e of entRows ?? []) entNombreMap[e.id as string] = e.nombre as string
-            for (const row of estudiosRows ?? []) {
-              const nombre = entNombreMap[row.entidad_id as string]
-              if (!nombre) continue
-              if (!creditoMap[row.cliente_id as string]) creditoMap[row.cliente_id as string] = { aprobada: null, rechazadas: [] }
-              if (row.estado === 'aprobado') creditoMap[row.cliente_id as string].aprobada = nombre
-              if (row.estado === 'rechazado') creditoMap[row.cliente_id as string].rechazadas.push(nombre)
-            }
-          }
-        } catch { /* tablas de crédito aún no existen o sin datos — ignorar */ }
-      }
-
-      // Alistamiento check: clientes en espera_entrega/entregada sin orden UMA+Alistamiento → rojo
+      // Clientes con alistamiento vinculado directamente (del campo en el select principal)
       const clientesConAlistamiento = new Set<string>()
-      // Los que tienen vinculación manual directa cuentan como "con alistamiento"
       for (const c of (raw ?? [])) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if ((c as any).alistamiento_orden_id) clientesConAlistamiento.add(c.id as string)
       }
-      const idsEnEspera = (raw ?? [])
-        .filter(c => c.etapa_venta === 'espera_entrega' || c.etapa_venta === 'entregada')
-        .map(c => c.id as string)
-      if (idsEnEspera.length > 0) {
-        try {
-          const { data: subcats } = await supabase
-            .from('subcategorias_servicio')
-            .select('id')
-            .ilike('nombre', '%alistamiento%')
-          const subcatIds = (subcats ?? []).map(s => s.id as string)
-          if (subcatIds.length > 0) {
-            const { data: ords } = await supabase
-              .from('ordenes')
-              .select('cliente_id')
-              .eq('tenant_id', profile.tenant_id)
-              .eq('tipo_servicio', 'uma')
-              .in('cliente_id', idsEnEspera)
-              .in('subcategoria_servicio_id', subcatIds)
-              .not('cliente_id', 'is', null)
-            for (const o of ords ?? []) if (o.cliente_id) clientesConAlistamiento.add(o.cliente_id as string)
-          } else {
-            // Fallback: buscar por nombre de categoría principal
-            const { data: cats } = await supabase
-              .from('categorias_servicio')
-              .select('id')
-              .eq('tenant_id', profile.tenant_id)
-              .ilike('nombre', '%alistamiento%')
-            const catIds = (cats ?? []).map(c => c.id as string)
-            if (catIds.length > 0) {
-              const { data: ords } = await supabase
-                .from('ordenes')
-                .select('cliente_id')
-                .eq('tenant_id', profile.tenant_id)
-                .eq('tipo_servicio', 'uma')
-                .in('cliente_id', idsEnEspera)
-                .in('categoria_servicio_id', catIds)
-                .not('cliente_id', 'is', null)
-              for (const o of ords ?? []) if (o.cliente_id) clientesConAlistamiento.add(o.cliente_id as string)
-            }
-          }
-        } catch { /* non-critical */ }
+
+      // Datos secundarios: etiquetas, crédito y alistamiento corren en paralelo
+      type EtiquetaRow = { id: string; nombre: string; color: string }
+      const etiquetasMap: Record<string, EtiquetaRow[]> = {}
+      const creditoMap: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
+
+      if (ids.length > 0) {
+        const [etiquetasRows, creditoResult, alistamientoIds] = await Promise.all([
+          // 1. Etiquetas
+          (async () => {
+            try {
+              const { data } = await supabase.from('clientes_etiquetas')
+                .select('cliente_id, etiquetas_venta(id, nombre, color)')
+                .in('cliente_id', ids)
+              return data ?? []
+            } catch { return [] }
+          })(),
+
+          // 2. Crédito (dos pasos internos, pero corre en paralelo con las otras)
+          (async (): Promise<Record<string, { aprobada: string | null; rechazadas: string[] }>> => {
+            try {
+              const { data: estudiosRows } = await supabase
+                .from('clientes_credito_estudio')
+                .select('cliente_id, entidad_id, estado')
+                .in('cliente_id', ids)
+                .in('estado', ['aprobado', 'rechazado'])
+              if (!(estudiosRows ?? []).length) return {}
+              const entidadIds = [...new Set((estudiosRows ?? []).map(r => r.entidad_id as string))]
+              const { data: entRows } = await supabase
+                .from('entidades_financieras').select('id, nombre').in('id', entidadIds)
+              const entNombreMap: Record<string, string> = {}
+              for (const e of entRows ?? []) entNombreMap[e.id as string] = e.nombre as string
+              const result: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
+              for (const row of estudiosRows ?? []) {
+                const nombre = entNombreMap[row.entidad_id as string]
+                if (!nombre) continue
+                if (!result[row.cliente_id as string]) result[row.cliente_id as string] = { aprobada: null, rechazadas: [] }
+                if (row.estado === 'aprobado') result[row.cliente_id as string].aprobada = nombre
+                if (row.estado === 'rechazado') result[row.cliente_id as string].rechazadas.push(nombre)
+              }
+              return result
+            } catch { return {} }
+          })(),
+
+          // 3. Alistamiento UMA (dos pasos internos, corre en paralelo con las otras)
+          idsEnEspera.length > 0
+            ? (async (): Promise<string[]> => {
+                try {
+                  const { data: subcats } = await supabase
+                    .from('subcategorias_servicio').select('id').ilike('nombre', '%alistamiento%')
+                  const subcatIds = (subcats ?? []).map(s => s.id as string)
+                  if (subcatIds.length > 0) {
+                    const { data: ords } = await supabase.from('ordenes').select('cliente_id')
+                      .eq('tenant_id', profile.tenant_id).eq('tipo_servicio', 'uma')
+                      .in('cliente_id', idsEnEspera).in('subcategoria_servicio_id', subcatIds)
+                      .not('cliente_id', 'is', null)
+                    return (ords ?? []).map(o => o.cliente_id as string).filter(Boolean)
+                  }
+                  // Fallback: categoría principal
+                  const { data: cats } = await supabase.from('categorias_servicio').select('id')
+                    .eq('tenant_id', profile.tenant_id).ilike('nombre', '%alistamiento%')
+                  const catIds = (cats ?? []).map(c => c.id as string)
+                  if (catIds.length > 0) {
+                    const { data: ords } = await supabase.from('ordenes').select('cliente_id')
+                      .eq('tenant_id', profile.tenant_id).eq('tipo_servicio', 'uma')
+                      .in('cliente_id', idsEnEspera).in('categoria_servicio_id', catIds)
+                      .not('cliente_id', 'is', null)
+                    return (ords ?? []).map(o => o.cliente_id as string).filter(Boolean)
+                  }
+                } catch { /* non-critical */ }
+                return []
+              })()
+            : Promise.resolve([] as string[]),
+        ])
+
+        // Aplicar resultados
+        for (const row of (etiquetasRows as unknown as { cliente_id: string; etiquetas_venta: EtiquetaRow | null }[])) {
+          if (!row.etiquetas_venta) continue
+          if (!etiquetasMap[row.cliente_id]) etiquetasMap[row.cliente_id] = []
+          etiquetasMap[row.cliente_id].push(row.etiquetas_venta)
+        }
+        Object.assign(creditoMap, creditoResult)
+        for (const id of alistamientoIds) clientesConAlistamiento.add(id)
       }
 
       const mapped: LeadData[] = (raw ?? []).map((c) => {
@@ -192,8 +179,8 @@ export default function VentasPage() {
         const motosInteres = (c.motos_interes_resumen as unknown as { motos_catalogo: { referencia: string } | null }[] | null) ?? []
         const motoLabel = motosInteres.map(m => m.motos_catalogo?.referencia).filter(Boolean).join(' · ')
         const noLeidos = convs.reduce((s, cv) => s + (cv.no_leidos_count ?? 0), 0)
-        const ex = extraMap[c.id as string] ?? {}
         const etiquetas = etiquetasMap[c.id as string] ?? []
+        const cr = c as Record<string, unknown>
 
         return {
           id:                         c.id as string,
@@ -208,11 +195,11 @@ export default function VentasPage() {
           no_leidos_count:            noLeidos,
           sin_respuesta_asesor_desde: (c.sin_respuesta_asesor_desde ?? null) as string | null,
           assigned_to:                (c.assigned_to ?? null) as string | null,
-          cliente:                      { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null, placa: ((c as Record<string, unknown>).placa ?? ex.placa ?? null) as string | null },
-          alistamientoOrdenId:          ((c as Record<string, unknown>).alistamiento_orden_id ?? null) as string | null,
-          cliente_apellido:             (ex.primer_apellido ?? null) as string | null,
-          cliente_documento:            (ex.cedula ?? null) as string | null,
-          cliente_email:                (ex.email ?? null) as string | null,
+          cliente:                      { id: c.id as string, nombre: c.nombre as string | null, celular: c.celular as string | null, placa: (cr.placa ?? null) as string | null },
+          alistamientoOrdenId:          (cr.alistamiento_orden_id ?? null) as string | null,
+          cliente_apellido:             (cr.primer_apellido ?? null) as string | null,
+          cliente_documento:            (cr.cedula ?? null) as string | null,
+          cliente_email:                (cr.email ?? null) as string | null,
           nombre_pendiente_aprobacion:  (c.nombre_pendiente_aprobacion ?? null) as boolean | null,
           leads_campana:                [],
           todas_conversaciones:       convs.map(cv => ({ id: cv.id, canal: cv.canal, no_leidos_count: cv.no_leidos_count ?? 0 })),
@@ -220,16 +207,16 @@ export default function VentasPage() {
           tieneAlistamiento: (c.etapa_venta === 'espera_entrega' || c.etapa_venta === 'entregada')
             ? clientesConAlistamiento.has(c.id as string)
             : undefined,
-          estadoAprobacionMatricula: ((ex.estado_aprobacion_matricula ?? 'pendiente') as 'pendiente' | 'aprobado' | 'rechazado'),
+          estadoAprobacionMatricula: ((cr.estado_aprobacion_matricula ?? 'pendiente') as 'pendiente' | 'aprobado' | 'rechazado'),
           tienePlaca: (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(c.etapa_venta as EtapaVenta)
-            ? !!((c as Record<string, unknown>).placa ?? ex.placa)
+            ? !!(cr.placa)
             : undefined,
-          numero_factura: ((c as Record<string, unknown>).numero_factura ?? ex.numero_factura ?? null) as string | null,
-          fecha_entrega: ((c as Record<string, unknown>).fecha_entrega ?? ex.fecha_entrega ?? null) as string | null,
+          numero_factura: (cr.numero_factura ?? null) as string | null,
+          fecha_entrega:  (cr.fecha_entrega ?? null) as string | null,
           creditoAprobadoEntidad: creditoMap[c.id as string]?.aprobada ?? null,
           creditoRechazadoEntidades: creditoMap[c.id as string]?.rechazadas ?? [],
-          automatizado: (c as Record<string, unknown>).automatizado === true,
-          updated_at: ((c as Record<string, unknown>).updated_at ?? null) as string | null,
+          automatizado: cr.automatizado === true,
+          updated_at: (cr.updated_at ?? null) as string | null,
         }
       })
 

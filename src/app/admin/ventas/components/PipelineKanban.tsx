@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
   PointerSensor, useSensor, useSensors, closestCenter,
@@ -205,7 +205,18 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
 
   const usuariosMap = Object.fromEntries(usuarios.map(u => [u.id, u.nombre]))
   const sensors     = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
-  const leadsEn     = useCallback((etapa: EtapaVenta) => leads.filter(l => l.etapa_venta === etapa), [leads])
+
+  // Mapa pre-indexado: O(N) una vez, luego O(1) por columna en cada render
+  const leadsByEtapa = useMemo(() => {
+    const map = new Map<EtapaVenta, LeadData[]>()
+    for (const l of leads) {
+      if (!map.has(l.etapa_venta)) map.set(l.etapa_venta, [])
+      map.get(l.etapa_venta)!.push(l)
+    }
+    return map
+  }, [leads])
+  const leadsEn     = useCallback((etapa: EtapaVenta) => leadsByEtapa.get(etapa) ?? [], [leadsByEtapa])
+
   const activeLead  = activeId ? leads.find(l => l.id === activeId) ?? null : null
   const fichaLead   = fichaId  ? leads.find(l => l.id === fichaId)  ?? null : null
 

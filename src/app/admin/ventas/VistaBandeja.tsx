@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { ETAPAS, ETAPA_MAP, tiempoSinResponder, estadoSeguimiento, type EtapaVenta } from '@/lib/ventas/pipeline'
@@ -252,13 +252,14 @@ export default function VistaBandeja({ leads, tenantId, usuarios }: Props) {
 
   useEffect(() => { setLeadsLocal(leads) }, [leads])
 
-  const sorted = [...leadsLocal]
+  const sorted = useMemo(() => [...leadsLocal]
     .filter(l => {
       if (!busqueda.trim()) return true
       const q = busqueda.toLowerCase()
       return l.cliente?.nombre?.toLowerCase().includes(q) || l.cliente?.celular?.includes(q)
     })
-    .sort((a, b) => urgencyScore(b) - urgencyScore(a))
+    .sort((a, b) => urgencyScore(b) - urgencyScore(a)),
+  [leadsLocal, busqueda])
 
   const selectedLead = selectedId ? leadsLocal.find(l => l.id === selectedId) ?? null : null
   const convId = selectedLead?.todas_conversaciones[0]?.id ?? selectedLead?.id

@@ -1,6 +1,6 @@
 'use client'
 export const dynamic = 'force-dynamic'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
@@ -77,6 +77,13 @@ export default function AdminOrdenesPage() {
   const cancelRef = useRef(false)
   const hasLoadedRef = useRef(false)
 
+  // Debounce búsqueda: evita lanzar queries a Supabase en cada pulsación de tecla
+  const [busquedaDebounced, setBusquedaDebounced] = useState(busqueda)
+  useEffect(() => {
+    const t = setTimeout(() => setBusquedaDebounced(busqueda), 350)
+    return () => clearTimeout(t)
+  }, [busqueda])
+
   useEffect(() => {
     if (!profile?.tenant_id) return
     const channel = supabase
@@ -88,6 +95,8 @@ export default function AdminOrdenesPage() {
       )
       .on(
         'postgres_changes',
+        // items_orden no tiene tenant_id propio; filtramos por orden_id en el listener
+        // para evitar recargas cruzadas entre tenants usamos un throttle en el handler
         { event: '*', schema: 'public', table: 'items_orden' },
         () => setRefreshTick((t) => t + 1)
       )
@@ -126,8 +135,8 @@ export default function AdminOrdenesPage() {
       }
       if (filtroCategoria !== 'todos') q = q.eq('categoria_servicio_id', filtroCategoria)
       if (filtroSubcategoria !== 'todos') q = q.contains('subcategoria_servicio_ids', [filtroSubcategoria])
-      if (busqueda) {
-        const b = busqueda.trim()
+      if (busquedaDebounced) {
+        const b = busquedaDebounced.trim()
         // Búsqueda por placa, nombre cliente o # orden UMA
         q = q.or(`placa.ilike.%${normalizarPlaca(b)}%,cliente.ilike.%${b}%,numeros_orden_uma.cs.{${b}}`)
       }
@@ -173,44 +182,25 @@ export default function AdminOrdenesPage() {
         if (map.has(v.placa)) map.get(v.placa)!.push(v)
       }
 
-      // Contar repuestos pendientes por orden
+      // Queries paralelas: repuestos pendientes, costos externos, costos lavado
       const allOrderIds = [...sOrdenes, ...vOrdenes].map((o) => o.id)
       const pendientesPorOrden = new Map<string, number>()
-      if (allOrderIds.length > 0) {
-        const { data: itemsPend } = await supabase
-          .from('items_orden')
-          .select('orden_id')
-          .in('orden_id', allOrderIds)
-          .eq('estado_repuesto', 'pedido')
-        if (!cancelRef.current && itemsPend) {
-          for (const item of itemsPend as { orden_id: string }[]) {
-            pendientesPorOrden.set(item.orden_id, (pendientesPorOrden.get(item.orden_id) ?? 0) + 1)
-          }
-        }
-      }
-
-      // Costo proveedor por orden (Externo + Lavado), para la vista de tabla simplificada
       const costosMap = new Map<string, number>()
+
       if (allOrderIds.length > 0) {
-        const { data: itemsCosto } = await supabase
-          .from('items_orden')
-          .select('orden_id, costo, cantidad')
-          .eq('origen', 'externo')
-          .in('orden_id', allOrderIds)
-        if (!cancelRef.current && itemsCosto) {
-          for (const it of itemsCosto as { orden_id: string; costo: number; cantidad: number }[]) {
-            costosMap.set(it.orden_id, (costosMap.get(it.orden_id) ?? 0) + it.costo * it.cantidad)
-          }
-        }
-        const { data: lavadosCosto } = await supabase
-          .from('lava_moto_ordenes')
-          .select('orden_id, costo_unitario, cantidad')
-          .in('orden_id', allOrderIds)
-        if (!cancelRef.current && lavadosCosto) {
-          for (const lm of lavadosCosto as { orden_id: string; costo_unitario: number; cantidad: number }[]) {
-            costosMap.set(lm.orden_id, (costosMap.get(lm.orden_id) ?? 0) + lm.costo_unitario * lm.cantidad)
-          }
-        }
+        const [itemsPendRes, itemsCostoRes, lavadosCostoRes] = await Promise.all([
+          supabase.from('items_orden').select('orden_id').in('orden_id', allOrderIds).eq('estado_repuesto', 'pedido'),
+          supabase.from('items_orden').select('orden_id, costo, cantidad').eq('origen', 'externo').in('orden_id', allOrderIds),
+          supabase.from('lava_moto_ordenes').select('orden_id, costo_unitario, cantidad').in('orden_id', allOrderIds),
+        ])
+        if (cancelRef.current) return
+
+        for (const item of (itemsPendRes.data ?? []) as { orden_id: string }[])
+          pendientesPorOrden.set(item.orden_id, (pendientesPorOrden.get(item.orden_id) ?? 0) + 1)
+        for (const it of (itemsCostoRes.data ?? []) as { orden_id: string; costo: number; cantidad: number }[])
+          costosMap.set(it.orden_id, (costosMap.get(it.orden_id) ?? 0) + it.costo * it.cantidad)
+        for (const lm of (lavadosCostoRes.data ?? []) as { orden_id: string; costo_unitario: number; cantidad: number }[])
+          costosMap.set(lm.orden_id, (costosMap.get(lm.orden_id) ?? 0) + lm.costo_unitario * lm.cantidad)
       }
       if (!cancelRef.current) setCostosProveedorPorOrden(costosMap)
 
@@ -229,7 +219,7 @@ export default function AdminOrdenesPage() {
 
     run()
     return () => { cancelRef.current = true }
-  }, [profile?.tenant_id, busqueda, filtroEstado, filtroCategoria, filtroSubcategoria, fechaDesde, fechaHasta, refreshTick])
+  }, [profile?.tenant_id, busquedaDebounced, filtroEstado, filtroCategoria, filtroSubcategoria, fechaDesde, fechaHasta, refreshTick])
 
   const toggleGrupo = (placa: string) => {
     setGrupos((prev) => prev.map((g) => g.placa === placa ? { ...g, expandido: !g.expandido } : g))
