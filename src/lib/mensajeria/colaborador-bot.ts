@@ -341,10 +341,9 @@ async function ordenesActivas(
 
 async function saldoCaja(supabase: Supabase, tenantId: string): Promise<string> {
   type WithMetodo = { metodos_pago: { nombre: string } | null; monto: number }
-  type PagoRow    = WithMetodo & { ordenes: { tipo_orden: string } | null }
   type GastoRow   = WithMetodo & { descripcion: string }
   type AjusteRow  = WithMetodo & { cuenta_especial: string | null }
-  type LavadoRow  = { metodos_pago: { nombre: string } | null; precio_venta_unitario: number; costo_unitario: number; cantidad: number }
+  type LavadoRow  = { metodos_pago: { nombre: string } | null; precio_venta_unitario: number; cantidad: number }
 
   const [
     { data: pagos },
@@ -355,7 +354,7 @@ async function saldoCaja(supabase: Supabase, tenantId: string): Promise<string> 
     { data: lavados },
   ] = await Promise.all([
     supabase.from('pagos_orden')
-      .select('monto, metodos_pago(nombre), ordenes!inner(tipo_orden)')
+      .select('monto, metodos_pago(nombre)')
       .eq('tenant_id', tenantId).gt('monto', 0),
     supabase.from('gastos_caja')
       .select('monto, descripcion, metodos_pago(nombre)')
@@ -370,7 +369,7 @@ async function saldoCaja(supabase: Supabase, tenantId: string): Promise<string> 
       .select('monto, metodos_pago(nombre)')
       .eq('tenant_id', tenantId),
     supabase.from('lava_moto_ordenes')
-      .select('precio_venta_unitario, costo_unitario, cantidad, metodos_pago(nombre)')
+      .select('precio_venta_unitario, cantidad, metodos_pago(nombre)')
       .eq('tenant_id', tenantId),
   ])
 
@@ -387,7 +386,7 @@ async function saldoCaja(supabase: Supabase, tenantId: string): Promise<string> 
   }
 
   // Ingresos de clientes (pagos en órdenes)
-  for (const p of (pagos ?? []) as PagoRow[])
+  for (const p of (pagos ?? []) as WithMetodo[])
     add(mp(p), null, p.monto)
 
   // Gastos (si es transferencia a CF, suma a CF y resta de la cuenta origen)
@@ -414,16 +413,6 @@ async function saldoCaja(supabase: Supabase, tenantId: string): Promise<string> 
   for (const l of (lavados ?? []) as LavadoRow[])
     add(mp(l), null, l.precio_venta_unitario * l.cantidad)
 
-  // Desglose de ingresos: Serv. Técnico vs Repuestos
-  let ingST = 0, ingRep = 0
-  for (const p of (pagos ?? []) as PagoRow[]) {
-    const tipo = (p.ordenes as { tipo_orden: string } | null)?.tipo_orden ?? ''
-    if (tipo === 'venta_repuestos') ingRep += p.monto
-    else ingST += p.monto
-  }
-  for (const l of (lavados ?? []) as LavadoRow[])
-    ingST += l.precio_venta_unitario * l.cantidad
-
   // Formatear respuesta
   const COP = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`
   const ICON: Record<string, string> = { efectivo: '💵', nequi: '📲' }
@@ -447,10 +436,6 @@ async function saldoCaja(supabase: Supabase, tenantId: string): Promise<string> 
   if (saldoCF !== 0)
     msg += `🔒 *Caja Fuerte:* ${COP(saldoCF)}\n`
   msg += `\n*Total general:* ${COP(totalGeneral)}\n`
-  msg += `\n─────────────────\n`
-  msg += `📊 *Desglose ingresos:*\n`
-  msg += `🔧 Serv. Técnico: ${COP(ingST)}\n`
-  msg += `📦 Repuestos: ${COP(ingRep)}\n`
 
   return msg
 }
