@@ -61,7 +61,7 @@ const PIPELINE_POSTVENTA: GrupoConfig[] = [
   {
     grupoId: 'revisiones', grupoLabel: 'Post-Venta',
     color: '#4338CA', bg: '#EEF2FF',
-    etapas: ['primera_revision', 'segunda_revision', 'tercera_revision'],
+    etapas: ['primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado'],
   },
 ]
 
@@ -71,7 +71,7 @@ const FLUJO_AVANCE: EtapaVenta[] = [
   'propuesta', 'seguimiento', 'buscando_credito', 'en_proceso_credito',
   'ganado', 'aprobado_matricula', 'en_matricula',
   'alistamiento', 'espera_entrega', 'entregada',
-  'primera_revision', 'segunda_revision', 'tercera_revision',
+  'primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado',
 ]
 
 function nextEtapa(etapa: EtapaVenta): EtapaVenta | null {
