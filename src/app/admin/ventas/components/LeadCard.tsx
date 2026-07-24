@@ -30,6 +30,7 @@ export type LeadData = {
   etiquetas: { id: string; nombre: string; color: string }[]
   tieneAlistamiento?: boolean
   estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'
+  aprobadoMatriculaPor?: string | null
   tienePlaca?: boolean
   numero_carta_negociacion?: string | null
   numero_factura?: string | null

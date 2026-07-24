@@ -25,9 +25,14 @@ export async function POST(req: NextRequest) {
   if (!cliente_id)
     return NextResponse.json({ error: 'Falta cliente_id' }, { status: 400 })
 
-  const esGerencia = perfil.rol === 'gerencia' || perfil.rol === 'control_total'
+  const rolNorm = (perfil.rol ?? '').toLowerCase().replace('ñ', 'n')
+  const esGerencia = rolNorm === 'gerencia' || rolNorm === 'control_total' || rolNorm === 'dueno'
   if ('assigned_to' in campos && !esGerencia) {
     delete campos.assigned_to
+  }
+  if (!esGerencia) {
+    delete campos.estado_aprobacion_matricula
+    delete campos.aprobado_matricula_por
   }
 
   const admin = createAdminClient()

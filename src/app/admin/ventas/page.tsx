@@ -53,6 +53,7 @@ export default function VentasPage() {
           cedula,
           email,
           estado_aprobacion_matricula,
+          aprobado_matricula_por,
           conversaciones ( id, canal, no_leidos_count )
         `)
         .eq('tenant_id', profile.tenant_id)
@@ -209,6 +210,7 @@ export default function VentasPage() {
             ? clientesConAlistamiento.has(c.id as string)
             : undefined,
           estadoAprobacionMatricula: ((cr.estado_aprobacion_matricula ?? 'pendiente') as 'pendiente' | 'aprobado' | 'rechazado'),
+          aprobadoMatriculaPor: (cr.aprobado_matricula_por ?? null) as string | null,
           tienePlaca: (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(c.etapa_venta as EtapaVenta)
             ? !!(cr.placa)
             : undefined,

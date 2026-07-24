@@ -318,6 +318,8 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
         ...(updates.assigned_to                 !== undefined ? { assigned_to: updates.assigned_to }                                   : {}),
         ...(updates.alistamientoOrdenId         !== undefined ? { alistamientoOrdenId: updates.alistamientoOrdenId, tieneAlistamiento: updates.alistamientoOrdenId !== null } : {}),
         ...(updates.placa !== undefined ? { tienePlaca: !!updates.placa } : {}),
+        ...(updates.estadoAprobacionMatricula  !== undefined ? { estadoAprobacionMatricula: updates.estadoAprobacionMatricula } : {}),
+        ...(updates.aprobadoMatriculaPor       !== undefined ? { aprobadoMatriculaPor: updates.aprobadoMatriculaPor }           : {}),
         ...(updates.creditoAprobadoEntidad     !== undefined ? { creditoAprobadoEntidad: updates.creditoAprobadoEntidad }       : {}),
         ...(updates.creditoRechazadoEntidades  !== undefined ? { creditoRechazadoEntidades: updates.creditoRechazadoEntidades } : {}),
         ...(l.cliente && Object.keys(clientePatch).length > 0 ? { cliente: { ...l.cliente, ...clientePatch } } : {}),

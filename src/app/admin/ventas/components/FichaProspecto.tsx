@@ -50,7 +50,7 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_carta_negociacion?: string | null; numero_factura?: string | null; fecha_entrega?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[] }) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_carta_negociacion?: string | null; numero_factura?: string | null; fecha_entrega?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[]; estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'; aprobadoMatriculaPor?: string | null }) => void
   onLeadDelete?: (id: string) => void
 }
 
@@ -114,10 +114,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [aprobacionStatus, setAprobacionStatus] = useState<'pendiente' | 'aprobado' | 'rechazado'>(
     lead.estadoAprobacionMatricula ?? 'pendiente'
   )
+  const [aprobadoMatriculaPor, setAprobadoMatriculaPor] = useState<string | null>(
+    lead.aprobadoMatriculaPor ?? null
+  )
   const [bloqueoMsg, setBloqueoMsg] = useState<string | null>(null)
 
   useEffect(() => {
     setAprobacionStatus(lead.estadoAprobacionMatricula ?? 'pendiente')
+    setAprobadoMatriculaPor(lead.aprobadoMatriculaPor ?? null)
   }, [lead.id])
 
   // Panel lateral izquierdo
@@ -299,7 +303,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   // Auto-guarda etapa al cambiarla en el select
   const autoSaveEtapa = async (newEtapa: EtapaVenta) => {
     if (ETAPA_ORDEN[newEtapa] > ETAPA_ORDEN['aprobado_matricula'] &&
-        lead.estadoAprobacionMatricula !== 'aprobado') {
+        aprobacionStatus !== 'aprobado') {
       setBloqueoMsg('Debes pedir aprobación para matricular para poder cambiar de etapa')
       return
     }
@@ -492,12 +496,25 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       setBloqueoMsg('Solo gerencia o el dueño pueden aprobar o rechazar la matrícula. Pídeles que cambien el estado.')
       return
     }
-    setAprobacionStatus(status)
-    await supabase
-      .from('clientes')
-      .update({ estado_aprobacion_matricula: status })
-      .eq('id', lead.id)
-      .eq('tenant_id', tenantId)
+    const por = status === 'aprobado' ? (profile?.nombre ?? 'Gerencia') : null
+    showGlobalLoading()
+    try {
+      const res = await fetch('/api/admin/ventas/guardar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cliente_id: lead.id, estado_aprobacion_matricula: status, aprobado_matricula_por: por }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        alert(`No se pudo guardar la aprobación: ${(json as { error?: string }).error ?? res.statusText}`)
+        return
+      }
+      setAprobacionStatus(status)
+      setAprobadoMatriculaPor(por)
+      onLeadUpdate?.(lead.id, { estadoAprobacionMatricula: status, aprobadoMatriculaPor: por })
+      mostrarGuardado()
+    } catch (e) {
+      alert(`Error al guardar: ${e instanceof Error ? e.message : 'Error desconocido'}`)
+    } finally { hideGlobalLoading() }
   }
 
   const handleEliminar = async () => {
@@ -1023,7 +1040,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           <div className={`flex-1 overflow-y-auto p-4 ${tabDer === 'chats' ? 'hidden' : ''}`}>
 
             {/* ── Barra: Carta · Placa · Alistamiento · Factura · Fecha entrega · Aprobación ── */}
-            {(enEtapaCarta || enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || lead.etapa_venta === 'aprobado_matricula') && (
+            {(enEtapaCarta || enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || ETAPA_ORDEN[etapa] >= ETAPA_ORDEN['aprobado_matricula']) && (
               <div className="mb-4 space-y-2">
 
                 {/* Fila de pills */}
@@ -1280,7 +1297,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 )}
 
                 {/* Aprobación para matrícula */}
-                {lead.etapa_venta === 'aprobado_matricula' && (
+                {ETAPA_ORDEN[etapa] >= ETAPA_ORDEN['aprobado_matricula'] && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                     <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1.5">Estado de aprobación para matrícula</p>
                     <div className="flex gap-2">
@@ -1291,13 +1308,20 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                       ] as const).map(({ key, label, activo, inactivo }) => (
                         <button key={key}
                           onClick={() => actualizarAprobacion(key)}
+                          disabled={!esGerencia}
                           className={`flex-1 py-1.5 rounded-lg text-xs font-bold border-2 transition-colors ${
                             aprobacionStatus === key ? activo : inactivo
-                          }`}>
+                          } ${!esGerencia ? 'cursor-default opacity-80' : ''}`}>
                           {label}
                         </button>
                       ))}
                     </div>
+                    {aprobacionStatus === 'aprobado' && aprobadoMatriculaPor && (
+                      <p className="mt-1.5 text-xs text-green-700 font-medium">Aprobado por {aprobadoMatriculaPor}</p>
+                    )}
+                    {!esGerencia && (
+                      <p className="mt-1 text-[11px] text-amber-600">Solo gerencia o el dueño pueden cambiar este estado.</p>
+                    )}
                   </div>
                 )}
 
