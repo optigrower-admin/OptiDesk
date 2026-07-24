@@ -22,6 +22,7 @@ const CAMPO_LABEL: Record<string, string> = {
   etapa: 'Etapa',
   asignado_a: 'Asesor asignado',
   nombre: 'Nombre',
+  carta_negociacion: 'N° Carta Negociación',
   numero_factura: 'N° Factura',
 }
 

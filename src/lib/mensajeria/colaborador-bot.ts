@@ -183,7 +183,7 @@ async function clientesPorEtapa(
     con_objecion: 'Con Objeción', propuesta: 'Propuesta', demo: 'Cita',
     seguimiento: 'Seguimiento', buscando_credito: 'Buscando Crédito',
     en_proceso_credito: 'En Proceso Crédito', negociacion: 'Calificado',
-    ganado: 'Vendida', aprobado_matricula: 'Aprobado Matrícula',
+    ganado: 'Vendida/Carta Aprobación', aprobado_matricula: 'Aprobado Matrícula',
     en_matricula: 'En Matrícula', alistamiento: 'Alistamiento',
     espera_entrega: 'Espera Entrega', entregada: 'Entregada',
   }
@@ -260,7 +260,7 @@ async function buscarCliente(
     nuevo_mensaje: 'Nuevo Contacto', nuevo: 'Nuevo', con_interes: 'Con Interés',
     con_objecion: 'Con Objeción', propuesta: 'Propuesta', demo: 'Cita',
     seguimiento: 'Seguimiento', buscando_credito: 'Crédito', negociacion: 'Calificado',
-    ganado: 'Vendida', entregada: 'Entregada',
+    ganado: 'Vendida/Carta Aprobación', entregada: 'Entregada',
   }
 
   const lineas = (data as Array<{

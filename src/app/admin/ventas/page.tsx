@@ -43,6 +43,7 @@ export default function VentasPage() {
           nombre_pendiente_aprobacion,
           alistamiento_orden_id,
           placa,
+          numero_carta_negociacion,
           numero_factura,
           fecha_entrega,
           automatizado,
@@ -211,6 +212,7 @@ export default function VentasPage() {
           tienePlaca: (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(c.etapa_venta as EtapaVenta)
             ? !!(cr.placa)
             : undefined,
+          numero_carta_negociacion: (cr.numero_carta_negociacion ?? null) as string | null,
           numero_factura: (cr.numero_factura ?? null) as string | null,
           fecha_entrega:  (cr.fecha_entrega ?? null) as string | null,
           creditoAprobadoEntidad: creditoMap[c.id as string]?.aprobada ?? null,

@@ -245,6 +245,7 @@ export default function VistaLista({ leads, tenantId }: Props) {
 
       {fichaLead && (
         <FichaProspecto
+          key={fichaLead.id}
           lead={fichaLead}
           tenantId={tenantId}
           onClose={() => setFichaId(null)}

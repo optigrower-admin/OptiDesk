@@ -68,7 +68,7 @@ export default function ResumenVentasPage() {
         const ids = (raw ?? []).map(c => c.id as string)
         const { data: extras } = await supabase
           .from('clientes')
-          .select('id, primer_apellido, cedula, email, estado_aprobacion_matricula, placa, numero_factura')
+          .select('id, primer_apellido, cedula, email, estado_aprobacion_matricula, placa, numero_carta_negociacion, numero_factura')
           .in('id', ids)
         for (const e of extras ?? []) extraMap[e.id as string] = e as Record<string, unknown>
       }

@@ -718,6 +718,7 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
     {/* Ficha al hacer clic */}
     {fichaLead && (
       <FichaProspecto
+        key={fichaLead.id}
         lead={fichaLead}
         tenantId={tenantId}
         onClose={() => setFichaId(null)}

@@ -37,7 +37,7 @@ export const ETAPAS: { id: EtapaVenta; label: string; color: string; bg: string;
   { id: 'negociacion',        label: 'Calificado',                color: '#D97706', bg: 'bg-amber-50',    border: 'border-amber-500'   },
 
   // ── Grupo Proceso de venta ───────────────────────────────────────────────────── borde verde
-  { id: 'ganado',             label: 'Vendida',                   color: '#16A34A', bg: 'bg-green-50',    border: 'border-green-600'   },
+  { id: 'ganado',             label: 'Vendida/Carta Aprobación',  color: '#16A34A', bg: 'bg-green-50',    border: 'border-green-600'   },
   { id: 'aprobado_matricula', label: 'Aprobados para Matricular', color: '#B45309', bg: 'bg-amber-50',    border: 'border-green-600'   },
   { id: 'en_matricula',       label: 'En matrícula',              color: '#0F766E', bg: 'bg-teal-50',     border: 'border-green-600'   },
   { id: 'alistamiento',       label: 'Alistamiento',              color: '#0E7490', bg: 'bg-cyan-50',     border: 'border-green-600'   },
@@ -78,6 +78,12 @@ export const ETAPAS_NECESITAN_PLACA: EtapaVenta[] = [
 // Desde Espera entrega en adelante: campo fecha de entrega de la moto
 export const ETAPAS_NECESITAN_FECHA_ENTREGA: EtapaVenta[] = [
   'espera_entrega', 'entregada',
+  'primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado',
+]
+
+// Desde Vendida en adelante: necesita número de carta de negociación
+export const ETAPAS_NECESITAN_CARTA_NEGOCIACION: EtapaVenta[] = [
+  'ganado', 'aprobado_matricula', 'en_matricula', 'alistamiento', 'espera_entrega', 'entregada',
   'primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado',
 ]
 

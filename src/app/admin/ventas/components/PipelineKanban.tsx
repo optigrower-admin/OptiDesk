@@ -36,7 +36,7 @@ const PIPELINE_VENTAS: GrupoConfig[] = [
     etapas: ['propuesta', 'seguimiento', 'buscando_credito', 'en_proceso_credito'],
   },
   {
-    grupoId: 'vendida', grupoLabel: 'Vendida',
+    grupoId: 'vendida', grupoLabel: 'Vendida/Carta Aprobación',
     color: '#16A34A', bg: '#DCFCE7',
     etapas: ['ganado'],
   },
@@ -257,11 +257,9 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
       targetEtapa = targetLead?.etapa_venta ?? null
     }
     if (!targetEtapa || targetEtapa === lead.etapa_venta) return
-    // Bloquear avance desde aprobado_matricula si la matrícula no está aprobada
-    if (lead.etapa_venta === 'aprobado_matricula' &&
-        ETAPA_ORDEN[targetEtapa] > ETAPA_ORDEN['aprobado_matricula'] &&
+    if (ETAPA_ORDEN[targetEtapa] > ETAPA_ORDEN['aprobado_matricula'] &&
         lead.estadoAprobacionMatricula !== 'aprobado') {
-      setBloqueoMsg(`No se puede mover a "${ETAPA_MAP[targetEtapa]?.label ?? targetEtapa}" — la matrícula de este cliente aún no ha sido aprobada. Cambia el estado a ✅ Aprobado en la ficha del cliente.`)
+      setBloqueoMsg('Debes pedir aprobación para matricular para poder cambiar de etapa')
       return
     }
     setPendingMove({ leadId, targetEtapa: ETAPA_MAP[targetEtapa] })
@@ -297,6 +295,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     nombre?: string; nombre_pendiente_aprobacion?: boolean | null
     etiquetas?: { id: string; nombre: string; color: string }[]
     placa?: string | null; celular?: string | null
+    numero_carta_negociacion?: string | null
     numero_factura?: string | null; assigned_to?: string | null
     alistamientoOrdenId?: string | null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -314,6 +313,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
         ...(updates.proxima_accion_fecha        !== undefined ? { proxima_accion_fecha: updates.proxima_accion_fecha }                 : {}),
         ...(updates.nombre_pendiente_aprobacion !== undefined ? { nombre_pendiente_aprobacion: updates.nombre_pendiente_aprobacion }   : {}),
         ...(updates.etiquetas                   !== undefined ? { etiquetas: updates.etiquetas }                                       : {}),
+        ...(updates.numero_carta_negociacion     !== undefined ? { numero_carta_negociacion: updates.numero_carta_negociacion }         : {}),
         ...(updates.numero_factura              !== undefined ? { numero_factura: updates.numero_factura }                             : {}),
         ...(updates.assigned_to                 !== undefined ? { assigned_to: updates.assigned_to }                                   : {}),
         ...(updates.alistamientoOrdenId         !== undefined ? { alistamientoOrdenId: updates.alistamientoOrdenId, tieneAlistamiento: updates.alistamientoOrdenId !== null } : {}),
@@ -425,6 +425,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
       <>
         {fichaLead && (
           <FichaProspecto
+            key={fichaLead.id}
             lead={fichaLead}
             tenantId={tenantId}
             onClose={() => setFichaId(null)}
@@ -588,6 +589,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
 
       {fichaLead && (
         <FichaProspecto
+          key={fichaLead.id}
           lead={fichaLead}
           tenantId={tenantId}
           onClose={() => setFichaId(null)}

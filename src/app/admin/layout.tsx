@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePermisos } from '@/hooks/usePermisos'
 import { cn } from '@/lib/utils'
 import ManualButton from '@/components/ManualButton'
+import GlobalLoadingOverlay from '@/components/GlobalLoadingOverlay'
 
 type NavItem = {
   href: string
@@ -812,6 +813,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       )}
       </div>
+      <GlobalLoadingOverlay />
     </div>
   )
 }

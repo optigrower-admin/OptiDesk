@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, ETAPAS_NECESITAN_FACTURA, ETAPAS_NECESITAN_FECHA_ENTREGA, ETAPAS_POSVENTA, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { showGlobalLoading, hideGlobalLoading } from '@/lib/globalLoading'
 import type { LeadData } from './LeadCard'
 import VincularClienteModal from './VincularClienteModal'
 import EtiquetasPicker, { type Etiqueta } from './EtiquetasPicker'
@@ -49,7 +50,7 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_factura?: string | null; fecha_entrega?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[] }) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_carta_negociacion?: string | null; numero_factura?: string | null; fecha_entrega?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[] }) => void
   onLeadDelete?: (id: string) => void
 }
 
@@ -115,6 +116,10 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   )
   const [bloqueoMsg, setBloqueoMsg] = useState<string | null>(null)
 
+  useEffect(() => {
+    setAprobacionStatus(lead.estadoAprobacionMatricula ?? 'pendiente')
+  }, [lead.id])
+
   // Panel lateral izquierdo
   const [proximaAccion,   setProximaAccion]   = useState(lead.proxima_accion ?? '')
   const [proximaFecha,    setProximaFecha]     = useState(
@@ -151,6 +156,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [editandoPlaca, setEditandoPlaca]   = useState(false)
   const [savingPlaca, setSavingPlaca]       = useState(false)
 
+  // Carta de negociación
+  const [cartaActual, setCartaActual]       = useState(lead.numero_carta_negociacion ?? '')
+  const [cartaInput, setCartaInput]         = useState(lead.numero_carta_negociacion ?? '')
+  const [editandoCarta, setEditandoCarta]   = useState(false)
+  const [savingCarta, setSavingCarta]       = useState(false)
+
   // Factura
   const [facturaActual, setFacturaActual]   = useState(lead.numero_factura ?? '')
   const [facturaInput, setFacturaInput]     = useState(lead.numero_factura ?? '')
@@ -170,17 +181,19 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [loadingOrdenesUMA, setLoadingOrdenesUMA] = useState(false)
   const [ordenesUMALoaded, setOrdenesUMALoaded]   = useState(false)
 
-  // Derivados de alerta
-  const sinCelular          = (ETAPAS_LEADS as EtapaVenta[]).includes(lead.etapa_venta) && !celularActual
-  const enEtapaConPlaca     = (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(lead.etapa_venta)
-  const enEtapaAlistamiento    = lead.etapa_venta === 'espera_entrega' || lead.etapa_venta === 'entregada'
-  const tieneAlistamientoFinal = lead.tieneAlistamiento === true || !!alistamientoOrdenId
-  const enEtapaFactura         = (ETAPAS_NECESITAN_FACTURA as EtapaVenta[]).includes(lead.etapa_venta)
-  const enEtapaFechaEntrega    = (ETAPAS_NECESITAN_FECHA_ENTREGA as EtapaVenta[]).includes(lead.etapa_venta)
-
   // Campos editables — tab Resumen
   const [etapa, setEtapa]         = useState<EtapaVenta>(lead.etapa_venta)
   const [assignedTo, setAssignedTo] = useState('')
+
+  // Derivados de alerta — usan `etapa` (estado local) para que los campos aparezcan de inmediato
+  const sinCelular          = (ETAPAS_LEADS as EtapaVenta[]).includes(lead.etapa_venta) && !celularActual
+  const enEtapaConPlaca     = (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(etapa)
+  const enEtapaAlistamiento    = etapa === 'espera_entrega' || etapa === 'entregada'
+  const tieneAlistamientoFinal = lead.tieneAlistamiento === true || !!alistamientoOrdenId
+  const enEtapaFactura         = (ETAPAS_NECESITAN_FACTURA as EtapaVenta[]).includes(etapa)
+  const enEtapaFechaEntrega    = (ETAPAS_NECESITAN_FECHA_ENTREGA as EtapaVenta[]).includes(etapa)
+  // Carta de negociación aplica en las mismas etapas que la factura
+  const enEtapaCarta           = enEtapaFactura
 
   const cargar = useCallback(async () => {
     const [{ data: msgs }, { data: ords }, { data: us }, { data: cliente }, { data: etapasHist }] = await Promise.all([
@@ -285,15 +298,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   // Auto-guarda etapa al cambiarla en el select
   const autoSaveEtapa = async (newEtapa: EtapaVenta) => {
-    // Bloquear avance desde aprobado_matricula si la matrícula no está aprobada
-    if (lead.etapa_venta === 'aprobado_matricula' &&
-        ETAPA_ORDEN[newEtapa] > ETAPA_ORDEN['aprobado_matricula'] &&
-        aprobacionStatus !== 'aprobado') {
-      setBloqueoMsg(`No se puede pasar a "${ETAPA_MAP[newEtapa]?.label ?? newEtapa}" — la matrícula aún no ha sido aprobada. Cambia el estado a ✅ Aprobado primero.`)
+    if (ETAPA_ORDEN[newEtapa] > ETAPA_ORDEN['aprobado_matricula'] &&
+        lead.estadoAprobacionMatricula !== 'aprobado') {
+      setBloqueoMsg('Debes pedir aprobación para matricular para poder cambiar de etapa')
       return
     }
     const prev = etapa
     setEtapa(newEtapa)
+    showGlobalLoading()
     setSaving(true)
     try {
       const res = await fetch('/api/admin/ventas/guardar', {
@@ -305,11 +317,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         mostrarGuardado()
         await logCambio('etapa', ETAPA_MAP[prev]?.label ?? prev, ETAPA_MAP[newEtapa]?.label ?? newEtapa)
       } else {
-        setEtapa(prev)  // revertir si el API falla
+        setEtapa(prev)
       }
     } catch {
       setEtapa(prev)
-    } finally { setSaving(false) }
+    } finally { setSaving(false); hideGlobalLoading() }
   }
 
   // Auto-guarda asesor al cambiarlo en el select (solo gerencia)
@@ -346,6 +358,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const guardarCelular = async () => {
     const cel = celularInput.trim()
     if (!cel || cel === celularActual) return
+    showGlobalLoading()
     setSavingCelular(true)
     const { error } = await supabase.from('clientes').update({ celular: cel }).eq('id', lead.id).eq('tenant_id', tenantId)
     if (error) {
@@ -358,11 +371,34 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       mostrarGuardado()
     }
     setSavingCelular(false)
+    hideGlobalLoading()
+  }
+
+  const guardarCarta = async () => {
+    const carta = cartaInput.trim()
+    if (!carta || carta === cartaActual) { setEditandoCarta(false); return }
+    showGlobalLoading()
+    setSavingCarta(true)
+    const { error } = await supabase.from('clientes').update({ numero_carta_negociacion: carta }).eq('id', lead.id).eq('tenant_id', tenantId)
+    if (error) {
+      alert(`No se pudo guardar la carta de negociación: ${error.message}`)
+      setCartaInput(cartaActual)
+    } else {
+      await logCambio('carta_negociacion', cartaActual || null, carta)
+      setCartaActual(carta)
+      setCartaInput(carta)
+      setEditandoCarta(false)
+      onLeadUpdate?.(lead.id, { numero_carta_negociacion: carta })
+      mostrarGuardado()
+    }
+    setSavingCarta(false)
+    hideGlobalLoading()
   }
 
   const guardarPlaca = async () => {
     const pl = placaInput.trim().toUpperCase()
     if (!pl || pl === placaActual) { setEditandoPlaca(false); return }
+    showGlobalLoading()
     setSavingPlaca(true)
     const { error } = await supabase.from('clientes').update({ placa: pl }).eq('id', lead.id).eq('tenant_id', tenantId)
     if (error) {
@@ -377,11 +413,13 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       mostrarGuardado()
     }
     setSavingPlaca(false)
+    hideGlobalLoading()
   }
 
   const guardarFactura = async () => {
     const fac = facturaInput.trim().toUpperCase()
     if (!fac || fac === facturaActual) { setEditandoFactura(false); return }
+    showGlobalLoading()
     setSavingFactura(true)
     const { error } = await supabase.from('clientes').update({ numero_factura: fac }).eq('id', lead.id).eq('tenant_id', tenantId)
     if (error) {
@@ -396,11 +434,13 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       mostrarGuardado()
     }
     setSavingFactura(false)
+    hideGlobalLoading()
   }
 
   const guardarFechaEntrega = async () => {
     const fecha = fechaEntregaInput.trim()
     if (!fecha || fecha === fechaEntregaActual) { setEditandoFechaEntrega(false); return }
+    showGlobalLoading()
     setSavingFechaEntrega(true)
     const { error } = await supabase.from('clientes').update({ fecha_entrega: fecha }).eq('id', lead.id).eq('tenant_id', tenantId)
     if (error) {
@@ -415,6 +455,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       mostrarGuardado()
     }
     setSavingFechaEntrega(false)
+    hideGlobalLoading()
   }
 
   const cargarOrdenesUMA = async () => {
@@ -770,6 +811,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     ⚠ Sin alistamiento → Resumen
                   </button>
                 )}
+                {enEtapaCarta && !cartaActual && (
+                  <button onClick={() => setTabDer('resumen')}
+                    className="w-full text-left text-[9px] font-bold text-yellow-300 bg-yellow-900/30 border border-yellow-700/40 rounded-lg px-2 py-1.5 hover:bg-yellow-900/50 transition-colors">
+                    ⚠ Sin carta negociación → Resumen
+                  </button>
+                )}
                 {enEtapaFactura && !facturaActual && (
                   <button onClick={() => setTabDer('resumen')}
                     className="w-full text-left text-[9px] font-bold text-yellow-300 bg-yellow-900/30 border border-yellow-700/40 rounded-lg px-2 py-1.5 hover:bg-yellow-900/50 transition-colors">
@@ -975,12 +1022,23 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
           <div className={`flex-1 overflow-y-auto p-4 ${tabDer === 'chats' ? 'hidden' : ''}`}>
 
-            {/* ── Barra: Placa · Alistamiento · Factura · Fecha entrega · Aprobación ── */}
-            {(enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || lead.etapa_venta === 'aprobado_matricula') && (
+            {/* ── Barra: Carta · Placa · Alistamiento · Factura · Fecha entrega · Aprobación ── */}
+            {(enEtapaCarta || enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || lead.etapa_venta === 'aprobado_matricula') && (
               <div className="mb-4 space-y-2">
 
                 {/* Fila de pills */}
                 <div className="flex flex-wrap gap-1.5">
+                  {enEtapaCarta && !editandoCarta && (
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
+                      cartaActual ? 'bg-teal-50 border-teal-200 text-teal-800' : 'bg-orange-50 border-orange-200 text-orange-700'
+                    }`}>
+                      {cartaActual ? `📝 Carta ${cartaActual}` : '⚠ Sin carta negociación'}
+                      {cartaActual && (
+                        <button onClick={() => setEditandoCarta(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
+                      )}
+                    </span>
+                  )}
+
                   {enEtapaConPlaca && !editandoPlaca && (
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
                       placaActual ? 'bg-teal-50 border-teal-200 text-teal-800' : 'bg-red-50 border-red-200 text-red-700'
@@ -1037,6 +1095,27 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     </span>
                   )}
                 </div>
+
+                {/* Formulario inline: Carta de negociación */}
+                {enEtapaCarta && (!cartaActual || editandoCarta) && (
+                  <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2">
+                    {!cartaActual && <p className="text-[11px] text-orange-600 mb-1.5">Ingresa el número de carta de negociación de esta venta.</p>}
+                    <div className="flex gap-2">
+                      <input value={cartaInput} onChange={e => setCartaInput(e.target.value.replace(/\D/g, ''))}
+                        onKeyDown={e => { if (e.key === 'Enter') guardarCarta() }}
+                        onBlur={guardarCarta}
+                        placeholder="Ej: 00123"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        className="flex-1 border border-orange-300 bg-white rounded-lg px-3 py-1.5 text-sm font-black tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      {savingCarta && <span className="text-xs text-orange-500 self-center">Guardando...</span>}
+                      {editandoCarta && !savingCarta && (
+                        <button onClick={() => { setEditandoCarta(false); setCartaInput(cartaActual) }}
+                          className="px-2.5 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200">✕</button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Formulario inline: Placa */}
                 {enEtapaConPlaca && (!placaActual || editandoPlaca) && (
@@ -1372,10 +1451,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     )}
                   </div>
 
-                  {(sinCelular || (enEtapaConPlaca && !placaActual) || (enEtapaAlistamiento && !tieneAlistamientoFinal) || (enEtapaFactura && !facturaActual)) && (
+                  {(sinCelular || (enEtapaCarta && !cartaActual) || (enEtapaConPlaca && !placaActual) || (enEtapaAlistamiento && !tieneAlistamientoFinal) || (enEtapaFactura && !facturaActual)) && (
                     <div className="space-y-2">
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Alertas</p>
                       {sinCelular && <button onClick={() => setTabDer('datos')} className="w-full text-left text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">⚠ Sin celular → Datos</button>}
+                      {enEtapaCarta && !cartaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">⚠ Sin carta negociación → Resumen</button>}
                       {enEtapaConPlaca && !placaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">⚠ Sin placa → Resumen</button>}
                       {enEtapaAlistamiento && !tieneAlistamientoFinal && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">⚠ Sin alistamiento → Resumen</button>}
                       {enEtapaFactura && !facturaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2.5">⚠ Sin factura → Resumen</button>}

@@ -31,6 +31,7 @@ export type LeadData = {
   tieneAlistamiento?: boolean
   estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'
   tienePlaca?: boolean
+  numero_carta_negociacion?: string | null
   numero_factura?: string | null
   fecha_entrega?: string | null
   creditoAprobadoEntidad?: string | null
