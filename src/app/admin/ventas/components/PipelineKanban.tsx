@@ -173,11 +173,12 @@ interface Props {
   tenantId: string
   usuarios?: { id: string; nombre: string }[]
   abrirClienteId?: string
+  tabsSlot?: HTMLElement | null
 }
 
 // ─── Componente principal ──────────────────────────────────────────────────────
 
-export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId }: Props) {
+export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId, tabsSlot }: Props) {
   const supabase = createClient()
   const { profile } = useAuth()
   const [leads, setLeads]             = useState<LeadData[]>(leadsIniciales)
@@ -396,8 +397,8 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   }, [])
 
   // ── Pipeline tab switcher (shared between mobile and desktop) ──
-  const PipelineTabs = (
-    <div className="flex items-center gap-0 mb-3 bg-white border border-gray-200 rounded-xl overflow-hidden w-fit shadow-sm">
+  const pipelineTabsButtons = (
+    <div className="flex items-center gap-0 bg-white border border-gray-200 rounded-xl overflow-hidden w-fit shadow-sm flex-shrink-0">
       {([
         { key: 'ventas',    label: 'Pipeline Ventas',     count: cntVentas,    color: '#2563EB' },
         { key: 'postventa', label: 'Pipeline Post-Venta', count: cntPostventa, color: '#4338CA' },
@@ -405,7 +406,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
         <button
           key={tab.key}
           onClick={() => setActivePipeline(tab.key)}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
             activePipeline === tab.key ? 'text-white' : 'text-gray-600 hover:bg-gray-50'
           }`}
           style={activePipeline === tab.key ? { background: tab.color } : {}}
@@ -420,6 +421,11 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
       ))}
     </div>
   )
+
+  // En escritorio, si el padre nos da un slot (junto a la barra de búsqueda), los
+  // botones se "teletransportan" ahí; si no hay slot (o en móvil) se quedan en su fila.
+  const PipelineTabs = <div className="mb-3">{pipelineTabsButtons}</div>
+  const desktopTabs = tabsSlot ? createPortal(pipelineTabsButtons, tabsSlot) : PipelineTabs
 
   // ── Mobile view ────────────────────────────────────────────────
   if (isMobile) {
@@ -531,7 +537,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
         />
       )}
 
-      {PipelineTabs}
+      {desktopTabs}
 
       {/* Post-Venta hint */}
       {activePipeline === 'postventa' && (

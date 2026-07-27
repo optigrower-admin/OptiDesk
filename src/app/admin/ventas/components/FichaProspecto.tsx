@@ -564,16 +564,40 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const etapaActual = ETAPA_MAP[etapa]
 
   const posventaSet = new Set<EtapaVenta>(['primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado'])
+  // Mismos colores de grupo que las columnas del Kanban (PIPELINE_VENTAS/POSTVENTA en PipelineKanban.tsx),
+  // en vez del color individual por etapa — así el desplegable no se ve con colores sueltos y dispares.
+  const ETAPA_GRUPO_COLOR: Record<EtapaVenta, string> = {
+    perdido:             '#DC2626',
+    nuevo_mensaje:       '#2563EB',
+    nuevo:               '#2563EB',
+    con_interes:         '#2563EB',
+    con_objecion:        '#2563EB',
+    demo:                '#6D28D9',
+    seguimiento:         '#7C3AED',
+    buscando_credito:    '#7C3AED',
+    en_proceso_credito:  '#7C3AED',
+    negociacion:         '#D97706',
+    ganado:              '#16A34A',
+    aprobado_matricula:  '#D97706',
+    en_matricula:        '#D97706',
+    alistamiento:        '#D97706',
+    espera_entrega:      '#D97706',
+    entregada:           '#15803D',
+    primera_revision:    '#4338CA',
+    segunda_revision:    '#4338CA',
+    tercera_revision:    '#4338CA',
+    proceso_finalizado:  '#4338CA',
+  }
   const gruposEtapa = (
     <>
       <optgroup label="── Etapas de Ventas ──">
         {ETAPAS.filter(e => !posventaSet.has(e.id)).map(e => (
-          <option key={e.id} value={e.id} style={{ background: e.color, color: '#fff' }}>{e.label}</option>
+          <option key={e.id} value={e.id} style={{ background: ETAPA_GRUPO_COLOR[e.id], color: '#fff' }}>{e.label}</option>
         ))}
       </optgroup>
       <optgroup label="── Post-Venta ──">
         {ETAPAS.filter(e => posventaSet.has(e.id)).map(e => (
-          <option key={e.id} value={e.id} style={{ background: e.color, color: '#fff' }}>{e.label}</option>
+          <option key={e.id} value={e.id} style={{ background: ETAPA_GRUPO_COLOR[e.id], color: '#fff' }}>{e.label}</option>
         ))}
       </optgroup>
     </>

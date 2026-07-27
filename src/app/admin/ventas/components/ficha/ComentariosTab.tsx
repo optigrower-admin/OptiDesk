@@ -73,13 +73,13 @@ export default function ComentariosTab({ clienteId, tenantId, usuarioId }: Props
         <p className="text-sm text-gray-400 text-center py-3">Sin comentarios aún</p>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {comentarios.map(c => (
-          <div key={c.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
-            <p className="text-sm text-gray-900 whitespace-pre-wrap leading-relaxed">{c.texto}</p>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-              <span className="text-xs font-semibold text-gray-500">{c.usuarios?.nombre ?? 'Usuario'}</span>
-              <span className="text-xs text-gray-400">{formatDateHour(c.created_at)}</span>
+          <div key={c.id} className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm">
+            <p className="text-sm text-gray-900 whitespace-pre-wrap leading-snug">{c.texto}</p>
+            <div className="flex items-center justify-between mt-1 pt-1 border-t border-gray-100">
+              <span className="text-[11px] font-semibold text-gray-500">{c.usuarios?.nombre ?? 'Usuario'}</span>
+              <span className="text-[11px] text-gray-400">{formatDateHour(c.created_at)}</span>
             </div>
           </div>
         ))}

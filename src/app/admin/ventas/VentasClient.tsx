@@ -198,6 +198,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [usuariosFiltro, setUsuariosFiltro] = useState<Set<string>>(new Set())
   const [abrirClienteId, setAbrirClienteId] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
+  const [pipelineTabsSlot, setPipelineTabsSlot] = useState<HTMLDivElement | null>(null)
   const [whatsappOpen, setWhatsappOpen] = useState(false)
   const [idsExtraSearch, setIdsExtraSearch] = useState<Set<string>>(new Set())
   const [buscandoExtra, setBuscandoExtra] = useState(false)
@@ -375,20 +376,23 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       {/* Buscador */}
       {tab !== 'bandeja' && (
         <div className="mb-4">
-          <div className="relative max-w-sm">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-            <input
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-              placeholder="Nombre, cédula, celular, placa, correo, comentarios, recordatorios..."
-              className="w-full pl-8 pr-8 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            />
-            {busqueda && (
-              <button onClick={() => setBusqueda('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">
-                ×
-              </button>
-            )}
+          <div className="flex items-center gap-3">
+            <div className="relative max-w-sm flex-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+              <input
+                value={busqueda}
+                onChange={e => setBusqueda(e.target.value)}
+                placeholder="Nombre, cédula, celular, placa, correo, comentarios, recordatorios..."
+                className="w-full pl-8 pr-8 py-2 border-2 border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              />
+              {busqueda && (
+                <button onClick={() => setBusqueda('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none">
+                  ×
+                </button>
+              )}
+            </div>
+            {tab === 'kanban' && <div ref={setPipelineTabsSlot} className="flex-shrink-0" />}
           </div>
           {busqueda.trim() && (
             <p className="text-xs text-gray-500 mt-1.5 ml-1">
@@ -404,7 +408,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
 
       {/* Content */}
       {tab === 'kanban' && (
-        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} />
+        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} tabsSlot={pipelineTabsSlot} />
       )}
       {tab === 'bandeja' && (
         <VistaBandeja leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} />
