@@ -193,6 +193,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [nombreNegocio, setNombreNegocio] = useState<string | null>(null)
   const [openGroups, setOpenGroups]     = useState<Record<string, boolean>>({ 'serv-tec': true, 'ventas': false, 'mensajes': false, 'comentarios': false })
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  useEffect(() => {
+    if (localStorage.getItem('od_sidebar_collapsed') === '1') setSidebarCollapsed(true)
+  }, [])
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('od_sidebar_collapsed', next ? '1' : '0')
+      return next
+    })
+  }
 
   // ── Notificaciones ───────────────────────────────────────────────────────
   const [unreadTotal, setUnreadTotal]   = useState(0)
@@ -510,22 +523,36 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const totalAlertasMobile = unreadTotal + nuevosComentarios + recordatoriosVencidos
 
-  const sidebarContent = (
+  const sidebarContent = (isDesktop: boolean) => (
     <>
         {/* Logo */}
         <div className="p-4 border-b">
-          <div className="flex items-center gap-2">
-            {logoUrl ? (
-              <img src={logoUrl} alt="Logo" className="w-8 h-8 rounded-lg object-contain bg-gray-50" onError={() => setLogoUrl(null)} />
-            ) : (
-              <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
-                <span className="text-white font-bold text-xs">OD</span>
+          <div className="flex items-center gap-2 justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo" className="w-8 h-8 rounded-lg object-contain bg-gray-50 flex-shrink-0" onError={() => setLogoUrl(null)} />
+              ) : (
+                <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <span className="text-white font-bold text-xs">OD</span>
+                </div>
+              )}
+              <div className="min-w-0">
+                <span className="font-bold text-gray-900 text-sm truncate block">{nombreNegocio || 'OptiDesk'}</span>
+                <span className="text-xs text-gray-400 font-medium">v1.5</span>
               </div>
-            )}
-            <div className="min-w-0">
-              <span className="font-bold text-gray-900 text-sm truncate block">{nombreNegocio || 'OptiDesk'}</span>
-              <span className="text-xs text-gray-400 font-medium">v1.5</span>
             </div>
+            {isDesktop && (
+              <button
+                onClick={toggleSidebar}
+                className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded flex-shrink-0"
+                aria-label="Ocultar menú"
+                title="Ocultar menú"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
@@ -721,15 +748,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="md:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileNavOpen(false)} />
           <aside className="relative w-64 max-w-[80vw] h-full bg-white flex flex-col flex-shrink-0 shadow-2xl animate-slide-in-left">
-            {sidebarContent}
+            {sidebarContent(false)}
           </aside>
         </div>
       )}
 
       <div className="flex flex-1 min-h-0">
-      <aside className="hidden md:flex print:hidden w-48 bg-white border-r border-gray-200 flex-col flex-shrink-0">
-        {sidebarContent}
-      </aside>
+      {!sidebarCollapsed && (
+        <aside className="hidden md:flex print:hidden w-48 bg-white border-r border-gray-200 flex-col flex-shrink-0">
+          {sidebarContent(true)}
+        </aside>
+      )}
+
+      {sidebarCollapsed && (
+        <button
+          onClick={toggleSidebar}
+          className="hidden md:flex print:hidden fixed top-3 left-3 z-40 p-2 bg-white border border-gray-200 rounded-lg shadow-md hover:bg-gray-50 text-gray-600"
+          aria-label="Mostrar menú"
+          title="Mostrar menú"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
 
       <main className="flex-1 overflow-y-auto relative">
         {children}

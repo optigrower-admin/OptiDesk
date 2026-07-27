@@ -33,7 +33,7 @@ const PIPELINE_VENTAS: GrupoConfig[] = [
   {
     grupoId: 'proceso', grupoLabel: 'En Proceso',
     color: '#7C3AED', bg: '#F5F3FF',
-    etapas: ['propuesta', 'seguimiento', 'buscando_credito', 'en_proceso_credito'],
+    etapas: ['seguimiento', 'buscando_credito', 'en_proceso_credito'],
   },
   {
     grupoId: 'vendida', grupoLabel: 'Vendida/Carta Aprobación',
@@ -68,7 +68,7 @@ const PIPELINE_POSTVENTA: GrupoConfig[] = [
 // Flujo de avance (omite demo y negociacion para "Siguiente etapa")
 const FLUJO_AVANCE: EtapaVenta[] = [
   'nuevo_mensaje', 'nuevo', 'con_interes', 'con_objecion',
-  'propuesta', 'seguimiento', 'buscando_credito', 'en_proceso_credito',
+  'seguimiento', 'buscando_credito', 'en_proceso_credito',
   'ganado', 'aprobado_matricula', 'en_matricula',
   'alistamiento', 'espera_entrega', 'entregada',
   'primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado',
