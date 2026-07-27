@@ -548,7 +548,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
       )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div className="flex gap-5 overflow-x-auto pb-4 h-[calc(100vh-250px)] items-start">
+        <div className="flex gap-5 overflow-x-auto pb-4 h-[calc(100vh-200px)] items-start">
           {pipeline.map(grupo => {
             const totalGrupo = grupo.etapas.reduce((s, e) => s + leadsEn(e).length, 0)
             return (
