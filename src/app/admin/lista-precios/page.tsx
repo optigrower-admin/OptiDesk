@@ -4,6 +4,11 @@ import { downloadFromR2 } from '@/lib/r2'
 import { redirect } from 'next/navigation'
 import ListaMotosDoc, { type MotoFila, type TenantInfo } from '@/components/ListaMotosDoc'
 
+// Redondea hacia arriba al múltiplo de 100 más cercano (ej: 20.158.450 -> 20.158.500).
+function redondearArribaCentena(n: number): number {
+  return Math.ceil(n / 100) * 100
+}
+
 async function toDataUri(key: string | null | undefined): Promise<string> {
   if (!key) return ''
   try {
@@ -89,10 +94,11 @@ export default async function ListaMotosPage() {
       colores:          s.colores      ?? '',
       fotoUri:          fotoMap[m.id]  ?? '',
       sinPapeles:       m.precio,
+      costoPapeles:     m.costo_documentos,
       conPapeles,
       pignorada,
-      tarjetaPapeles:   Math.round(conPapeles * (1 + recargo / 100)),
-      tarjetaPignorada: Math.round(pignorada  * (1 + recargo / 100)),
+      tarjetaPapeles:   redondearArribaCentena(conPapeles * (1 + recargo / 100)),
+      tarjetaPignorada: redondearArribaCentena(pignorada  * (1 + recargo / 100)),
     }
   })
 

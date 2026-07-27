@@ -15,6 +15,7 @@ export interface MotoFila {
   colores: string
   fotoUri: string
   sinPapeles: number
+  costoPapeles: number
   conPapeles: number
   pignorada: number
   tarjetaPapeles: number
@@ -59,8 +60,8 @@ function categorize(referencia: string): Categoria {
   return 'motos'
 }
 
-// foto | modelo | sin papeles | con papeles | pignorada | tarjeta papeles | tarjeta pignorada
-const COLS = '24px 1fr 72px 78px 78px 82px 86px'
+// foto | modelo | sin papeles | costo papeles | con papeles | pignorada | tarjeta papeles | tarjeta pignorada
+const COLS = '20px 1fr 74px 56px 74px 71px 74px 78px'
 const BLACK = '#0f172a'
 
 export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
@@ -129,12 +130,13 @@ export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
           )}
 
           {/* HEADER COLUMNAS */}
-          <div style={{ padding: '7px 14px 0' }}>
+          <div style={{ padding: '7px 10px 0' }}>
             <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 4, padding: '5px 6px', background: '#0052B4', borderRadius: 5, alignItems: 'center' }}>
               <div />
               <div style={{ color: '#fff', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase' }}>Modelo</div>
               {([
                 ['Sin papeles',                     'rgba(255,255,255,0.85)'],
+                ['Costo papeles',                   'rgba(255,255,255,0.85)'],
                 ['Con papeles',                     '#6ee7b7'],
                 ['Pignorada',                       '#93c5fd'],
                 [`Tarjeta/papeles +${recargo}%`,    '#fcd34d'],
@@ -146,7 +148,7 @@ export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
           </div>
 
           {/* FILAS — consolidadas, agrupadas por categoría con un divisor liviano */}
-          <div style={{ padding: '3px 14px 10px' }}>
+          <div style={{ padding: '3px 10px 10px' }}>
             {rows.length === 0 && (
               <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8', fontSize: 13 }}>
                 Sin motos activas. Ve a Config Ventas para activarlas.
@@ -172,9 +174,9 @@ export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
                     borderBottom: '1px solid #f1f5f9',
                   }}>
                     {/* Foto */}
-                    <div style={{ width: 22, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 20, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {m.fotoUri
-                        ? <img src={m.fotoUri} alt={m.referencia} style={{ maxWidth: 22, maxHeight: 18, objectFit: 'contain' }} />
+                        ? <img src={m.fotoUri} alt={m.referencia} style={{ maxWidth: 20, maxHeight: 18, objectFit: 'contain' }} />
                         : <span style={{ fontSize: 12 }}>🏍️</span>}
                     </div>
 
@@ -185,6 +187,7 @@ export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
 
                     {/* Precios — todos en negro; negrilla solo en Con papeles / Tarjeta+papeles / Tarjeta+pignorada */}
                     <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 400, color: BLACK }}>{cop(m.sinPapeles)}</div>
+                    <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 400, color: BLACK }}>{cop(m.costoPapeles)}</div>
                     <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: BLACK, background: '#f0fdf4', borderRadius: 3, padding: '1.5px 5px' }}>{cop(m.conPapeles)}</div>
                     <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 400, color: BLACK, background: '#eff6ff', borderRadius: 3, padding: '1.5px 5px' }}>{cop(m.pignorada)}</div>
                     <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: BLACK, background: '#fffbeb', borderRadius: 3, padding: '1.5px 5px' }}>{cop(m.tarjetaPapeles)}</div>
