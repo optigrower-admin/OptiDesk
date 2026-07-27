@@ -60,7 +60,8 @@ function categorize(referencia: string): Categoria {
 }
 
 // foto | modelo | sin papeles | con papeles | pignorada | tarjeta papeles | tarjeta pignorada
-const COLS = '20px 1fr 62px 66px 66px 70px 72px'
+const COLS = '24px 1fr 72px 78px 78px 82px 86px'
+const BLACK = '#0f172a'
 
 export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
   const { nombre, logoUri, tagline, tel1, tel2, email, web, whatsapp, recargo } = tenant
@@ -73,7 +74,7 @@ export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
     <>
       <style>{`
         @media print {
-          @page { margin: 8mm 8mm; size: letter portrait; }
+          @page { margin: 5mm 8mm; size: letter portrait; }
           body { margin: 0 !important; }
           .no-print { display: none !important; }
           .ld-row, .ld-divider { page-break-inside: avoid; break-inside: avoid; }
@@ -104,42 +105,42 @@ export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
           {/* ENCABEZADO */}
           <div style={{ background: 'linear-gradient(135deg,#0035a0 0%,#0052B4 60%,#0066cc 100%)', padding: '10px 14px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {logoUri && <img src={logoUri} alt="Logo" style={{ height: 26, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />}
+              {logoUri && <img src={logoUri} alt="Logo" style={{ height: 32, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />}
               <div>
-                <div style={{ color: '#fff', fontSize: 14, fontWeight: 900, textTransform: 'uppercase' }}>{nombre}</div>
-                {tagline && <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 7.5, letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 1 }}>{tagline}</div>}
+                <div style={{ color: '#fff', fontSize: 18, fontWeight: 900, textTransform: 'uppercase' }}>{nombre}</div>
+                {tagline && <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 9.5, letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 1 }}>{tagline}</div>}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ color: '#fff', fontSize: 13, fontWeight: 900 }}>LISTA DE PRECIOS</div>
-              <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 7.5, marginTop: 2 }}>{fecha} · Recargo tarjeta: {recargo}%</div>
-              <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 6.5, marginTop: 1 }}>Precios sujetos a cambios sin previo aviso</div>
+              <div style={{ color: '#fff', fontSize: 18, fontWeight: 900 }}>LISTA DE PRECIOS</div>
+              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 9.5, marginTop: 2 }}>{fecha} · Recargo tarjeta: {recargo}%</div>
+              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 8, marginTop: 1 }}>Precios sujetos a cambios sin previo aviso</div>
             </div>
           </div>
 
           {/* Barra contacto */}
           {(tel1 || email || web || whatsapp) && (
-            <div style={{ background: '#003087', display: 'flex', gap: 14, padding: '4px 14px', flexWrap: 'wrap' }}>
-              {tel1     && <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 7 }}>📞 {tel1}{tel2 ? ` / ${tel2}` : ''}</span>}
-              {email    && <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 7 }}>✉️ {email}</span>}
-              {web      && <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 7 }}>🌐 {web}</span>}
-              {whatsapp && <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 7 }}>📱 {whatsapp}</span>}
+            <div style={{ background: '#003087', display: 'flex', gap: 14, padding: '5px 14px', flexWrap: 'wrap' }}>
+              {tel1     && <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 8.5 }}>📞 {tel1}{tel2 ? ` / ${tel2}` : ''}</span>}
+              {email    && <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 8.5 }}>✉️ {email}</span>}
+              {web      && <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 8.5 }}>🌐 {web}</span>}
+              {whatsapp && <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 8.5 }}>📱 {whatsapp}</span>}
             </div>
           )}
 
           {/* HEADER COLUMNAS */}
-          <div style={{ padding: '6px 14px 0' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 3, padding: '4px 6px', background: '#0052B4', borderRadius: 5, alignItems: 'center' }}>
+          <div style={{ padding: '7px 14px 0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 4, padding: '5px 6px', background: '#0052B4', borderRadius: 5, alignItems: 'center' }}>
               <div />
-              <div style={{ color: '#fff', fontSize: 8.5, fontWeight: 700, textTransform: 'uppercase' }}>Modelo</div>
+              <div style={{ color: '#fff', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase' }}>Modelo</div>
               {([
-                ['Sin papeles',                     'rgba(255,255,255,0.8)'],
+                ['Sin papeles',                     'rgba(255,255,255,0.85)'],
                 ['Con papeles',                     '#6ee7b7'],
                 ['Pignorada',                       '#93c5fd'],
                 [`Tarjeta/papeles +${recargo}%`,    '#fcd34d'],
                 [`Tarjeta/pignorada +${recargo}%`,  '#fdba74'],
               ] as [string, string][]).map(([label, color]) => (
-                <div key={label} style={{ color, fontSize: 6.5, fontWeight: 700, textTransform: 'uppercase', textAlign: 'right', lineHeight: 1.15 }}>{label}</div>
+                <div key={label} style={{ color, fontSize: 8, fontWeight: 700, textTransform: 'uppercase', textAlign: 'right', lineHeight: 1.2 }}>{label}</div>
               ))}
             </div>
           </div>
@@ -156,9 +157,9 @@ export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
               <div key={g.key}>
                 {grupos.length > 1 && (
                   <div className="ld-divider" style={{
-                    background: '#e2e8f0', color: '#0f172a', fontSize: 8, fontWeight: 800,
-                    textTransform: 'uppercase', letterSpacing: 0.5, padding: '2.5px 6px',
-                    marginTop: 6, borderRadius: 3,
+                    background: '#e2e8f0', color: '#0f172a', fontSize: 10, fontWeight: 800,
+                    textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 6px',
+                    marginTop: 4, borderRadius: 3,
                   }}>
                     {CATEGORIA_LABEL[g.key]} <span style={{ color: '#64748b', fontWeight: 600 }}>({g.items.length})</span>
                   </div>
@@ -166,28 +167,28 @@ export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
                 {g.items.map((m, idx) => (
                   <div key={m.id} className="ld-row" style={{
                     display: 'grid', gridTemplateColumns: COLS,
-                    gap: 3, alignItems: 'center', padding: '2px 6px',
+                    gap: 4, alignItems: 'center', padding: '2px 6px',
                     background: idx % 2 === 0 ? '#f8fafc' : '#fff',
                     borderBottom: '1px solid #f1f5f9',
                   }}>
                     {/* Foto */}
-                    <div style={{ width: 18, height: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 22, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {m.fotoUri
-                        ? <img src={m.fotoUri} alt={m.referencia} style={{ maxWidth: 18, maxHeight: 15, objectFit: 'contain' }} />
-                        : <span style={{ fontSize: 10 }}>🏍️</span>}
+                        ? <img src={m.fotoUri} alt={m.referencia} style={{ maxWidth: 22, maxHeight: 18, objectFit: 'contain' }} />
+                        : <span style={{ fontSize: 12 }}>🏍️</span>}
                     </div>
 
                     {/* Nombre (una sola línea) */}
-                    <div style={{ fontSize: 9, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, color: BLACK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {m.referencia}
                     </div>
 
-                    {/* Precios */}
-                    <div style={{ textAlign: 'right', fontSize: 8.5, fontWeight: 700, color: '#374151' }}>{cop(m.sinPapeles)}</div>
-                    <div style={{ textAlign: 'right', fontSize: 8.5, fontWeight: 800, color: '#059669', background: '#f0fdf4', borderRadius: 3, padding: '1px 4px' }}>{cop(m.conPapeles)}</div>
-                    <div style={{ textAlign: 'right', fontSize: 8.5, fontWeight: 800, color: '#1d4ed8', background: '#eff6ff', borderRadius: 3, padding: '1px 4px' }}>{cop(m.pignorada)}</div>
-                    <div style={{ textAlign: 'right', fontSize: 8.5, fontWeight: 800, color: '#b45309', background: '#fffbeb', borderRadius: 3, padding: '1px 4px' }}>{cop(m.tarjetaPapeles)}</div>
-                    <div style={{ textAlign: 'right', fontSize: 8.5, fontWeight: 800, color: '#c2410c', background: '#fff7ed', borderRadius: 3, padding: '1px 4px' }}>{cop(m.tarjetaPignorada)}</div>
+                    {/* Precios — todos en negro; negrilla solo en Con papeles / Tarjeta+papeles / Tarjeta+pignorada */}
+                    <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 400, color: BLACK }}>{cop(m.sinPapeles)}</div>
+                    <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: BLACK, background: '#f0fdf4', borderRadius: 3, padding: '1.5px 5px' }}>{cop(m.conPapeles)}</div>
+                    <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 400, color: BLACK, background: '#eff6ff', borderRadius: 3, padding: '1.5px 5px' }}>{cop(m.pignorada)}</div>
+                    <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: BLACK, background: '#fffbeb', borderRadius: 3, padding: '1.5px 5px' }}>{cop(m.tarjetaPapeles)}</div>
+                    <div style={{ textAlign: 'right', fontSize: 11, fontWeight: 800, color: BLACK, background: '#fff7ed', borderRadius: 3, padding: '1.5px 5px' }}>{cop(m.tarjetaPignorada)}</div>
                   </div>
                 ))}
               </div>
@@ -195,13 +196,13 @@ export default function ListaMotosDoc({ rows, tenant, fecha }: Props) {
           </div>
 
           {/* PIE */}
-          <div style={{ background: '#003087', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-            <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 7, fontStyle: 'italic', lineHeight: 1.4 }}>
+          <div style={{ background: '#003087', padding: '9px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 8.5, fontStyle: 'italic', lineHeight: 1.45 }}>
               * Precios con papeles incluyen SOAT, matrícula e impuestos.<br />
               * Pignorada aplica únicamente en compras financiadas a crédito.<br />
               * Recargo del {recargo}% aplica para pagos con tarjeta débito o crédito.
             </div>
-            {logoUri && <img src={logoUri} alt="Logo" style={{ height: 18, objectFit: 'contain', filter: 'brightness(0) invert(1)', opacity: 0.75 }} />}
+            {logoUri && <img src={logoUri} alt="Logo" style={{ height: 20, objectFit: 'contain', filter: 'brightness(0) invert(1)', opacity: 0.75 }} />}
           </div>
 
         </div>
