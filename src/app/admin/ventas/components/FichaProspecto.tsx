@@ -593,12 +593,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     <>
       <optgroup label="── Etapas de Ventas ──">
         {ETAPAS.filter(e => !posventaSet.has(e.id)).map(e => (
-          <option key={e.id} value={e.id} style={{ color: '#374151' }}>{ETAPA_GRUPO_DOT[e.id]} {e.label}</option>
+          <option key={e.id} value={e.id} style={{ background: '#fff', color: '#374151' }}>{ETAPA_GRUPO_DOT[e.id]} {e.label}</option>
         ))}
       </optgroup>
       <optgroup label="── Post-Venta ──">
         {ETAPAS.filter(e => posventaSet.has(e.id)).map(e => (
-          <option key={e.id} value={e.id} style={{ color: '#374151' }}>{ETAPA_GRUPO_DOT[e.id]} {e.label}</option>
+          <option key={e.id} value={e.id} style={{ background: '#fff', color: '#374151' }}>{ETAPA_GRUPO_DOT[e.id]} {e.label}</option>
         ))}
       </optgroup>
     </>
