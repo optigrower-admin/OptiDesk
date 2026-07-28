@@ -227,6 +227,7 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<Vista>('lista')
   const [filtro, setFiltro] = useState<Filtro>('pendientes')
+  const [soloMias, setSoloMias] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -282,7 +283,7 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
     // 3. Recordatorios y pasos en paralelo
     const [{ data: recs }, { data: pasos }] = await Promise.all([
       supabase.from('recordatorios')
-        .select('id, nota, fecha_recordatorio, completado, cliente_id')
+        .select('id, nota, fecha_recordatorio, completado, cliente_id, asignado_a')
         .in('cliente_id', ids)
         .order('fecha_recordatorio', { ascending: true }),
       supabase.from('clientes_pasos')
@@ -291,8 +292,12 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
         .order('orden', { ascending: true }),
     ])
 
+    // El asesor de un recordatorio es quien lo tiene asignado a ÉL (recordatorios.asignado_a) —
+    // no necesariamente el mismo asesor asignado al cliente (clientes.assigned_to), que puede
+    // ser otra persona. Esto es lo que determina a quién le llega el resumen diario.
     const actsRec: Actividad[] = (recs ?? []).map(r => {
       const c = clienteMap.get(r.cliente_id as string)
+      const asignadoRecId = (r.asignado_a as string | null) ?? c?.assigned_to ?? null
       return {
         id: `rec-${r.id}`,
         tipo: 'recordatorio',
@@ -306,8 +311,8 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
         clientePlaca: c?.placa ?? null,
         clienteFactura: c?.numero_factura ?? null,
         clienteMoto: c?.moto ?? null,
-        asignadoId: c?.assigned_to ?? null,
-        asignadoNombre: c?.assigned_to ? (usuarioMap.get(c.assigned_to) ?? null) : null,
+        asignadoId: asignadoRecId,
+        asignadoNombre: asignadoRecId ? (usuarioMap.get(asignadoRecId) ?? null) : null,
       }
     })
 
@@ -375,6 +380,7 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
     let lista = actividades
     if (filtro === 'pendientes') lista = lista.filter(a => !a.completado)
     if (filtro === 'completadas') lista = lista.filter(a => a.completado)
+    if (soloMias) lista = lista.filter(a => a.asignadoId === usuarioId)
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase().trim()
       lista = lista.filter(a =>
@@ -388,7 +394,7 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
       )
     }
     return lista
-  }, [actividades, filtro, busqueda])
+  }, [actividades, filtro, soloMias, usuarioId, busqueda])
 
   // ─── Lista agrupada ────────────────────────────────────────────────────────
   const grupos = useMemo(() => {
@@ -513,6 +519,17 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
             </button>
           ))}
         </div>
+
+        <button
+          onClick={() => setSoloMias(v => !v)}
+          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+            soloMias
+              ? 'bg-purple-700 text-white border-purple-700'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400'
+          }`}
+        >
+          {soloMias ? '👤 Solo las mías' : '👥 Asesor: Todos'}
+        </button>
       </div>
 
       {loading && (
