@@ -448,10 +448,10 @@ export async function importarVentaRepuestos(supabase: SupabaseClient, tenantId:
 }
 
 const TIPOS_DOCUMENTO = ['CC', 'TI', 'CE', 'PASAPORTE', 'NIT', 'RC', 'PEP']
-const ETAPAS_VENTA = ['nuevo', 'con_interes', 'con_objecion', 'seguimiento', 'buscando_credito', 'calificado', 'demo', 'negociacion', 'ganado', 'en_matricula', 'alistamiento', 'espera_entrega', 'entregada', 'perdido']
+const ETAPAS_VENTA = ['nuevo', 'con_interes', 'con_objecion', 'seguimiento', 'buscando_credito', 'calificado', 'ganado', 'en_matricula', 'alistamiento', 'espera_entrega', 'entregada', 'perdido']
 const ETAPA_LABEL: Record<string, string> = {
   nuevo: 'Nuevo', con_interes: 'Con Interés', con_objecion: 'Con objeción', seguimiento: 'Seguimiento', buscando_credito: 'Buscando Crédito',
-  calificado: 'Calificado', demo: 'Demo', negociacion: 'Negociación',
+  calificado: 'Calificado',
   ganado: 'Ganado', en_matricula: 'En matrícula', alistamiento: 'Alistamiento', espera_entrega: 'Espera de entrega',
   entregada: 'Entregada', perdido: 'Perdido',
 }

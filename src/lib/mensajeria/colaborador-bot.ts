@@ -180,9 +180,9 @@ async function clientesPorEtapa(
 
   const LABELS: Record<string, string> = {
     nuevo_mensaje: 'Nuevo Contacto', nuevo: 'Nuevo', con_interes: 'Con Interés',
-    con_objecion: 'Con Objeción', demo: 'Cita',
+    con_objecion: 'Con Objeción',
     seguimiento: 'Seguimiento', buscando_credito: 'Buscando Crédito',
-    en_proceso_credito: 'En Proceso Crédito', negociacion: 'Calificado',
+    en_proceso_credito: 'En Proceso Crédito',
     ganado: 'Vendida/Carta Aprobación', aprobado_matricula: 'Aprobado Matrícula',
     en_matricula: 'En Matrícula', alistamiento: 'Alistamiento',
     espera_entrega: 'Espera Entrega', entregada: 'Entregada',
@@ -258,8 +258,8 @@ async function buscarCliente(
 
   const ETAPA: Record<string, string> = {
     nuevo_mensaje: 'Nuevo Contacto', nuevo: 'Nuevo', con_interes: 'Con Interés',
-    con_objecion: 'Con Objeción', demo: 'Cita',
-    seguimiento: 'Seguimiento', buscando_credito: 'Crédito', negociacion: 'Calificado',
+    con_objecion: 'Con Objeción',
+    seguimiento: 'Seguimiento', buscando_credito: 'Crédito',
     ganado: 'Vendida/Carta Aprobación', entregada: 'Entregada',
   }
 

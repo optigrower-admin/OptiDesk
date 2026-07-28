@@ -46,7 +46,7 @@ async function generarRecordatoriosAutomaticos(supabase: ReturnType<typeof creat
         .select('id, assigned_to')
         .eq('tenant_id', regla.tenant_id)
         .eq('en_seguimiento_ventas', true)
-        .in('etapa_venta', ['nuevo', 'con_interes', 'con_objecion', 'seguimiento', 'buscando_credito', 'calificado', 'demo', 'negociacion'])
+        .in('etapa_venta', ['nuevo', 'con_interes', 'con_objecion', 'seguimiento', 'buscando_credito', 'calificado'])
         .lte('updated_at', umbralFecha)
       candidatos = data ?? []
     }

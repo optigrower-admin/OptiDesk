@@ -13,7 +13,24 @@ interface Props {
 }
 
 type MotoCatalogo = { id: string; referencia: string; precio: number; costo_documentos: number; costo_prenda: number }
-type Seleccion = { id: string; disponibilidad: 'inventario' | 'pedir'; motos_catalogo: MotoCatalogo | null }
+type Seleccion = {
+  id: string
+  disponibilidad: 'inventario' | 'pedir'
+  con_papeles: boolean
+  con_tarjeta: boolean
+  pignorada: boolean
+  motos_catalogo: MotoCatalogo | null
+}
+
+function calcularPrecioMoto(m: MotoCatalogo, conPapeles: boolean, conTarjeta: boolean, pignorada: boolean, recargo: number): number {
+  const base = pignorada
+    ? m.precio + m.costo_documentos + m.costo_prenda
+    : conPapeles
+      ? m.precio + m.costo_documentos
+      : m.precio
+  if (!conTarjeta) return base
+  return Math.ceil((base * (1 + recargo / 100)) / 100) * 100
+}
 type Recordatorio = { id: string; nota: string | null; fecha_recordatorio: string; completado: boolean }
 type Paso = { id: string; descripcion: string; completado: boolean; orden: number }
 type OrdenResumen = { id: string; numero: string | null; created_at: string; estado: string; descripcion_problema: string | null }
@@ -95,6 +112,7 @@ function RecordatorioItem({ r, onToggle, confirmId, onConfirm, onCancelConfirm }
 export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAccionChange, onCreditoChange }: Props) {
   const supabase = createClient()
   const [seleccion, setSeleccion] = useState<Seleccion[]>([])
+  const [recargo, setRecargo]     = useState(5)
   const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([])
   const [pasos, setPasos] = useState<Paso[]>([])
   const [ordenesST, setOrdenesST] = useState<OrdenResumen[]>([])
@@ -104,9 +122,9 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
   const [confirmUncheckRecId, setConfirmUncheckRecId] = useState<string | null>(null)
 
   const cargar = useCallback(async () => {
-    const [{ data: sel }, { data: recs }, { data: pasosData }, { data: stData }, { data: repData }] = await Promise.all([
+    const [{ data: sel }, { data: recs }, { data: pasosData }, { data: stData }, { data: repData }, { data: tenant }] = await Promise.all([
       supabase.from('clientes_motos_interes')
-        .select('id, disponibilidad, motos_catalogo(id, referencia, precio, costo_documentos, costo_prenda)')
+        .select('id, disponibilidad, con_papeles, con_tarjeta, pignorada, motos_catalogo(id, referencia, precio, costo_documentos, costo_prenda)')
         .eq('cliente_id', clienteId),
       supabase.from('recordatorios')
         .select('id, nota, fecha_recordatorio, completado')
@@ -126,17 +144,19 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
         .eq('cliente_id', clienteId)
         .eq('tipo_orden', 'venta_repuestos')
         .order('created_at', { ascending: false }),
+      supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tenantId).single(),
     ])
     setSeleccion((sel ?? []).map(s => ({
       ...s,
       motos_catalogo: Array.isArray(s.motos_catalogo) ? s.motos_catalogo[0] ?? null : s.motos_catalogo,
     })) as Seleccion[])
+    setRecargo(Number(tenant?.recargo_tarjeta_porcentaje ?? 5))
     setRecordatorios((recs ?? []) as Recordatorio[])
     setPasos((pasosData ?? []) as Paso[])
     setOrdenesST((stData ?? []) as OrdenResumen[])
     setOrdenesRep((repData ?? []) as OrdenResumen[])
     setLoading(false)
-  }, [clienteId])
+  }, [clienteId, tenantId])
 
   useEffect(() => { cargar() }, [cargar])
 
@@ -208,20 +228,26 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
         )}
         {seleccion.map(s => {
           const m = s.motos_catalogo
-          const precioConDocs = (m?.precio ?? 0) + (m?.costo_documentos ?? 0)
+          const precio = m ? calcularPrecioMoto(m, s.con_papeles, s.con_tarjeta, s.pignorada, recargo) : 0
           return (
             <div key={s.id} className="border border-gray-200 rounded-xl p-2.5 mb-1.5">
-              <p className="font-semibold text-sm text-gray-900">{m?.referencia ?? 'Moto eliminada del catálogo'}</p>
+              <p className="font-semibold text-sm text-gray-900 flex items-center gap-1.5">
+                {s.disponibilidad === 'pedir' && <span title="Hay que pedirla">🚚</span>}
+                {m?.referencia ?? 'Moto eliminada del catálogo'}
+              </p>
               {m && (
-                <p className="text-xs text-emerald-700 font-semibold">
-                  {formatCOP(precioConDocs)} con documentos
-                </p>
+                <p className="text-sm text-emerald-700 font-bold">{formatCOP(precio)}</p>
               )}
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium inline-block mt-1 ${
-                s.disponibilidad === 'inventario' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
-              }`}>
-                {s.disponibilidad === 'inventario' ? 'En inventario' : 'Hay que pedirla'}
-              </span>
+              <div className="flex flex-wrap items-center gap-1 mt-1">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  s.disponibilidad === 'inventario' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {s.disponibilidad === 'inventario' ? '✅ En inventario' : '🚚 Hay que pedirla'}
+                </span>
+                <span className="text-[11px] text-gray-400">
+                  {s.pignorada ? 'Pignorada' : s.con_papeles ? 'Con papeles' : 'Sin papeles'} · {s.con_tarjeta ? 'con tarjeta' : 'sin tarjeta'}
+                </span>
+              </div>
             </div>
           )
         })}

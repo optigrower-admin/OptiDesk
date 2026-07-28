@@ -2,9 +2,9 @@ export type EtapaVenta =
   // LEADS
   | 'nuevo_mensaje' | 'nuevo' | 'con_interes' | 'con_objecion'
   // PROSPECTOS
-  | 'demo' | 'seguimiento' | 'buscando_credito' | 'en_proceso_credito'
+  | 'seguimiento' | 'buscando_credito' | 'en_proceso_credito'
   // CIERRE
-  | 'negociacion' | 'ganado'
+  | 'ganado'
   // PROCESO INTERNO
   | 'aprobado_matricula' | 'en_matricula' | 'alistamiento' | 'espera_entrega' | 'entregada'
   // POSVENTA
@@ -24,16 +24,10 @@ export const ETAPAS: { id: EtapaVenta; label: string; color: string; bg: string;
   { id: 'con_interes',        label: 'Con Interés',               color: '#0891B2', bg: 'bg-cyan-50',     border: 'border-blue-500'    },
   { id: 'con_objecion',       label: 'Con objeción',              color: '#DC2626', bg: 'bg-red-50',      border: 'border-blue-500'    },
 
-  // ── Grupo Cita ───────────────────────────────────────────────────────────────── borde violeta
-  { id: 'demo',               label: 'Cita',                      color: '#6D28D9', bg: 'bg-violet-100',  border: 'border-violet-500'  },
-
   // ── Grupo Seguimiento ────────────────────────────────────────────────────────── borde púrpura
   { id: 'seguimiento',        label: 'Seguimiento',               color: '#7E22CE', bg: 'bg-purple-50',   border: 'border-purple-600'  },
   { id: 'buscando_credito',   label: 'Buscando Crédito',          color: '#6B21A8', bg: 'bg-purple-50',   border: 'border-purple-600'  },
   { id: 'en_proceso_credito', label: 'En Proceso de Crédito',     color: '#581C87', bg: 'bg-purple-100',  border: 'border-purple-600'  },
-
-  // ── Calificado (solo) ────────────────────────────────────────────────────────── borde ámbar
-  { id: 'negociacion',        label: 'Calificado',                color: '#D97706', bg: 'bg-amber-50',    border: 'border-amber-500'   },
 
   // ── Grupo Proceso de venta ───────────────────────────────────────────────────── borde verde
   { id: 'ganado',             label: 'Vendida/Carta Aprobación',  color: '#16A34A', bg: 'bg-green-50',    border: 'border-green-600'   },
@@ -56,8 +50,7 @@ export const ETAPA_MAP = Object.fromEntries(ETAPAS.map(e => [e.id, e])) as Recor
 
 export const ETAPAS_ACTIVAS: EtapaVenta[] = [
   'nuevo_mensaje', 'nuevo', 'con_interes', 'con_objecion',
-  'demo', 'seguimiento', 'buscando_credito', 'en_proceso_credito',
-  'negociacion',
+  'seguimiento', 'buscando_credito', 'en_proceso_credito',
 ]
 
 export const ETAPAS_POSVENTA: EtapaVenta[] = [
@@ -99,11 +92,9 @@ export const ETAPA_ORDEN: Record<EtapaVenta, number> = {
   nuevo:               0,
   con_interes:         1,
   con_objecion:        2,
-  demo:                4,
   seguimiento:         5,
   buscando_credito:    6,
   en_proceso_credito:  7,
-  negociacion:         8,
   ganado:              9,
   aprobado_matricula: 10,
   en_matricula:       11,

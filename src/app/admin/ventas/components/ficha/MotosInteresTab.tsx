@@ -10,28 +10,50 @@ interface Props {
 }
 
 type MotoCatalogo = { id: string; referencia: string; precio: number; costo_documentos: number; costo_prenda: number }
-type Seleccion = { id: string; moto_catalogo_id: string; disponibilidad: 'inventario' | 'pedir'; motos_catalogo: MotoCatalogo | null }
+type Seleccion = {
+  id: string
+  moto_catalogo_id: string
+  disponibilidad: 'inventario' | 'pedir'
+  con_papeles: boolean
+  con_tarjeta: boolean
+  pignorada: boolean
+  motos_catalogo: MotoCatalogo | null
+}
+
+function calcularPrecio(m: Pick<MotoCatalogo, 'precio' | 'costo_documentos' | 'costo_prenda'>, conPapeles: boolean, conTarjeta: boolean, pignorada: boolean, recargo: number): number {
+  // Pignorada siempre incluye papeles (no existe la combinación sin papeles).
+  const base = pignorada
+    ? m.precio + m.costo_documentos + m.costo_prenda
+    : conPapeles
+      ? m.precio + m.costo_documentos
+      : m.precio
+  if (!conTarjeta) return base
+  return Math.ceil((base * (1 + recargo / 100)) / 100) * 100
+}
 
 export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Props) {
   const supabase = createClient()
   const [catalogo, setCatalogo]     = useState<MotoCatalogo[]>([])
   const [seleccion, setSeleccion]   = useState<Seleccion[]>([])
   const [agregando, setAgregando]   = useState('')
+  const [recargo, setRecargo]       = useState(5)
   const [loading, setLoading]       = useState(true)
 
   const cargar = useCallback(async () => {
-    const [{ data: cat }, { data: sel }] = await Promise.all([
+    const [{ data: cat }, { data: sel }, { data: tenant }] = await Promise.all([
       supabase.from('motos_catalogo').select('id, referencia, precio, costo_documentos, costo_prenda')
         .eq('tenant_id', tenantId).eq('activa', true).order('orden'),
       supabase.from('clientes_motos_interes')
-        .select('id, moto_catalogo_id, disponibilidad, motos_catalogo(id, referencia, precio, costo_documentos, costo_prenda)')
+        .select('id, moto_catalogo_id, disponibilidad, con_papeles, con_tarjeta, pignorada, motos_catalogo(id, referencia, precio, costo_documentos, costo_prenda)')
         .eq('cliente_id', clienteId),
+      supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tenantId).single(),
     ])
     setCatalogo((cat ?? []) as MotoCatalogo[])
     setSeleccion((sel ?? []).map(s => ({
       ...s,
       motos_catalogo: Array.isArray(s.motos_catalogo) ? s.motos_catalogo[0] ?? null : s.motos_catalogo,
     })) as Seleccion[])
+    setRecargo(Number(tenant?.recargo_tarjeta_porcentaje ?? 5))
     setLoading(false)
   }, [clienteId, tenantId])
 
@@ -41,11 +63,11 @@ export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Prop
 
   async function sincronizarValorEstimado() {
     const { data: sel } = await supabase.from('clientes_motos_interes')
-      .select('motos_catalogo(precio, costo_documentos)')
+      .select('con_papeles, con_tarjeta, pignorada, motos_catalogo(precio, costo_documentos, costo_prenda)')
       .eq('cliente_id', clienteId)
     const total = (sel ?? []).reduce((acc, s) => {
       const m = Array.isArray(s.motos_catalogo) ? s.motos_catalogo[0] : s.motos_catalogo
-      return acc + (m ? m.precio + m.costo_documentos : 0)
+      return acc + (m ? calcularPrecio(m, s.con_papeles, s.con_tarjeta, s.pignorada, recargo) : 0)
     }, 0)
     await supabase.from('clientes').update({ valor_estimado_venta: total || null }).eq('id', clienteId)
   }
@@ -71,6 +93,12 @@ export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Prop
     cargar()
   }
 
+  async function cambiarOpcion(id: string, cambios: Partial<Pick<Seleccion, 'con_papeles' | 'con_tarjeta' | 'pignorada'>>) {
+    await supabase.from('clientes_motos_interes').update(cambios).eq('id', id)
+    await sincronizarValorEstimado()
+    cargar()
+  }
+
   if (loading) return <p className="text-sm text-gray-400 text-center py-8">Cargando...</p>
 
   return (
@@ -83,28 +111,61 @@ export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Prop
 
       {seleccion.map(s => {
         const m = s.motos_catalogo
-        const precioConDocs = (m?.precio ?? 0) + (m?.costo_documentos ?? 0)
+        const precio = m ? calcularPrecio(m, s.con_papeles, s.con_tarjeta, s.pignorada, recargo) : 0
         return (
           <div key={s.id} className="border border-gray-200 rounded-xl p-3">
             <div className="flex items-center justify-between gap-2">
-              <p className="font-semibold text-sm text-gray-900">{m?.referencia ?? 'Moto eliminada del catálogo'}</p>
-              <button onClick={() => quitar(s.id)} className="text-red-400 hover:text-red-600 text-xs">Quitar</button>
-            </div>
-            {m && (
-              <p className="text-xs text-emerald-700 font-semibold mt-0.5">
-                {formatCOP(precioConDocs)} con documentos
-                <span className="text-gray-400 font-normal"> · con prenda: {formatCOP(precioConDocs + m.costo_prenda)}</span>
+              <p className="font-semibold text-sm text-gray-900 flex items-center gap-1.5">
+                {s.disponibilidad === 'pedir' && <span title="Hay que pedirla">🚚</span>}
+                {m?.referencia ?? 'Moto eliminada del catálogo'}
               </p>
+              <button onClick={() => quitar(s.id)} className="text-red-400 hover:text-red-600 text-xs flex-shrink-0">Quitar</button>
+            </div>
+
+            {m && (
+              <p className="text-base text-emerald-700 font-bold mt-1">{formatCOP(precio)}</p>
             )}
-            <div className="flex gap-2 mt-2">
-              {(['inventario', 'pedir'] as const).map(opt => (
-                <button key={opt} onClick={() => cambiarDisponibilidad(s.id, opt)}
-                  className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
-                    s.disponibilidad === opt ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}>
-                  {opt === 'inventario' ? 'En inventario' : 'Hay que pedirla'}
-                </button>
-              ))}
+
+            {/* Disponibilidad — bien notorio */}
+            <div className="flex gap-1.5 mt-2">
+              <button onClick={() => cambiarDisponibilidad(s.id, 'inventario')}
+                className={`flex-1 text-xs px-2 py-1.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-1 ${
+                  s.disponibilidad === 'inventario' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}>
+                ✅ En inventario
+              </button>
+              <button onClick={() => cambiarDisponibilidad(s.id, 'pedir')}
+                className={`flex-1 text-xs px-2 py-1.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-1 ${
+                  s.disponibilidad === 'pedir' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}>
+                🚚 Hay que pedirla
+              </button>
+            </div>
+
+            {/* Papeles / Tarjeta / Pignorada — compacto */}
+            <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100">
+              <button
+                disabled={s.pignorada}
+                onClick={() => cambiarOpcion(s.id, { con_papeles: !s.con_papeles })}
+                className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  s.con_papeles ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                }`}>
+                {s.con_papeles ? 'Con papeles' : 'Sin papeles'}
+              </button>
+              <button
+                onClick={() => cambiarOpcion(s.id, { con_tarjeta: !s.con_tarjeta })}
+                className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors ${
+                  s.con_tarjeta ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'
+                }`}>
+                {s.con_tarjeta ? 'Con tarjeta' : 'Sin tarjeta'}
+              </button>
+              <button
+                onClick={() => cambiarOpcion(s.id, s.pignorada ? { pignorada: false } : { pignorada: true, con_papeles: true })}
+                className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors ${
+                  s.pignorada ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
+                }`}>
+                {s.pignorada ? 'Pignorada' : 'No pignorada'}
+              </button>
             </div>
           </div>
         )

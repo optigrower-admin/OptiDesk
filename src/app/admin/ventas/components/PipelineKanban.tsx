@@ -65,7 +65,7 @@ const PIPELINE_POSTVENTA: GrupoConfig[] = [
   },
 ]
 
-// Flujo de avance (omite demo y negociacion para "Siguiente etapa")
+// Flujo de avance para "Siguiente etapa"
 const FLUJO_AVANCE: EtapaVenta[] = [
   'nuevo_mensaje', 'nuevo', 'con_interes', 'con_objecion',
   'seguimiento', 'buscando_credito', 'en_proceso_credito',
