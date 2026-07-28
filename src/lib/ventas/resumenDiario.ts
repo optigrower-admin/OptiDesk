@@ -74,7 +74,10 @@ export async function ejecutarResumenDiario(
   supabase: ReturnType<typeof createAdminClient>,
   tenantId?: string,
   usuarioId?: string,
+  canales: { whatsapp?: boolean; email?: boolean } = {},
 ): Promise<ResultadoResumenDiario> {
+  const enviarWhatsapp = canales.whatsapp ?? true
+  const enviarEmail    = canales.email ?? true
   const ahora = new Date()
   const finHoyBogota = new Date(
     new Date(ahora.getTime() - 5 * 3600_000).toISOString().slice(0, 10) + 'T23:59:59-05:00'
@@ -116,7 +119,7 @@ export async function ejecutarResumenDiario(
     usuariosNotificados++
 
     const sesionActiva = usuario.wa_sesion_at && (Date.now() - new Date(usuario.wa_sesion_at).getTime()) < 24 * 3600_000
-    if (sesionActiva && usuario.whatsapp_number) {
+    if (enviarWhatsapp && sesionActiva && usuario.whatsapp_number) {
       if (!cfgCache.has(usuario.tenant_id)) cfgCache.set(usuario.tenant_id, await getCfgMeta(supabase, usuario.tenant_id))
       const cfg = cfgCache.get(usuario.tenant_id)
       if (cfg) {
@@ -125,16 +128,18 @@ export async function ejecutarResumenDiario(
       }
     }
 
-    try {
-      await sendEmailComoUsuario(
-        usuario.id, usuario.email,
-        `📋 Tu resumen de hoy — ${vencidas.length + hoyItems.length} pendiente${vencidas.length + hoyItems.length === 1 ? '' : 's'}`,
-        construirHtml(usuario.nombre, vencidas, hoyItems)
-      )
-      emailsEnviados++
-    } catch (e) {
-      emailsFallidos++
-      console.warn(`[resumenDiario] No se pudo enviar correo a ${usuario.nombre}:`, e instanceof Error ? e.message : e)
+    if (enviarEmail) {
+      try {
+        await sendEmailComoUsuario(
+          usuario.id, usuario.email,
+          `📋 Tu resumen de hoy — ${vencidas.length + hoyItems.length} pendiente${vencidas.length + hoyItems.length === 1 ? '' : 's'}`,
+          construirHtml(usuario.nombre, vencidas, hoyItems)
+        )
+        emailsEnviados++
+      } catch (e) {
+        emailsFallidos++
+        console.warn(`[resumenDiario] No se pudo enviar correo a ${usuario.nombre}:`, e instanceof Error ? e.message : e)
+      }
     }
   }
 

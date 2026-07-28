@@ -57,6 +57,18 @@ export default function ColaboradoresPage() {
   const [resultadoResumen, setResultadoResumen] = useState<Record<string, ResultadoResumen>>({})
   const [probandoTodos, setProbandoTodos] = useState(false)
   const [resultadoTodos, setResultadoTodos] = useState<ResultadoResumen | null>(null)
+  const [canalesTodos, setCanalesTodos] = useState({ whatsapp: true, email: true })
+  const [canalesPorColaborador, setCanalesPorColaborador] = useState<Record<string, { whatsapp: boolean; email: boolean }>>({})
+
+  function canalesDe(id: string) {
+    return canalesPorColaborador[id] ?? { whatsapp: true, email: true }
+  }
+  function toggleCanal(id: string, canal: 'whatsapp' | 'email') {
+    setCanalesPorColaborador(p => {
+      const actual = p[id] ?? { whatsapp: true, email: true }
+      return { ...p, [id]: { ...actual, [canal]: !actual[canal] } }
+    })
+  }
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
@@ -133,13 +145,19 @@ export default function ColaboradoresPage() {
   }
 
   async function enviarResumen(colaborador: Colaborador) {
+    const canales = canalesDe(colaborador.id)
+    if (!canales.whatsapp && !canales.email) {
+      setMensaje({ id: colaborador.id, texto: 'Elige al menos un canal', ok: false })
+      setTimeout(() => setMensaje(null), 3000)
+      return
+    }
     setEnviandoResumen(p => ({ ...p, [colaborador.id]: true }))
     setResultadoResumen(p => { const n = { ...p }; delete n[colaborador.id]; return n })
     try {
       const res = await fetch('/api/admin/ventas/resumen-diario', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usuarioId: colaborador.id }),
+        body: JSON.stringify({ usuarioId: colaborador.id, whatsapp: canales.whatsapp, email: canales.email }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? 'Error al enviar')
@@ -153,10 +171,18 @@ export default function ColaboradoresPage() {
   }
 
   async function probarResumenTodos() {
+    if (!canalesTodos.whatsapp && !canalesTodos.email) {
+      alert('Elige al menos un canal')
+      return
+    }
     setProbandoTodos(true)
     setResultadoTodos(null)
     try {
-      const res = await fetch('/api/admin/ventas/resumen-diario', { method: 'POST' })
+      const res = await fetch('/api/admin/ventas/resumen-diario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ whatsapp: canalesTodos.whatsapp, email: canalesTodos.email }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? 'Error al enviar')
       setResultadoTodos(data)
@@ -201,10 +227,24 @@ export default function ColaboradoresPage() {
               correo (si conectó su Gmail en Mi perfil, ver estado abajo).
             </p>
           </div>
-          <button onClick={probarResumenTodos} disabled={probandoTodos}
-            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors flex-shrink-0">
-            {probandoTodos ? 'Enviando...' : '📤 Probar para todos ahora'}
-          </button>
+          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-3 text-xs text-gray-600">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" checked={canalesTodos.whatsapp}
+                  onChange={() => setCanalesTodos(p => ({ ...p, whatsapp: !p.whatsapp }))} className="rounded" />
+                📱 WhatsApp
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" checked={canalesTodos.email}
+                  onChange={() => setCanalesTodos(p => ({ ...p, email: !p.email }))} className="rounded" />
+                ✉️ Correo
+              </label>
+            </div>
+            <button onClick={probarResumenTodos} disabled={probandoTodos}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors">
+              {probandoTodos ? 'Enviando...' : '📤 Probar para todos ahora'}
+            </button>
+          </div>
         </div>
         {resultadoTodos && (
           <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 space-y-0.5">
@@ -289,7 +329,19 @@ export default function ColaboradoresPage() {
                 )}
               </div>
 
-              <div className="mt-2">
+              <div className="mt-2 flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" checked={canalesDe(col.id).whatsapp}
+                      onChange={() => toggleCanal(col.id, 'whatsapp')} className="rounded" />
+                    📱
+                  </label>
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" checked={canalesDe(col.id).email}
+                      onChange={() => toggleCanal(col.id, 'email')} className="rounded" />
+                    ✉️
+                  </label>
+                </div>
                 <button
                   onClick={() => enviarResumen(col)}
                   disabled={enviandoResumen[col.id]}

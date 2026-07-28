@@ -19,8 +19,11 @@ export async function POST(req: NextRequest) {
   const esGerencia = rolNorm === 'gerencia' || rolNorm === 'control_total' || rolNorm === 'dueno'
   if (!esGerencia) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
-  const body = await req.json().catch(() => ({})) as { usuarioId?: string }
+  const body = await req.json().catch(() => ({})) as { usuarioId?: string; whatsapp?: boolean; email?: boolean }
 
-  const resultado = await ejecutarResumenDiario(createAdminClient(), perfil.tenant_id, body.usuarioId)
+  const resultado = await ejecutarResumenDiario(createAdminClient(), perfil.tenant_id, body.usuarioId, {
+    whatsapp: body.whatsapp,
+    email: body.email,
+  })
   return NextResponse.json(resultado)
 }
