@@ -550,6 +550,26 @@ export default function ConfigVentasPage() {
   const { profile } = useAuth()
   const supabase = createClient()
 
+  const [probandoResumen, setProbandoResumen] = useState(false)
+  const [resultadoResumen, setResultadoResumen] = useState<{
+    usuariosNotificados: number; whatsappEnviados: number; emailsEnviados: number; emailsFallidos: number
+  } | null>(null)
+
+  async function probarResumenDiario() {
+    setProbandoResumen(true)
+    setResultadoResumen(null)
+    try {
+      const res = await fetch('/api/admin/ventas/resumen-diario', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? 'Error al ejecutar')
+      setResultadoResumen(data)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'No se pudo ejecutar el resumen diario')
+    } finally {
+      setProbandoResumen(false)
+    }
+  }
+
   const [entidades, setEntidades]         = useState<Entidad[]>([])
   const [nuevaEntidad, setNuevaEntidad]   = useState('')
   const [editandoEntidadId, setEditandoEntidadId]       = useState<string | null>(null)
@@ -1105,6 +1125,32 @@ export default function ConfigVentasPage() {
         <h1 className="text-xl font-bold text-gray-900">Config Ventas</h1>
         <p className="text-sm text-gray-500">Catálogos y configuración de cotizaciones (solo Gerencia)</p>
       </div>
+
+      {/* ── Resumen diario automático ── */}
+      <SeccionColapsable titulo="Resumen diario automático" icono="📋" defaultOpen={false}>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-gray-400">
+            Todos los días a las 8:00 a.m. (hora Colombia), cada asesor recibe un resumen de sus
+            acciones vencidas y de hoy por WhatsApp (si tiene sesión de 24h activa con el bot) y por
+            correo (si conectó su Gmail en Mi perfil). Esto corre solo, automáticamente — este botón
+            es solo para probarlo ahora mismo sin esperar a la hora programada.
+          </p>
+          <button onClick={probarResumenDiario} disabled={probandoResumen}
+            className="px-4 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-lg text-sm font-semibold transition-colors">
+            {probandoResumen ? 'Enviando...' : '📤 Probar ahora'}
+          </button>
+          {resultadoResumen && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 space-y-0.5">
+              <p>👤 Asesores notificados: <strong>{resultadoResumen.usuariosNotificados}</strong></p>
+              <p>📱 WhatsApp enviados: <strong>{resultadoResumen.whatsappEnviados}</strong></p>
+              <p>✉️ Correos enviados: <strong>{resultadoResumen.emailsEnviados}</strong>{resultadoResumen.emailsFallidos > 0 && <span className="text-amber-600"> ({resultadoResumen.emailsFallidos} fallidos — asesor sin Gmail conectado)</span>}</p>
+              {resultadoResumen.usuariosNotificados === 0 && (
+                <p className="text-gray-400 mt-1">Nadie tiene acciones vencidas o de hoy asignadas en este momento.</p>
+              )}
+            </div>
+          )}
+        </div>
+      </SeccionColapsable>
 
       {/* ── Info del negocio ── */}
       <SeccionColapsable titulo="Info del negocio" icono="🏢" defaultOpen={false}>
