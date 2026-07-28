@@ -1,5 +1,5 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 function cop(n: number) {
   return n.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
@@ -61,6 +61,41 @@ interface Props {
 export default function CotizacionServTecDoc({ cotizacion, tenant }: Props) {
   const whatsappNum  = tenant.whatsapp?.replace(/\D/g, '') ?? ''
   const whatsappLink = whatsappNum ? `https://wa.me/${whatsappNum}` : '#'
+  const docRef = useRef<HTMLDivElement>(null)
+  const [descargando, setDescargando] = useState(false)
+
+  async function descargarPDF() {
+    if (!docRef.current) return
+    setDescargando(true)
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ])
+      const canvas = await html2canvas(docRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+      const imgData = canvas.toDataURL('image/jpeg', 0.95)
+
+      const pdf = new jsPDF('p', 'mm', 'letter')
+      const pdfWidth  = pdf.internal.pageSize.getWidth()
+      const pdfHeight = pdf.internal.pageSize.getHeight()
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width
+
+      let heightLeft = imgHeight
+      let position = 0
+      pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight)
+      heightLeft -= pdfHeight
+      while (heightLeft > 0) {
+        position -= pdfHeight
+        pdf.addPage()
+        pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, imgHeight)
+        heightLeft -= pdfHeight
+      }
+
+      pdf.save(`CotST-${pad(cotizacion.numero)}.pdf`)
+    } finally {
+      setDescargando(false)
+    }
+  }
 
   const repUma     = cotizacion.items.filter(i => i.tipo === 'repuesto_uma')
   const repExt     = cotizacion.items.filter(i => i.tipo === 'repuesto_externo')
@@ -147,12 +182,16 @@ export default function CotizacionServTecDoc({ cotizacion, tenant }: Props) {
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-sm font-semibold px-4 py-2 rounded-lg">
             🖨️ Imprimir / PDF
           </button>
+          <button onClick={descargarPDF} disabled={descargando}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait text-sm font-semibold px-4 py-2 rounded-lg">
+            {descargando ? 'Generando…' : '⬇️ Descargar PDF'}
+          </button>
         </div>
       </div>
 
       {/* DOCUMENTO */}
       <div className="no-print:mt-16 min-h-screen flex justify-center py-8 px-4 print:p-0 print:mt-0" style={{ background: '#e5e7eb' }}>
-        <div className="cot-st" style={{ background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 13 }}>
+        <div ref={docRef} className="cot-st" style={{ background: '#fff', boxShadow: '0 8px 60px rgba(0,0,0,0.2)', fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 13 }}>
 
           {/* ══ HEADER ══ */}
           <div style={{ background: 'linear-gradient(135deg, #e0eeff 0%, #dbeafe 45%, #eff6ff 100%)', display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'stretch', borderBottom: '2px solid #93c5fd' }}>
