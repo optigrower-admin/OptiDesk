@@ -25,11 +25,33 @@ const ETAPAS_FILTRO: EtapaVenta[] = [
 
 const ETAPAS_CREDITO = ['buscando_credito', 'en_proceso_credito']
 
+type Campo = 'nombre' | 'celular' | 'cedula' | 'correo'
+
+const CAMPOS: { id: Campo; label: string }[] = [
+  { id: 'nombre',  label: 'Nombre' },
+  { id: 'celular', label: 'Celular' },
+  { id: 'cedula',  label: 'Cédula' },
+  { id: 'correo',  label: 'Correo' },
+]
+
+type FreshDato = { cedula: string | null; email: string | null }
+
+function tieneCampo(lead: LeadData, campo: Campo, fresh?: FreshDato): boolean {
+  switch (campo) {
+    case 'nombre':  return !!lead.cliente?.nombre
+    case 'celular': return !!lead.cliente?.celular
+    case 'cedula':  return !!(fresh?.cedula ?? lead.cliente_documento)
+    case 'correo':  return !!(fresh?.email ?? lead.cliente_email)
+  }
+}
+
 function calcularLista(
   leads: LeadData[],
   etapas: Set<EtapaVenta>,
   estado: EstadoCredito,
   entidad: string,
+  camposRequeridos: Set<Campo>,
+  freshMap: Record<string, FreshDato>,
 ): LeadData[] {
   let lista = leads
 
@@ -58,10 +80,12 @@ function calcularLista(
     )
   }
 
+  if (camposRequeridos.size > 0) {
+    lista = lista.filter(l => [...camposRequeridos].every(c => tieneCampo(l, c, freshMap[l.id])))
+  }
+
   return lista
 }
-
-type FreshDato = { cedula: string | null; email: string | null }
 
 function formatCliente(lead: LeadData, fresh?: FreshDato): string {
   const cedula  = fresh?.cedula  ?? lead.cliente_documento
@@ -78,11 +102,13 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
   const [etapasDraft, setEtapasDraft]       = useState<Set<EtapaVenta>>(() => new Set(ETAPAS_CREDITO as EtapaVenta[]))
   const [estadoDraft, setEstadoDraft]       = useState<EstadoCredito>('todos')
   const [entidadDraft, setEntidadDraft]     = useState<string>('todas')
+  const [camposDraft, setCamposDraft]       = useState<Set<Campo>>(() => new Set())
 
   // Criterios aplicados (los que realmente determinan la lista visible)
   const [etapasAplicadas, setEtapasAplicadas] = useState<Set<EtapaVenta>>(() => new Set(ETAPAS_CREDITO as EtapaVenta[]))
   const [estadoAplicado, setEstadoAplicado]   = useState<EstadoCredito>('todos')
   const [entidadAplicada, setEntidadAplicada] = useState<string>('todas')
+  const [camposAplicados, setCamposAplicados] = useState<Set<Campo>>(() => new Set())
 
   const [busqueda, setBusqueda]           = useState('')
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
@@ -93,7 +119,8 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
 
   const hayFiltroPendiente =
     etapasDraft.size !== etapasAplicadas.size || [...etapasDraft].some(e => !etapasAplicadas.has(e)) ||
-    estadoDraft !== estadoAplicado || entidadDraft !== entidadAplicada
+    estadoDraft !== estadoAplicado || entidadDraft !== entidadAplicada ||
+    camposDraft.size !== camposAplicados.size || [...camposDraft].some(c => !camposAplicados.has(c))
 
   // Carga datos frescos de cedula/email directamente de Supabase al abrir el modal
   useEffect(() => {
@@ -125,8 +152,8 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
 
   // Leads visibles según los criterios YA APLICADOS (con "Aceptar filtro")
   const leadsFiltrados = useMemo(
-    () => calcularLista(leads, etapasAplicadas, estadoAplicado, entidadAplicada),
-    [leads, etapasAplicadas, estadoAplicado, entidadAplicada]
+    () => calcularLista(leads, etapasAplicadas, estadoAplicado, entidadAplicada, camposAplicados, freshMap),
+    [leads, etapasAplicadas, estadoAplicado, entidadAplicada, camposAplicados, freshMap]
   )
 
   // Búsqueda por nombre sobre los leads ya filtrados
@@ -148,6 +175,14 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
     })
   }
 
+  function toggleCampoDraft(campo: Campo) {
+    setCamposDraft(prev => {
+      const next = new Set(prev)
+      if (next.has(campo)) next.delete(campo); else next.add(campo)
+      return next
+    })
+  }
+
   // Aplica los criterios en edición y agrega los leads resultantes a la selección,
   // sin quitar lo que ya estaba seleccionado de filtros anteriores (para poder
   // ir armando la lista por partes: aceptar un filtro y seguir con el resto).
@@ -155,7 +190,8 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
     setEtapasAplicadas(new Set(etapasDraft))
     setEstadoAplicado(estadoDraft)
     setEntidadAplicada(entidadDraft)
-    const lista = calcularLista(leads, etapasDraft, estadoDraft, entidadDraft)
+    setCamposAplicados(new Set(camposDraft))
+    const lista = calcularLista(leads, etapasDraft, estadoDraft, entidadDraft, camposDraft, freshMap)
     setSeleccionados(prev => new Set([...prev, ...lista.map(l => l.id)]))
   }
 
@@ -266,6 +302,26 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
               ))}
             </div>
           )}
+
+          {/* Filtro por datos completos del cliente */}
+          <div className="flex gap-1.5 flex-wrap items-center">
+            <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Con datos:</span>
+            {CAMPOS.map(c => {
+              const activo = camposDraft.has(c.id)
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => toggleCampoDraft(c.id)}
+                  className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                    activo
+                      ? 'bg-teal-700 text-white border-teal-700'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-teal-400'
+                  }`}>
+                  {c.label}
+                </button>
+              )
+            })}
+          </div>
 
           {/* Aceptar filtro */}
           <button
