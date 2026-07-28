@@ -1,6 +1,7 @@
 'use client'
 import { useState, useMemo, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { ETAPA_MAP, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 
 interface Props {
@@ -8,16 +9,57 @@ interface Props {
   onClose: () => void
 }
 
-type Filtro = 'todos' | 'en_estudio' | 'aprobados' | 'rechazados'
+type EstadoCredito = 'todos' | 'aprobados' | 'rechazados' | 'sin_iniciar'
 
-const FILTROS: { id: Filtro; label: string; color: string }[] = [
-  { id: 'todos',      label: 'Todos',        color: 'bg-gray-100 text-gray-700 border-gray-300' },
-  { id: 'en_estudio', label: 'En estudio',   color: 'bg-amber-100 text-amber-700 border-amber-300' },
-  { id: 'aprobados',  label: 'Aprobados',    color: 'bg-green-100 text-green-700 border-green-300' },
-  { id: 'rechazados', label: 'Con rechazos', color: 'bg-red-100 text-red-600 border-red-300' },
+const ESTADOS_CREDITO: { id: EstadoCredito; label: string; color: string }[] = [
+  { id: 'todos',       label: 'Todos',        color: 'bg-gray-100 text-gray-700 border-gray-300' },
+  { id: 'sin_iniciar', label: 'Sin iniciar',  color: 'bg-amber-100 text-amber-700 border-amber-300' },
+  { id: 'aprobados',   label: 'Aprobados',    color: 'bg-green-100 text-green-700 border-green-300' },
+  { id: 'rechazados',  label: 'Con rechazos', color: 'bg-red-100 text-red-600 border-red-300' },
+]
+
+// Etapas relevantes para el embudo previo/durante el estudio de crédito
+const ETAPAS_FILTRO: EtapaVenta[] = [
+  'nuevo', 'con_interes', 'con_objecion', 'seguimiento', 'buscando_credito', 'en_proceso_credito',
 ]
 
 const ETAPAS_CREDITO = ['buscando_credito', 'en_proceso_credito']
+
+function calcularLista(
+  leads: LeadData[],
+  etapas: Set<EtapaVenta>,
+  estado: EstadoCredito,
+  entidad: string,
+): LeadData[] {
+  let lista = leads
+
+  if (etapas.size > 0) {
+    lista = lista.filter(l => etapas.has(l.etapa_venta))
+  }
+
+  switch (estado) {
+    case 'aprobados':
+      lista = lista.filter(l => !!l.creditoAprobadoEntidad)
+      break
+    case 'rechazados':
+      lista = lista.filter(l => (l.creditoRechazadoEntidades?.length ?? 0) > 0)
+      break
+    case 'sin_iniciar':
+      lista = entidad !== 'todas'
+        ? lista.filter(l => l.creditoAprobadoEntidad !== entidad && !l.creditoRechazadoEntidades?.includes(entidad))
+        : lista.filter(l => !l.creditoAprobadoEntidad && (l.creditoRechazadoEntidades?.length ?? 0) === 0)
+      break
+  }
+
+  if (entidad !== 'todas' && estado !== 'sin_iniciar') {
+    lista = lista.filter(l =>
+      l.creditoAprobadoEntidad === entidad ||
+      l.creditoRechazadoEntidades?.includes(entidad)
+    )
+  }
+
+  return lista
+}
 
 type FreshDato = { cedula: string | null; email: string | null }
 
@@ -32,14 +74,26 @@ function formatCliente(lead: LeadData, fresh?: FreshDato): string {
 }
 
 export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
-  const [filtro, setFiltro]               = useState<Filtro>('en_estudio')
-  const [entidadFiltro, setEntidadFiltro] = useState<string>('todas')
+  // Criterios en edición (aún no aplicados)
+  const [etapasDraft, setEtapasDraft]       = useState<Set<EtapaVenta>>(() => new Set(ETAPAS_CREDITO as EtapaVenta[]))
+  const [estadoDraft, setEstadoDraft]       = useState<EstadoCredito>('todos')
+  const [entidadDraft, setEntidadDraft]     = useState<string>('todas')
+
+  // Criterios aplicados (los que realmente determinan la lista visible)
+  const [etapasAplicadas, setEtapasAplicadas] = useState<Set<EtapaVenta>>(() => new Set(ETAPAS_CREDITO as EtapaVenta[]))
+  const [estadoAplicado, setEstadoAplicado]   = useState<EstadoCredito>('todos')
+  const [entidadAplicada, setEntidadAplicada] = useState<string>('todas')
+
   const [busqueda, setBusqueda]           = useState('')
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
     () => new Set(leads.filter(l => ETAPAS_CREDITO.includes(l.etapa_venta)).map(l => l.id))
   )
   const [copiado, setCopiado]   = useState<string | null>(null)
   const [freshMap, setFreshMap] = useState<Record<string, FreshDato>>({})
+
+  const hayFiltroPendiente =
+    etapasDraft.size !== etapasAplicadas.size || [...etapasDraft].some(e => !etapasAplicadas.has(e)) ||
+    estadoDraft !== estadoAplicado || entidadDraft !== entidadAplicada
 
   // Carga datos frescos de cedula/email directamente de Supabase al abrir el modal
   useEffect(() => {
@@ -69,22 +123,11 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
     return [...set].sort()
   }, [leads])
 
-  // Leads visibles según el filtro activo
-  const leadsFiltrados = useMemo(() => {
-    let lista = leads
-    switch (filtro) {
-      case 'en_estudio': lista = leads.filter(l => ETAPAS_CREDITO.includes(l.etapa_venta)); break
-      case 'aprobados':  lista = leads.filter(l => !!l.creditoAprobadoEntidad); break
-      case 'rechazados': lista = leads.filter(l => (l.creditoRechazadoEntidades?.length ?? 0) > 0); break
-    }
-    if (entidadFiltro !== 'todas') {
-      lista = lista.filter(l =>
-        l.creditoAprobadoEntidad === entidadFiltro ||
-        l.creditoRechazadoEntidades?.includes(entidadFiltro)
-      )
-    }
-    return lista
-  }, [leads, filtro, entidadFiltro])
+  // Leads visibles según los criterios YA APLICADOS (con "Aceptar filtro")
+  const leadsFiltrados = useMemo(
+    () => calcularLista(leads, etapasAplicadas, estadoAplicado, entidadAplicada),
+    [leads, etapasAplicadas, estadoAplicado, entidadAplicada]
+  )
 
   // Búsqueda por nombre sobre los leads ya filtrados
   const leadsVisibles = useMemo(() => {
@@ -97,40 +140,23 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
     )
   }, [leadsFiltrados, busqueda])
 
-  // Cuando cambia el filtro, auto-seleccionar los leads visibles
-  function aplicarFiltro(f: Filtro) {
-    setFiltro(f)
-    // recalcula inline para no esperar el useMemo
-    let lista = leads
-    switch (f) {
-      case 'en_estudio': lista = leads.filter(l => ETAPAS_CREDITO.includes(l.etapa_venta)); break
-      case 'aprobados':  lista = leads.filter(l => !!l.creditoAprobadoEntidad); break
-      case 'rechazados': lista = leads.filter(l => (l.creditoRechazadoEntidades?.length ?? 0) > 0); break
-    }
-    if (entidadFiltro !== 'todas') {
-      lista = lista.filter(l =>
-        l.creditoAprobadoEntidad === entidadFiltro ||
-        l.creditoRechazadoEntidades?.includes(entidadFiltro)
-      )
-    }
-    setSeleccionados(new Set(lista.map(l => l.id)))
+  function toggleEtapaDraft(etapa: EtapaVenta) {
+    setEtapasDraft(prev => {
+      const next = new Set(prev)
+      if (next.has(etapa)) next.delete(etapa); else next.add(etapa)
+      return next
+    })
   }
 
-  function aplicarEntidad(e: string) {
-    setEntidadFiltro(e)
-    let lista = leads
-    switch (filtro) {
-      case 'en_estudio': lista = leads.filter(l => ETAPAS_CREDITO.includes(l.etapa_venta)); break
-      case 'aprobados':  lista = leads.filter(l => !!l.creditoAprobadoEntidad); break
-      case 'rechazados': lista = leads.filter(l => (l.creditoRechazadoEntidades?.length ?? 0) > 0); break
-    }
-    if (e !== 'todas') {
-      lista = lista.filter(l =>
-        l.creditoAprobadoEntidad === e ||
-        l.creditoRechazadoEntidades?.includes(e)
-      )
-    }
-    setSeleccionados(new Set(lista.map(l => l.id)))
+  // Aplica los criterios en edición y agrega los leads resultantes a la selección,
+  // sin quitar lo que ya estaba seleccionado de filtros anteriores (para poder
+  // ir armando la lista por partes: aceptar un filtro y seguir con el resto).
+  function aceptarFiltros() {
+    setEtapasAplicadas(new Set(etapasDraft))
+    setEstadoAplicado(estadoDraft)
+    setEntidadAplicada(entidadDraft)
+    const lista = calcularLista(leads, etapasDraft, estadoDraft, entidadDraft)
+    setSeleccionados(prev => new Set([...prev, ...lista.map(l => l.id)]))
   }
 
   function toggle(id: string) {
@@ -141,7 +167,9 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
     })
   }
 
-  const leadsSeleccionados = leadsFiltrados.filter(l => seleccionados.has(l.id))
+  // Se basa en TODOS los leads (no solo los del filtro actual) para no perder
+  // selecciones hechas con filtros anteriores al ir armando la lista por partes.
+  const leadsSeleccionados = leads.filter(l => seleccionados.has(l.id))
   const visiblesSeleccionados = leadsVisibles.filter(l => seleccionados.has(l.id)).length
   const textoTodos = leadsSeleccionados.map(l => formatCliente(l, freshMap[l.id])).join('\n\n')
 
@@ -175,14 +203,34 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
 
         {/* Filtros */}
         <div className="px-5 pt-3 pb-2 border-b border-gray-100 flex-shrink-0 space-y-2">
+          {/* Filtro por etapas (multi-selección) */}
+          <div className="flex gap-1.5 flex-wrap items-center">
+            <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Etapas:</span>
+            {ETAPAS_FILTRO.map(id => {
+              const activo = etapasDraft.has(id)
+              return (
+                <button
+                  key={id}
+                  onClick={() => toggleEtapaDraft(id)}
+                  className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                    activo
+                      ? 'bg-purple-700 text-white border-purple-700'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-purple-400'
+                  }`}>
+                  {ETAPA_MAP[id].label}
+                </button>
+              )
+            })}
+          </div>
+
           {/* Filtro por estado de crédito */}
           <div className="flex gap-1.5 flex-wrap">
-            {FILTROS.map(f => (
+            {ESTADOS_CREDITO.map(f => (
               <button
                 key={f.id}
-                onClick={() => aplicarFiltro(f.id)}
+                onClick={() => setEstadoDraft(f.id)}
                 className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                  filtro === f.id
+                  estadoDraft === f.id
                     ? f.color + ' ring-2 ring-offset-1 ring-current'
                     : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
                 }`}>
@@ -196,9 +244,9 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
             <div className="flex gap-1.5 flex-wrap items-center">
               <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Entidad:</span>
               <button
-                onClick={() => aplicarEntidad('todas')}
+                onClick={() => setEntidadDraft('todas')}
                 className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
-                  entidadFiltro === 'todas'
+                  entidadDraft === 'todas'
                     ? 'bg-blue-700 text-white border-blue-700'
                     : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'
                 }`}>
@@ -207,9 +255,9 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
               {entidadesDisponibles.map(e => (
                 <button
                   key={e}
-                  onClick={() => aplicarEntidad(e)}
+                  onClick={() => setEntidadDraft(e)}
                   className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
-                    entidadFiltro === e
+                    entidadDraft === e
                       ? 'bg-blue-700 text-white border-blue-700'
                       : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'
                   }`}>
@@ -218,6 +266,18 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
               ))}
             </div>
           )}
+
+          {/* Aceptar filtro */}
+          <button
+            onClick={aceptarFiltros}
+            disabled={!hayFiltroPendiente}
+            className={`w-full py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              hayFiltroPendiente
+                ? 'bg-purple-700 hover:bg-purple-800 text-white'
+                : 'bg-gray-100 text-gray-400 cursor-default'
+            }`}>
+            {hayFiltroPendiente ? '✓ Aceptar filtro' : 'Filtro aplicado'}
+          </button>
 
           {/* Buscador */}
           <div className="relative">
