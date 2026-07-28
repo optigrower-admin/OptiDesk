@@ -55,6 +55,7 @@ export type ResultadoResumenDiario = {
 export async function ejecutarResumenDiario(
   supabase: ReturnType<typeof createAdminClient>,
   tenantId?: string,
+  usuarioId?: string,
 ): Promise<ResultadoResumenDiario> {
   const ahora = new Date()
   const finHoyBogota = new Date(
@@ -69,6 +70,7 @@ export async function ejecutarResumenDiario(
     .not('cliente_id', 'is', null)
     .lte('fecha_recordatorio', finHoyBogota.toISOString())
   if (tenantId) query = query.eq('tenant_id', tenantId)
+  if (usuarioId) query = query.eq('asignado_a', usuarioId)
   const { data: recs } = await query
 
   const porUsuario = new Map<string, RecordatorioRow[]>()

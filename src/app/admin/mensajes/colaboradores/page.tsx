@@ -11,7 +11,10 @@ interface Colaborador {
   activo: boolean
   whatsapp_number: string | null
   wa_sesion_at: string | null
+  email_smtp_usuario: string | null
 }
+
+type ResultadoResumen = { usuariosNotificados: number; whatsappEnviados: number; emailsEnviados: number; emailsFallidos: number }
 
 function formatRelativo(isoStr: string | null): string {
   if (!isoStr) return '—'
@@ -48,12 +51,16 @@ export default function ColaboradoresPage() {
   const [guardando, setGuardando]         = useState<Record<string, boolean>>({})
   const [mensaje, setMensaje]             = useState<{ id: string; texto: string; ok: boolean } | null>(null)
   const [enviandoPing, setEnviandoPing]   = useState<Record<string, boolean>>({})
+  const [enviandoResumen, setEnviandoResumen] = useState<Record<string, boolean>>({})
+  const [resultadoResumen, setResultadoResumen] = useState<Record<string, ResultadoResumen>>({})
+  const [probandoTodos, setProbandoTodos] = useState(false)
+  const [resultadoTodos, setResultadoTodos] = useState<ResultadoResumen | null>(null)
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
     const { data } = await supabase
       .from('usuarios')
-      .select('id, nombre, email, rol, activo, whatsapp_number, wa_sesion_at')
+      .select('id, nombre, email, rol, activo, whatsapp_number, wa_sesion_at, email_smtp_usuario')
       .eq('tenant_id', profile.tenant_id)
       .order('nombre')
     setColaboradores((data ?? []) as Colaborador[])
@@ -100,6 +107,41 @@ export default function ColaboradoresPage() {
     setTimeout(() => setMensaje(null), 3000)
   }
 
+  async function enviarResumen(colaborador: Colaborador) {
+    setEnviandoResumen(p => ({ ...p, [colaborador.id]: true }))
+    setResultadoResumen(p => { const n = { ...p }; delete n[colaborador.id]; return n })
+    try {
+      const res = await fetch('/api/admin/ventas/resumen-diario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuarioId: colaborador.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? 'Error al enviar')
+      setResultadoResumen(p => ({ ...p, [colaborador.id]: data }))
+    } catch (e) {
+      setMensaje({ id: colaborador.id, texto: e instanceof Error ? e.message : 'Error al enviar', ok: false })
+      setTimeout(() => setMensaje(null), 3000)
+    } finally {
+      setEnviandoResumen(p => ({ ...p, [colaborador.id]: false }))
+    }
+  }
+
+  async function probarResumenTodos() {
+    setProbandoTodos(true)
+    setResultadoTodos(null)
+    try {
+      const res = await fetch('/api/admin/ventas/resumen-diario', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? 'Error al enviar')
+      setResultadoTodos(data)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'No se pudo ejecutar el resumen diario')
+    } finally {
+      setProbandoTodos(false)
+    }
+  }
+
   const ROL_LABEL: Record<string, string> = {
     gerencia: 'Gerencia', dueno: 'Dueño', admin: 'Administrador', asesor: 'Asesor', mecanico: 'Mecánico',
   }
@@ -124,6 +166,31 @@ export default function ColaboradoresPage() {
         <p>4. Cada 22-23 horas el sistema envía un mensaje pidiendo &quot;OK&quot; para mantener la sesión activa.</p>
       </div>
 
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="font-semibold text-gray-900 text-sm">📋 Resumen diario automático</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Todos los días a las 8:00 a.m. (hora Colombia) cada asesor recibe, solo, un resumen de
+              sus acciones vencidas y de hoy — por WhatsApp (si tiene sesión activa abajo) y por
+              correo (si conectó su Gmail en Mi perfil, ver estado abajo).
+            </p>
+          </div>
+          <button onClick={probarResumenTodos} disabled={probandoTodos}
+            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors flex-shrink-0">
+            {probandoTodos ? 'Enviando...' : '📤 Probar para todos ahora'}
+          </button>
+        </div>
+        {resultadoTodos && (
+          <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 space-y-0.5">
+            <p>👤 Asesores notificados: <strong>{resultadoTodos.usuariosNotificados}</strong></p>
+            <p>📱 WhatsApp enviados: <strong>{resultadoTodos.whatsappEnviados}</strong></p>
+            <p>✉️ Correos enviados: <strong>{resultadoTodos.emailsEnviados}</strong>{resultadoTodos.emailsFallidos > 0 && <span className="text-amber-600"> ({resultadoTodos.emailsFallidos} fallidos)</span>}</p>
+            {resultadoTodos.usuariosNotificados === 0 && <p className="text-gray-400 mt-1">Nadie tiene acciones vencidas o de hoy asignadas en este momento.</p>}
+          </div>
+        )}
+      </div>
+
       <div className="space-y-3">
         {colaboradores.map(col => {
           const valorInput   = editando[col.id] !== undefined ? editando[col.id] : (col.whatsapp_number ?? '')
@@ -143,6 +210,11 @@ export default function ColaboradoresPage() {
                     )}
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5">{col.email}</p>
+                  <span className={`inline-block mt-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                    col.email_smtp_usuario ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {col.email_smtp_usuario ? `✉️ Correo conectado (${col.email_smtp_usuario})` : '✉️ Correo sin conectar'}
+                  </span>
                 </div>
 
                 {col.whatsapp_number && (
@@ -158,6 +230,23 @@ export default function ColaboradoresPage() {
                       {enviandoPing[col.id] ? 'Enviando...' : 'Enviar menú'}
                     </button>
                   </div>
+                )}
+              </div>
+
+              <div className="mt-2">
+                <button
+                  onClick={() => enviarResumen(col)}
+                  disabled={enviandoResumen[col.id]}
+                  className="text-xs px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 disabled:opacity-50 transition-colors"
+                >
+                  {enviandoResumen[col.id] ? 'Enviando...' : '📋 Enviarle su resumen ahora'}
+                </button>
+                {resultadoResumen[col.id] && (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    {resultadoResumen[col.id].usuariosNotificados === 0
+                      ? 'Sin acciones vencidas o de hoy asignadas.'
+                      : `📱 WhatsApp: ${resultadoResumen[col.id].whatsappEnviados > 0 ? 'enviado' : 'no enviado (sin sesión activa)'} · ✉️ Correo: ${resultadoResumen[col.id].emailsEnviados > 0 ? 'enviado' : 'no enviado'}`}
+                  </p>
                 )}
               </div>
 
