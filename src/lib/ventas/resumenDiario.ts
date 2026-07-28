@@ -22,26 +22,38 @@ function fmtHora(iso: string): string {
   return new Date(iso).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })
 }
 
+// "lunes 12/jun/26" — día de la semana en texto y fecha corta, para las vencidas.
+function fmtDiaVencido(iso: string): string {
+  const d = new Date(iso)
+  const dia   = d.toLocaleDateString('es-CO', { weekday: 'long', timeZone: 'America/Bogota' })
+  const num   = d.toLocaleDateString('es-CO', { day: '2-digit', timeZone: 'America/Bogota' })
+  const mes   = d.toLocaleDateString('es-CO', { month: 'short', timeZone: 'America/Bogota' }).replace('.', '')
+  const anio  = d.toLocaleDateString('es-CO', { year: '2-digit', timeZone: 'America/Bogota' })
+  return `${dia} ${num}/${mes}/${anio}`
+}
+
 function construirTexto(nombre: string, vencidas: RecordatorioRow[], hoyItems: RecordatorioRow[]): string {
   let txt = `👋 Hola ${nombre}, este es tu resumen del día en OptiDesk:\n`
   if (vencidas.length > 0) {
     txt += `\n⏰ VENCIDAS (${vencidas.length})\n`
-    for (const v of vencidas) txt += `• ${clienteNombre(v)} — ${v.nota ?? 'sin nota'}\n`
+    for (const v of vencidas) txt += `• *${clienteNombre(v)}* (${fmtDiaVencido(v.fecha_recordatorio)}) — ${v.nota ?? 'sin nota'}\n`
   }
   if (hoyItems.length > 0) {
     txt += `\n📅 HOY (${hoyItems.length})\n`
-    for (const h of hoyItems) txt += `• ${fmtHora(h.fecha_recordatorio)} ${clienteNombre(h)} — ${h.nota ?? 'sin nota'}\n`
+    for (const h of hoyItems) txt += `• ${fmtHora(h.fecha_recordatorio)} *${clienteNombre(h)}* — ${h.nota ?? 'sin nota'}\n`
   }
   return txt
 }
 
 function construirHtml(nombre: string, vencidas: RecordatorioRow[], hoyItems: RecordatorioRow[]): string {
-  const fila = (r: RecordatorioRow, hora?: string) =>
-    `<li><strong>${clienteNombre(r)}</strong>${hora ? ` — ${hora}` : ''} — ${r.nota ?? 'sin nota'}</li>`
+  const filaVencida = (r: RecordatorioRow) =>
+    `<li><strong>${clienteNombre(r)}</strong> (${fmtDiaVencido(r.fecha_recordatorio)}) — ${r.nota ?? 'sin nota'}</li>`
+  const filaHoy = (r: RecordatorioRow) =>
+    `<li><strong>${clienteNombre(r)}</strong> — ${fmtHora(r.fecha_recordatorio)} — ${r.nota ?? 'sin nota'}</li>`
   return `
     <p>👋 Hola ${nombre}, este es tu resumen del día en OptiDesk:</p>
-    ${vencidas.length > 0 ? `<p><strong>⏰ Vencidas (${vencidas.length})</strong></p><ul>${vencidas.map(v => fila(v)).join('')}</ul>` : ''}
-    ${hoyItems.length > 0 ? `<p><strong>📅 Hoy (${hoyItems.length})</strong></p><ul>${hoyItems.map(h => fila(h, fmtHora(h.fecha_recordatorio))).join('')}</ul>` : ''}
+    ${vencidas.length > 0 ? `<p><strong>⏰ Vencidas (${vencidas.length})</strong></p><ul>${vencidas.map(filaVencida).join('')}</ul>` : ''}
+    ${hoyItems.length > 0 ? `<p><strong>📅 Hoy (${hoyItems.length})</strong></p><ul>${hoyItems.map(filaHoy).join('')}</ul>` : ''}
   `
 }
 
