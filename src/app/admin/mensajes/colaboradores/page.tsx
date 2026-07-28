@@ -60,6 +60,48 @@ export default function ColaboradoresPage() {
   const [canalesTodos, setCanalesTodos] = useState({ whatsapp: true, email: true })
   const [canalesPorColaborador, setCanalesPorColaborador] = useState<Record<string, { whatsapp: boolean; email: boolean }>>({})
 
+  // Correo de la empresa (una sola cuenta compartida, no por usuario)
+  const [correoEmpresa, setCorreoEmpresa]         = useState<string | null>(null)
+  const [cargandoEmpresa, setCargandoEmpresa]     = useState(true)
+  const [emailEmpresaInput, setEmailEmpresaInput] = useState('')
+  const [appPasswordEmpresa, setAppPasswordEmpresa] = useState('')
+  const [conectandoEmpresa, setConectandoEmpresa] = useState(false)
+  const [errorEmpresa, setErrorEmpresa]           = useState('')
+
+  const cargarCorreoEmpresa = useCallback(async () => {
+    setCargandoEmpresa(true)
+    const res = await fetch('/api/admin/mensajes/conectar-correo-empresa')
+    const data = await res.json().catch(() => ({}))
+    setCorreoEmpresa(data?.conectado ?? null)
+    setCargandoEmpresa(false)
+  }, [])
+
+  useEffect(() => { cargarCorreoEmpresa() }, [cargarCorreoEmpresa])
+
+  async function conectarCorreoEmpresa() {
+    setConectandoEmpresa(true); setErrorEmpresa('')
+    try {
+      const res = await fetch('/api/admin/mensajes/conectar-correo-empresa', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailEmpresaInput, app_password: appPasswordEmpresa }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al conectar')
+      setCorreoEmpresa(emailEmpresaInput)
+      setEmailEmpresaInput(''); setAppPasswordEmpresa('')
+    } catch (e) {
+      setErrorEmpresa(e instanceof Error ? e.message : 'Error al conectar')
+    } finally {
+      setConectandoEmpresa(false)
+    }
+  }
+
+  async function desconectarCorreoEmpresa() {
+    if (!confirm('¿Desconectar el correo de la empresa? El resumen diario dejará de poder enviarse por correo.')) return
+    await fetch('/api/admin/mensajes/conectar-correo-empresa', { method: 'DELETE' })
+    setCorreoEmpresa(null)
+  }
+
   function canalesDe(id: string) {
     return canalesPorColaborador[id] ?? { whatsapp: true, email: true }
   }
@@ -217,6 +259,60 @@ export default function ColaboradoresPage() {
         <p>4. Cada 22-23 horas el sistema envía un mensaje pidiendo &quot;OK&quot; para mantener la sesión activa.</p>
       </div>
 
+      {/* Correo de la empresa — una sola cuenta compartida, como la conexión de Meta */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
+        <p className="font-semibold text-gray-900 text-sm mb-1">✉️ Correo de la empresa</p>
+        <p className="text-xs text-gray-500 mb-3">
+          Una sola cuenta de Gmail para toda la empresa (igual que la conexión de Meta/WhatsApp).
+          Desde aquí se envía el resumen diario a todos los colaboradores — nadie más tiene que
+          conectar nada.
+        </p>
+
+        {cargandoEmpresa ? (
+          <p className="text-xs text-gray-400">Cargando...</p>
+        ) : correoEmpresa ? (
+          <div className="flex items-center justify-between gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+            <p className="text-sm text-green-700">✓ Conectado como <span className="font-semibold">{correoEmpresa}</span></p>
+            <button onClick={desconectarCorreoEmpresa} className="text-xs text-red-600 hover:underline flex-shrink-0">Desconectar</button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs font-semibold text-blue-800 mb-1.5">Antes de conectar, genera la contraseña de aplicación:</p>
+              <ol className="text-xs text-blue-700 list-decimal pl-4 space-y-1">
+                <li>
+                  Abre{' '}
+                  <a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                    myaccount.google.com/security
+                  </a>{' '}
+                  con el Gmail de la empresa (ej. motospace38@gmail.com).
+                </li>
+                <li>Activa <span className="font-medium">&quot;Verificación en dos pasos&quot;</span> si todavía no la tiene.</li>
+                <li>En el buscador de esa misma página escribe <span className="font-medium">&quot;Contraseñas de aplicaciones&quot;</span> y entra ahí.</li>
+                <li>Escribe un nombre (ej. &quot;OptiDesk&quot;) y dale <span className="font-medium">Crear</span>.</li>
+                <li>Google muestra 16 letras en un recuadro amarillo — cópialas tal cual (sin espacios) y pégalas abajo.</li>
+              </ol>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Gmail de la empresa</label>
+              <input value={emailEmpresaInput} onChange={e => setEmailEmpresaInput(e.target.value)} placeholder="motospace38@gmail.com"
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Contraseña de aplicación (las 16 letras)</label>
+              <input value={appPasswordEmpresa} onChange={e => setAppPasswordEmpresa(e.target.value)} placeholder="xxxx xxxx xxxx xxxx"
+                type="password"
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+            </div>
+            {errorEmpresa && <p className="text-xs text-red-600">{errorEmpresa}</p>}
+            <button onClick={conectarCorreoEmpresa} disabled={!emailEmpresaInput.trim() || !appPasswordEmpresa.trim() || conectandoEmpresa}
+              className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
+              {conectandoEmpresa ? 'Conectando...' : 'Conectar'}
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
@@ -224,8 +320,7 @@ export default function ColaboradoresPage() {
             <p className="text-xs text-gray-500 mt-0.5">
               Todos los días a las 8:00 a.m. (hora Colombia) cada asesor recibe, solo, un resumen de
               sus acciones vencidas y de hoy — por WhatsApp (si tiene sesión activa abajo) y por
-              correo. Los correos salen todos desde una sola cuenta compartida (basta con que UNA
-              persona, normalmente Gerencia, conecte su Gmail en Mi perfil — ver estado abajo).
+              correo, usando el Correo de la empresa de arriba.
             </p>
           </div>
           <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
@@ -309,8 +404,8 @@ export default function ColaboradoresPage() {
 
                   <span className={`inline-block mt-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${
                     col.email_smtp_usuario ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {col.email_smtp_usuario ? `✉️ Envío conectado (${col.email_smtp_usuario})` : '✉️ Envío sin conectar (Mi perfil)'}
+                  }`} title="Esto es aparte del resumen diario — es para cuando este colaborador envía correos a clientes desde su propio Gmail (Mi perfil)">
+                    {col.email_smtp_usuario ? `✉️ Gmail personal conectado (${col.email_smtp_usuario})` : '✉️ Gmail personal sin conectar'}
                   </span>
                 </div>
 
