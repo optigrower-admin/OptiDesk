@@ -6,13 +6,16 @@ type RecordatorioRow = {
   id: string
   nota: string | null
   fecha_recordatorio: string
-  asignado_a: string
-  clientes: { nombre: string | null } | { nombre: string | null }[] | null
+  clientes: { nombre: string | null; assigned_to: string | null } | { nombre: string | null; assigned_to: string | null }[] | null
+}
+
+function clienteInfo(r: RecordatorioRow): { nombre: string; assignedTo: string | null } {
+  const c = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
+  return { nombre: c?.nombre ?? 'Cliente', assignedTo: c?.assigned_to ?? null }
 }
 
 function clienteNombre(r: RecordatorioRow): string {
-  const c = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
-  return c?.nombre ?? 'Cliente'
+  return clienteInfo(r).nombre
 }
 
 function fmtHora(iso: string): string {
@@ -49,9 +52,12 @@ export type ResultadoResumenDiario = {
   emailsFallidos: number
 }
 
-// Envía a cada asesor (con acciones vencidas o de hoy) un resumen consolidado
-// por WhatsApp (si hay sesión de 24h activa con el bot) y por correo (si conectó su Gmail).
-// Usado tanto por el cron diario como por el disparo manual desde Config Ventas.
+// Envía a cada asesor (con acciones vencidas o de hoy en sus clientes) un resumen
+// consolidado por WhatsApp (si hay sesión de 24h activa con el bot) y por correo
+// (si conectó su Gmail). El asesor "dueño" de una acción es el asesor asignado al
+// CLIENTE (clientes.assigned_to) — no quien haya registrado el recordatorio, que
+// puede ser otra persona (ej. Gerencia anotando algo para un cliente ajeno).
+// Usado tanto por el cron diario como por el disparo manual desde Bot Colaboradores.
 export async function ejecutarResumenDiario(
   supabase: ReturnType<typeof createAdminClient>,
   tenantId?: string,
@@ -64,20 +70,21 @@ export async function ejecutarResumenDiario(
 
   let query = supabase
     .from('recordatorios')
-    .select('id, nota, fecha_recordatorio, asignado_a, tenant_id, clientes(nombre)')
+    .select('id, nota, fecha_recordatorio, tenant_id, clientes!inner(nombre, assigned_to)')
     .eq('completado', false)
-    .not('asignado_a', 'is', null)
     .not('cliente_id', 'is', null)
+    .not('clientes.assigned_to', 'is', null)
     .lte('fecha_recordatorio', finHoyBogota.toISOString())
   if (tenantId) query = query.eq('tenant_id', tenantId)
-  if (usuarioId) query = query.eq('asignado_a', usuarioId)
+  if (usuarioId) query = query.eq('clientes.assigned_to', usuarioId)
   const { data: recs } = await query
 
   const porUsuario = new Map<string, RecordatorioRow[]>()
   for (const r of (recs ?? []) as RecordatorioRow[]) {
-    if (!r.asignado_a) continue
-    if (!porUsuario.has(r.asignado_a)) porUsuario.set(r.asignado_a, [])
-    porUsuario.get(r.asignado_a)!.push(r)
+    const assignedTo = clienteInfo(r).assignedTo
+    if (!assignedTo) continue
+    if (!porUsuario.has(assignedTo)) porUsuario.set(assignedTo, [])
+    porUsuario.get(assignedTo)!.push(r)
   }
 
   let usuariosNotificados = 0, whatsappEnviados = 0, emailsEnviados = 0, emailsFallidos = 0

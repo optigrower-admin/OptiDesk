@@ -283,7 +283,7 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
     // 3. Recordatorios y pasos en paralelo
     const [{ data: recs }, { data: pasos }] = await Promise.all([
       supabase.from('recordatorios')
-        .select('id, nota, fecha_recordatorio, completado, cliente_id, asignado_a')
+        .select('id, nota, fecha_recordatorio, completado, cliente_id')
         .in('cliente_id', ids)
         .order('fecha_recordatorio', { ascending: true }),
       supabase.from('clientes_pasos')
@@ -292,12 +292,13 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
         .order('orden', { ascending: true }),
     ])
 
-    // El asesor de un recordatorio es quien lo tiene asignado a ÉL (recordatorios.asignado_a) —
-    // no necesariamente el mismo asesor asignado al cliente (clientes.assigned_to), que puede
-    // ser otra persona. Esto es lo que determina a quién le llega el resumen diario.
+    // El "asesor" de una acción es el asesor del CLIENTE (clientes.assigned_to), no
+    // necesariamente quien creó/registró el recordatorio (recordatorios.asignado_a) —
+    // por ejemplo, Gerencia puede anotar un recordatorio para un cliente de otro asesor.
+    // El resumen diario notifica según este mismo criterio.
     const actsRec: Actividad[] = (recs ?? []).map(r => {
       const c = clienteMap.get(r.cliente_id as string)
-      const asignadoRecId = (r.asignado_a as string | null) ?? c?.assigned_to ?? null
+      const asignadoRecId = c?.assigned_to ?? null
       return {
         id: `rec-${r.id}`,
         tipo: 'recordatorio',
