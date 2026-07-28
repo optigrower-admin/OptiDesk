@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ETAPA_MAP, tiempoSinResponder, estadoSeguimiento, formatCOP, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
@@ -31,9 +31,28 @@ function calcPrioridad(lead: LeadData): Prioridad {
 
 export default function VistaHoy({ leads, tenantId }: Props) {
   const [fichaId, setFichaId] = useState<string | null>(null)
-  const fichaLead = fichaId ? leads.find(l => l.id === fichaId) ?? null : null
+  const [leadsLocal, setLeadsLocal] = useState<LeadData[]>(leads)
 
-  const prioridades: Prioridad[] = leads
+  useEffect(() => { setLeadsLocal(leads) }, [leads])
+
+  const handleLeadUpdate = useCallback((id: string, updates: Record<string, unknown>) => {
+    setLeadsLocal(prev => prev.map(l => {
+      if (l.id !== id) return l
+      const cp: Record<string, unknown> = {}
+      if (updates.nombre  !== undefined) cp.nombre  = updates.nombre
+      if (updates.celular !== undefined) cp.celular = updates.celular
+      if (updates.placa   !== undefined) cp.placa   = updates.placa
+      return {
+        ...l,
+        ...updates,
+        ...(l.cliente && Object.keys(cp).length > 0 ? { cliente: { ...l.cliente, ...cp } } : {}),
+      }
+    }))
+  }, [])
+
+  const fichaLead = fichaId ? leadsLocal.find(l => l.id === fichaId) ?? null : null
+
+  const prioridades: Prioridad[] = leadsLocal
     .map(calcPrioridad)
     .sort((a, b) => {
       const orden = { critico: 0, alto: 1, normal: 2 }
@@ -44,7 +63,7 @@ export default function VistaHoy({ leads, tenantId }: Props) {
   const altos    = prioridades.filter(p => p.nivel === 'alto')
   const normales = prioridades.filter(p => p.nivel === 'normal')
 
-  if (leads.length === 0) {
+  if (leadsLocal.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <p className="text-4xl mb-3">🎉</p>
@@ -92,7 +111,9 @@ export default function VistaHoy({ leads, tenantId }: Props) {
           lead={fichaLead}
           tenantId={tenantId}
           onClose={() => setFichaId(null)}
-          onEtapaChange={() => {}}
+          onEtapaChange={(id, etapa) => handleLeadUpdate(id, { etapa_venta: etapa })}
+          onLeadUpdate={handleLeadUpdate}
+          onLeadDelete={(id) => { setLeadsLocal(p => p.filter(l => l.id !== id)); setFichaId(null) }}
         />
       )}
     </>

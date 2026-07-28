@@ -70,6 +70,7 @@ export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Prop
     if (!agregando) return
     await supabase.from('clientes_motos_interes').insert({
       cliente_id: clienteId, moto_catalogo_id: agregando, disponibilidad: 'pedir', created_by: usuarioId,
+      con_papeles: true, con_tarjeta: false, pignorada: false,
     })
     setAgregando('')
     await sincronizarValorEstimado()
