@@ -31,7 +31,7 @@ const TIPOS_DOCUMENTO = [
   { value: 'PEP', label: 'Permiso especial de permanencia' },
 ]
 
-function NuevoClienteModal({ onClose }: { onClose: () => void }) {
+function NuevoClienteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (clienteId: string) => void }) {
   const supabase = createClient()
   const [primerNombre, setPrimerNombre]       = useState('')
   const [segundoNombre, setSegundoNombre]     = useState('')
@@ -97,7 +97,7 @@ function NuevoClienteModal({ onClose }: { onClose: () => void }) {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Error al crear el cliente')
-      window.location.href = '/admin/ventas?abrir=' + json.cliente_id
+      onCreated(json.cliente_id)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al crear el cliente')
       setGuardando(false)
@@ -228,6 +228,57 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
     setLeadsState(prev => prev.filter(l => l.id !== id))
   }, [])
 
+  // Al crear un cliente nuevo: lo trae y abre su ficha de inmediato, sin recargar la página.
+  const cargarClienteYAbrir = useCallback(async (clienteId: string) => {
+    setNuevoOpen(false)
+    const { data: c } = await supabase
+      .from('clientes')
+      .select(`
+        id, nombre, celular, etapa_venta, etapa_venta_orden,
+        valor_estimado_venta, proxima_accion, proxima_accion_fecha,
+        lead_source, sin_respuesta_asesor_desde, assigned_to,
+        nombre_pendiente_aprobacion, alistamiento_orden_id,
+        primer_apellido, cedula, email, estado_aprobacion_matricula, aprobado_matricula_por,
+        placa, numero_factura,
+        conversaciones ( id, canal, no_leidos_count )
+      `)
+      .eq('id', clienteId).single()
+    if (!c) return
+
+    const convs = (c.conversaciones as { id: string; canal: string; no_leidos_count: number }[] | null) ?? []
+    const noLeidos = convs.reduce((s, cv) => s + (cv.no_leidos_count ?? 0), 0)
+    const nuevoLead: LeadData = {
+      id: c.id as string,
+      etapa_venta: (c.etapa_venta ?? 'nuevo') as LeadData['etapa_venta'],
+      etapa_venta_orden: (c.etapa_venta_orden ?? 0) as number,
+      moto_interes: null,
+      valor_estimado_venta: (c.valor_estimado_venta ?? null) as number | null,
+      proxima_accion: (c.proxima_accion ?? null) as string | null,
+      proxima_accion_fecha: (c.proxima_accion_fecha ?? null) as string | null,
+      canal: convs[0]?.canal ?? 'manual',
+      lead_source: (c.lead_source ?? null) as string | null,
+      no_leidos_count: noLeidos,
+      sin_respuesta_asesor_desde: (c.sin_respuesta_asesor_desde ?? null) as string | null,
+      assigned_to: (c.assigned_to ?? null) as string | null,
+      cliente: { id: c.id as string, nombre: (c.nombre ?? null) as string | null, celular: (c.celular ?? null) as string | null, placa: (c.placa ?? null) as string | null },
+      alistamientoOrdenId: (c.alistamiento_orden_id ?? null) as string | null,
+      cliente_apellido: (c.primer_apellido ?? null) as string | null,
+      cliente_documento: (c.cedula ?? null) as string | null,
+      cliente_email: (c.email ?? null) as string | null,
+      nombre_pendiente_aprobacion: (c.nombre_pendiente_aprobacion ?? null) as boolean | null,
+      leads_campana: [],
+      todas_conversaciones: convs.map(cv => ({ id: cv.id, canal: cv.canal, no_leidos_count: cv.no_leidos_count ?? 0 })),
+      etiquetas: [],
+      estadoAprobacionMatricula: ((c.estado_aprobacion_matricula ?? 'pendiente') as 'pendiente' | 'aprobado' | 'rechazado'),
+      aprobadoMatriculaPor: (c.aprobado_matricula_por ?? null) as string | null,
+      numero_factura: (c.numero_factura ?? null) as string | null,
+    }
+
+    setLeadsState(prev => [nuevoLead, ...prev.filter(l => l.id !== nuevoLead.id)])
+    setTab('kanban')
+    setAbrirClienteId(clienteId)
+  }, [supabase])
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const abrir = params.get('abrir')
@@ -308,7 +359,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
 
   return (
     <div className="p-5">
-      {nuevoOpen && <NuevoClienteModal onClose={() => setNuevoOpen(false)} />}
+      {nuevoOpen && <NuevoClienteModal onClose={() => setNuevoOpen(false)} onCreated={cargarClienteYAbrir} />}
       {whatsappOpen && <WhatsAppCreditoModal leads={leadsState} onClose={() => setWhatsappOpen(false)} />}
 
       {/* Header */}
