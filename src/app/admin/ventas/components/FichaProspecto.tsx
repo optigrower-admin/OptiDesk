@@ -224,6 +224,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [loadingOrdenesUMA, setLoadingOrdenesUMA] = useState(false)
   const [ordenesUMALoaded, setOrdenesUMALoaded]   = useState(false)
 
+  // Búsqueda general en Servicio Técnico (por si la orden no quedó vinculada a este cliente o no es tipo UMA)
+  const [buscarOrdenOpen, setBuscarOrdenOpen] = useState(false)
+  const [busquedaOrden, setBusquedaOrden]     = useState('')
+  const [buscandoOrdenes, setBuscandoOrdenes] = useState(false)
+  const [ordenesBusqueda, setOrdenesBusqueda] = useState<{ id: string; numero: number | null; created_at: string; estado: string; cliente: string | null; placa: string | null }[]>([])
+
   // Campos editables — tab Resumen
   const [etapa, setEtapa]         = useState<EtapaVenta>(lead.etapa_venta)
   const [assignedTo, setAssignedTo] = useState('')
@@ -516,10 +522,27 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setLoadingOrdenesUMA(false)
   }
 
+  const buscarOrdenesGeneral = async (q: string) => {
+    setBuscandoOrdenes(true)
+    let query = supabase
+      .from('ordenes')
+      .select('id, numero, created_at, estado, cliente, placa')
+      .eq('tenant_id', tenantId)
+      .eq('tipo_orden', 'servicio')
+      .order('created_at', { ascending: false })
+      .limit(20)
+    const term = q.trim()
+    if (term) query = query.or(`cliente.ilike.%${term}%,placa.ilike.%${term}%,numero.eq.${Number(term) || 0}`)
+    const { data } = await query
+    setOrdenesBusqueda((data ?? []) as typeof ordenesBusqueda)
+    setBuscandoOrdenes(false)
+  }
+
   const vincularAlistamiento = async (ordenId: string) => {
     await supabase.from('clientes').update({ alistamiento_orden_id: ordenId }).eq('id', lead.id).eq('tenant_id', tenantId)
     setAlistamientoOrdenId(ordenId)
     onLeadUpdate?.(lead.id, { alistamientoOrdenId: ordenId })
+    setBuscarOrdenOpen(false); setBusquedaOrden(''); setOrdenesBusqueda([])
   }
 
   const desvincularAlistamiento = async () => {
@@ -1241,6 +1264,44 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                             <span className="font-bold text-red-600">Vincular →</span>
                           </button>
                         ))}
+
+                        {/* Buscador general — por si la orden no salió arriba (no es tipo UMA o no quedó ligada a este cliente) */}
+                        <button onClick={() => { setBuscarOrdenOpen(v => !v); if (!buscarOrdenOpen) buscarOrdenesGeneral('') }}
+                          className="w-full text-center py-1 text-[11px] font-semibold text-red-500 hover:text-red-700 underline">
+                          {buscarOrdenOpen ? 'Ocultar buscador' : '🔍 No la encuentro — buscar en todas las órdenes de Serv. Técnico'}
+                        </button>
+
+                        {buscarOrdenOpen && (
+                          <div className="border border-red-200 rounded-lg p-2 bg-white space-y-1.5">
+                            <input value={busquedaOrden}
+                              onChange={e => { setBusquedaOrden(e.target.value); buscarOrdenesGeneral(e.target.value) }}
+                              placeholder="Buscar por cliente, placa o número de orden..."
+                              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-red-400" />
+                            {buscandoOrdenes ? (
+                              <p className="text-xs text-gray-400 text-center py-1">Buscando...</p>
+                            ) : ordenesBusqueda.length === 0 ? (
+                              <p className="text-xs text-gray-400 text-center py-1">Sin resultados.</p>
+                            ) : (
+                              <div className="space-y-1 max-h-48 overflow-y-auto">
+                                {ordenesBusqueda.map(o => (
+                                  <button key={o.id} onClick={() => vincularAlistamiento(o.id)}
+                                    className="w-full flex items-center justify-between gap-2 bg-gray-50 hover:bg-red-50 border border-gray-200 hover:border-red-400 rounded-lg px-2.5 py-1.5 text-xs transition-colors text-left">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-semibold text-gray-800 truncate">{o.cliente ?? 'Sin nombre'} {o.placa ? `· ${o.placa.toUpperCase()}` : ''}</p>
+                                      <p className="text-[10px] text-gray-400">
+                                        {o.numero ? `#${o.numero}` : `#${o.id.slice(-8).toUpperCase()}`} · {new Date(o.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                      </p>
+                                    </div>
+                                    <span className={`font-semibold px-1.5 py-0.5 rounded-full text-[10px] flex-shrink-0 ${o.estado === 'listo' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                      {o.estado}
+                                    </span>
+                                    <span className="font-bold text-red-600 flex-shrink-0">Vincular →</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1310,6 +1371,43 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                             <span className="font-bold text-green-700">Vincular →</span>
                           </button>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Buscador general — por si la orden no es tipo UMA o no quedó ligada a este cliente */}
+                    <button onClick={() => { setBuscarOrdenOpen(v => !v); if (!buscarOrdenOpen) buscarOrdenesGeneral('') }}
+                      className="w-full text-center py-1 text-[11px] font-semibold text-green-700 hover:text-green-900 underline">
+                      {buscarOrdenOpen ? 'Ocultar buscador' : '🔍 No la encuentro — buscar en todas las órdenes de Serv. Técnico'}
+                    </button>
+                    {buscarOrdenOpen && (
+                      <div className="border border-green-200 rounded-lg p-2 bg-white space-y-1.5">
+                        <input value={busquedaOrden}
+                          onChange={e => { setBusquedaOrden(e.target.value); buscarOrdenesGeneral(e.target.value) }}
+                          placeholder="Buscar por cliente, placa o número de orden..."
+                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-400" />
+                        {buscandoOrdenes ? (
+                          <p className="text-xs text-gray-400 text-center py-1">Buscando...</p>
+                        ) : ordenesBusqueda.length === 0 ? (
+                          <p className="text-xs text-gray-400 text-center py-1">Sin resultados.</p>
+                        ) : (
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
+                            {ordenesBusqueda.map(o => (
+                              <button key={o.id} onClick={() => { vincularAlistamiento(o.id); setEditandoAlistamiento(false) }}
+                                className="w-full flex items-center justify-between gap-2 bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-400 rounded-lg px-2.5 py-1.5 text-xs transition-colors text-left">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold text-gray-800 truncate">{o.cliente ?? 'Sin nombre'} {o.placa ? `· ${o.placa.toUpperCase()}` : ''}</p>
+                                  <p className="text-[10px] text-gray-400">
+                                    {o.numero ? `#${o.numero}` : `#${o.id.slice(-8).toUpperCase()}`} · {new Date(o.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </p>
+                                </div>
+                                <span className={`font-semibold px-1.5 py-0.5 rounded-full text-[10px] flex-shrink-0 ${o.estado === 'listo' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                  {o.estado}
+                                </span>
+                                <span className="font-bold text-green-700 flex-shrink-0">Vincular →</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
