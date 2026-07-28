@@ -64,11 +64,28 @@ export type ResultadoResumenDiario = {
   emailsFallidos: number
 }
 
+// Un solo correo (el de Gerencia) envía los resúmenes de todos los asesores del
+// tenant — no se le pide a cada asesor que conecte su propio Gmail. Se usa quien
+// ya tenga el Gmail conectado (Mi perfil), dando prioridad a gerencia/dueño.
+async function buscarRemitente(supabase: ReturnType<typeof createAdminClient>, tenantId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('usuarios')
+    .select('id, rol')
+    .eq('tenant_id', tenantId)
+    .not('email_smtp_usuario', 'is', null)
+  if (!data || data.length === 0) return null
+  const gerente = data.find(u => ['gerencia', 'dueno', 'control_total'].includes((u.rol ?? '').toLowerCase().replace('ñ', 'n')))
+  return (gerente ?? data[0]).id as string
+}
+
 // Envía a cada asesor (con acciones vencidas o de hoy en sus clientes) un resumen
-// consolidado por WhatsApp (si hay sesión de 24h activa con el bot) y por correo
-// (si conectó su Gmail). El asesor "dueño" de una acción es el asesor asignado al
-// CLIENTE (clientes.assigned_to) — no quien haya registrado el recordatorio, que
-// puede ser otra persona (ej. Gerencia anotando algo para un cliente ajeno).
+// consolidado por WhatsApp (si hay sesión de 24h activa con el bot) y por correo.
+// El correo sale SIEMPRE desde una única cuenta compartida (la de Gerencia u otro
+// usuario del tenant que ya conectó su Gmail en Mi perfil) hacia el correo de
+// notificación de cada asesor — nadie más necesita conectar su propio Gmail.
+// El asesor "dueño" de una acción es el asesor asignado al CLIENTE
+// (clientes.assigned_to) — no quien haya registrado el recordatorio, que puede ser
+// otra persona (ej. Gerencia anotando algo para un cliente ajeno).
 // Usado tanto por el cron diario como por el disparo manual desde Bot Colaboradores.
 export async function ejecutarResumenDiario(
   supabase: ReturnType<typeof createAdminClient>,
@@ -104,6 +121,7 @@ export async function ejecutarResumenDiario(
 
   let usuariosNotificados = 0, whatsappEnviados = 0, emailsEnviados = 0, emailsFallidos = 0
   const cfgCache = new Map<string, Awaited<ReturnType<typeof getCfgMeta>>>()
+  const remitenteCache = new Map<string, string | null>()
 
   for (const [usuarioId, items] of porUsuario) {
     const { data: usuario } = await supabase
@@ -129,16 +147,23 @@ export async function ejecutarResumenDiario(
     }
 
     if (enviarEmail) {
-      try {
-        await sendEmailComoUsuario(
-          usuario.id, usuario.email,
-          `📋 Tu resumen de hoy — ${vencidas.length + hoyItems.length} pendiente${vencidas.length + hoyItems.length === 1 ? '' : 's'}`,
-          construirHtml(usuario.nombre, vencidas, hoyItems)
-        )
-        emailsEnviados++
-      } catch (e) {
+      if (!remitenteCache.has(usuario.tenant_id)) remitenteCache.set(usuario.tenant_id, await buscarRemitente(supabase, usuario.tenant_id))
+      const remitenteId = remitenteCache.get(usuario.tenant_id)
+      if (!remitenteId) {
         emailsFallidos++
-        console.warn(`[resumenDiario] No se pudo enviar correo a ${usuario.nombre}:`, e instanceof Error ? e.message : e)
+        console.warn(`[resumenDiario] Ningún usuario del tenant ${usuario.tenant_id} tiene el correo conectado (Mi perfil) para enviar en nombre de todos.`)
+      } else {
+        try {
+          await sendEmailComoUsuario(
+            remitenteId, usuario.email,
+            `📋 Tu resumen de hoy — ${vencidas.length + hoyItems.length} pendiente${vencidas.length + hoyItems.length === 1 ? '' : 's'}`,
+            construirHtml(usuario.nombre, vencidas, hoyItems)
+          )
+          emailsEnviados++
+        } catch (e) {
+          emailsFallidos++
+          console.warn(`[resumenDiario] No se pudo enviar correo a ${usuario.nombre}:`, e instanceof Error ? e.message : e)
+        }
       }
     }
   }

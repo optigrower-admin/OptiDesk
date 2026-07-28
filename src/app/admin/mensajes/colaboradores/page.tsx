@@ -224,7 +224,8 @@ export default function ColaboradoresPage() {
             <p className="text-xs text-gray-500 mt-0.5">
               Todos los días a las 8:00 a.m. (hora Colombia) cada asesor recibe, solo, un resumen de
               sus acciones vencidas y de hoy — por WhatsApp (si tiene sesión activa abajo) y por
-              correo (si conectó su Gmail en Mi perfil, ver estado abajo).
+              correo. Los correos salen todos desde una sola cuenta compartida (basta con que UNA
+              persona, normalmente Gerencia, conecte su Gmail en Mi perfil — ver estado abajo).
             </p>
           </div>
           <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
