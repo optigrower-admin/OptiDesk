@@ -1,11 +1,11 @@
 'use client'
-import React from 'react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   ETAPAS_ACTIVAS, ETAPA_MAP, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, ETAPAS_NECESITAN_FACTURA,
   type EtapaVenta,
 } from '@/lib/ventas/pipeline'
+import { calcularRango } from '@/lib/dashboard/periodos'
 import type { LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
 
@@ -25,6 +25,8 @@ interface Props {
   leads: LeadData[]
   tenantId: string
   usuarios: { id: string; nombre: string }[]
+  asesoresFiltro: Set<string> | null // null = todos
+  periodoRango: { desdeISO: string; hastaISO: string }
 }
 interface ActividadMap { [clienteId: string]: string }
 interface Recordatorio {
@@ -34,11 +36,11 @@ interface Recordatorio {
 }
 type LeadConDias = LeadData & { diasInactivo: number }
 type NivelRevision = 'normal' | 'alerta' | 'riesgo' | 'peligro'
+type ClientesNuevosPeriodo = 'dia' | 'semana' | 'mes'
 
 /* ─── helpers ────────────────────────────────────────────────────── */
 const diasDesde = (iso?: string) => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : 0
 const fmtFecha  = (iso: string)  => new Date(iso).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
-const fmtMillon = (n: number)    => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}k` : `$${n}`
 
 function nivelRevision(etapa: string, dias: number): NivelRevision {
   const t = REVISION_THRESHOLDS[etapa]
@@ -56,6 +58,10 @@ function groupByAsesor(leads: LeadData[]): Record<string, LeadData[]> {
     g[k].push(l)
   }
   return g
+}
+
+function tasaColor(pct: number): string {
+  return pct >= 70 ? '#16A34A' : pct >= 40 ? '#D97706' : '#DC2626'
 }
 
 /* ─── sub-componentes ─────────────────────────────────────────────── */
@@ -77,7 +83,30 @@ function MetricCard({ label, value, color = 'gray', sub }: { label: string; valu
   )
 }
 
-function BarraHorizontal({ label, count, total, color }: { label: string; count: number; total: number; color: string }) {
+/* Carta "Clientes nuevos" con su propio selector día/semana/mes */
+function ClientesNuevosCard({ periodo, onChangePeriodo, count }: {
+  periodo: ClientesNuevosPeriodo; onChangePeriodo: (p: ClientesNuevosPeriodo) => void; count: number | null
+}) {
+  return (
+    <div className="rounded-xl border p-3 bg-blue-50 border-blue-200 text-blue-800">
+      <div className="flex items-center justify-between gap-1">
+        <p className="text-xs font-medium opacity-70 leading-tight">Clientes nuevos</p>
+        <div className="flex rounded-md overflow-hidden border border-blue-200 flex-shrink-0">
+          {([['dia', 'D'], ['semana', 'S'], ['mes', 'M']] as [ClientesNuevosPeriodo, string][]).map(([p, l]) => (
+            <button key={p} onClick={() => onChangePeriodo(p)}
+              className={`text-[9px] font-bold px-1.5 py-0.5 transition-colors ${periodo === p ? 'bg-blue-600 text-white' : 'bg-white text-blue-500 hover:bg-blue-100'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-2xl font-black mt-0.5">{count === null ? '…' : count}</p>
+      <p className="text-[11px] opacity-60 mt-0.5">{periodo === 'dia' ? 'hoy' : periodo === 'semana' ? 'esta semana' : 'este mes'}</p>
+    </div>
+  )
+}
+
+function BarraHorizontal({ label, count, total, color, diasProm }: { label: string; count: number; total: number; color: string; diasProm?: number | null }) {
   const pct = total > 0 ? Math.max(4, Math.round((count / total) * 100)) : 0
   return (
     <div className="flex items-center gap-2 text-xs">
@@ -86,6 +115,9 @@ function BarraHorizontal({ label, count, total, color }: { label: string; count:
         <div className="h-4 rounded-full" style={{ width: `${pct}%`, background: color }} />
       </div>
       <span className="w-6 text-right font-bold text-gray-700 flex-shrink-0">{count}</span>
+      {diasProm != null && (
+        <span className="w-16 text-right text-[10px] text-gray-400 flex-shrink-0" title="Días promedio en esta etapa">{diasProm.toFixed(1)}d prom</span>
+      )}
     </div>
   )
 }
@@ -126,64 +158,34 @@ function InactividadRow({ label, leads, color, bgColor, expandKey, expandidos, t
   )
 }
 
-/* Alerta de requisito con desglose por asesor */
-function AlertaRequisitoPanel({ alerta, expandidos, toggle, usuariosMap }: {
-  alerta: { id: string; icon: string; label: string; color: string; bg: string; border: string; porAsesor: Record<string, LeadData[]> }
-  expandidos: Set<string>; toggle: (k: string) => void; usuariosMap: Record<string, string>
+/* Alerta de requisito — lista plana de clientes (nombre + asesor), sin nivel intermedio */
+function AlertaRequisitoPanel({ alerta, expandidos, toggle, usuariosMap, onOpen }: {
+  alerta: { id: string; icon: string; label: string; color: string; bg: string; border: string; leads: LeadData[] }
+  expandidos: Set<string>; toggle: (k: string) => void; usuariosMap: Record<string, string>; onOpen: (id: string) => void
 }) {
-  const total = Object.values(alerta.porAsesor).reduce((s, arr) => s + arr.length, 0)
-  if (total === 0) return null
+  if (alerta.leads.length === 0) return null
   const abierto = expandidos.has(alerta.id)
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: alerta.border }}>
-      {/* Header */}
       <button onClick={() => toggle(alerta.id)} className="w-full flex items-center justify-between px-4 py-2.5 text-left" style={{ background: alerta.bg }}>
         <div className="flex items-center gap-2">
           <span>{alerta.icon}</span>
           <span className="font-semibold text-sm" style={{ color: alerta.color }}>{alerta.label}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-black text-lg" style={{ color: alerta.color }}>{total}</span>
+          <span className="font-black text-lg" style={{ color: alerta.color }}>{alerta.leads.length}</span>
           <span className="text-xs" style={{ color: alerta.color }}>{abierto ? '▲' : '▼'}</span>
         </div>
       </button>
-      {/* Desglose por asesor */}
       {abierto && (
-        <div className="bg-white">
-          {Object.entries(alerta.porAsesor).map(([asId, leads]) => {
-            const asNombre = asId === '__sin__' ? 'Sin asignar' : (usuariosMap[asId] ?? 'Asesor')
-            const subKey = `${alerta.id}__${asId}`
-            const subAbierto = expandidos.has(subKey)
-            return (
-              <div key={asId} className="border-t border-gray-100">
-                <button onClick={() => toggle(subKey)} className="w-full flex items-center justify-between px-4 py-2 text-left hover:bg-gray-50">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-black flex-shrink-0" style={{ background: alerta.color }}>
-                      {asNombre.charAt(0).toUpperCase()}
-                    </span>
-                    <span className="text-sm font-medium text-gray-800">{asNombre}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold" style={{ color: alerta.color }}>{leads.length}</span>
-                    <span className="text-gray-400 text-xs">{subAbierto ? '▲' : '▼'}</span>
-                  </div>
-                </button>
-                {subAbierto && (
-                  <div className="px-4 pb-2 space-y-1">
-                    {leads.map(l => (
-                      <div key={l.id} className="flex items-center justify-between text-xs py-1 border-b border-gray-50 last:border-0">
-                        <div>
-                          <span className="font-semibold text-gray-900">{l.cliente?.nombre ?? 'Sin nombre'}</span>
-                          <span className="text-gray-400 ml-2">{ETAPA_MAP[l.etapa_venta]?.label}</span>
-                        </div>
-                        <span className="text-gray-500 font-mono">{l.cliente?.celular ?? '—'}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 p-3 bg-white">
+          {alerta.leads.map(l => (
+            <button key={l.id} onClick={() => onOpen(l.id)}
+              className="text-left px-2.5 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors">
+              <p className="font-semibold text-gray-900 text-xs truncate">{l.cliente?.nombre ?? 'Sin nombre'}</p>
+              <p className="text-[10px] text-gray-400">{l.assigned_to ? (usuariosMap[l.assigned_to] ?? 'Asesor') : 'Sin asignar'} · {l.cliente?.celular ?? 'Sin celular'}</p>
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -235,8 +237,27 @@ function RecordatorioRow({ r, tipo, usuariosMap }: { r: Recordatorio; tipo: 'ven
   )
 }
 
+function AccionRow({ l, usuariosMap, onOpen, vencido }: { l: LeadData; usuariosMap: Record<string, string>; onOpen: () => void; vencido?: boolean }) {
+  return (
+    <button onClick={onOpen}
+      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0">
+      <div className="flex items-start gap-2">
+        <span className={`flex-shrink-0 w-1.5 h-1.5 rounded-full mt-1.5 ${vencido ? 'bg-red-500' : 'bg-blue-400'}`} />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-gray-900 truncate">{l.cliente?.nombre ?? 'Sin nombre'}</p>
+          <p className="text-[11px] text-blue-700 truncate">📌 {l.proxima_accion}</p>
+          <p className={`text-[10px] ${vencido ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
+            {fmtFecha(l.proxima_accion_fecha!)}
+            {l.assigned_to && <span className="ml-2">· {usuariosMap[l.assigned_to] ?? ''}</span>}
+          </p>
+        </div>
+      </div>
+    </button>
+  )
+}
+
 /* ─── componente principal ────────────────────────────────────────── */
-export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
+export default function VistaResumen({ leads, tenantId, usuarios, asesoresFiltro, periodoRango }: Props) {
   const supabase = createClient()
   const [actividad,     setActividad]     = useState<ActividadMap>({})
   const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([])
@@ -246,17 +267,34 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
   const [fichaId,       setFichaId]       = useState<string | null>(null)
   const [leadsLocal,    setLeadsLocal]    = useState<LeadData[]>(leads)
 
+  // Clientes nuevos (carta con su propio periodo)
+  const [clientesNuevosPeriodo, setClientesNuevosPeriodo] = useState<ClientesNuevosPeriodo>('semana')
+  const [clientesNuevosCount, setClientesNuevosCount] = useState<number | null>(null)
+
+  // Tasa de aprobación de crédito
+  const [estudiosCredito, setEstudiosCredito] = useState<{ entidad_id: string; estado: string; assignedTo: string | null }[]>([])
+  const [entidades, setEntidades] = useState<{ id: string; nombre: string }[]>([])
+
+  // Días promedio por etapa
+  const [historialEtapas, setHistorialEtapas] = useState<{ etapa: string; dias: number; assignedTo: string | null }[]>([])
+
   const usuariosMap = useMemo(() => Object.fromEntries(usuarios.map(u => [u.id, u.nombre])), [usuarios])
 
   // Actualizar leads cuando el prop cambia
   useEffect(() => { setLeadsLocal(leads) }, [leads])
 
-  /* ── Segmentación de leads ── */
-  const leadsResumen  = useMemo(() => leadsLocal.filter(l => !(EXCLUIR_RESUMEN as string[]).includes(l.etapa_venta)), [leadsLocal])
-  const leadsCore     = useMemo(() => leadsLocal.filter(l => (ETAPAS_ACTIVAS as string[]).includes(l.etapa_venta)), [leadsLocal])
-  const leadsRevision = useMemo(() => leadsLocal.filter(l => (ETAPAS_REVISION as string[]).includes(l.etapa_venta)), [leadsLocal])
+  /* ── Filtro por asesor(es) seleccionados en la barra lateral ── */
+  const leadsFiltrados = useMemo(() => {
+    if (asesoresFiltro === null) return leadsLocal
+    return leadsLocal.filter(l => asesoresFiltro.has(l.assigned_to ?? '__sin__'))
+  }, [leadsLocal, asesoresFiltro])
 
-  /* ── Fetch datos externos ── */
+  /* ── Segmentación de leads ── */
+  const leadsResumen  = useMemo(() => leadsFiltrados.filter(l => !(EXCLUIR_RESUMEN as string[]).includes(l.etapa_venta)), [leadsFiltrados])
+  const leadsCore     = useMemo(() => leadsFiltrados.filter(l => (ETAPAS_ACTIVAS as string[]).includes(l.etapa_venta)), [leadsFiltrados])
+  const leadsRevision = useMemo(() => leadsFiltrados.filter(l => (ETAPAS_REVISION as string[]).includes(l.etapa_venta)), [leadsFiltrados])
+
+  /* ── Fetch datos externos (independientes del período) ── */
   useEffect(() => {
     if (!tenantId) return
     const clienteIds = leadsResumen.map(l => l.cliente?.id).filter((id): id is string => !!id)
@@ -265,17 +303,14 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
       .map(l => l.cliente?.id).filter((id): id is string => !!id)
 
     Promise.all([
-      // updated_at de clientes
       clienteIds.length > 0
         ? supabase.from('clientes').select('id, updated_at').in('id', clienteIds)
         : Promise.resolve({ data: [] }),
-      // Recordatorios pendientes próximos 7 días
       supabase.from('recordatorios')
         .select('id, nota, fecha_recordatorio, asignado_a, cliente_id, clientes(nombre, celular)')
         .eq('tenant_id', tenantId).eq('completado', false)
         .lte('fecha_recordatorio', new Date(Date.now() + 7 * 86400000).toISOString())
         .order('fecha_recordatorio').limit(200),
-      // Ordenes de servicio para clientes en revisiones
       revClientIds.length > 0
         ? supabase.from('ordenes')
             .select('cliente_id')
@@ -298,9 +333,89 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
 
+  /* ── Clientes nuevos (según su propio toggle día/semana/mes) ── */
+  useEffect(() => {
+    if (!tenantId) return
+    const presetMap = { dia: 'hoy', semana: 'semana', mes: 'mes' } as const
+    const r = calcularRango(presetMap[clientesNuevosPeriodo])
+    let q = supabase.from('clientes').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId).gte('created_at', r.desdeISO).lte('created_at', r.hastaISO)
+    if (asesoresFiltro !== null) {
+      const ids = [...asesoresFiltro].filter(id => id !== '__sin__')
+      if (ids.length > 0) q = q.in('assigned_to', ids)
+    }
+    q.then(({ count }) => setClientesNuevosCount(count ?? 0))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, clientesNuevosPeriodo, asesoresFiltro])
+
+  /* ── Tasa de aprobación de crédito y días promedio por etapa (según Período de la barra lateral) ── */
+  useEffect(() => {
+    if (!tenantId) return
+    Promise.all([
+      supabase.from('entidades_financieras').select('id, nombre').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
+      supabase.from('clientes_credito_estudio')
+        .select('entidad_id, estado, clientes!inner(assigned_to)')
+        .eq('tenant_id', tenantId).in('estado', ['aprobado', 'rechazado'])
+        .gte('updated_at', periodoRango.desdeISO).lte('updated_at', periodoRango.hastaISO),
+      supabase.from('historial_etapas_cliente')
+        .select('etapa_anterior, dias_en_etapa, clientes!inner(assigned_to)')
+        .eq('tenant_id', tenantId).not('etapa_anterior', 'is', null).not('dias_en_etapa', 'is', null)
+        .gte('created_at', periodoRango.desdeISO).lte('created_at', periodoRango.hastaISO),
+    ]).then(([{ data: ent }, { data: est }, { data: hist }]) => {
+      setEntidades((ent ?? []) as { id: string; nombre: string }[])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setEstudiosCredito(((est ?? []) as any[]).map(e => ({
+        entidad_id: e.entidad_id as string, estado: e.estado as string,
+        assignedTo: (Array.isArray(e.clientes) ? e.clientes[0]?.assigned_to : e.clientes?.assigned_to) ?? null,
+      })))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setHistorialEtapas(((hist ?? []) as any[]).map(h => ({
+        etapa: h.etapa_anterior as string, dias: h.dias_en_etapa as number,
+        assignedTo: (Array.isArray(h.clientes) ? h.clientes[0]?.assigned_to : h.clientes?.assigned_to) ?? null,
+      })))
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, periodoRango.desdeISO, periodoRango.hastaISO])
+
   const toggle = useCallback((k: string) => {
     setExpandidos(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n })
   }, [])
+
+  /* ── Filtrar estudios/historial por asesor seleccionado ── */
+  const estudiosFiltrados = useMemo(() =>
+    asesoresFiltro === null ? estudiosCredito : estudiosCredito.filter(e => asesoresFiltro.has(e.assignedTo ?? '__sin__')),
+    [estudiosCredito, asesoresFiltro])
+  const historialFiltrado = useMemo(() =>
+    asesoresFiltro === null ? historialEtapas : historialEtapas.filter(h => asesoresFiltro.has(h.assignedTo ?? '__sin__')),
+    [historialEtapas, asesoresFiltro])
+
+  /* ── Tasa de aprobación global y por entidad ── */
+  const tasaAprobacion = useMemo(() => {
+    const aprobados = estudiosFiltrados.filter(e => e.estado === 'aprobado').length
+    const rechazados = estudiosFiltrados.filter(e => e.estado === 'rechazado').length
+    const total = aprobados + rechazados
+    const pct = total > 0 ? Math.round((aprobados / total) * 100) : null
+    const porEntidad = entidades.map(e => {
+      const rows = estudiosFiltrados.filter(x => x.entidad_id === e.id)
+      const ap = rows.filter(x => x.estado === 'aprobado').length
+      const re = rows.filter(x => x.estado === 'rechazado').length
+      const t = ap + re
+      return { entidad: e.nombre, aprobados: ap, rechazados: re, total: t, pct: t > 0 ? Math.round((ap / t) * 100) : null }
+    }).filter(e => e.total > 0)
+    return { aprobados, rechazados, total, pct, porEntidad }
+  }, [estudiosFiltrados, entidades])
+
+  /* ── Días promedio por etapa ── */
+  const diasPromPorEtapa = useMemo(() => {
+    const map: Record<string, number[]> = {}
+    for (const h of historialFiltrado) {
+      if (!map[h.etapa]) map[h.etapa] = []
+      map[h.etapa].push(h.dias)
+    }
+    const out: Record<string, number> = {}
+    for (const [etapa, arr] of Object.entries(map)) out[etapa] = arr.reduce((s, v) => s + v, 0) / arr.length
+    return out
+  }, [historialFiltrado])
 
   /* ── Inactividad leads core (excluye revisiones y perdido/finalizado) ── */
   const leadsConDias: LeadConDias[] = useMemo(() =>
@@ -326,7 +441,7 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
   const revisionesConAlerta = useMemo(() =>
     revisionesConDias.filter(r => r.nivel !== 'normal'), [revisionesConDias])
 
-  /* ── Alertas de requisitos ── */
+  /* ── Alertas de requisitos — lista plana de clientes ── */
   const alertasRequisitos = useMemo(() => {
     const sinCelular = leadsResumen.filter(l =>
       (ETAPAS_LEADS as string[]).includes(l.etapa_venta) && !l.cliente?.celular)
@@ -351,20 +466,19 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
       { id: 'alistamiento',     icon: '🔧', label: 'Falta alistamiento',                 color: '#DC2626', bg: '#FEF2F2', border: '#FCA5A5', leads: faltaAlistamiento },
       { id: 'sin_primera_rev',  icon: '📋', label: '2da Rev. sin entrada de 1era Rev. ST', color: '#7C3AED', bg: '#F5F3FF', border: '#C4B5FD', leads: sinPrimeraRev  },
       { id: 'sin_segunda_rev',  icon: '📋', label: '3era Rev. sin entrada de 2da Rev. ST', color: '#7C3AED', bg: '#F5F3FF', border: '#C4B5FD', leads: sinSegundaRev  },
-    ].filter(a => a.leads.length > 0).map(a => ({ ...a, porAsesor: groupByAsesor(a.leads) }))
+    ].filter(a => a.leads.length > 0)
   }, [leadsResumen, leadsRevision, ordenesMap])
 
   /* ── Métricas globales ── */
-  const sinSeguimiento    = leadsResumen.filter(l => !l.proxima_accion_fecha)
   const segVencido        = leadsResumen.filter(l => l.proxima_accion_fecha && new Date(l.proxima_accion_fecha) < new Date())
-  const conMsgSinRes      = leadsResumen.filter(l => l.sin_respuesta_asesor_desde && (Date.now() - new Date(l.sin_respuesta_asesor_desde).getTime()) > 15 * 60000)
-  const valorPipeline     = leadsCore.reduce((s, l) => s + (l.valor_estimado_venta ?? 0), 0)
+  const sinSeguimiento    = leadsResumen.filter(l => !l.proxima_accion_fecha)
   const ahora             = new Date()
   const hoyStr            = ahora.toDateString()
+  const finHoy             = new Date(ahora); finHoy.setHours(23, 59, 59, 999)
   const recVencidos       = recordatorios.filter(r => new Date(r.fecha_recordatorio) < ahora)
   const recHoy            = recordatorios.filter(r => { const d = new Date(r.fecha_recordatorio); return d.toDateString() === hoyStr && d >= ahora })
   const recProximos       = recordatorios.filter(r => { const d = new Date(r.fecha_recordatorio); return d > ahora && d.toDateString() !== hoyStr })
-  const totalAlertas      = alertasRequisitos.reduce((s, a) => s + Object.values(a.porAsesor).reduce((ss, arr) => ss + arr.length, 0), 0)
+  const totalAlertas      = alertasRequisitos.reduce((s, a) => s + a.leads.length, 0)
 
   /* ── Por etapa (solo leadsResumen) ── */
   const porEtapa = useMemo(() => {
@@ -378,7 +492,7 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
         porAsesor[k].push(l)
       }
       return { etapa, config: ETAPA_MAP[etapa], total: enEtapa.length, porAsesor }
-    }).sort((a, b) => (ETAPA_MAP[a.etapa]?.id && ETAPA_MAP[b.etapa]?.id ? 0 : 0))
+    })
   }, [leadsResumen])
 
   const asesoresActivos = useMemo(() => {
@@ -428,25 +542,49 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
 
   return (
     <>
-    <div className="space-y-6 pb-8">
+    <div className="space-y-6 pb-8 max-w-[1200px]">
 
       {/* ══ MÉTRICAS ══ */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         <MetricCard label="En pipeline"       value={leadsCore.length}         color="blue"   sub="etapas activas" />
         <MetricCard label="Total seguimiento" value={leadsResumen.length}      color="gray"   sub="excl. perdidos" />
         <MetricCard label="Alertas pendientes" value={totalAlertas}            color={totalAlertas > 0 ? 'red' : 'green'} />
         <MetricCard label="Seg. vencido"      value={segVencido.length}        color={segVencido.length > 0 ? 'red' : 'green'} />
+        <ClientesNuevosCard periodo={clientesNuevosPeriodo} onChangePeriodo={setClientesNuevosPeriodo} count={clientesNuevosCount} />
         <MetricCard label="Rec. vencidos"     value={recVencidos.length}       color={recVencidos.length > 0 ? 'red' : 'green'} />
-        <MetricCard label="Valor pipeline"    value={fmtMillon(valorPipeline)} color="purple" />
+        <MetricCard label="Tasa aprobación crédito" value={tasaAprobacion.pct === null ? '—' : `${tasaAprobacion.pct}%`}
+          color={tasaAprobacion.pct === null ? 'gray' : tasaAprobacion.pct >= 70 ? 'green' : tasaAprobacion.pct >= 40 ? 'amber' : 'red'}
+          sub={tasaAprobacion.total > 0 ? `${tasaAprobacion.aprobados}/${tasaAprobacion.total} en el período` : 'sin datos en el período'} />
       </div>
+
+      {/* ══ APROBACIÓN DE CRÉDITO POR ENTIDAD ══ */}
+      {tasaAprobacion.porEntidad.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 className="font-bold text-gray-800 text-sm mb-3">Aprobación de crédito por entidad</h3>
+          <div className="space-y-2">
+            {tasaAprobacion.porEntidad.map(e => (
+              <div key={e.entidad} className="flex items-center gap-2 text-xs">
+                <span className="w-32 truncate text-gray-600 flex-shrink-0">{e.entidad}</span>
+                <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+                  <div className="h-4 rounded-full" style={{ width: `${Math.max(4, e.pct ?? 0)}%`, background: tasaColor(e.pct ?? 0) }} />
+                </div>
+                <span className="w-10 text-right font-bold flex-shrink-0" style={{ color: tasaColor(e.pct ?? 0) }}>{e.pct}%</span>
+                <span className="w-20 text-right text-[10px] text-gray-400 flex-shrink-0">{e.aprobados} aprob. / {e.rechazados} rech.</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ══ DISTRIBUCIÓN + ASESORES ══ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <h3 className="font-bold text-gray-800 text-sm mb-3">Distribución por etapa</h3>
+          <h3 className="font-bold text-gray-800 text-sm mb-1">Distribución por etapa</h3>
+          <p className="text-[10px] text-gray-400 mb-3">Días promedio = tiempo que un cliente pasó en esa etapa antes de avanzar (período seleccionado)</p>
           <div className="space-y-2">
             {porEtapa.map(({ etapa, config, total }) => (
-              <BarraHorizontal key={etapa} label={config?.label ?? etapa} count={total} total={leadsResumen.length} color={config?.color ?? '#6B7280'} />
+              <BarraHorizontal key={etapa} label={config?.label ?? etapa} count={total} total={leadsResumen.length}
+                color={config?.color ?? '#6B7280'} diasProm={diasPromPorEtapa[etapa] ?? null} />
             ))}
             {porEtapa.length === 0 && <p className="text-xs text-gray-400">Sin leads</p>}
           </div>
@@ -478,90 +616,49 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
         ) : (
           <div className="space-y-2">
             {alertasRequisitos.map(alerta => (
-              <AlertaRequisitoPanel key={alerta.id} alerta={alerta} expandidos={expandidos} toggle={toggle} usuariosMap={usuariosMap} />
+              <AlertaRequisitoPanel key={alerta.id} alerta={alerta} expandidos={expandidos} toggle={toggle} usuariosMap={usuariosMap} onOpen={setFichaId} />
             ))}
           </div>
         )}
       </div>
 
-      {/* ══ TABLA ETAPA × ASESOR ══ */}
+      {/* ══ CLIENTES POR ETAPA (simplificado — filas expandibles) ══ */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b bg-gray-50">
-          <h3 className="font-bold text-gray-800 text-sm">Clientes por etapa y asesor</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Clic en un número → ver clientes · Clic en nombre → abrir ficha</p>
+          <h3 className="font-bold text-gray-800 text-sm">Clientes por etapa</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Clic en una etapa para ver los clientes (nombre y asesor) · Clic en un cliente → abrir ficha</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left px-4 py-2 font-semibold text-gray-600">Etapa</th>
-                {asesoresActivos.map(u => (
-                  <th key={u.id} className="text-center px-3 py-2 font-semibold text-gray-600 whitespace-nowrap min-w-[80px]">{u.nombre.split(' ')[0]}</th>
-                ))}
-                <th className="text-center px-3 py-2 font-semibold text-gray-800 bg-gray-100">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {porEtapa.map(({ etapa, config, total, porAsesor }) => (
-                <React.Fragment key={etapa}>
-                  <tr className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: config?.color ?? '#6B7280' }} />
-                        <span className="text-gray-700 font-medium">{config?.label ?? etapa}</span>
-                      </div>
-                    </td>
-                    {asesoresActivos.map(u => {
-                      const grupo = porAsesor[u.id]
-                      const key = `tab__${etapa}__${u.id}`
-                      return (
-                        <td key={u.id} className="px-3 py-2 text-center">
-                          {grupo ? (
-                            <button onClick={() => toggle(key)}
-                              className="w-7 h-7 rounded-full font-bold text-white text-xs mx-auto flex items-center justify-center hover:scale-110 transition-transform"
-                              style={{ background: expandidos.has(key) ? '#1D4ED8' : (config?.color ?? '#6B7280') }}>
-                              {grupo.length}
-                            </button>
-                          ) : <span className="text-gray-300">—</span>}
-                        </td>
-                      )
-                    })}
-                    <td className="px-3 py-2 text-center font-black text-gray-800">{total}</td>
-                  </tr>
-                  {asesoresActivos.map(u => {
-                    const key = `tab__${etapa}__${u.id}`
-                    const grupo = porAsesor[u.id]
-                    if (!expandidos.has(key) || !grupo) return null
-                    return (
-                      <tr key={`exp_${key}`} className="border-b bg-blue-50/40">
-                        <td colSpan={asesoresActivos.length + 2} className="px-4 py-2">
-                          <p className="text-[10px] font-bold text-gray-500 uppercase mb-1.5">{config?.label} · {usuariosMap[u.id] ?? 'Sin asignar'} ({grupo.length})</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                            {grupo.map(l => (
-                              <button key={l.id} onClick={() => setFichaId(l.id)}
-                                className="text-left px-2.5 py-1.5 rounded-lg bg-white hover:bg-blue-50 border border-gray-200 hover:border-blue-200 transition-colors">
-                                <p className="font-semibold text-gray-900 text-xs truncate">{l.cliente?.nombre ?? 'Sin nombre'}</p>
-                                <p className="text-[10px] text-gray-400">{l.cliente?.celular ?? 'Sin celular'}</p>
-                              </button>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </React.Fragment>
-              ))}
-              <tr className="bg-gray-50 border-t-2">
-                <td className="px-4 py-2 font-bold text-gray-700">Total</td>
-                {asesoresActivos.map(u => (
-                  <td key={u.id} className="px-3 py-2 text-center font-black text-gray-800">
-                    {leadsResumen.filter(l => (l.assigned_to ?? '__sin__') === u.id).length}
-                  </td>
-                ))}
-                <td className="px-3 py-2 text-center font-black text-blue-700">{leadsResumen.length}</td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="divide-y divide-gray-100">
+          {porEtapa.map(({ etapa, config, total, porAsesor }) => {
+            const key = `etapa2_${etapa}`
+            const abierto = expandidos.has(key)
+            const clientesEtapa = Object.values(porAsesor).flat()
+            return (
+              <div key={etapa}>
+                <button onClick={() => toggle(key)} className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: config?.color ?? '#6B7280' }} />
+                    <span className="font-medium text-sm text-gray-800">{config?.label ?? etapa}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-gray-800">{total}</span>
+                    <span className="text-gray-400 text-xs">{abierto ? '▲' : '▼'}</span>
+                  </div>
+                </button>
+                {abierto && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 px-4 pb-3 bg-gray-50/50">
+                    {clientesEtapa.map(l => (
+                      <button key={l.id} onClick={() => setFichaId(l.id)}
+                        className="text-left px-2.5 py-1.5 rounded-lg bg-white hover:bg-blue-50 border border-gray-200 hover:border-blue-200 transition-colors">
+                        <p className="font-semibold text-gray-900 text-xs truncate">{l.cliente?.nombre ?? 'Sin nombre'}</p>
+                        <p className="text-[10px] text-gray-400">{l.assigned_to ? (usuariosMap[l.assigned_to] ?? 'Asesor') : 'Sin asignar'} · {l.cliente?.celular ?? 'Sin celular'}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -632,15 +729,14 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
         )}
       </div>
 
-      {/* ══ RECORDATORIOS + PRÓXIMAS ACCIONES ══ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* ══ RECORDATORIOS + ACCIONES DE HOY + PRÓXIMAS ACCIONES ══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
             <h3 className="font-bold text-gray-800 text-sm">Recordatorios pendientes</h3>
             <div className="flex gap-1.5">
-              {recVencidos.length > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">⚠ {recVencidos.length} vencidos</span>}
-              {recHoy.length > 0      && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">📌 {recHoy.length} hoy</span>}
-              {recProximos.length > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{recProximos.length} próx.</span>}
+              {recVencidos.length > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">⚠ {recVencidos.length}</span>}
+              {recHoy.length > 0      && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">📌 {recHoy.length}</span>}
             </div>
           </div>
           <div className="max-h-72 overflow-y-auto">
@@ -657,35 +753,36 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
 
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-4 py-3 border-b bg-gray-50">
-            <h3 className="font-bold text-gray-800 text-sm">Próximas acciones</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Vencidas primero · Clic para abrir ficha</p>
+            <h3 className="font-bold text-gray-800 text-sm">Acciones de hoy</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Clic para abrir ficha</p>
           </div>
           <div className="max-h-72 overflow-y-auto">
             {(() => {
-              const conAccion = leadsResumen.filter(l => l.proxima_accion_fecha)
-                .sort((a, b) => new Date(a.proxima_accion_fecha!).getTime() - new Date(b.proxima_accion_fecha!).getTime())
-              if (conAccion.length === 0) return <p className="text-xs text-gray-400 px-4 py-4">Sin acciones programadas</p>
-              return conAccion.map(l => {
-                const fecha   = new Date(l.proxima_accion_fecha!)
-                const vencido = fecha < ahora
-                const esHoy   = fecha.toDateString() === hoyStr && !vencido
-                return (
-                  <button key={l.id} onClick={() => setFichaId(l.id)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0">
-                    <div className="flex items-start gap-2">
-                      <span className={`flex-shrink-0 w-1.5 h-1.5 rounded-full mt-1.5 ${vencido ? 'bg-red-500' : esHoy ? 'bg-amber-500' : 'bg-blue-400'}`} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-900 truncate">{l.cliente?.nombre ?? 'Sin nombre'}</p>
-                        <p className="text-[11px] text-blue-700 truncate">📌 {l.proxima_accion}</p>
-                        <p className={`text-[10px] ${vencido ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
-                          {vencido ? '⚠ ' : ''}{fmtFecha(l.proxima_accion_fecha!)}
-                          {l.assigned_to && <span className="ml-2">· {usuariosMap[l.assigned_to] ?? ''}</span>}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                )
+              const deHoy = leadsResumen.filter(l => {
+                if (!l.proxima_accion_fecha) return false
+                const f = new Date(l.proxima_accion_fecha)
+                return f.toDateString() === hoyStr
+              }).sort((a, b) => new Date(a.proxima_accion_fecha!).getTime() - new Date(b.proxima_accion_fecha!).getTime())
+              if (deHoy.length === 0) return <p className="text-xs text-gray-400 px-4 py-4">Sin acciones para hoy</p>
+              return deHoy.map(l => {
+                const vencido = new Date(l.proxima_accion_fecha!) < ahora
+                return <AccionRow key={l.id} l={l} usuariosMap={usuariosMap} onOpen={() => setFichaId(l.id)} vencido={vencido} />
               })
+            })()}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b bg-gray-50">
+            <h3 className="font-bold text-gray-800 text-sm">Próximas acciones</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Solo futuras (no hoy, no vencidas) · Clic para abrir ficha</p>
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            {(() => {
+              const futuras = leadsResumen.filter(l => l.proxima_accion_fecha && new Date(l.proxima_accion_fecha) > finHoy)
+                .sort((a, b) => new Date(a.proxima_accion_fecha!).getTime() - new Date(b.proxima_accion_fecha!).getTime())
+              if (futuras.length === 0) return <p className="text-xs text-gray-400 px-4 py-4">Sin acciones futuras programadas</p>
+              return futuras.map(l => <AccionRow key={l.id} l={l} usuariosMap={usuariosMap} onOpen={() => setFichaId(l.id)} />)
             })()}
           </div>
         </div>
@@ -730,4 +827,3 @@ export default function VistaResumen({ leads, tenantId, usuarios }: Props) {
     </>
   )
 }
-

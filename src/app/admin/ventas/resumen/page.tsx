@@ -1,13 +1,54 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import type { EtapaVenta } from '@/lib/ventas/pipeline'
 import { ETAPAS_NECESITAN_PLACA } from '@/lib/ventas/pipeline'
 import VistaResumen from '../components/VistaResumen'
 import type { LeadData } from '../components/LeadCard'
+import { PeriodoFilter } from '@/components/dashboard/PeriodoFilter'
+import { calcularRango, ymdLocal, type PeriodoPreset } from '@/lib/dashboard/periodos'
+
+// ─── Filtro desplegable (mismo patrón que Dashboard Servicio Técnico) ──────────
+function FilterDropdown({ title, badge, children }: { title: string; badge?: number; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(p => !p)}
+        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+          open ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
+        }`}
+      >
+        <span className="flex items-center gap-1.5">
+          {title}
+          {(badge ?? 0) > 0 && (
+            <span className="bg-blue-600 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{badge}</span>
+          )}
+        </span>
+        <svg className={`w-3.5 h-3.5 transition-transform flex-shrink-0 ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-[70] mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-2xl p-3">
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function ResumenVentasPage() {
   const { profile } = useAuth()
@@ -16,6 +57,35 @@ export default function ResumenVentasPage() {
   const [leads,    setLeads]    = useState<LeadData[]>([])
   const [usuarios, setUsuarios] = useState<{ id: string; nombre: string }[]>([])
   const [cargando, setCargando] = useState(true)
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+
+  // ── Filtro de Período (para las métricas con fecha: clientes nuevos, tasa de
+  //    aprobación de crédito, días promedio por etapa) ──
+  const [preset, setPreset] = useState<PeriodoPreset>('mes')
+  const [desdeManual, setDesdeManual] = useState(ymdLocal(new Date()))
+  const [hastaManual, setHastaManual] = useState(ymdLocal(new Date()))
+  const periodoRango = useMemo(() => calcularRango(preset, desdeManual, hastaManual), [preset, desdeManual, hastaManual])
+
+  const rolNorm = (profile?.rol ?? '').toLowerCase().replace('ñ', 'n')
+  const esGerencia = rolNorm === 'gerencia' || rolNorm === 'control_total' || rolNorm === 'dueno'
+
+  // ── Filtro de Asesores — Gerencia/Dueño eligen 1+; los demás solo se ven a sí mismos ──
+  const [asesoresSel, setAsesoresSel] = useState<Set<string> | null>(null) // null = todos
+
+  useEffect(() => {
+    if (!profile) return
+    if (!esGerencia) setAsesoresSel(new Set([profile.id]))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id, esGerencia])
+
+  const toggleAsesor = (id: string) => {
+    setAsesoresSel(prev => {
+      const base = prev ?? new Set(usuarios.map(u => u.id).concat(['__sin__']))
+      const n = new Set(base)
+      if (n.has(id)) n.delete(id); else n.add(id)
+      return n
+    })
+  }
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -159,24 +229,100 @@ export default function ResumenVentasPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.tenant_id, profile?.rol, profile?.id])
 
-  if (cargando) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-500">Cargando resumen de ventas...</p>
-        </div>
-      </div>
-    )
-  }
+  const filterPanel = (
+    <div className="py-2 px-2 space-y-1">
+      <FilterDropdown title="Período">
+        <PeriodoFilter
+          preset={preset} desdeManual={desdeManual} hastaManual={hastaManual}
+          onChangePreset={setPreset} onChangeDesdeManual={setDesdeManual} onChangeHastaManual={setHastaManual}
+        />
+      </FilterDropdown>
+
+      {esGerencia && (
+        <FilterDropdown title="Asesores" badge={asesoresSel ? asesoresSel.size : 0}>
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1.5 font-semibold">Asesores</p>
+          <label className="flex items-center gap-2 py-1 cursor-pointer group">
+            <input type="checkbox" checked={asesoresSel === null}
+              onChange={() => setAsesoresSel(null)}
+              className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+            <span className="text-xs font-semibold text-gray-700">Todos</span>
+          </label>
+          <div className="max-h-52 overflow-y-auto space-y-0.5 pr-1 mt-1 border-t border-gray-100 pt-1">
+            {usuarios.map(u => (
+              <label key={u.id} className="flex items-center gap-2 py-1 cursor-pointer group">
+                <input type="checkbox" checked={asesoresSel === null || asesoresSel.has(u.id)}
+                  onChange={() => toggleAsesor(u.id)}
+                  className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                <span className="text-xs text-gray-700 group-hover:text-gray-900 select-none truncate">{u.nombre}</span>
+              </label>
+            ))}
+          </div>
+        </FilterDropdown>
+      )}
+    </div>
+  )
 
   return (
-    <div className="p-5">
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Resumen Ventas</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Métricas generales del pipeline de ventas</p>
+    <div className="bg-gray-50">
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-5 pt-5 pb-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Resumen Ventas</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Métricas generales del pipeline de ventas</p>
+          </div>
+          <button
+            onClick={() => setMobileFiltersOpen(true)}
+            className="md:hidden flex items-center gap-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h18M7 12h10M10 20h4" />
+            </svg>
+            Filtros
+          </button>
+        </div>
       </div>
-      <VistaResumen leads={leads} tenantId={profile?.tenant_id ?? ''} usuarios={usuarios} />
+
+      <div className="flex">
+        <aside className="hidden md:block w-52 flex-shrink-0 bg-white border-r border-gray-200 sticky top-[89px] self-start h-[calc(100vh-89px)]">
+          {filterPanel}
+        </aside>
+
+        {mobileFiltersOpen && (
+          <div className="md:hidden fixed inset-0 z-50 flex">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setMobileFiltersOpen(false)} />
+            <aside className="relative w-72 max-w-[85vw] h-full bg-white flex flex-col shadow-2xl">
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <span className="font-semibold text-sm">Filtros</span>
+                <button onClick={() => setMobileFiltersOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1">{filterPanel}</div>
+            </aside>
+          </div>
+        )}
+
+        <main className="flex-1 p-4 sm:p-5">
+          {cargando ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-gray-500">Cargando resumen de ventas...</p>
+              </div>
+            </div>
+          ) : (
+            <VistaResumen
+              leads={leads}
+              tenantId={profile?.tenant_id ?? ''}
+              usuarios={usuarios}
+              asesoresFiltro={asesoresSel}
+              periodoRango={periodoRango}
+            />
+          )}
+        </main>
+      </div>
     </div>
   )
 }
