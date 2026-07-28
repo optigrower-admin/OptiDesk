@@ -1,7 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCOP } from '@/lib/ventas/pipeline'
+import { formatCOP, calcularPrecioMoto } from '@/lib/ventas/pipeline'
+
+const METODOS_PAGO_FIJOS = ['Transferencia', 'Efectivo', 'Financiera']
 
 interface Props {
   clienteId: string
@@ -10,13 +12,10 @@ interface Props {
   onCreditoChange?: (aprobada: string | null, rechazadas: string[]) => void
 }
 
-type MetodoPago    = { id: string; nombre: string; recargo_porcentaje: number }
 type Entidad       = { id: string; nombre: string }
 type Estudio       = { id: string; entidad_id: string; estado: 'sin_iniciar' | 'en_estudio' | 'aprobado' | 'rechazado'; monto_aprobado: number | null }
-type CategoriaPago = { id: string; nombre: string }
 type PagoRegistrado = {
   id: string
-  categoria_id: string | null
   codigo_factura: string | null
   monto: number
   metodo_pago: string | null
@@ -44,60 +43,55 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
 
   /* ── Estado forma de pago ── */
   const [formaPago, setFormaPago]           = useState<FormaPago>('')
-  const [metodoPagoId, setMetodoPagoId]     = useState('')
   const [cuotaInicialSi, setCuotaInicialSi] = useState(false)
   const [cuotaInicial, setCuotaInicial]     = useState('')
   const [cuotaDeseada, setCuotaDeseada]     = useState('')
-  const [metodos, setMetodos]               = useState<MetodoPago[]>([])
   const [entidades, setEntidades]           = useState<Entidad[]>([])
   const [estudios, setEstudios]             = useState<Estudio[]>([])
   const [totalMotos, setTotalMotos]         = useState(0)
   const [saving, setSaving]                 = useState(false)
 
   /* ── Estado pagos registrados ── */
-  const [categorias, setCategorias]         = useState<CategoriaPago[]>([])
   const [pagos, setPagos]                   = useState<PagoRegistrado[]>([])
   const [showFormPago, setShowFormPago]     = useState(false)
-  const [formCat, setFormCat]               = useState('')
-  const [formFactura, setFormFactura]       = useState('')
+  const [formRecibo, setFormRecibo]         = useState('')
   const [formMonto, setFormMonto]           = useState('')
   const [formMetodo, setFormMetodo]         = useState('')
+  const [formFecha, setFormFecha]           = useState(() => new Date().toISOString().slice(0, 10))
   const [savingPago, setSavingPago]         = useState(false)
 
   const [loading, setLoading] = useState(true)
 
   const cargar = useCallback(async () => {
-    const [{ data: cliente }, { data: met }, { data: ent }, { data: est }, { data: motos }, { data: cats }, { data: pagosList }] =
+    const [{ data: cliente }, { data: ent }, { data: est }, { data: motos }, { data: pagosList }, { data: tenant }] =
       await Promise.all([
         supabase.from('clientes')
-          .select('forma_pago, metodo_pago_id, credito_tiene_cuota_inicial, cuota_inicial, cuota_deseada')
+          .select('forma_pago, credito_tiene_cuota_inicial, cuota_inicial, cuota_deseada')
           .eq('id', clienteId).single(),
-        supabase.from('metodos_pago').select('id, nombre, recargo_porcentaje').eq('tenant_id', tenantId).eq('activo', true),
         supabase.from('entidades_financieras').select('id, nombre').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
         supabase.from('clientes_credito_estudio').select('id, entidad_id, estado, monto_aprobado').eq('cliente_id', clienteId),
-        supabase.from('clientes_motos_interes').select('disponibilidad, motos_catalogo(precio, costo_documentos, costo_prenda)').eq('cliente_id', clienteId),
-        supabase.from('categorias_pago').select('id, nombre').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
-        supabase.from('clientes_pagos').select('id, categoria_id, codigo_factura, monto, metodo_pago, created_at').eq('cliente_id', clienteId).order('created_at', { ascending: false }),
+        supabase.from('clientes_motos_interes')
+          .select('disponibilidad, con_papeles, con_tarjeta, pignorada, motos_catalogo(precio, costo_documentos, costo_prenda)')
+          .eq('cliente_id', clienteId),
+        supabase.from('clientes_pagos').select('id, codigo_factura, monto, metodo_pago, created_at').eq('cliente_id', clienteId).order('created_at', { ascending: false }),
+        supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tenantId).single(),
       ])
 
     if (cliente) {
       setFormaPago((cliente.forma_pago ?? '') as FormaPago)
-      setMetodoPagoId(cliente.metodo_pago_id ?? '')
       setCuotaInicialSi(!!cliente.credito_tiene_cuota_inicial)
       setCuotaInicial(cliente.cuota_inicial?.toString() ?? '')
       setCuotaDeseada(cliente.cuota_deseada?.toString() ?? '')
     }
-    setMetodos((met ?? []) as MetodoPago[])
     setEntidades((ent ?? []) as Entidad[])
     setEstudios((est ?? []) as Estudio[])
-    setCategorias((cats ?? []) as CategoriaPago[])
     setPagos((pagosList ?? []) as PagoRegistrado[])
 
-    const esCredito = ['credito', 'credito_ci'].includes(cliente?.forma_pago ?? '')
+    const recargoTarjeta = Number(tenant?.recargo_tarjeta_porcentaje ?? 5)
     const total = (motos ?? []).reduce((s, m) => {
       const mc = Array.isArray(m.motos_catalogo) ? m.motos_catalogo[0] : m.motos_catalogo
       if (!mc) return s
-      return s + mc.precio + mc.costo_documentos + (esCredito ? mc.costo_prenda : 0)
+      return s + calcularPrecioMoto(mc, m.con_papeles, m.con_tarjeta, m.pignorada, recargoTarjeta)
     }, 0)
     setTotalMotos(total)
     setLoading(false)
@@ -105,8 +99,6 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
 
   useEffect(() => { cargar() }, [cargar])
 
-  const recargo   = useMemo(() => metodos.find(m => m.id === metodoPagoId)?.recargo_porcentaje ?? 0, [metodos, metodoPagoId])
-  const totalFinal = useMemo(() => totalMotos * (1 + recargo / 100), [totalMotos, recargo])
   const totalPagado = useMemo(() => pagos.reduce((s, p) => s + (p.monto ?? 0), 0), [pagos])
 
   /* ── Auto-guardar forma de pago ── */
@@ -160,13 +152,13 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
       await supabase.from('clientes_pagos').insert({
         cliente_id:     clienteId,
         tenant_id:      tenantId,
-        categoria_id:   formCat || null,
-        codigo_factura: formFactura || null,
+        codigo_factura: formRecibo || null,
         monto:          parseFloat(formMonto),
         metodo_pago:    formMetodo || null,
+        created_at:     new Date(`${formFecha}T12:00:00`).toISOString(),
         created_by:     usuarioId,
       })
-      setFormCat(''); setFormFactura(''); setFormMonto(''); setFormMetodo('')
+      setFormRecibo(''); setFormMonto(''); setFormMetodo(''); setFormFecha(new Date().toISOString().slice(0, 10))
       setShowFormPago(false)
       await cargar()
     } catch {
@@ -208,25 +200,19 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
         </div>
       </div>
 
-      {/* ── CONTADO: solo valor total ── */}
+      {/* ── CONTADO: valor de referencia, ya definido en Motos de interés ── */}
       {formaPago === 'contado' && (
-        <div className="space-y-2 border border-gray-200 rounded-xl p-3">
-          {totalMotos > 0 && (
-            <p className="text-xs text-gray-400">Referencia motos: {formatCOP(totalMotos)}</p>
-          )}
-          <div>
-            <label className="text-xs text-gray-500">Valor total a pagar de contado (COP)</label>
-            <input type="number" value={cuotaInicial} onChange={e => setCuotaInicial(e.target.value)}
-              onBlur={guardarCuotas}
-              placeholder={totalMotos > 0 ? String(totalMotos) : '0'}
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
-          </div>
+        <div className="border border-gray-200 rounded-xl p-3">
+          <p className="text-xs text-gray-500">Valor total a pagar de contado</p>
+          <p className="text-lg font-bold text-emerald-700 mt-0.5">{formatCOP(totalMotos)}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Definido en Motos de interés</p>
         </div>
       )}
 
       {/* ── DETALLES CRÉDITO ── */}
       {esCredito && (
         <div className="space-y-2 border border-gray-200 rounded-xl p-3">
+          <p className="text-xs text-gray-400">Referencia motos: {formatCOP(totalMotos)}</p>
           {formaPago === 'credito_ci' && (
             <div>
               <label className="text-xs text-gray-500">Monto cuota inicial (COP)</label>
@@ -244,8 +230,96 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
         </div>
       )}
 
+      {/* ── PAGOS REGISTRADOS ── */}
+      <div className="border-t border-gray-100 pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Pagos registrados
+            {pagos.length > 0 && <span className="ml-1.5 bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium normal-case">{pagos.length}</span>}
+          </p>
+          <button onClick={() => setShowFormPago(v => !v)}
+            className="text-xs text-blue-700 font-semibold hover:text-blue-900 flex items-center gap-1">
+            {showFormPago ? '✕ Cancelar' : '+ Agregar pago'}
+          </button>
+        </div>
+
+        {/* Formulario nuevo pago */}
+        {showFormPago && (
+          <div className="border border-blue-200 bg-blue-50 rounded-xl p-3 mb-3 space-y-2">
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Recibo de caja</p>
+
+            <input value={formRecibo} onChange={e => setFormRecibo(e.target.value)}
+              placeholder="N° de recibo de caja"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+            <select value={formMetodo} onChange={e => setFormMetodo(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+              <option value="">Método de pago</option>
+              {METODOS_PAGO_FIJOS.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+
+            <input type="date" value={formFecha} onChange={e => setFormFecha(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+            <input type="number" value={formMonto} onChange={e => setFormMonto(e.target.value)}
+              placeholder="Monto *"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+            <button onClick={agregarPago} disabled={!formMonto || savingPago}
+              className="w-full py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
+              {savingPago ? 'Guardando...' : '✓ Guardar pago'}
+            </button>
+          </div>
+        )}
+
+        {/* Lista de pagos */}
+        {pagos.length === 0 && !showFormPago && (
+          <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">Sin pagos registrados</p>
+        )}
+
+        {pagos.length > 0 && (
+          <div className="space-y-1.5">
+            {pagos.map(p => {
+              const fecha = new Date(p.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
+              return (
+                <div key={p.id} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {p.codigo_factura && (
+                        <span className="text-[10px] text-gray-400 font-mono">Recibo {p.codigo_factura}</span>
+                      )}
+                      <span className="text-[10px] text-gray-400 ml-auto">{fecha}</span>
+                    </div>
+                    <p className="text-sm font-bold text-emerald-700 mt-0.5">{formatCOP(p.monto)}</p>
+                    {p.metodo_pago && <p className="text-xs text-gray-400">{p.metodo_pago}</p>}
+                  </div>
+                  <button onClick={() => eliminarPago(p.id)}
+                    className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                  </button>
+                </div>
+              )
+            })}
+
+            {/* Total pagado */}
+            <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 mt-1">
+              <p className="text-xs text-emerald-700 font-semibold uppercase tracking-wide">Total pagado</p>
+              <p className="text-sm font-bold text-emerald-800">{formatCOP(totalPagado)}</p>
+            </div>
+            {totalMotos > 0 && totalPagado < totalMotos && (
+              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-0.5">
+                <p className="text-xs text-amber-700 font-semibold">Saldo pendiente</p>
+                <p className="text-sm font-bold text-amber-800">{formatCOP(totalMotos - totalPagado)}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* ── ESTUDIO DE CRÉDITO POR ENTIDAD (siempre visible) ── */}
-      <div className="border border-gray-200 rounded-xl p-3 space-y-2">
+      <div className="border-t border-gray-100 pt-4 border border-gray-200 rounded-xl p-3 space-y-2">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Estudio de crédito por entidad</p>
         {entidades.length === 0 && <p className="text-xs text-gray-400">No hay entidades configuradas (Config Ventas → Entidades financieras).</p>}
         {entidades.map(ent => {
@@ -275,103 +349,6 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
             </div>
           )
         })}
-      </div>
-
-      {/* ── PAGOS REGISTRADOS ── */}
-      <div className="border-t border-gray-100 pt-4">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-            Pagos registrados
-            {pagos.length > 0 && <span className="ml-1.5 bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium normal-case">{pagos.length}</span>}
-          </p>
-          <button onClick={() => setShowFormPago(v => !v)}
-            className="text-xs text-blue-700 font-semibold hover:text-blue-900 flex items-center gap-1">
-            {showFormPago ? '✕ Cancelar' : '+ Agregar pago'}
-          </button>
-        </div>
-
-        {/* Formulario nuevo pago */}
-        {showFormPago && (
-          <div className="border border-blue-200 bg-blue-50 rounded-xl p-3 mb-3 space-y-2">
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Nuevo pago</p>
-
-            <select value={formCat} onChange={e => setFormCat(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-              <option value="">Categoría (opcional)</option>
-              {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              {categorias.length === 0 && <option disabled>No hay categorías — configúralas en Config Ventas</option>}
-            </select>
-
-            <input value={formFactura} onChange={e => setFormFactura(e.target.value)}
-              placeholder="Código de factura (opcional)"
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-
-            <input type="number" value={formMonto} onChange={e => setFormMonto(e.target.value)}
-              placeholder="Monto *"
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-
-            <select value={formMetodo} onChange={e => setFormMetodo(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-              <option value="">Método de pago (opcional)</option>
-              {metodos.map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
-              {metodos.length === 0 && <option disabled>Sin métodos — agrégalos en Config Ventas</option>}
-            </select>
-
-            <button onClick={agregarPago} disabled={!formMonto || savingPago}
-              className="w-full py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
-              {savingPago ? 'Guardando...' : '✓ Guardar pago'}
-            </button>
-          </div>
-        )}
-
-        {/* Lista de pagos */}
-        {pagos.length === 0 && !showFormPago && (
-          <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">Sin pagos registrados</p>
-        )}
-
-        {pagos.length > 0 && (
-          <div className="space-y-1.5">
-            {pagos.map(p => {
-              const catNombre = categorias.find(c => c.id === p.categoria_id)?.nombre
-              const fecha = new Date(p.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
-              return (
-                <div key={p.id} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {catNombre && (
-                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold">{catNombre}</span>
-                      )}
-                      {p.codigo_factura && (
-                        <span className="text-[10px] text-gray-400 font-mono">{p.codigo_factura}</span>
-                      )}
-                      <span className="text-[10px] text-gray-400 ml-auto">{fecha}</span>
-                    </div>
-                    <p className="text-sm font-bold text-emerald-700 mt-0.5">{formatCOP(p.monto)}</p>
-                    {p.metodo_pago && <p className="text-xs text-gray-400">{p.metodo_pago}</p>}
-                  </div>
-                  <button onClick={() => eliminarPago(p.id)}
-                    className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                    </svg>
-                  </button>
-                </div>
-              )
-            })}
-
-            {/* Total pagado */}
-            <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 mt-1">
-              <p className="text-xs text-emerald-700 font-semibold uppercase tracking-wide">Total pagado</p>
-              <p className="text-sm font-bold text-emerald-800">{formatCOP(totalPagado)}</p>
-            </div>
-            {totalFinal > 0 && totalPagado < totalFinal && (
-              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-0.5">
-                <p className="text-xs text-amber-700 font-semibold">Saldo pendiente</p>
-                <p className="text-sm font-bold text-amber-800">{formatCOP(totalFinal - totalPagado)}</p>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )

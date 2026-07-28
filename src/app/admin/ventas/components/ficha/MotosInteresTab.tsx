@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { formatCOP } from '@/lib/ventas/pipeline'
+import { formatCOP, calcularPrecioMoto } from '@/lib/ventas/pipeline'
 
 interface Props {
   clienteId: string
@@ -18,17 +18,6 @@ type Seleccion = {
   con_tarjeta: boolean
   pignorada: boolean
   motos_catalogo: MotoCatalogo | null
-}
-
-function calcularPrecio(m: Pick<MotoCatalogo, 'precio' | 'costo_documentos' | 'costo_prenda'>, conPapeles: boolean, conTarjeta: boolean, pignorada: boolean, recargo: number): number {
-  // Pignorada siempre incluye papeles (no existe la combinación sin papeles).
-  const base = pignorada
-    ? m.precio + m.costo_documentos + m.costo_prenda
-    : conPapeles
-      ? m.precio + m.costo_documentos
-      : m.precio
-  if (!conTarjeta) return base
-  return Math.ceil((base * (1 + recargo / 100)) / 100) * 100
 }
 
 export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Props) {
@@ -67,7 +56,7 @@ export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Prop
       .eq('cliente_id', clienteId)
     const total = (sel ?? []).reduce((acc, s) => {
       const m = Array.isArray(s.motos_catalogo) ? s.motos_catalogo[0] : s.motos_catalogo
-      return acc + (m ? calcularPrecio(m, s.con_papeles, s.con_tarjeta, s.pignorada, recargo) : 0)
+      return acc + (m ? calcularPrecioMoto(m, s.con_papeles, s.con_tarjeta, s.pignorada, recargo) : 0)
     }, 0)
     await supabase.from('clientes').update({ valor_estimado_venta: total || null }).eq('id', clienteId)
   }
@@ -111,7 +100,7 @@ export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Prop
 
       {seleccion.map(s => {
         const m = s.motos_catalogo
-        const precio = m ? calcularPrecio(m, s.con_papeles, s.con_tarjeta, s.pignorada, recargo) : 0
+        const precio = m ? calcularPrecioMoto(m, s.con_papeles, s.con_tarjeta, s.pignorada, recargo) : 0
         return (
           <div key={s.id} className="border border-gray-200 rounded-xl p-3">
             <div className="flex items-center justify-between gap-2">

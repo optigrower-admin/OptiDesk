@@ -112,6 +112,22 @@ export function formatCOP(value: number | null | undefined): string {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value)
 }
 
+// Precio de una moto de interés según sus opciones de compra (con/sin papeles,
+// con/sin tarjeta, pignorada). Misma fórmula que la Lista de Precios: pignorada
+// siempre incluye papeles, y el recargo de tarjeta redondea hacia arriba a la centena.
+export function calcularPrecioMoto(
+  m: { precio: number; costo_documentos: number; costo_prenda: number },
+  conPapeles: boolean, conTarjeta: boolean, pignorada: boolean, recargoTarjetaPct: number,
+): number {
+  const base = pignorada
+    ? m.precio + m.costo_documentos + m.costo_prenda
+    : conPapeles
+      ? m.precio + m.costo_documentos
+      : m.precio
+  if (!conTarjeta) return base
+  return Math.ceil((base * (1 + recargoTarjetaPct / 100)) / 100) * 100
+}
+
 export function tiempoSinResponder(fecha: string | null): { minutos: number; texto: string; urgente: boolean } {
   if (!fecha) return { minutos: 0, texto: '', urgente: false }
   const minutos = Math.floor((Date.now() - new Date(fecha).getTime()) / 60000)
