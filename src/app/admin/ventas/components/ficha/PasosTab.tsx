@@ -24,19 +24,17 @@ export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail 
   const [items, setItems]   = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
 
-  // New item form
+  // Nueva acción — siempre requiere fecha y hora
   const [texto,       setTexto]       = useState('')
-  const [conRec,      setConRec]      = useState(false)
   const [fecha,       setFecha]       = useState('')
   const [envEmail,    setEnvEmail]    = useState(false)
   const [emailDest,   setEmailDest]   = useState(clienteEmail ?? '')
   const [adding,      setAdding]      = useState(false)
 
-  // Inline reminder for existing paso
-  const [addRecId,    setAddRecId]    = useState<string | null>(null)
-  const [addRecFecha, setAddRecFecha] = useState('')
-  const [addRecEmail, setAddRecEmail] = useState(false)
-  const [savingRec,   setSavingRec]   = useState(false)
+  // Reprogramar (rec existente o paso legado sin fecha)
+  const [reprogramarId,    setReprogramarId]    = useState<string | null>(null)
+  const [reprogramarFecha, setReprogramarFecha] = useState('')
+  const [savingReprog,     setSavingReprog]     = useState(false)
 
   const [confirmId, setConfirmId] = useState<string | null>(null)
 
@@ -77,26 +75,18 @@ export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail 
 
   async function agregar() {
     const t = texto.trim()
-    if (!t || adding) return
+    if (!t || !fecha || adding) return
     setAdding(true)
     try {
-      if (conRec && fecha) {
-        await supabase.from('recordatorios').insert({
-          cliente_id: clienteId, tenant_id: tenantId, asignado_a: usuarioId,
-          nota: t, fecha_recordatorio: new Date(fecha).toISOString(),
-          completado: false, tipo: 'manual',
-          enviar_email: envEmail,
-          email_destino: envEmail ? (emailDest || null) : null,
-        })
-        await syncProxima()
-      } else {
-        await supabase.from('clientes_pasos').insert({
-          cliente_id: clienteId, tenant_id: tenantId, descripcion: t,
-          orden: items.filter(i => i.source === 'paso').length,
-          created_by: usuarioId,
-        })
-      }
-      setTexto(''); setConRec(false); setFecha(''); setEnvEmail(false)
+      await supabase.from('recordatorios').insert({
+        cliente_id: clienteId, tenant_id: tenantId, asignado_a: usuarioId,
+        nota: t, fecha_recordatorio: new Date(fecha).toISOString(),
+        completado: false, tipo: 'manual',
+        enviar_email: envEmail,
+        email_destino: envEmail ? (emailDest || null) : null,
+      })
+      await syncProxima()
+      setTexto(''); setFecha(''); setEnvEmail(false)
       cargar()
     } finally { setAdding(false) }
   }
@@ -140,18 +130,42 @@ export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail 
     cargar()
   }
 
-  async function crearRecParaPaso(paso: PasoItem) {
-    if (!addRecFecha || savingRec) return
-    setSavingRec(true)
+  async function duplicar(item: RecItem) {
+    const nuevaFecha = new Date(new Date(item.fecha).getTime() + 24 * 60 * 60 * 1000)
     await supabase.from('recordatorios').insert({
       cliente_id: clienteId, tenant_id: tenantId, asignado_a: usuarioId,
-      nota: paso.texto, fecha_recordatorio: new Date(addRecFecha).toISOString(),
-      completado: false, tipo: 'manual', enviar_email: addRecEmail,
+      nota: item.texto, fecha_recordatorio: nuevaFecha.toISOString(),
+      completado: false, tipo: 'manual', enviar_email: item.enviar_email,
     })
     await syncProxima()
-    setSavingRec(false)
-    setAddRecId(null); setAddRecFecha(''); setAddRecEmail(false)
     cargar()
+  }
+
+  function abrirReprogramar(item: Item) {
+    if (reprogramarId === item.id) { setReprogramarId(null); setReprogramarFecha(''); return }
+    setReprogramarId(item.id)
+    setReprogramarFecha(item.source === 'rec' ? item.fecha.slice(0, 16) : '')
+  }
+
+  async function guardarReprogramar(item: Item) {
+    if (!reprogramarFecha || savingReprog) return
+    setSavingReprog(true)
+    try {
+      if (item.source === 'rec') {
+        await supabase.from('recordatorios').update({ fecha_recordatorio: new Date(reprogramarFecha).toISOString() }).eq('id', item.id)
+      } else {
+        // Paso legado sin fecha: se convierte en acción con fecha y se retira el paso original.
+        await supabase.from('recordatorios').insert({
+          cliente_id: clienteId, tenant_id: tenantId, asignado_a: usuarioId,
+          nota: item.texto, fecha_recordatorio: new Date(reprogramarFecha).toISOString(),
+          completado: false, tipo: 'manual', enviar_email: false,
+        })
+        await supabase.from('clientes_pasos').delete().eq('id', item.id)
+      }
+      await syncProxima()
+      setReprogramarId(null); setReprogramarFecha('')
+      cargar()
+    } finally { setSavingReprog(false) }
   }
 
   if (loading) return <p className="text-sm text-gray-400 text-center py-8">Cargando...</p>
@@ -161,58 +175,48 @@ export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail 
   const completados = items.filter(i => i.completado)
 
   const sorted = [
-    // Recordatorios vencidos primero
+    // Vencidas primero
     ...pendientes.filter(i => i.source === 'rec' && new Date((i as RecItem).fecha).getTime() < now)
       .sort((a, b) => new Date((a as RecItem).fecha).getTime() - new Date((b as RecItem).fecha).getTime()),
-    // Recordatorios futuros
+    // Futuras
     ...pendientes.filter(i => i.source === 'rec' && new Date((i as RecItem).fecha).getTime() >= now)
       .sort((a, b) => new Date((a as RecItem).fecha).getTime() - new Date((b as RecItem).fecha).getTime()),
-    // Pasos sin fecha
+    // Pasos legados sin fecha
     ...pendientes.filter(i => i.source === 'paso'),
-    // Completados al final
+    // Completadas al final
     ...completados,
   ]
 
   return (
     <div className="space-y-4">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Pasos a seguir</p>
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Acciones</p>
 
-      {/* Formulario nuevo */}
+      {/* Formulario nueva acción — fecha y hora obligatorias */}
       <div className="bg-gray-50 rounded-xl p-3 space-y-2">
-        <div className="flex gap-2">
-          <input value={texto} onChange={e => setTexto(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !conRec) agregar() }}
-            placeholder="ej: Confirmar dirección de entrega"
-            className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-          <button onClick={agregar} disabled={!texto.trim() || adding}
-            className="px-3 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors">
-            {adding ? '...' : '+ Agregar'}
-          </button>
-        </div>
+        <input value={texto} onChange={e => setTexto(e.target.value)}
+          placeholder="ej: Confirmar dirección de entrega"
+          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
 
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input type="checkbox" checked={conRec} onChange={e => setConRec(e.target.checked)} className="rounded" />
-          <span className="text-xs text-gray-600">⏰ Con recordatorio (fecha y hora)</span>
+        <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
+          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
+
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={envEmail} onChange={e => setEnvEmail(e.target.checked)} className="rounded" />
+          <span className="text-xs text-gray-600">📧 Enviar por correo</span>
         </label>
-
-        {conRec && (
-          <div className="space-y-1.5 pl-1">
-            <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
-              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={envEmail} onChange={e => setEnvEmail(e.target.checked)} className="rounded" />
-              <span className="text-xs text-gray-600">📧 Enviar por correo</span>
-            </label>
-            {envEmail && (
-              <input value={emailDest} onChange={e => setEmailDest(e.target.value)} placeholder="correo@destino.com"
-                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
-            )}
-          </div>
+        {envEmail && (
+          <input value={emailDest} onChange={e => setEmailDest(e.target.value)} placeholder="correo@destino.com"
+            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400" />
         )}
+
+        <button onClick={agregar} disabled={!texto.trim() || !fecha || adding}
+          className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors">
+          {adding ? 'Guardando...' : '+ Agregar acción'}
+        </button>
       </div>
 
       {sorted.length === 0 && (
-        <p className="text-sm text-gray-400 text-center py-4">Sin pasos definidos</p>
+        <p className="text-sm text-gray-400 text-center py-4">Sin acciones definidas</p>
       )}
 
       <div className="space-y-1.5">
@@ -220,6 +224,7 @@ export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail 
           const isRec    = item.source === 'rec'
           const vencido  = isRec && !item.completado && new Date((item as RecItem).fecha).getTime() < now
           const isConfirm = confirmId === item.id
+          const isReprog  = reprogramarId === item.id
 
           const bg = isConfirm
             ? 'bg-white border-gray-200'
@@ -233,54 +238,62 @@ export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail 
 
           return (
             <div key={`${item.source}-${item.id}`} className="rounded-xl border overflow-hidden">
-              <div className={`flex items-start gap-2 px-3 py-2 ${bg}`}>
-                <input type="checkbox" checked={item.completado}
-                  onChange={() => { if (item.completado) setConfirmId(item.id); else completar(item) }}
-                  className="flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  {isRec && (
-                    <p className={`text-[10px] font-bold mb-0.5 ${vencido ? 'text-red-600' : item.completado ? 'text-green-600' : 'text-blue-600'}`}>
-                      {item.completado ? '✓ ' : vencido ? '⏰ ' : '📌 '}{fmt((item as RecItem).fecha)}
+              <div className={`px-3 py-2 ${bg}`}>
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    {isRec && (
+                      <p className={`text-[10px] font-bold mb-0.5 ${vencido ? 'text-red-600' : item.completado ? 'text-green-600' : 'text-blue-600'}`}>
+                        {item.completado ? '✓ ' : vencido ? '⏰ ' : '📌 '}{fmt((item as RecItem).fecha)}
+                      </p>
+                    )}
+                    <p className={`text-sm ${item.completado ? 'line-through text-gray-400' : vencido ? 'text-red-800' : 'text-gray-800'}`}>
+                      {item.texto ?? '—'}
                     </p>
-                  )}
-                  <p className={`text-sm ${item.completado ? 'line-through text-gray-400' : vencido ? 'text-red-800' : 'text-gray-800'}`}>
-                    {item.texto ?? '—'}
-                  </p>
-                  {isRec && (item as RecItem).enviar_email && (
-                    <p className="text-[10px] text-gray-400 mt-0.5">📧 con correo</p>
+                    {isRec && (item as RecItem).enviar_email && (
+                      <p className="text-[10px] text-gray-400 mt-0.5">📧 con correo</p>
+                    )}
+                  </div>
+                  {!isConfirm && (
+                    <button onClick={() => eliminar(item)} className="flex-shrink-0 text-red-400 hover:text-red-600 text-xs transition-colors">✕</button>
                   )}
                 </div>
-                {!item.completado && !isRec && !isConfirm && (
-                  <button
-                    onClick={() => {
-                      if (addRecId === item.id) { setAddRecId(null); setAddRecFecha(''); setAddRecEmail(false) }
-                      else { setAddRecId(item.id); setAddRecFecha(''); setAddRecEmail(false) }
-                    }}
-                    className="flex-shrink-0 text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full hover:bg-amber-100 transition-colors"
-                    title="Agregar recordatorio">⏰
-                  </button>
-                )}
+
+                {/* Hecho/Pendiente · Duplicar · Reprogramar — siempre visibles */}
                 {!isConfirm && (
-                  <button onClick={() => eliminar(item)} className="flex-shrink-0 text-red-400 hover:text-red-600 text-xs transition-colors">✕</button>
+                  <div className="flex gap-1.5 mt-2">
+                    <button
+                      onClick={() => { if (item.completado) setConfirmId(item.id); else completar(item) }}
+                      className={`flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg transition-colors ${
+                        item.completado ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}>
+                      {item.completado ? '✓ Hecho' : '⏳ Pendiente'}
+                    </button>
+                    {isRec && (
+                      <button onClick={() => duplicar(item as RecItem)}
+                        className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
+                        🔁 Duplicar
+                      </button>
+                    )}
+                    <button onClick={() => abrirReprogramar(item)}
+                      className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
+                      📅 Reprogramar
+                    </button>
+                  </div>
                 )}
               </div>
 
-              {/* Panel agregar recordatorio a paso existente */}
-              {addRecId === item.id && (
+              {/* Panel reprogramar */}
+              {isReprog && (
                 <div className="bg-amber-50 border-t border-amber-200 px-3 py-2 space-y-1.5">
-                  <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Agregar recordatorio</p>
-                  <input type="datetime-local" value={addRecFecha} onChange={e => setAddRecFecha(e.target.value)}
+                  <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Nueva fecha y hora</p>
+                  <input type="datetime-local" value={reprogramarFecha} onChange={e => setReprogramarFecha(e.target.value)}
                     className="w-full text-xs border border-amber-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400" />
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={addRecEmail} onChange={e => setAddRecEmail(e.target.checked)} className="rounded" />
-                    <span className="text-xs text-amber-700">📧 Enviar por correo</span>
-                  </label>
                   <div className="flex gap-2">
-                    <button onClick={() => crearRecParaPaso(item as PasoItem)} disabled={!addRecFecha || savingRec}
+                    <button onClick={() => guardarReprogramar(item)} disabled={!reprogramarFecha || savingReprog}
                       className="flex-1 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold disabled:opacity-40 transition-colors">
-                      {savingRec ? '...' : 'Guardar recordatorio'}
+                      {savingReprog ? '...' : 'Guardar'}
                     </button>
-                    <button onClick={() => { setAddRecId(null); setAddRecFecha(''); setAddRecEmail(false) }}
+                    <button onClick={() => { setReprogramarId(null); setReprogramarFecha('') }}
                       className="px-2.5 py-1.5 border border-amber-200 text-amber-600 hover:bg-amber-100 rounded-lg text-xs transition-colors">
                       Cancelar
                     </button>

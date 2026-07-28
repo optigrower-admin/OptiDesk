@@ -26,16 +26,19 @@ export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Prop
   const [seleccion, setSeleccion]   = useState<Seleccion[]>([])
   const [agregando, setAgregando]   = useState('')
   const [recargo, setRecargo]       = useState(5)
+  const [descuentos, setDescuentos]         = useState('')
+  const [lugarMatricula, setLugarMatricula] = useState('')
   const [loading, setLoading]       = useState(true)
 
   const cargar = useCallback(async () => {
-    const [{ data: cat }, { data: sel }, { data: tenant }] = await Promise.all([
+    const [{ data: cat }, { data: sel }, { data: tenant }, { data: cliente }] = await Promise.all([
       supabase.from('motos_catalogo').select('id, referencia, precio, costo_documentos, costo_prenda')
         .eq('tenant_id', tenantId).eq('activa', true).order('orden'),
       supabase.from('clientes_motos_interes')
         .select('id, moto_catalogo_id, disponibilidad, con_papeles, con_tarjeta, pignorada, motos_catalogo(id, referencia, precio, costo_documentos, costo_prenda)')
         .eq('cliente_id', clienteId),
       supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tenantId).single(),
+      supabase.from('clientes').select('descuentos, lugar_matricula').eq('id', clienteId).single(),
     ])
     setCatalogo((cat ?? []) as MotoCatalogo[])
     setSeleccion((sel ?? []).map(s => ({
@@ -43,6 +46,8 @@ export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Prop
       motos_catalogo: Array.isArray(s.motos_catalogo) ? s.motos_catalogo[0] ?? null : s.motos_catalogo,
     })) as Seleccion[])
     setRecargo(Number(tenant?.recargo_tarjeta_porcentaje ?? 5))
+    setDescuentos(cliente?.descuentos ?? '')
+    setLugarMatricula(cliente?.lugar_matricula ?? '')
     setLoading(false)
   }, [clienteId, tenantId])
 
@@ -88,11 +93,32 @@ export default function MotosInteresTab({ clienteId, tenantId, usuarioId }: Prop
     cargar()
   }
 
+  async function guardarDescuentos() {
+    await supabase.from('clientes').update({ descuentos: descuentos || null }).eq('id', clienteId)
+  }
+
+  async function guardarLugarMatricula() {
+    await supabase.from('clientes').update({ lugar_matricula: lugarMatricula || null }).eq('id', clienteId)
+  }
+
   if (loading) return <p className="text-sm text-gray-400 text-center py-8">Cargando...</p>
 
   return (
     <div className="space-y-3">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Motos de interés</p>
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vehículos de interés</p>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs text-gray-500">Descuentos que le aplican</label>
+          <input value={descuentos} onChange={e => setDescuentos(e.target.value)} onBlur={guardarDescuentos}
+            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">Lugar de matrícula</label>
+          <input value={lugarMatricula} onChange={e => setLugarMatricula(e.target.value)} onBlur={guardarLugarMatricula}
+            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+        </div>
+      </div>
 
       {seleccion.length === 0 && (
         <p className="text-sm text-gray-400 bg-gray-50 rounded-lg px-3 py-3 text-center">Sin motos seleccionadas</p>

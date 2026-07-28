@@ -40,13 +40,12 @@ type Campos = {
   segundo_apellido: string
   tipo_documento: string
   cedula: string
+  fecha_nacimiento: string
   email: string
   celular: string
   direccion: string
   municipio: string
   ciudad: string
-  descuentos: string
-  lugar_matricula: string
   ocupacion: string
   tipo_contrato: string
   ingresos_mensuales: string
@@ -55,8 +54,7 @@ type Campos = {
 
 const VACIO: Campos = {
   primer_nombre: '', segundo_nombre: '', primer_apellido: '', segundo_apellido: '',
-  tipo_documento: 'CC', cedula: '', email: '', celular: '', direccion: '', municipio: '', ciudad: '',
-  descuentos: '', lugar_matricula: '',
+  tipo_documento: 'CC', cedula: '', fecha_nacimiento: '', email: '', celular: '', direccion: '', municipio: '', ciudad: '',
   ocupacion: '', tipo_contrato: '', ingresos_mensuales: '', gastos_mensuales: '',
 }
 
@@ -117,8 +115,8 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
 
       // Campos de texto: vacío → null (evita unique constraint violations en cedula/email)
       const NULLABLE_TEXT: (keyof Campos)[] = [
-        'cedula', 'email', 'celular', 'direccion', 'municipio', 'ciudad',
-        'descuentos', 'lugar_matricula', 'ocupacion', 'tipo_contrato',
+        'cedula', 'fecha_nacimiento', 'email', 'celular', 'direccion', 'municipio', 'ciudad',
+        'ocupacion', 'tipo_contrato',
         'primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido',
       ]
       const update: Record<string, string | number | null> = {}
@@ -191,6 +189,11 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
             className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
         </div>
       </div>
+      <div>
+        <label className="text-xs text-gray-500">Fecha de nacimiento</label>
+        <input type="date" value={campos.fecha_nacimiento} onChange={e => set('fecha_nacimiento', e.target.value)} onBlur={guardar}
+          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+      </div>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Celular" value={campos.celular} onChange={v => set('celular', v)} onBlur={guardar} />
         <Field label="Correo electrónico" value={campos.email} onChange={v => set('email', v)} onBlur={guardar} />
@@ -202,10 +205,6 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
         <Field label="Municipio" value={campos.municipio} onChange={v => set('municipio', v)} onBlur={guardar} />
         <Field label="Ciudad / Pueblo" value={campos.ciudad} onChange={v => set('ciudad', v)} onBlur={guardar} />
       </div>
-
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-2">Otros</p>
-      <Field label="Descuentos que le aplican" value={campos.descuentos} onChange={v => set('descuentos', v)} onBlur={guardar} />
-      <Field label="Lugar de matrícula de la moto" value={campos.lugar_matricula} onChange={v => set('lugar_matricula', v)} onBlur={guardar} />
 
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-2">Información financiera</p>
       <Field label="Ocupación" value={campos.ocupacion} onChange={v => set('ocupacion', v)} onBlur={guardar} />

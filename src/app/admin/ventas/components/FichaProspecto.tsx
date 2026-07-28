@@ -70,11 +70,11 @@ type TabDerecha = 'gestion' | 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizac
 const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'resumen',    label: 'Resumen',    icon: '📋' },
   { id: 'datos',      label: 'Datos',      icon: '🪪' },
+  { id: 'pasos',      label: 'Acciones',   icon: '✅' },
   { id: 'chats',      label: 'Chats',      icon: '📱' },
-  { id: 'motos',      label: 'Motos',      icon: '🏍️' },
+  { id: 'motos',      label: 'Vehículos',  icon: '🏍️' },
   { id: 'cotizacion', label: 'Cotización', icon: '📄' },
   { id: 'archivos',   label: 'Archivos',   icon: '📎' },
-  { id: 'pasos',      label: 'Pasos',      icon: '✅' },
 ]
 const TABS_GERENCIA: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'historial',   label: 'Historial',   icon: '📅' },
@@ -129,13 +129,22 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [proximaFecha,    setProximaFecha]     = useState(
     lead.proxima_accion_fecha ? lead.proxima_accion_fecha.slice(0, 16) : ''
   )
-  const [notaRapida,      setNotaRapida]       = useState('')
-  const [reminderNota,    setReminderNota]     = useState('')
-  const [reminderFecha,   setReminderFecha]    = useState('')
-  const [showReminder,    setShowReminder]     = useState(false)
   const [savingPanel,     setSavingPanel]      = useState(false)
   const [savedPanel,      setSavedPanel]       = useState(false)
   const [isMobile,        setIsMobile]         = useState(false)
+  const [probabilidad,    setProbabilidad]     = useState<number | null>(null)
+
+  useEffect(() => {
+    supabase.from('clientes').select('probabilidad_venta').eq('id', lead.cliente?.id ?? lead.id).single()
+      .then(({ data }) => setProbabilidad(data?.probabilidad_venta ?? null))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id])
+
+  async function guardarProbabilidad(v: string) {
+    const nueva = v === '' ? null : Number(v)
+    setProbabilidad(nueva)
+    await supabase.from('clientes').update({ probabilidad_venta: nueva }).eq('id', lead.cliente?.id ?? lead.id)
+  }
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -533,32 +542,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const panelToast = useCallback(() => { setSavedPanel(true); setTimeout(() => setSavedPanel(false), 2000) }, [])
 
   const guardarProximaAccionPanel = async () => {
-    const fecha = proximaFecha ? new Date(proximaFecha).toISOString() : null
+    if (!proximaFecha) return
+    const fecha = new Date(proximaFecha).toISOString()
     setSavingPanel(true)
     await supabase.from('clientes').update({ proxima_accion: proximaAccion || null, proxima_accion_fecha: fecha }).eq('id', lead.id)
     onLeadUpdate?.(lead.id, { proxima_accion: proximaAccion || null, proxima_accion_fecha: fecha })
     setSavingPanel(false); panelToast()
-  }
-
-  const guardarNotaRapidaPanel = async () => {
-    if (!notaRapida.trim() || !profile?.id) return
-    setSavingPanel(true)
-    await supabase.from('comentarios').insert({
-      cliente_id: lead.cliente?.id ?? lead.id, tenant_id: tenantId,
-      usuario_id: profile.id, contenido: notaRapida.trim(), tipo: 'nota_interna',
-    })
-    setNotaRapida(''); setSavingPanel(false); panelToast()
-  }
-
-  const guardarReminderPanel = async () => {
-    if (!reminderFecha || !profile?.id) return
-    setSavingPanel(true)
-    await supabase.from('recordatorios').insert({
-      cliente_id: lead.cliente?.id ?? lead.id, tenant_id: tenantId,
-      asignado_a: profile.id, nota: reminderNota || null,
-      fecha_recordatorio: new Date(reminderFecha).toISOString(), completado: false,
-    })
-    setReminderNota(''); setReminderFecha(''); setShowReminder(false); setSavingPanel(false); panelToast()
   }
 
   const etapaActual = ETAPA_MAP[etapa]
@@ -780,9 +769,38 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 )}
               </div>
 
+              {/* Probabilidad de venta */}
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Probabilidad de venta</label>
+                <select value={probabilidad ?? ''} onChange={e => guardarProbabilidad(e.target.value)}
+                  className={`w-full text-xs rounded-lg px-2 py-1.5 font-bold border border-[#2a3550] focus:outline-none ${
+                    probabilidad === null ? 'bg-[#232f47] text-slate-300'
+                    : probabilidad >= 70 ? 'bg-green-900/40 text-green-300'
+                    : probabilidad >= 40 ? 'bg-amber-900/40 text-amber-300'
+                    : 'bg-red-900/40 text-red-300'
+                  }`}>
+                  <option value="">Sin definir</option>
+                  {Array.from({ length: 11 }, (_, i) => i * 10).map(v => (
+                    <option key={v} value={v}>{v}%</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="border-t border-[#2a3550]" />
 
-              {/* Próxima acción */}
+              {/* Datos básicos */}
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Datos básicos</label>
+                <div className="space-y-0.5 text-xs text-slate-300">
+                  <p>📱 {celularActual || <span className="text-slate-500">Sin celular</span>}</p>
+                  <p>✉️ {lead.cliente_email || <span className="text-slate-500">Sin correo</span>}</p>
+                  <p>🪪 {lead.cliente_documento || <span className="text-slate-500">Sin cédula</span>}</p>
+                </div>
+              </div>
+
+              <div className="border-t border-[#2a3550]" />
+
+              {/* Próxima acción — siempre requiere fecha y hora */}
               <div>
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Próxima acción</label>
                 <input value={proximaAccion} onChange={e => setProximaAccion(e.target.value)}
@@ -790,45 +808,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1" />
                 <input type="datetime-local" value={proximaFecha} onChange={e => setProximaFecha(e.target.value)}
                   className="w-full text-[10px] bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1" />
-                <button onClick={guardarProximaAccionPanel} disabled={savingPanel}
+                <button onClick={guardarProximaAccionPanel} disabled={savingPanel || !proximaFecha}
+                  title={!proximaFecha ? 'Selecciona fecha y hora' : undefined}
                   className="w-full py-1 text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-40">
                   {savingPanel ? '...' : 'Guardar acción'}
                 </button>
-              </div>
-
-              <div className="border-t border-[#2a3550]" />
-
-              {/* Nota rápida */}
-              <div>
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Nota rápida</label>
-                <textarea value={notaRapida} onChange={e => setNotaRapida(e.target.value)}
-                  rows={2} placeholder="Nota interna..."
-                  className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none mb-1" />
-                <button onClick={guardarNotaRapidaPanel} disabled={savingPanel || !notaRapida.trim()}
-                  className="w-full py-1 text-[10px] font-bold bg-[#2a3550] hover:bg-[#334466] text-slate-200 rounded-lg transition-colors disabled:opacity-40">
-                  💬 Guardar nota
-                </button>
-              </div>
-
-              {/* Recordatorio */}
-              <div>
-                <button onClick={() => setShowReminder(v => !v)}
-                  className="w-full py-1 text-[10px] font-bold bg-amber-900/40 hover:bg-amber-900/60 text-amber-400 border border-amber-800/50 rounded-lg transition-colors">
-                  ⏰ {showReminder ? 'Cancelar' : 'Recordatorio'}
-                </button>
-                {showReminder && (
-                  <div className="mt-1.5 space-y-1">
-                    <input type="datetime-local" value={reminderFecha} onChange={e => setReminderFecha(e.target.value)}
-                      className="w-full text-[10px] bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none" />
-                    <input type="text" value={reminderNota} onChange={e => setReminderNota(e.target.value)}
-                      placeholder="Nota del recordatorio"
-                      className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none" />
-                    <button onClick={guardarReminderPanel} disabled={savingPanel || !reminderFecha}
-                      className="w-full py-1 text-[10px] font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-40">
-                      Crear recordatorio
-                    </button>
-                  </div>
-                )}
               </div>
 
               {/* Alertas — click para ir al formulario en pestaña Resumen */}
@@ -1422,7 +1406,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               {tabDer === 'motos'      && <MotosInteresTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'cotizacion' && <CotizacionTab clienteId={lead.id} tenantId={tenantId} clienteNombre={lead.cliente?.nombre ?? ''} clienteCelular={lead.cliente?.celular ?? ''} />}
               {tabDer === 'archivos'   && <ArchivosTab clienteId={lead.id} />}
-              {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
+              {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={lead.cliente_email} />}
               {tabDer === 'historial'  && <HistorialTab clienteId={lead.id} />}
               {tabDer === 'visibilidad' && esGerencia && <VisibilidadTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
 
@@ -1450,6 +1434,33 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     )}
                   </div>
 
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Probabilidad de venta</label>
+                    <select value={probabilidad ?? ''} onChange={e => guardarProbabilidad(e.target.value)}
+                      className={`w-full text-sm rounded-xl px-3 py-2.5 font-bold border focus:outline-none ${
+                        probabilidad === null ? 'bg-gray-100 border-gray-200 text-gray-500'
+                        : probabilidad >= 70 ? 'bg-green-50 border-green-200 text-green-700'
+                        : probabilidad >= 40 ? 'bg-amber-50 border-amber-200 text-amber-700'
+                        : 'bg-red-50 border-red-200 text-red-700'
+                      }`}>
+                      <option value="">Sin definir</option>
+                      {Array.from({ length: 11 }, (_, i) => i * 10).map(v => (
+                        <option key={v} value={v}>{v}%</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <hr className="border-gray-200" />
+
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Datos básicos</label>
+                    <div className="space-y-1 text-sm text-gray-700">
+                      <p>📱 {celularActual || <span className="text-gray-400">Sin celular</span>}</p>
+                      <p>✉️ {lead.cliente_email || <span className="text-gray-400">Sin correo</span>}</p>
+                      <p>🪪 {lead.cliente_documento || <span className="text-gray-400">Sin cédula</span>}</p>
+                    </div>
+                  </div>
+
                   <hr className="border-gray-200" />
 
                   <div>
@@ -1459,43 +1470,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                       className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
                     <input type="datetime-local" value={proximaFecha} onChange={e => setProximaFecha(e.target.value)}
                       className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                    <button onClick={guardarProximaAccionPanel} disabled={savingPanel}
+                    <button onClick={guardarProximaAccionPanel} disabled={savingPanel || !proximaFecha}
+                      title={!proximaFecha ? 'Selecciona fecha y hora' : undefined}
                       className="w-full py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors disabled:opacity-40">
                       {savingPanel ? '...' : 'Guardar acción'}
                     </button>
-                  </div>
-
-                  <hr className="border-gray-200" />
-
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Nota rápida</label>
-                    <textarea value={notaRapida} onChange={e => setNotaRapida(e.target.value)}
-                      rows={3} placeholder="Nota interna..."
-                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
-                    <button onClick={guardarNotaRapidaPanel} disabled={savingPanel || !notaRapida.trim()}
-                      className="w-full py-2.5 text-sm font-bold bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl transition-colors disabled:opacity-40">
-                      💬 Guardar nota
-                    </button>
-                  </div>
-
-                  <div>
-                    <button onClick={() => setShowReminder(v => !v)}
-                      className="w-full py-2.5 text-sm font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl transition-colors">
-                      ⏰ {showReminder ? 'Cancelar recordatorio' : 'Crear recordatorio'}
-                    </button>
-                    {showReminder && (
-                      <div className="mt-2 space-y-2">
-                        <input type="datetime-local" value={reminderFecha} onChange={e => setReminderFecha(e.target.value)}
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none" />
-                        <input type="text" value={reminderNota} onChange={e => setReminderNota(e.target.value)}
-                          placeholder="Nota del recordatorio"
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none" />
-                        <button onClick={guardarReminderPanel} disabled={savingPanel || !reminderFecha}
-                          className="w-full py-2.5 text-sm font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl transition-colors disabled:opacity-40">
-                          Crear recordatorio
-                        </button>
-                      </div>
-                    )}
                   </div>
 
                   {(sinCelular || (enEtapaCarta && !cartaActual) || (enEtapaConPlaca && !placaActual) || (enEtapaAlistamiento && !tieneAlistamientoFinal) || (enEtapaFactura && !facturaActual)) && (

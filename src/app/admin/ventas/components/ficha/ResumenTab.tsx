@@ -29,20 +29,50 @@ function formatDateHour(d: string) {
   return new Date(d).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function PasoItem({ p, onToggle, confirmId, onConfirm, onCancelConfirm }: {
+function PasoItem({ p, onToggle, confirmId, onConfirm, onCancelConfirm, reprogId, reprogFecha, onReprogFecha, onAbrirReprog, onGuardarReprog }: {
   p: Paso
   onToggle: (p: Paso) => void
   confirmId: string | null
   onConfirm: () => void
   onCancelConfirm: () => void
+  reprogId: string | null
+  reprogFecha: string
+  onReprogFecha: (v: string) => void
+  onAbrirReprog: (id: string, fechaActual: string) => void
+  onGuardarReprog: () => void
 }) {
   const isConfirm = confirmId === p.id
+  const isReprog  = reprogId === p.id
   return (
     <div className="rounded-xl border overflow-hidden">
-      <div className={`flex items-center gap-2 px-3 py-2 ${isConfirm ? 'bg-red-50 border-red-200' : p.completado ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
-        <input type="checkbox" checked={p.completado} onChange={() => onToggle(p)} className="flex-shrink-0" />
-        <span className={`flex-1 text-sm ${p.completado ? 'line-through text-gray-400' : 'text-gray-800'}`}>{p.descripcion}</span>
+      <div className={`px-3 py-2 ${isConfirm ? 'bg-red-50 border-red-200' : p.completado ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
+        <span className={`text-sm ${p.completado ? 'line-through text-gray-400' : 'text-gray-800'}`}>{p.descripcion}</span>
+        {!isConfirm && (
+          <div className="flex gap-1.5 mt-2">
+            <button onClick={() => onToggle(p)}
+              className={`flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg transition-colors ${
+                p.completado ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}>
+              {p.completado ? '✓ Hecho' : '⏳ Pendiente'}
+            </button>
+            <button onClick={() => onAbrirReprog(p.id, '')}
+              className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
+              📅 Reprogramar
+            </button>
+          </div>
+        )}
       </div>
+      {isReprog && (
+        <div className="bg-amber-50 border-t border-amber-200 px-3 py-2 space-y-1.5">
+          <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Nueva fecha y hora</p>
+          <input type="datetime-local" value={reprogFecha} onChange={e => onReprogFecha(e.target.value)}
+            className="w-full text-xs border border-amber-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400" />
+          <button onClick={onGuardarReprog} disabled={!reprogFecha}
+            className="w-full py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold disabled:opacity-40 transition-colors">
+            Guardar
+          </button>
+        </div>
+      )}
       {isConfirm && (
         <div className="bg-red-50 border-t border-red-200 px-3 py-2 text-xs text-red-700">
           <p className="font-semibold mb-2">¿Estás seguro? Saldrá como si no se hubiera completado.</p>
@@ -56,36 +86,63 @@ function PasoItem({ p, onToggle, confirmId, onConfirm, onCancelConfirm }: {
   )
 }
 
-function RecordatorioItem({ r, onToggle, confirmId, onConfirm, onCancelConfirm }: {
+function RecordatorioItem({ r, onToggle, onDuplicar, confirmId, onConfirm, onCancelConfirm, reprogId, reprogFecha, onReprogFecha, onAbrirReprog, onGuardarReprog }: {
   r: Recordatorio
   onToggle: (r: Recordatorio) => void
+  onDuplicar: (r: Recordatorio) => void
   confirmId: string | null
   onConfirm: () => void
   onCancelConfirm: () => void
+  reprogId: string | null
+  reprogFecha: string
+  onReprogFecha: (v: string) => void
+  onAbrirReprog: (id: string, fechaActual: string) => void
+  onGuardarReprog: () => void
 }) {
   const vencido   = !r.completado && new Date(r.fecha_recordatorio).getTime() < Date.now()
   const isConfirm = confirmId === r.id
+  const isReprog  = reprogId === r.id
   const bg = isConfirm ? 'bg-red-50 border-red-200'
     : r.completado ? 'bg-green-50 border-green-200'
     : vencido ? 'bg-red-50 border-red-300'
     : 'bg-blue-50 border-blue-200'
   return (
     <div className="rounded-xl border overflow-hidden">
-      <div className={`flex items-start gap-2 px-3 py-2 ${bg}`}>
-        <div className="flex-1 min-w-0">
-          <p className={`text-[10px] font-bold mb-0.5 ${r.completado ? 'text-green-600' : vencido ? 'text-red-600' : 'text-blue-600'}`}>
-            {r.completado ? '✓ ' : vencido ? '⏰ ' : '📌 '}{formatDateHour(r.fecha_recordatorio)}
-          </p>
-          {r.nota && <p className={`text-sm ${r.completado ? 'line-through text-gray-400' : vencido ? 'text-red-800' : 'text-gray-800'}`}>{r.nota}</p>}
-        </div>
-        <button onClick={() => onToggle(r)}
-          className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
-            r.completado ? 'text-gray-400 hover:text-red-500 border border-gray-200 hover:border-red-300'
-            : 'bg-green-600 hover:bg-green-700 text-white'
-          }`}>
-          {r.completado ? '↩' : (<><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>Hecho</>)}
-        </button>
+      <div className={`px-3 py-2 ${bg}`}>
+        <p className={`text-[10px] font-bold mb-0.5 ${r.completado ? 'text-green-600' : vencido ? 'text-red-600' : 'text-blue-600'}`}>
+          {r.completado ? '✓ ' : vencido ? '⏰ ' : '📌 '}{formatDateHour(r.fecha_recordatorio)}
+        </p>
+        {r.nota && <p className={`text-sm ${r.completado ? 'line-through text-gray-400' : vencido ? 'text-red-800' : 'text-gray-800'}`}>{r.nota}</p>}
+        {!isConfirm && (
+          <div className="flex gap-1.5 mt-2">
+            <button onClick={() => onToggle(r)}
+              className={`flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg transition-colors ${
+                r.completado ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}>
+              {r.completado ? '✓ Hecho' : '⏳ Pendiente'}
+            </button>
+            <button onClick={() => onDuplicar(r)}
+              className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
+              🔁 Duplicar
+            </button>
+            <button onClick={() => onAbrirReprog(r.id, r.fecha_recordatorio.slice(0, 16))}
+              className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
+              📅 Reprogramar
+            </button>
+          </div>
+        )}
       </div>
+      {isReprog && (
+        <div className="bg-amber-50 border-t border-amber-200 px-3 py-2 space-y-1.5">
+          <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Nueva fecha y hora</p>
+          <input type="datetime-local" value={reprogFecha} onChange={e => onReprogFecha(e.target.value)}
+            className="w-full text-xs border border-amber-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-amber-400" />
+          <button onClick={onGuardarReprog} disabled={!reprogFecha}
+            className="w-full py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold disabled:opacity-40 transition-colors">
+            Guardar
+          </button>
+        </div>
+      )}
       {isConfirm && (
         <div className="bg-red-50 border-t border-red-200 px-3 py-2 text-xs text-red-700">
           <p className="font-semibold mb-2">¿Estás seguro? Saldrá como si no se hubiera completado.</p>
@@ -108,9 +165,13 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
   const [loading, setLoading] = useState(true)
   const [confirmUncheckPasoId, setConfirmUncheckPasoId] = useState<string | null>(null)
   const [confirmUncheckRecId, setConfirmUncheckRecId] = useState<string | null>(null)
+  const [reprogramarId, setReprogramarId] = useState<string | null>(null)
+  const [reprogramarFecha, setReprogramarFecha] = useState('')
+  const [descuentos, setDescuentos] = useState('')
+  const [lugarMatricula, setLugarMatricula] = useState('')
 
   const cargar = useCallback(async () => {
-    const [{ data: sel }, { data: recs }, { data: pasosData }, { data: tenant }] = await Promise.all([
+    const [{ data: sel }, { data: recs }, { data: pasosData }, { data: tenant }, { data: cliente }] = await Promise.all([
       supabase.from('clientes_motos_interes')
         .select('id, disponibilidad, con_papeles, con_tarjeta, pignorada, motos_catalogo(id, referencia, precio, costo_documentos, costo_prenda)')
         .eq('cliente_id', clienteId),
@@ -123,6 +184,7 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
         .eq('cliente_id', clienteId)
         .order('orden'),
       supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tenantId).single(),
+      supabase.from('clientes').select('descuentos, lugar_matricula').eq('id', clienteId).single(),
     ])
     setSeleccion((sel ?? []).map(s => ({
       ...s,
@@ -131,6 +193,8 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
     setRecargo(Number(tenant?.recargo_tarjeta_porcentaje ?? 5))
     setRecordatorios((recs ?? []) as Recordatorio[])
     setPasos((pasosData ?? []) as Paso[])
+    setDescuentos(cliente?.descuentos ?? '')
+    setLugarMatricula(cliente?.lugar_matricula ?? '')
     setLoading(false)
   }, [clienteId, tenantId])
 
@@ -190,16 +254,55 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
     cargar()
   }
 
+  async function duplicarRecordatorio(r: Recordatorio) {
+    const nuevaFecha = new Date(new Date(r.fecha_recordatorio).getTime() + 24 * 60 * 60 * 1000)
+    await supabase.from('recordatorios').insert({
+      cliente_id: clienteId, tenant_id: tenantId, asignado_a: usuarioId,
+      nota: r.nota, fecha_recordatorio: nuevaFecha.toISOString(),
+      completado: false, tipo: 'manual', enviar_email: false,
+    })
+    await sincronizarProximaAccion()
+    cargar()
+  }
+
+  function abrirReprogramar(id: string, fechaActual: string) {
+    if (reprogramarId === id) { setReprogramarId(null); setReprogramarFecha(''); return }
+    setReprogramarId(id)
+    setReprogramarFecha(fechaActual)
+  }
+
+  async function guardarReprogramarRec(r: Recordatorio) {
+    if (!reprogramarFecha) return
+    await supabase.from('recordatorios').update({ fecha_recordatorio: new Date(reprogramarFecha).toISOString() }).eq('id', r.id)
+    await sincronizarProximaAccion()
+    setReprogramarId(null); setReprogramarFecha('')
+    cargar()
+  }
+
+  async function guardarReprogramarPaso(p: Paso) {
+    if (!reprogramarFecha) return
+    // Paso legado sin fecha: se convierte en acción con fecha y se retira el paso original.
+    await supabase.from('recordatorios').insert({
+      cliente_id: clienteId, tenant_id: tenantId, asignado_a: usuarioId,
+      nota: p.descripcion, fecha_recordatorio: new Date(reprogramarFecha).toISOString(),
+      completado: false, tipo: 'manual', enviar_email: false,
+    })
+    await supabase.from('clientes_pasos').delete().eq('id', p.id)
+    await sincronizarProximaAccion()
+    setReprogramarId(null); setReprogramarFecha('')
+    cargar()
+  }
+
   if (loading) return <p className="text-sm text-gray-400 text-center py-8">Cargando...</p>
 
   return (
     <div className="space-y-4">
-      {/* Motos de interés */}
+      {/* Vehículos de interés */}
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Motos de interés</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Vehículos de interés</p>
         {seleccion.length === 0 && (
           <p className="text-sm text-gray-400 bg-gray-50 rounded-lg px-3 py-3 text-center">
-            Sin motos seleccionadas — agrégalas en la pestaña Motos
+            Sin vehículos seleccionados — agrégalos en la pestaña Vehículos
           </p>
         )}
         {seleccion.map(s => {
@@ -230,38 +333,62 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
 
       </div>
 
+      {/* Descuento y matrícula */}
+      {(descuentos || lugarMatricula) && (
+        <div className="border-t pt-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Descuento y matrícula</p>
+          <div className="bg-gray-50 rounded-xl p-2.5 space-y-1">
+            {descuentos && <p className="text-sm text-gray-800"><span className="text-gray-500">Descuento:</span> {descuentos}</p>}
+            {lugarMatricula && <p className="text-sm text-gray-800"><span className="text-gray-500">Matrícula en:</span> {lugarMatricula}</p>}
+          </div>
+        </div>
+      )}
+
       {/* Pago */}
       <div className="border-t pt-3">
         <PagoTab clienteId={clienteId} tenantId={tenantId} usuarioId={usuarioId} onCreditoChange={onCreditoChange} />
       </div>
 
-      {/* Pasos a seguir (unificado: pasos + recordatorios) */}
+      {/* Próximas Acciones (unificado: pasos legados + recordatorios) */}
       <div className="border-t pt-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pasos a seguir</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Próximas Acciones</p>
         {pasos.length === 0 && recordatorios.length === 0 && (
           <p className="text-sm text-gray-400 bg-gray-50 rounded-lg px-3 py-3 text-center">
-            Sin pasos — agrégalos en la pestaña Pasos
+            Sin acciones — agrégalas en la pestaña Acciones
           </p>
         )}
         <div className="space-y-1.5">
           {/* Recordatorios vencidos primero */}
           {recordatorios.filter(r => !r.completado && new Date(r.fecha_recordatorio).getTime() < Date.now()).map(r => (
-            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} confirmId={confirmUncheckRecId} onConfirm={confirmarUncheckRec} onCancelConfirm={() => setConfirmUncheckRecId(null)} />
+            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} onDuplicar={duplicarRecordatorio}
+              confirmId={confirmUncheckRecId} onConfirm={confirmarUncheckRec} onCancelConfirm={() => setConfirmUncheckRecId(null)}
+              reprogId={reprogramarId} reprogFecha={reprogramarFecha} onReprogFecha={setReprogramarFecha}
+              onAbrirReprog={abrirReprogramar} onGuardarReprog={() => guardarReprogramarRec(r)} />
           ))}
           {/* Recordatorios futuros */}
           {recordatorios.filter(r => !r.completado && new Date(r.fecha_recordatorio).getTime() >= Date.now()).map(r => (
-            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} confirmId={confirmUncheckRecId} onConfirm={confirmarUncheckRec} onCancelConfirm={() => setConfirmUncheckRecId(null)} />
+            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} onDuplicar={duplicarRecordatorio}
+              confirmId={confirmUncheckRecId} onConfirm={confirmarUncheckRec} onCancelConfirm={() => setConfirmUncheckRecId(null)}
+              reprogId={reprogramarId} reprogFecha={reprogramarFecha} onReprogFecha={setReprogramarFecha}
+              onAbrirReprog={abrirReprogramar} onGuardarReprog={() => guardarReprogramarRec(r)} />
           ))}
-          {/* Pasos sin fecha */}
+          {/* Pasos legados sin fecha */}
           {pasos.filter(p => !p.completado).map(p => (
-            <PasoItem key={p.id} p={p} onToggle={togglePaso} confirmId={confirmUncheckPasoId} onConfirm={confirmarUncheckPaso} onCancelConfirm={() => setConfirmUncheckPasoId(null)} />
+            <PasoItem key={p.id} p={p} onToggle={togglePaso} confirmId={confirmUncheckPasoId} onConfirm={confirmarUncheckPaso} onCancelConfirm={() => setConfirmUncheckPasoId(null)}
+              reprogId={reprogramarId} reprogFecha={reprogramarFecha} onReprogFecha={setReprogramarFecha}
+              onAbrirReprog={abrirReprogramar} onGuardarReprog={() => guardarReprogramarPaso(p)} />
           ))}
-          {/* Completados */}
+          {/* Completadas */}
           {recordatorios.filter(r => r.completado).map(r => (
-            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} confirmId={confirmUncheckRecId} onConfirm={confirmarUncheckRec} onCancelConfirm={() => setConfirmUncheckRecId(null)} />
+            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} onDuplicar={duplicarRecordatorio}
+              confirmId={confirmUncheckRecId} onConfirm={confirmarUncheckRec} onCancelConfirm={() => setConfirmUncheckRecId(null)}
+              reprogId={reprogramarId} reprogFecha={reprogramarFecha} onReprogFecha={setReprogramarFecha}
+              onAbrirReprog={abrirReprogramar} onGuardarReprog={() => guardarReprogramarRec(r)} />
           ))}
           {pasos.filter(p => p.completado).map(p => (
-            <PasoItem key={p.id} p={p} onToggle={togglePaso} confirmId={confirmUncheckPasoId} onConfirm={confirmarUncheckPaso} onCancelConfirm={() => setConfirmUncheckPasoId(null)} />
+            <PasoItem key={p.id} p={p} onToggle={togglePaso} confirmId={confirmUncheckPasoId} onConfirm={confirmarUncheckPaso} onCancelConfirm={() => setConfirmUncheckPasoId(null)}
+              reprogId={reprogramarId} reprogFecha={reprogramarFecha} onReprogFecha={setReprogramarFecha}
+              onAbrirReprog={abrirReprogramar} onGuardarReprog={() => guardarReprogramarPaso(p)} />
           ))}
         </div>
       </div>
