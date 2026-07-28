@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { ETAPAS_ACTIVAS } from '@/lib/ventas/pipeline'
@@ -203,6 +203,31 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [idsExtraSearch, setIdsExtraSearch] = useState<Set<string>>(new Set())
   const [buscandoExtra, setBuscandoExtra] = useState(false)
 
+  // Estado compartido de leads — para que un cambio hecho en cualquier vista (Kanban,
+  // Hoy, Lista, Bandeja) se refleje de inmediato en el contador de arriba y en las
+  // demás vistas, incluso si se cambia de pestaña (lo que remonta esa vista).
+  const [leadsState, setLeadsState] = useState<LeadData[]>(leadsIniciales)
+  useEffect(() => { setLeadsState(leadsIniciales) }, [leadsIniciales])
+
+  const patchLead = useCallback((id: string, patch: Record<string, unknown>) => {
+    setLeadsState(prev => prev.map(l => {
+      if (l.id !== id) return l
+      const clientePatch: Record<string, unknown> = {}
+      if (patch.nombre  !== undefined) clientePatch.nombre  = patch.nombre
+      if (patch.celular !== undefined) clientePatch.celular = patch.celular
+      if (patch.placa   !== undefined) clientePatch.placa   = patch.placa
+      return {
+        ...l,
+        ...patch,
+        ...(l.cliente && Object.keys(clientePatch).length > 0 ? { cliente: { ...l.cliente, ...clientePatch } } : {}),
+      } as LeadData
+    }))
+  }, [])
+
+  const removeLead = useCallback((id: string) => {
+    setLeadsState(prev => prev.filter(l => l.id !== id))
+  }, [])
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const abrir = params.get('abrir')
@@ -258,12 +283,12 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   }, [busqueda, tenantId])
 
   const activos = useMemo(
-    () => leadsIniciales.filter(l => ETAPAS_ACTIVAS.includes(l.etapa_venta as typeof ETAPAS_ACTIVAS[0])),
-    [leadsIniciales]
+    () => leadsState.filter(l => ETAPAS_ACTIVAS.includes(l.etapa_venta as typeof ETAPAS_ACTIVAS[0])),
+    [leadsState]
   )
 
   const leadsFiltrados = useMemo(() => {
-    let lista = usuariosFiltro.size > 0 ? leadsIniciales.filter(l => usuariosFiltro.has(l.assigned_to ?? '')) : leadsIniciales
+    let lista = usuariosFiltro.size > 0 ? leadsState.filter(l => usuariosFiltro.has(l.assigned_to ?? '')) : leadsState
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase().trim()
       lista = lista.filter(l =>
@@ -277,14 +302,14 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       )
     }
     return lista
-  }, [leadsIniciales, usuariosFiltro, busqueda, idsExtraSearch])
+  }, [leadsState, usuariosFiltro, busqueda, idsExtraSearch])
 
   const sinSeguim = activos.filter(l => !l.proxima_accion_fecha).length
 
   return (
     <div className="p-5">
       {nuevoOpen && <NuevoClienteModal onClose={() => setNuevoOpen(false)} />}
-      {whatsappOpen && <WhatsAppCreditoModal leads={leadsIniciales} onClose={() => setWhatsappOpen(false)} />}
+      {whatsappOpen && <WhatsAppCreditoModal leads={leadsState} onClose={() => setWhatsappOpen(false)} />}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
@@ -408,16 +433,16 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
 
       {/* Content */}
       {tab === 'kanban' && (
-        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} tabsSlot={pipelineTabsSlot} />
+        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} tabsSlot={pipelineTabsSlot} onLeadPatch={patchLead} onLeadRemove={removeLead} />
       )}
       {tab === 'bandeja' && (
-        <VistaBandeja leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} />
+        <VistaBandeja leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} onLeadPatch={patchLead} onLeadRemove={removeLead} />
       )}
       {tab === 'hoy' && (
-        <VistaHoy leads={leadsFiltrados} tenantId={tenantId} />
+        <VistaHoy leads={leadsFiltrados} tenantId={tenantId} onLeadPatch={patchLead} onLeadRemove={removeLead} />
       )}
       {tab === 'lista' && (
-        <VistaLista leads={leadsFiltrados} tenantId={tenantId} />
+        <VistaLista leads={leadsFiltrados} tenantId={tenantId} onLeadPatch={patchLead} onLeadRemove={removeLead} />
       )}
     </div>
   )

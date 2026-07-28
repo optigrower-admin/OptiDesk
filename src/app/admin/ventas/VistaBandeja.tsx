@@ -11,6 +11,8 @@ interface Props {
   leads: LeadData[]
   tenantId: string
   usuarios: { id: string; nombre: string }[]
+  onLeadPatch?: (id: string, patch: Record<string, unknown>) => void
+  onLeadRemove?: (id: string) => void
 }
 
 type Mensaje = {
@@ -238,7 +240,7 @@ function PanelCRM({ lead, tenantId, usuarios, onLeadUpdate }: {
 }
 
 /* ─── Componente principal ────────────────────────────────────────────────── */
-export default function VistaBandeja({ leads, tenantId, usuarios }: Props) {
+export default function VistaBandeja({ leads, tenantId, usuarios, onLeadPatch, onLeadRemove }: Props) {
   const supabase = createClient()
   const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [mensajes,    setMensajes]    = useState<Mensaje[]>([])
@@ -307,6 +309,7 @@ export default function VistaBandeja({ leads, tenantId, usuarios }: Props) {
         updated.cliente = updated.cliente ? { ...updated.cliente, celular: (updates.celular as string | null) ?? null } : updated.cliente
       return updated
     }))
+    onLeadPatch?.(id, updates)
   }
 
   const fichaLead = fichaId ? leadsLocal.find(l => l.id === fichaId) ?? null : null
@@ -477,7 +480,7 @@ export default function VistaBandeja({ leads, tenantId, usuarios }: Props) {
           onClose={() => setFichaId(null)}
           onEtapaChange={(id, etapa) => handleLeadUpdate(id, { etapa_venta: etapa })}
           onLeadUpdate={(id, updates) => handleLeadUpdate(id, updates as Record<string, unknown>)}
-          onLeadDelete={(id) => { setLeadsLocal(p => p.filter(l => l.id !== id)); setFichaId(null) }}
+          onLeadDelete={(id) => { setLeadsLocal(p => p.filter(l => l.id !== id)); setFichaId(null); onLeadRemove?.(id) }}
         />
       )}
     </div>

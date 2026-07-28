@@ -174,11 +174,15 @@ interface Props {
   usuarios?: { id: string; nombre: string }[]
   abrirClienteId?: string
   tabsSlot?: HTMLElement | null
+  // Propaga cambios al estado compartido del padre (VentasClient), para que el
+  // contador de arriba y las demás vistas queden al día sin recargar la página.
+  onLeadPatch?: (id: string, patch: Record<string, unknown>) => void
+  onLeadRemove?: (id: string) => void
 }
 
 // ─── Componente principal ──────────────────────────────────────────────────────
 
-export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId, tabsSlot }: Props) {
+export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId, tabsSlot, onLeadPatch, onLeadRemove }: Props) {
   const supabase = createClient()
   const { profile } = useAuth()
   const [leads, setLeads]             = useState<LeadData[]>(leadsIniciales)
@@ -223,6 +227,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
 
   function moverLead(id: string, nuevaEtapa: EtapaVenta) {
     setLeads(prev => prev.map(l => l.id === id ? { ...l, etapa_venta: nuevaEtapa } : l))
+    onLeadPatch?.(id, { etapa_venta: nuevaEtapa })
   }
 
   async function persistirEtapa(id: string, etapa: EtapaVenta, motivoPerdida?: string, detallePerdida?: string) {
@@ -326,12 +331,14 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
         ...(l.cliente && Object.keys(clientePatch).length > 0 ? { cliente: { ...l.cliente, ...clientePatch } } : {}),
       }
     }))
+    onLeadPatch?.(id, updates)
   }
 
-  function handleLeadDelete(id: string) { setLeads(prev => prev.filter(l => l.id !== id)); setFichaId(null) }
+  function handleLeadDelete(id: string) { setLeads(prev => prev.filter(l => l.id !== id)); setFichaId(null); onLeadRemove?.(id) }
 
   async function handleQuickDone(leadId: string) {
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, proxima_accion: null, proxima_accion_fecha: null } : l))
+    onLeadPatch?.(leadId, { proxima_accion: null, proxima_accion_fecha: null })
     await supabase.from('clientes').update({ proxima_accion: null, proxima_accion_fecha: null }).eq('id', leadId)
   }
 

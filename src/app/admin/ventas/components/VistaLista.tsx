@@ -7,6 +7,8 @@ import FichaProspecto from './FichaProspecto'
 interface Props {
   leads: LeadData[]
   tenantId: string
+  onLeadPatch?: (id: string, patch: Record<string, unknown>) => void
+  onLeadRemove?: (id: string) => void
 }
 
 type Orden = 'nombre' | 'etapa' | 'valor' | 'seguimiento'
@@ -18,7 +20,7 @@ const CANAL_BADGE: Record<string, string> = {
   manual:    'bg-gray-100 text-gray-600',
 }
 
-export default function VistaLista({ leads, tenantId }: Props) {
+export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove }: Props) {
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [busqueda, setBusqueda]       = useState('')
   const [etapaFiltro, setEtapaFiltro] = useState<EtapaVenta | 'todas'>('todas')
@@ -42,7 +44,8 @@ export default function VistaLista({ leads, tenantId }: Props) {
         ...(l.cliente && Object.keys(cp).length > 0 ? { cliente: { ...l.cliente, ...cp } } : {}),
       }
     }))
-  }, [])
+    onLeadPatch?.(id, updates)
+  }, [onLeadPatch])
 
   const fichaLead = fichaId ? leadsLocal.find(l => l.id === fichaId) ?? null : null
 
@@ -269,7 +272,7 @@ export default function VistaLista({ leads, tenantId }: Props) {
           onClose={() => setFichaId(null)}
           onEtapaChange={(id, etapa) => handleLeadUpdate(id, { etapa_venta: etapa })}
           onLeadUpdate={handleLeadUpdate}
-          onLeadDelete={(id) => { setLeadsLocal(p => p.filter(l => l.id !== id)); setFichaId(null) }}
+          onLeadDelete={(id) => { setLeadsLocal(p => p.filter(l => l.id !== id)); setFichaId(null); onLeadRemove?.(id) }}
         />
       )}
     </>
