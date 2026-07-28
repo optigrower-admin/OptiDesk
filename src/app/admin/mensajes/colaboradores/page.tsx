@@ -49,6 +49,8 @@ export default function ColaboradoresPage() {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [editando, setEditando]           = useState<Record<string, string>>({})
   const [guardando, setGuardando]         = useState<Record<string, boolean>>({})
+  const [editandoEmail, setEditandoEmail] = useState<Record<string, string>>({})
+  const [guardandoEmail, setGuardandoEmail] = useState<Record<string, boolean>>({})
   const [mensaje, setMensaje]             = useState<{ id: string; texto: string; ok: boolean } | null>(null)
   const [enviandoPing, setEnviandoPing]   = useState<Record<string, boolean>>({})
   const [enviandoResumen, setEnviandoResumen] = useState<Record<string, boolean>>({})
@@ -105,6 +107,29 @@ export default function ColaboradoresPage() {
       setMensaje({ id: colaborador.id, texto: 'Error al enviar', ok: false })
     }
     setTimeout(() => setMensaje(null), 3000)
+  }
+
+  async function guardarEmailNotificacion(id: string) {
+    const correo = (editandoEmail[id] ?? '').trim()
+    if (!correo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+      setMensaje({ id, texto: 'Correo inválido', ok: false })
+      setTimeout(() => setMensaje(null), 3000)
+      return
+    }
+    setGuardandoEmail(p => ({ ...p, [id]: true }))
+    const { error } = await supabase
+      .from('usuarios')
+      .update({ email: correo })
+      .eq('id', id)
+    setGuardandoEmail(p => ({ ...p, [id]: false }))
+    if (error) {
+      setMensaje({ id, texto: error.message, ok: false })
+    } else {
+      setMensaje({ id, texto: 'Guardado — solo cambia a dónde llega el resumen, no el inicio de sesión', ok: true })
+      setEditandoEmail(p => { const n = { ...p }; delete n[id]; return n })
+      cargar()
+    }
+    setTimeout(() => setMensaje(null), 4000)
   }
 
   async function enviarResumen(colaborador: Colaborador) {
@@ -193,13 +218,15 @@ export default function ColaboradoresPage() {
 
       <div className="space-y-3">
         {colaboradores.map(col => {
-          const valorInput   = editando[col.id] !== undefined ? editando[col.id] : (col.whatsapp_number ?? '')
+          const valorInput      = editando[col.id] !== undefined ? editando[col.id] : (col.whatsapp_number ?? '')
+          const valorInputEmail = editandoEmail[col.id] !== undefined ? editandoEmail[col.id] : (col.email ?? '')
+          const editandoEsteEmail = editandoEmail[col.id] !== undefined
           const hayMsg       = mensaje?.id === col.id
 
           return (
             <div key={col.id} className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-gray-900">{col.nombre ?? col.email}</span>
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
@@ -209,11 +236,40 @@ export default function ColaboradoresPage() {
                       <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Inactivo</span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-400 mt-0.5">{col.email}</p>
+
+                  {/* Correo de notificación (a dónde llega el resumen) — editable */}
+                  <div className="mt-1 flex items-center gap-1.5 max-w-sm">
+                    <input
+                      type="email"
+                      value={valorInputEmail}
+                      onChange={e => setEditandoEmail(p => ({ ...p, [col.id]: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && guardarEmailNotificacion(col.id)}
+                      className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {editandoEsteEmail && (
+                      <>
+                        <button
+                          onClick={() => guardarEmailNotificacion(col.id)}
+                          disabled={guardandoEmail[col.id]}
+                          className="text-xs px-2 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40"
+                        >
+                          {guardandoEmail[col.id] ? '...' : 'Guardar'}
+                        </button>
+                        <button
+                          onClick={() => setEditandoEmail(p => { const n = { ...p }; delete n[col.id]; return n })}
+                          className="text-xs text-gray-400 hover:text-gray-600"
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-0.5">A este correo llega el resumen diario. No cambia su inicio de sesión.</p>
+
                   <span className={`inline-block mt-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${
                     col.email_smtp_usuario ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                   }`}>
-                    {col.email_smtp_usuario ? `✉️ Correo conectado (${col.email_smtp_usuario})` : '✉️ Correo sin conectar'}
+                    {col.email_smtp_usuario ? `✉️ Envío conectado (${col.email_smtp_usuario})` : '✉️ Envío sin conectar (Mi perfil)'}
                   </span>
                 </div>
 
