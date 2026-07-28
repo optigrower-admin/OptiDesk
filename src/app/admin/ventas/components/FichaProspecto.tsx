@@ -146,6 +146,36 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     await supabase.from('clientes').update({ probabilidad_venta: nueva }).eq('id', lead.cliente?.id ?? lead.id)
   }
 
+  // ── Origen (lead_source) — select con valores existentes + agregar nuevo ──
+  const [origen,          setOrigen]          = useState(lead.lead_source ?? '')
+  const [origenes,        setOrigenes]        = useState<string[]>([])
+  const [origenNuevo,     setOrigenNuevo]     = useState(false)
+  const [origenInput,     setOrigenInput]     = useState('')
+
+  useEffect(() => {
+    supabase.from('clientes').select('lead_source').eq('tenant_id', tenantId).not('lead_source', 'is', null)
+      .then(({ data }) => {
+        const unicos = Array.from(new Set((data ?? []).map(d => d.lead_source as string).filter(Boolean))).sort()
+        setOrigenes(unicos)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId])
+
+  async function guardarOrigen(valor: string) {
+    if (valor === '__nuevo__') { setOrigenNuevo(true); setOrigenInput(''); return }
+    setOrigen(valor)
+    await supabase.from('clientes').update({ lead_source: valor || null }).eq('id', lead.cliente?.id ?? lead.id)
+  }
+
+  async function confirmarOrigenNuevo() {
+    const v = origenInput.trim()
+    if (!v) return
+    setOrigen(v)
+    setOrigenes(prev => Array.from(new Set([...prev, v])).sort())
+    await supabase.from('clientes').update({ lead_source: v }).eq('id', lead.cliente?.id ?? lead.id)
+    setOrigenNuevo(false); setOrigenInput('')
+  }
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
     check()
@@ -766,6 +796,28 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   </select>
                 ) : (
                   <p className="text-xs text-slate-300">{usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'}</p>
+                )}
+              </div>
+
+              {/* Origen */}
+              <div>
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Origen</label>
+                {!origenNuevo ? (
+                  <select value={origen} onChange={e => guardarOrigen(e.target.value)}
+                    className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none">
+                    <option value="">Sin definir</option>
+                    {origenes.map(o => <option key={o} value={o}>{o}</option>)}
+                    <option value="__nuevo__">+ Agregar nuevo...</option>
+                  </select>
+                ) : (
+                  <div className="flex gap-1">
+                    <input value={origenInput} onChange={e => setOrigenInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') confirmarOrigenNuevo() }}
+                      placeholder="Nuevo origen..." autoFocus
+                      className="flex-1 text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none" />
+                    <button onClick={confirmarOrigenNuevo} className="px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs">✓</button>
+                    <button onClick={() => setOrigenNuevo(false)} className="px-2 bg-[#2a3550] hover:bg-[#334466] text-slate-300 rounded-lg text-xs">✕</button>
+                  </div>
                 )}
               </div>
 
@@ -1431,6 +1483,27 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                       </select>
                     ) : (
                       <p className="text-sm text-gray-700 py-1">{usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Origen</label>
+                    {!origenNuevo ? (
+                      <select value={origen} onChange={e => guardarOrigen(e.target.value)}
+                        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none">
+                        <option value="">Sin definir</option>
+                        {origenes.map(o => <option key={o} value={o}>{o}</option>)}
+                        <option value="__nuevo__">+ Agregar nuevo...</option>
+                      </select>
+                    ) : (
+                      <div className="flex gap-1.5">
+                        <input value={origenInput} onChange={e => setOrigenInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') confirmarOrigenNuevo() }}
+                          placeholder="Nuevo origen..." autoFocus
+                          className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none" />
+                        <button onClick={confirmarOrigenNuevo} className="px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm">✓</button>
+                        <button onClick={() => setOrigenNuevo(false)} className="px-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-sm">✕</button>
+                      </div>
                     )}
                   </div>
 

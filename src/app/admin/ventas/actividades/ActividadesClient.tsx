@@ -61,6 +61,16 @@ function estaSemanaDe(iso: string) {
 function esVencida(iso: string) {
   return soloFecha(iso) < hoy()
 }
+// Etiqueta de "días que faltan" — lo más importante para leer la lista de un vistazo.
+function diasRestantes(iso: string, completado: boolean): { texto: string; cls: string } {
+  const dias = Math.round((new Date(soloFecha(iso) + 'T12:00:00').getTime() - new Date(hoy() + 'T12:00:00').getTime()) / 86400000)
+  if (completado) return { texto: '✓ Hecha', cls: 'bg-gray-100 text-gray-500' }
+  if (dias < 0) return { texto: `⏰ Vencida hace ${Math.abs(dias)} día${Math.abs(dias) === 1 ? '' : 's'}`, cls: 'bg-red-600 text-white' }
+  if (dias === 0) return { texto: '🔴 Hoy', cls: 'bg-orange-500 text-white' }
+  if (dias === 1) return { texto: '🟡 Mañana', cls: 'bg-amber-100 text-amber-700' }
+  if (dias <= 7)  return { texto: `🔵 En ${dias} días`, cls: 'bg-blue-100 text-blue-700' }
+  return { texto: `📅 En ${dias} días`, cls: 'bg-gray-100 text-gray-600' }
+}
 
 // ─── Pequeño CalendarioMes ─────────────────────────────────────────────────────
 function CalendarioMes({
@@ -170,13 +180,17 @@ function FilaActividad({
               <span className="ml-2 text-xs text-gray-500">· {act.asignadoNombre}</span>
             )}
           </div>
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
-            act.tipo === 'recordatorio'
-              ? 'bg-blue-100 text-blue-700'
-              : 'bg-purple-100 text-purple-700'
-          }`}>
-            {act.tipo === 'recordatorio' ? '🔔 Recordatorio' : '✅ Paso'}
-          </span>
+          {act.fecha ? (
+            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${diasRestantes(act.fecha, act.completado).cls}`}>
+              {diasRestantes(act.fecha, act.completado).texto}
+            </span>
+          ) : (
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
+              act.completado ? 'bg-gray-100 text-gray-500' : 'bg-purple-100 text-purple-700'
+            }`}>
+              {act.completado ? '✓ Hecho' : '✅ Sin fecha'}
+            </span>
+          )}
         </div>
 
         <p className={`text-sm mt-0.5 ${act.completado ? 'line-through text-gray-400' : 'text-gray-700'}`}>
@@ -187,7 +201,7 @@ function FilaActividad({
           <p className={`text-xs mt-0.5 font-medium ${
             act.completado ? 'text-gray-400' : vencida ? 'text-red-600' : 'text-gray-500'
           }`}>
-            {vencida && !act.completado ? '⏰ Vencida · ' : '📅 '}{fmtFecha(act.fecha)}
+            {fmtFecha(act.fecha)}
           </p>
         )}
 
