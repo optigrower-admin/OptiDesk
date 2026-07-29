@@ -105,82 +105,101 @@ function NuevoClienteModal({ onClose, onCreated }: { onClose: () => void; onCrea
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 max-h-[90vh] overflow-y-auto">
-        <h2 className="font-bold text-gray-900 mb-1">Nuevo cliente en seguimiento</h2>
-        <p className="text-xs text-gray-500 mb-4">Para clientes que se gestionan en persona, sin chat previo.</p>
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <input value={primerNombre} onChange={e => setPrimerNombre(e.target.value.toUpperCase())} placeholder="Primer nombre *"
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={segundoNombre} onChange={e => setSegundoNombre(e.target.value.toUpperCase())} placeholder="Segundo nombre (opcional)"
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-sm max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3 flex-shrink-0">
+          <div className="min-w-0">
+            <h2 className="font-bold text-gray-900 text-base">Nuevo cliente en seguimiento</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Para clientes que se gestionan en persona, sin chat previo.</p>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input value={primerApellido} onChange={e => setPrimerApellido(e.target.value.toUpperCase())} placeholder="Primer apellido (opcional)"
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={segundoApellido} onChange={e => setSegundoApellido(e.target.value.toUpperCase())} placeholder="Segundo apellido (opcional)"
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <input
-            value={celular}
-            onChange={e => { setCelular(e.target.value); setDupCelular(null) }}
-            onBlur={e => verificarCelular(e.target.value)}
-            placeholder="Celular *"
-            className={`w-full border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 ${
-              dupCelular ? 'border-amber-400 focus:ring-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
-            }`}
-          />
-          <div className="grid grid-cols-[auto,1fr] gap-2">
-            <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}
-              className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-              {TIPOS_DOCUMENTO.map(t => <option key={t.value} value={t.value}>{t.value}</option>)}
-            </select>
-            <input
-              value={numeroDocumento ? Number(numeroDocumento).toLocaleString('es-CO') : ''}
-              onChange={e => { setNumeroDocumento(e.target.value.replace(/\D/g, '')); setDupDocumento(null) }}
-              onBlur={e => verificarDocumento(e.target.value.replace(/\D/g, ''))}
-              inputMode="numeric" placeholder="Número de documento (opcional)"
-              className={`w-full border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 ${
-                dupDocumento ? 'border-amber-400 focus:ring-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
-              }`}
-            />
-          </div>
-          <input value={email} onChange={e => setEmail(e.target.value.toLowerCase())} placeholder="Correo electrónico (opcional)" type="email"
-            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <button onClick={onClose}
+            className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 text-2xl leading-none transition-colors">
+            ×
+          </button>
         </div>
 
-        {/* Avisos de duplicado */}
-        {buscandoDup && <p className="text-xs text-gray-400 mt-2">Verificando duplicados...</p>}
-        {dupCelular && (
-          <div className="mt-3 bg-red-50 border border-red-300 rounded-xl px-3 py-2.5">
-            <p className="text-xs font-bold text-red-700">🚫 Celular ya registrado</p>
-            <p className="text-xs text-red-600 mt-0.5">
-              El número <span className="font-semibold">{celular}</span> ya pertenece a{' '}
-              <span className="font-semibold">{dupCelular}</span>.
-              No se puede crear un nuevo cliente con ese número.
-            </p>
+        {/* Campos (scrollable) */}
+        <div className="px-5 overflow-y-auto flex-1 min-h-0">
+          <div className="space-y-3 pb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <input value={primerNombre} onChange={e => setPrimerNombre(e.target.value.toUpperCase())} placeholder="Primer nombre *"
+                autoFocus
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input value={segundoNombre} onChange={e => setSegundoNombre(e.target.value.toUpperCase())} placeholder="Segundo nombre (opcional)"
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <input value={primerApellido} onChange={e => setPrimerApellido(e.target.value.toUpperCase())} placeholder="Primer apellido (opcional)"
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input value={segundoApellido} onChange={e => setSegundoApellido(e.target.value.toUpperCase())} placeholder="Segundo apellido (opcional)"
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <input
+              value={celular}
+              onChange={e => { setCelular(e.target.value); setDupCelular(null) }}
+              onBlur={e => verificarCelular(e.target.value)}
+              placeholder="Celular *"
+              type="tel" inputMode="tel"
+              className={`w-full border rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 ${
+                dupCelular ? 'border-amber-400 focus:ring-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
+              }`}
+            />
+            <div className="grid grid-cols-[auto,1fr] gap-2.5">
+              <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}
+                className="border border-gray-200 rounded-xl px-2.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {TIPOS_DOCUMENTO.map(t => <option key={t.value} value={t.value}>{t.value}</option>)}
+              </select>
+              <input
+                value={numeroDocumento ? Number(numeroDocumento).toLocaleString('es-CO') : ''}
+                onChange={e => { setNumeroDocumento(e.target.value.replace(/\D/g, '')); setDupDocumento(null) }}
+                onBlur={e => verificarDocumento(e.target.value.replace(/\D/g, ''))}
+                inputMode="numeric" placeholder="Número de documento (opcional)"
+                className={`w-full border rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 ${
+                  dupDocumento ? 'border-amber-400 focus:ring-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
+                }`}
+              />
+            </div>
+            <input value={email} onChange={e => setEmail(e.target.value.toLowerCase())} placeholder="Correo electrónico (opcional)"
+              type="email" inputMode="email" autoCapitalize="none"
+              className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-        )}
-        {dupDocumento && (
-          <div className="mt-3 bg-red-50 border border-red-300 rounded-xl px-3 py-2.5">
-            <p className="text-xs font-bold text-red-700">🚫 Cédula ya registrada</p>
-            <p className="text-xs text-red-600 mt-0.5">
-              La cédula <span className="font-semibold">{Number(numeroDocumento).toLocaleString('es-CO')}</span> ya pertenece a{' '}
-              <span className="font-semibold">{dupDocumento}</span>.
-              No se puede crear un nuevo cliente con esa cédula.
-            </p>
-          </div>
-        )}
 
-        <p className="text-xs text-gray-400 mt-2">* Solo el primer nombre y el celular son obligatorios.</p>
-        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
-        <div className="flex gap-2 mt-4">
-          <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+          {/* Avisos de duplicado */}
+          {buscandoDup && <p className="text-xs text-gray-400 mt-1">Verificando duplicados...</p>}
+          {dupCelular && (
+            <div className="mt-3 bg-red-50 border border-red-300 rounded-xl px-3 py-2.5">
+              <p className="text-xs font-bold text-red-700">🚫 Celular ya registrado</p>
+              <p className="text-xs text-red-600 mt-0.5">
+                El número <span className="font-semibold">{celular}</span> ya pertenece a{' '}
+                <span className="font-semibold">{dupCelular}</span>.
+                No se puede crear un nuevo cliente con ese número.
+              </p>
+            </div>
+          )}
+          {dupDocumento && (
+            <div className="mt-3 bg-red-50 border border-red-300 rounded-xl px-3 py-2.5">
+              <p className="text-xs font-bold text-red-700">🚫 Cédula ya registrada</p>
+              <p className="text-xs text-red-600 mt-0.5">
+                La cédula <span className="font-semibold">{Number(numeroDocumento).toLocaleString('es-CO')}</span> ya pertenece a{' '}
+                <span className="font-semibold">{dupDocumento}</span>.
+                No se puede crear un nuevo cliente con esa cédula.
+              </p>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-400 mt-2">* Solo el primer nombre y el celular son obligatorios.</p>
+          {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        </div>
+
+        {/* Acciones (fijas abajo, siempre alcanzables con el pulgar) */}
+        <div className="flex gap-2 px-5 pt-3 border-t border-gray-100 flex-shrink-0"
+          style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
+          <button onClick={onClose} className="flex-1 py-3.5 border border-gray-200 text-gray-600 rounded-xl text-base font-medium hover:bg-gray-50">
             Cancelar
           </button>
           <button onClick={crear} disabled={!valido || guardando || hayDuplicado}
-            className="flex-1 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors">
+            className="flex-1 py-3.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-base font-semibold disabled:opacity-40 transition-colors">
             {guardando ? 'Creando...' : 'Crear'}
           </button>
         </div>
