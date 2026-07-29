@@ -86,6 +86,7 @@ const STANDALONE_NAV: NavItem[] = [
   { href: '/admin/auditoria',   label: 'Auditoría',         seccion: 'auditoria',  soloGerencia: false, defaultOrden: 70  },
   { href: '/admin/equipo',      label: 'Mi equipo',         seccion: 'mi_equipo',  soloGerencia: true,  defaultOrden: 80  },
   { href: '/admin/documentos',   label: 'Documentos Internos', seccion: null,       soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 85 },
+  { href: '/admin/contactos-internos', label: 'Contactos Internos', seccion: null,  soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 85.5 },
   { href: '/admin/credenciales',   label: 'Credenciales',   seccion: null, soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 86  },
   { href: '/admin/config-general', label: 'Config General', seccion: null, soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 998 },
   { href: '/admin/perfil',         label: 'Mi perfil',      seccion: null, soloGerencia: false,                                        defaultOrden: 999 },
