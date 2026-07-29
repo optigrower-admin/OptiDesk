@@ -14,20 +14,12 @@ type Etapa = {
   es_etapa_inicial: boolean
   es_ganado: boolean
   es_perdido: boolean
-  requiere_celular: boolean
-  requiere_placa: boolean
-  requiere_fecha_entrega: boolean
-  requiere_carta_negociacion: boolean
-  requiere_factura: boolean
-  requiere_aprobacion_gerencia: boolean
 }
 
 type Grupo = { id: string; clave: string; nombre: string; color: string; orden: number; etapas: Etapa[] }
 type Pipeline = { id: string; clave: string; nombre: string; orden: number; grupos: Grupo[] }
 
-type FlagKey = 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido' |
-  'requiere_celular' | 'requiere_placa' | 'requiere_fecha_entrega' | 'requiere_carta_negociacion' |
-  'requiere_factura' | 'requiere_aprobacion_gerencia'
+type FlagKey = 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido'
 
 const FLAGS: { key: FlagKey; label: string; hint: string }[] = [
   { key: 'es_activa',                   label: 'Activa',                     hint: 'Cuenta como lead en gestión (vistas Hoy/Bandeja/Resumen)' },
@@ -35,25 +27,13 @@ const FLAGS: { key: FlagKey; label: string; hint: string }[] = [
   { key: 'es_etapa_inicial',            label: 'Etapa inicial',              hint: 'Acá caen los clientes cuando escriben por primera vez' },
   { key: 'es_ganado',                   label: 'Marca venta ganada',         hint: 'Registra la fecha de cierre' },
   { key: 'es_perdido',                  label: 'Marca venta perdida',        hint: 'Registra la fecha de cierre' },
-  { key: 'requiere_celular',            label: 'Exige celular',              hint: 'Alerta si el cliente no tiene celular' },
-  { key: 'requiere_placa',              label: 'Exige placa',                hint: 'Alerta si la moto no tiene placa asignada' },
-  { key: 'requiere_fecha_entrega',      label: 'Exige fecha de entrega',     hint: '' },
-  { key: 'requiere_carta_negociacion',  label: 'Exige carta de negociación', hint: '' },
-  { key: 'requiere_factura',            label: 'Exige número de factura',    hint: '' },
-  { key: 'requiere_aprobacion_gerencia',label: 'Requiere aprobación de gerencia', hint: 'Bloquea el avance hasta que gerencia apruebe' },
 ]
 
-type EtapaDraft = Pick<Etapa,
-  'label' | 'color' | 'bg' | 'border' | 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido' |
-  'requiere_celular' | 'requiere_placa' | 'requiere_fecha_entrega' | 'requiere_carta_negociacion' |
-  'requiere_factura' | 'requiere_aprobacion_gerencia'
->
+type EtapaDraft = Pick<Etapa, 'label' | 'color' | 'bg' | 'border' | 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido'>
 
 const DRAFT_VACIO: EtapaDraft = {
   label: '', color: '#2563EB', bg: 'bg-blue-50', border: 'border-blue-500',
   es_activa: true, es_lead: false, es_etapa_inicial: false, es_ganado: false, es_perdido: false,
-  requiere_celular: false, requiere_placa: false, requiere_fecha_entrega: false,
-  requiere_carta_negociacion: false, requiere_factura: false, requiere_aprobacion_gerencia: false,
 }
 
 async function llamar(body: Record<string, unknown>) {
@@ -85,6 +65,191 @@ function EtapaForm({ draft, onChange }: { draft: EtapaDraft; onChange: (d: Etapa
           </label>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ─── Reglas y Alertas por etapa (constructor libre) ────────────────────────
+
+type CampoRegla =
+  | 'celular' | 'placa' | 'alistamiento' | 'numero_factura'
+  | 'numero_carta_negociacion' | 'fecha_entrega' | 'aprobacion_gerencia'
+
+type Regla = {
+  id: string
+  etapa_id: string
+  campo: CampoRegla
+  etiqueta: string
+  mensaje_ayuda: string | null
+  color: string
+  bloquea_cambio_etapa: boolean
+  activa: boolean
+  orden: number
+}
+
+const CAMPOS_REGLA: { value: CampoRegla; label: string; hint: string }[] = [
+  { value: 'celular',                   label: 'Celular',                    hint: 'Alerta si el cliente no tiene número de celular' },
+  { value: 'placa',                     label: 'Placa',                      hint: 'Alerta si la moto no tiene placa asignada' },
+  { value: 'alistamiento',              label: 'Alistamiento',                hint: 'Alerta si falta vincular la orden de alistamiento (Servicio Técnico)' },
+  { value: 'numero_factura',            label: 'Número de factura',          hint: '' },
+  { value: 'numero_carta_negociacion',  label: 'Carta de negociación',       hint: '' },
+  { value: 'fecha_entrega',             label: 'Fecha de entrega',           hint: '' },
+  { value: 'aprobacion_gerencia',       label: 'Aprobación de gerencia',     hint: 'Muestra el panel de aprobar/rechazar; si "bloquea" está activo, no deja avanzar sin aprobar' },
+]
+
+type ReglaDraft = { campo: CampoRegla; etiqueta: string; mensaje_ayuda: string; color: string; bloquea_cambio_etapa: boolean }
+const REGLA_DRAFT_VACIO: ReglaDraft = { campo: 'celular', etiqueta: '', mensaje_ayuda: '', color: '#f97316', bloquea_cambio_etapa: false }
+
+async function llamarRegla(body: Record<string, unknown>) {
+  const res = await fetch('/api/admin/ventas/reglas-etapa', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error ?? 'Error')
+  return json
+}
+
+function ReglaForm({ draft, onChange }: { draft: ReglaDraft; onChange: (d: ReglaDraft) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <select value={draft.campo} onChange={e => onChange({ ...draft, campo: e.target.value as CampoRegla })}
+          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none">
+          {CAMPOS_REGLA.map(c => <option key={c.value} value={c.value} title={c.hint}>{c.label}</option>)}
+        </select>
+        <input type="color" value={draft.color} onChange={e => onChange({ ...draft, color: e.target.value })}
+          className="w-7 h-7 rounded border border-gray-200 p-0 cursor-pointer flex-shrink-0" title="Color" />
+        <input value={draft.etiqueta} onChange={e => onChange({ ...draft, etiqueta: e.target.value })}
+          placeholder="Etiqueta (ej: Sin celular)"
+          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none" />
+      </div>
+      <input value={draft.mensaje_ayuda} onChange={e => onChange({ ...draft, mensaje_ayuda: e.target.value })}
+        placeholder="Mensaje de ayuda (opcional)"
+        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none" />
+      <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+        <input type="checkbox" checked={draft.bloquea_cambio_etapa}
+          onChange={e => onChange({ ...draft, bloquea_cambio_etapa: e.target.checked })} />
+        Bloquea el cambio de etapa hasta resolverse
+      </label>
+    </div>
+  )
+}
+
+function ReglasEtapaConfig({ etapaId }: { etapaId: string }) {
+  const [reglas, setReglas]   = useState<Regla[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState('')
+  const [busy, setBusy]       = useState(false)
+  const [nueva, setNueva]     = useState<ReglaDraft | null>(null)
+  const [editando, setEditando] = useState<{ id: string; draft: ReglaDraft } | null>(null)
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/ventas/reglas-etapa?etapa_id=${etapaId}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al cargar')
+      setReglas(json.reglas ?? [])
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al cargar')
+    } finally { setLoading(false) }
+  }, [etapaId])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  async function accionar(fn: () => Promise<unknown>) {
+    setBusy(true); setError('')
+    try { await fn(); await cargar() }
+    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error') }
+    finally { setBusy(false) }
+  }
+
+  const crear = () => accionar(async () => {
+    if (!nueva?.etiqueta.trim()) return
+    await llamarRegla({ accion: 'crear_regla', etapa_id: etapaId, ...nueva })
+    setNueva(null)
+  })
+
+  const guardar = () => accionar(async () => {
+    if (!editando) return
+    await llamarRegla({ accion: 'editar_regla', regla_id: editando.id, ...editando.draft })
+    setEditando(null)
+  })
+
+  const eliminar = (id: string, etiqueta: string) => {
+    if (!confirm(`¿Eliminar la regla "${etiqueta}"?`)) return
+    accionar(() => llamarRegla({ accion: 'eliminar_regla', regla_id: id }))
+  }
+
+  const toggleActiva = (r: Regla) =>
+    accionar(() => llamarRegla({ accion: 'editar_regla', regla_id: r.id, activa: !r.activa }))
+
+  const moverRegla = (id: string, direccion: 'arriba' | 'abajo') =>
+    accionar(() => llamarRegla({ accion: 'mover_regla', regla_id: id, direccion }))
+
+  if (loading) return <p className="text-[11px] text-gray-400 px-1">Cargando reglas…</p>
+
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 space-y-1.5">
+      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Reglas y Alertas de esta etapa</p>
+      {error && <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1">{error}</p>}
+
+      {reglas.length === 0 && !nueva && (
+        <p className="text-[11px] text-gray-400">Sin reglas configuradas para esta etapa.</p>
+      )}
+
+      {reglas.map((r, idx) => (
+        <div key={r.id}>
+          {editando?.id === r.id ? (
+            <div className="bg-white border border-blue-200 rounded-lg p-2 space-y-1.5">
+              <ReglaForm draft={editando.draft} onChange={d => setEditando({ id: r.id, draft: d })} />
+              <div className="flex gap-1.5">
+                <button onClick={guardar} className="flex-1 py-1 bg-blue-700 text-white rounded-lg text-[11px] font-semibold">Guardar</button>
+                <button onClick={() => setEditando(null)} className="flex-1 py-1 bg-gray-200 rounded-lg text-[11px]">Cancelar</button>
+              </div>
+            </div>
+          ) : (
+            <div className={`flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2 py-1.5 ${!r.activa ? 'opacity-50' : ''}`}>
+              <div className="flex flex-col gap-0.5">
+                <button disabled={busy || idx === 0} onClick={() => moverRegla(r.id, 'arriba')}
+                  className="text-gray-400 hover:text-gray-700 disabled:opacity-20 text-[9px] leading-none">▲</button>
+                <button disabled={busy || idx === reglas.length - 1} onClick={() => moverRegla(r.id, 'abajo')}
+                  className="text-gray-400 hover:text-gray-700 disabled:opacity-20 text-[9px] leading-none">▼</button>
+              </div>
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: r.color }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-gray-800 truncate">{r.etiqueta}</p>
+                <p className="text-[10px] text-gray-400 truncate">
+                  {CAMPOS_REGLA.find(c => c.value === r.campo)?.label ?? r.campo}
+                  {r.bloquea_cambio_etapa && <span className="text-red-500 font-semibold"> · bloquea</span>}
+                </p>
+              </div>
+              <button onClick={() => toggleActiva(r)} className="text-[10px] text-gray-500 hover:underline flex-shrink-0">
+                {r.activa ? 'Desactivar' : 'Activar'}
+              </button>
+              <button onClick={() => setEditando({ id: r.id, draft: { campo: r.campo, etiqueta: r.etiqueta, mensaje_ayuda: r.mensaje_ayuda ?? '', color: r.color, bloquea_cambio_etapa: r.bloquea_cambio_etapa } })}
+                className="text-[10px] text-blue-600 hover:underline flex-shrink-0">Editar</button>
+              <button onClick={() => eliminar(r.id, r.etiqueta)} className="text-[10px] text-red-500 hover:underline flex-shrink-0">Eliminar</button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {nueva ? (
+        <div className="bg-white border border-blue-200 rounded-lg p-2 space-y-1.5">
+          <ReglaForm draft={nueva} onChange={setNueva} />
+          <div className="flex gap-1.5">
+            <button onClick={crear} disabled={!nueva.etiqueta.trim()}
+              className="flex-1 py-1 bg-blue-700 text-white rounded-lg text-[11px] font-semibold disabled:opacity-40">Crear regla</button>
+            <button onClick={() => setNueva(null)} className="flex-1 py-1 bg-gray-200 rounded-lg text-[11px]">Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setNueva(REGLA_DRAFT_VACIO)}
+          className="w-full text-[11px] text-blue-600 hover:text-blue-800 border border-dashed border-gray-300 hover:border-blue-400 rounded-lg py-1.5">
+          + Añadir regla
+        </button>
+      )}
     </div>
   )
 }
@@ -264,6 +429,7 @@ export default function PipelinesConfig() {
                             <button onClick={guardarEtapa} className="flex-1 py-1.5 bg-blue-700 text-white rounded-lg text-xs font-semibold">Guardar</button>
                             <button onClick={() => setEditEtapa(null)} className="flex-1 py-1.5 bg-gray-200 rounded-lg text-xs">Cancelar</button>
                           </div>
+                          <ReglasEtapaConfig etapaId={e.id} />
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
@@ -279,7 +445,6 @@ export default function PipelinesConfig() {
                             {e.es_etapa_inicial && <span className="text-[9px] bg-sky-100 text-sky-700 px-1.5 rounded-full">inicial</span>}
                             {e.es_ganado && <span className="text-[9px] bg-green-100 text-green-700 px-1.5 rounded-full">ganado</span>}
                             {e.es_perdido && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 rounded-full">perdido</span>}
-                            {e.requiere_aprobacion_gerencia && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 rounded-full">aprob. gerencia</span>}
                           </div>
                           <button onClick={() => setEditEtapa({
                             id: e.id,
@@ -287,10 +452,6 @@ export default function PipelinesConfig() {
                               label: e.label, color: e.color, bg: e.bg, border: e.border,
                               es_activa: e.es_activa, es_lead: e.es_lead, es_etapa_inicial: e.es_etapa_inicial,
                               es_ganado: e.es_ganado, es_perdido: e.es_perdido,
-                              requiere_celular: e.requiere_celular, requiere_placa: e.requiere_placa,
-                              requiere_fecha_entrega: e.requiere_fecha_entrega,
-                              requiere_carta_negociacion: e.requiere_carta_negociacion,
-                              requiere_factura: e.requiere_factura, requiere_aprobacion_gerencia: e.requiere_aprobacion_gerencia,
                             },
                           })} className="text-[11px] text-blue-600 hover:underline flex-shrink-0">Editar</button>
                           <button onClick={() => eliminarEtapa(e.id, e.label)} className="text-[11px] text-red-500 hover:underline flex-shrink-0">Eliminar</button>

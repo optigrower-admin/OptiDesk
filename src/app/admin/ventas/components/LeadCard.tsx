@@ -101,12 +101,15 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, 
   const esUrgente        = sinResponder.urgente || seguimiento === 'vencido'
   const nombrePendiente  = lead.nombre_pendiente_aprobacion === true
   const esAutomatizado   = lead.automatizado === true
-  const necesitaAlistamiento =
-    (lead.etapa_venta === 'espera_entrega' || lead.etapa_venta === 'entregada') &&
-    lead.tieneAlistamiento === false
-  const necesitaCelular = etapaInfo?.es_lead === true && !lead.cliente?.celular
-  const necesitaPlaca   = etapaInfo?.requiere_placa === true && lead.tienePlaca === false
-  const esAprobado      = etapaInfo?.requiere_aprobacion_gerencia === true
+  const reglaAlistamiento = etapaInfo?.reglas?.find(r => r.campo === 'alistamiento')
+  const reglaCelular      = etapaInfo?.reglas?.find(r => r.campo === 'celular')
+  const reglaPlaca        = etapaInfo?.reglas?.find(r => r.campo === 'placa')
+  const reglaAprobacion   = etapaInfo?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
+
+  const necesitaAlistamiento = !!reglaAlistamiento && lead.tieneAlistamiento === false
+  const necesitaCelular = !!reglaCelular && !lead.cliente?.celular
+  const necesitaPlaca   = !!reglaPlaca && lead.tienePlaca === false
+  const esAprobado      = !!reglaAprobacion
   const campana       = lead.leads_campana?.[0]?.utm_campaign
   const canales       = lead.todas_conversaciones.length > 0
     ? lead.todas_conversaciones
@@ -172,21 +175,21 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, 
       {/* Banner FALTA ALISTAMIENTO */}
       {necesitaAlistamiento && (
         <div className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5">
-          ⚠ FALTA ALISTAMIENTO
+          ⚠ {(reglaAlistamiento?.etiqueta ?? 'Falta alistamiento').toUpperCase()}
         </div>
       )}
 
       {/* Banner SIN CELULAR */}
       {necesitaCelular && (
         <div className="bg-orange-500 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5">
-          ⚠ SIN NÚMERO DE CELULAR
+          ⚠ {(reglaCelular?.etiqueta ?? 'Sin número de celular').toUpperCase()}
         </div>
       )}
 
       {/* Banner SIN PLACA */}
       {necesitaPlaca && (
         <div className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5">
-          ⚠ SIN PLACA ASIGNADA
+          ⚠ {(reglaPlaca?.etiqueta ?? 'Sin placa asignada').toUpperCase()}
         </div>
       )}
 

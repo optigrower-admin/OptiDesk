@@ -2,6 +2,22 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+export type CampoRegla =
+  | 'celular' | 'placa' | 'alistamiento' | 'numero_factura'
+  | 'numero_carta_negociacion' | 'fecha_entrega' | 'aprobacion_gerencia'
+
+export interface ReglaEtapa {
+  id: string
+  etapa_id: string
+  campo: CampoRegla
+  etiqueta: string
+  mensaje_ayuda: string | null
+  color: string
+  bloquea_cambio_etapa: boolean
+  activa: boolean
+  orden: number
+}
+
 export interface EtapaDinamica {
   id: string // clave — mismo valor que antes era el string literal EtapaVenta
   label: string
@@ -26,6 +42,7 @@ export interface EtapaDinamica {
   requiere_carta_negociacion: boolean
   requiere_factura: boolean
   requiere_aprobacion_gerencia: boolean
+  reglas: ReglaEtapa[]
 }
 
 export interface GrupoDinamico {
@@ -66,16 +83,18 @@ export function useEtapasPipeline(tenantId: string | undefined) {
     let cancelado = false
 
     async function cargar() {
-      const [{ data: pv }, { data: pg }, { data: ep }] = await Promise.all([
+      const [{ data: pv }, { data: pg }, { data: ep }, { data: rg }] = await Promise.all([
         supabase.from('pipelines_venta').select('id, clave, nombre, orden').eq('tenant_id', tenantId).order('orden'),
         supabase.from('pipeline_grupos').select('id, pipeline_id, clave, nombre, color, orden').eq('tenant_id', tenantId).order('orden'),
         supabase.from('etapas_pipeline').select('*').eq('tenant_id', tenantId).order('orden'),
+        supabase.from('reglas_etapa').select('*').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
       ])
       if (cancelado) return
 
       const pipelinesRaw = (pv as RowPipeline[]) ?? []
       const gruposRaw = (pg as RowGrupo[]) ?? []
       const etapasRaw = (ep as RowEtapa[]) ?? []
+      const reglasRaw = (rg as ReglaEtapa[]) ?? []
 
       const gruposMap = new Map(gruposRaw.map(g => [g.id, g]))
       const pipelinesMap = new Map(pipelinesRaw.map(p => [p.id, p]))
@@ -93,6 +112,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
           requiere_fecha_entrega: e.requiere_fecha_entrega,
           requiere_carta_negociacion: e.requiere_carta_negociacion,
           requiere_factura: e.requiere_factura, requiere_aprobacion_gerencia: e.requiere_aprobacion_gerencia,
+          reglas: reglasRaw.filter(r => r.etapa_id === e.id).sort((a, b) => a.orden - b.orden),
         }
       })
 

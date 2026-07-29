@@ -228,8 +228,9 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     }
     if (!targetEtapa || targetEtapa === lead.etapa_venta) return
     const destino = etapaMap[targetEtapa]
-    if (destino?.requiere_aprobacion_gerencia && lead.estadoAprobacionMatricula !== 'aprobado') {
-      setBloqueoMsg('Debes pedir aprobación para matricular para poder cambiar de etapa')
+    const reglaAprobacionDestino = destino?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
+    if (reglaAprobacionDestino?.bloquea_cambio_etapa && lead.estadoAprobacionMatricula !== 'aprobado') {
+      setBloqueoMsg(reglaAprobacionDestino.mensaje_ayuda || 'Debes pedir aprobación para matricular para poder cambiar de etapa')
       return
     }
     if (destino) setPendingMove({ leadId, targetEtapa: destino })

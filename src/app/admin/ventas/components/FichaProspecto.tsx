@@ -260,13 +260,21 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [assignedTo, setAssignedTo] = useState('')
 
   // Derivados de alerta — usan `etapa` (estado local) para que los campos aparezcan de inmediato
-  const sinCelular          = etapasPipeline.etapaMap[lead.etapa_venta]?.es_lead === true && !celularActual
-  const enEtapaConPlaca     = etapasPipeline.etapaMap[etapa]?.requiere_placa === true
-  const enEtapaAlistamiento    = etapa === 'espera_entrega' || etapa === 'entregada'
+  const reglaCelular         = etapasPipeline.etapaMap[lead.etapa_venta]?.reglas?.find(r => r.campo === 'celular')
+  const reglaPlaca           = etapasPipeline.etapaMap[etapa]?.reglas?.find(r => r.campo === 'placa')
+  const reglaAlistamiento    = etapasPipeline.etapaMap[etapa]?.reglas?.find(r => r.campo === 'alistamiento')
+  const reglaFactura         = etapasPipeline.etapaMap[etapa]?.reglas?.find(r => r.campo === 'numero_factura')
+  const reglaFechaEntrega    = etapasPipeline.etapaMap[etapa]?.reglas?.find(r => r.campo === 'fecha_entrega')
+  const reglaCarta           = etapasPipeline.etapaMap[etapa]?.reglas?.find(r => r.campo === 'numero_carta_negociacion')
+  const reglaAprobacion      = etapasPipeline.etapaMap[etapa]?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
+
+  const sinCelular          = !!reglaCelular && !celularActual
+  const enEtapaConPlaca     = !!reglaPlaca
+  const enEtapaAlistamiento    = !!reglaAlistamiento
   const tieneAlistamientoFinal = lead.tieneAlistamiento === true || !!alistamientoOrdenId
-  const enEtapaFactura         = etapasPipeline.etapaMap[etapa]?.requiere_factura === true
-  const enEtapaFechaEntrega    = etapasPipeline.etapaMap[etapa]?.requiere_fecha_entrega === true
-  const enEtapaCarta           = etapasPipeline.etapaMap[etapa]?.requiere_carta_negociacion === true
+  const enEtapaFactura         = !!reglaFactura
+  const enEtapaFechaEntrega    = !!reglaFechaEntrega
+  const enEtapaCarta           = !!reglaCarta
 
   const cargar = useCallback(async () => {
     const [{ data: msgs }, { data: ords }, { data: us }, { data: cliente }, { data: etapasHist }] = await Promise.all([
@@ -371,9 +379,10 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   // Auto-guarda etapa al cambiarla en el select
   const autoSaveEtapa = async (newEtapa: EtapaVenta) => {
-    if (etapasPipeline.etapaMap[newEtapa]?.requiere_aprobacion_gerencia &&
+    const reglaAprobacionNueva = etapasPipeline.etapaMap[newEtapa]?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
+    if (reglaAprobacionNueva?.bloquea_cambio_etapa &&
         aprobacionStatus !== 'aprobado') {
-      setBloqueoMsg('Debes pedir aprobación para matricular para poder cambiar de etapa')
+      setBloqueoMsg(reglaAprobacionNueva.mensaje_ayuda || 'Debes pedir aprobación para matricular para poder cambiar de etapa')
       return
     }
     const prev = etapa
@@ -901,31 +910,31 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 {sinCelular && (
                   <button onClick={() => setTabDer('datos')}
                     className="w-full text-left text-[9px] font-bold text-orange-300 bg-orange-900/30 border border-orange-700/40 rounded-lg px-2 py-1.5 hover:bg-orange-900/50 transition-colors">
-                    ⚠ Sin celular → Datos
+                    ⚠ {reglaCelular?.etiqueta ?? 'Sin celular'} → Datos
                   </button>
                 )}
                 {enEtapaConPlaca && !placaActual && (
                   <button onClick={() => setTabDer('resumen')}
                     className="w-full text-left text-[9px] font-bold text-red-300 bg-red-900/30 border border-red-700/40 rounded-lg px-2 py-1.5 hover:bg-red-900/50 transition-colors">
-                    ⚠ Sin placa → Resumen
+                    ⚠ {reglaPlaca?.etiqueta ?? 'Sin placa'} → Resumen
                   </button>
                 )}
                 {enEtapaAlistamiento && !tieneAlistamientoFinal && (
                   <button onClick={() => setTabDer('resumen')}
                     className="w-full text-left text-[9px] font-bold text-red-300 bg-red-900/30 border border-red-700/40 rounded-lg px-2 py-1.5 hover:bg-red-900/50 transition-colors">
-                    ⚠ Sin alistamiento → Resumen
+                    ⚠ {reglaAlistamiento?.etiqueta ?? 'Sin alistamiento'} → Resumen
                   </button>
                 )}
                 {enEtapaCarta && !cartaActual && (
                   <button onClick={() => setTabDer('resumen')}
                     className="w-full text-left text-[9px] font-bold text-yellow-300 bg-yellow-900/30 border border-yellow-700/40 rounded-lg px-2 py-1.5 hover:bg-yellow-900/50 transition-colors">
-                    ⚠ Sin carta negociación → Resumen
+                    ⚠ {reglaCarta?.etiqueta ?? 'Sin carta negociación'} → Resumen
                   </button>
                 )}
                 {enEtapaFactura && !facturaActual && (
                   <button onClick={() => setTabDer('resumen')}
                     className="w-full text-left text-[9px] font-bold text-yellow-300 bg-yellow-900/30 border border-yellow-700/40 rounded-lg px-2 py-1.5 hover:bg-yellow-900/50 transition-colors">
-                    ⚠ Sin factura → Resumen
+                    ⚠ {reglaFactura?.etiqueta ?? 'Sin factura'} → Resumen
                   </button>
                 )}
               </div>
@@ -974,7 +983,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           {/* ── Alerta: Sin celular (en header de la zona derecha) ── */}
           {sinCelular && (
             <div className="border-b px-4 py-2.5 bg-orange-50 flex-shrink-0">
-              <p className="text-xs font-bold text-orange-700 mb-1">⚠ Sin número de celular</p>
+              <p className="text-xs font-bold text-orange-700 mb-1">⚠ {reglaCelular?.etiqueta ?? 'Sin número de celular'}</p>
               <div className="flex items-center gap-2">
                 <input
                   value={celularInput}
@@ -1128,7 +1137,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           <div className={`flex-1 overflow-y-auto p-4 ${tabDer === 'chats' ? 'hidden' : ''}`}>
 
             {/* ── Barra: Carta · Placa · Alistamiento · Factura · Fecha entrega · Aprobación ── */}
-            {(enEtapaCarta || enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || etapasPipeline.etapaMap[etapa]?.requiere_aprobacion_gerencia === true) && (
+            {(enEtapaCarta || enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || !!reglaAprobacion) && (
               <div className="mb-4 space-y-2">
 
                 {/* Fila de pills */}
@@ -1137,7 +1146,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
                       cartaActual ? 'bg-teal-50 border-teal-200 text-teal-800' : 'bg-orange-50 border-orange-200 text-orange-700'
                     }`}>
-                      {cartaActual ? `📝 Carta ${cartaActual}` : '⚠ Sin carta negociación'}
+                      {cartaActual ? `📝 Carta ${cartaActual}` : `⚠ ${reglaCarta?.etiqueta ?? 'Sin carta negociación'}`}
                       {cartaActual && (
                         <button onClick={() => setEditandoCarta(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
                       )}
@@ -1148,7 +1157,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
                       placaActual ? 'bg-teal-50 border-teal-200 text-teal-800' : 'bg-red-50 border-red-200 text-red-700'
                     }`}>
-                      {placaActual ? `🏍️ ${placaActual}` : '⚠ Sin placa'}
+                      {placaActual ? `🏍️ ${placaActual}` : `⚠ ${reglaPlaca?.etiqueta ?? 'Sin placa'}`}
                       {esGerencia && (
                         <button onClick={() => setEditandoPlaca(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
                       )}
@@ -1159,7 +1168,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
                       tieneAlistamientoFinal ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-700'
                     }`}>
-                      {tieneAlistamientoFinal ? '✅ Alistamiento' : '⚠ Sin alistamiento'}
+                      {tieneAlistamientoFinal ? '✅ Alistamiento' : `⚠ ${reglaAlistamiento?.etiqueta ?? 'Sin alistamiento'}`}
                       {tieneAlistamientoFinal && alistamientoOrdenId && (
                         <a href={`/admin/ordenes/${alistamientoOrdenId}`} className="hover:underline ml-0.5">→</a>
                       )}
@@ -1180,7 +1189,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
                       facturaActual ? 'bg-teal-50 border-teal-200 text-teal-800' : 'bg-orange-50 border-orange-200 text-orange-700'
                     }`}>
-                      {facturaActual ? `🧾 ${facturaActual}` : '⚠ Sin factura'}
+                      {facturaActual ? `🧾 ${facturaActual}` : `⚠ ${reglaFactura?.etiqueta ?? 'Sin factura'}`}
                       {esGerencia && facturaActual && (
                         <button onClick={() => setEditandoFactura(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
                       )}
@@ -1193,7 +1202,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     }`}>
                       {fechaEntregaActual
                         ? `📅 ${new Date(fechaEntregaActual + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}`
-                        : '⚠ Sin fecha entrega'}
+                        : `⚠ ${reglaFechaEntrega?.etiqueta ?? 'Sin fecha entrega'}`}
                       {fechaEntregaActual && (
                         <button onClick={() => setEditandoFechaEntrega(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
                       )}
@@ -1204,7 +1213,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 {/* Formulario inline: Carta de negociación */}
                 {enEtapaCarta && (!cartaActual || editandoCarta) && (
                   <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2">
-                    {!cartaActual && <p className="text-[11px] text-orange-600 mb-1.5">Ingresa el número de carta de negociación de esta venta.</p>}
+                    {!cartaActual && <p className="text-[11px] text-orange-600 mb-1.5">{reglaCarta?.mensaje_ayuda || 'Ingresa el número de carta de negociación de esta venta.'}</p>}
                     <div className="flex gap-2">
                       <input value={cartaInput} onChange={e => setCartaInput(e.target.value.replace(/\D/g, ''))}
                         onKeyDown={e => { if (e.key === 'Enter') guardarCarta() }}
@@ -1225,7 +1234,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 {/* Formulario inline: Placa */}
                 {enEtapaConPlaca && (!placaActual || editandoPlaca) && (
                   <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-                    {!placaActual && <p className="text-[11px] text-red-600 mb-1.5">Ingresa la placa de la moto entregada a este cliente.</p>}
+                    {!placaActual && <p className="text-[11px] text-red-600 mb-1.5">{reglaPlaca?.mensaje_ayuda || 'Ingresa la placa de la moto entregada a este cliente.'}</p>}
                     <div className="flex gap-2">
                       <input value={placaInput} onChange={e => setPlacaInput(e.target.value.toUpperCase())}
                         onKeyDown={e => { if (e.key === 'Enter') guardarPlaca() }}
@@ -1244,7 +1253,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 {/* Formulario inline: Alistamiento sin vincular */}
                 {enEtapaAlistamiento && !tieneAlistamientoFinal && (
                   <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-                    <p className="text-[11px] text-red-600 mb-2">No se encontró una orden UMA de alistamiento. Vincúlala o créala en Servicio Técnico.</p>
+                    <p className="text-[11px] text-red-600 mb-2">{reglaAlistamiento?.mensaje_ayuda || 'No se encontró una orden UMA de alistamiento. Vincúlala o créala en Servicio Técnico.'}</p>
                     <div className="flex gap-2 flex-wrap">
                       <button onClick={cargarOrdenesUMA} disabled={loadingOrdenesUMA}
                         className="flex-1 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold disabled:opacity-40 transition-colors">
@@ -1422,7 +1431,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 {/* Formulario inline: Factura */}
                 {enEtapaFactura && (!facturaActual || editandoFactura) && (
                   <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2">
-                    {!facturaActual && <p className="text-[11px] text-orange-600 mb-1.5">Ingresa el número de factura de esta venta.</p>}
+                    {!facturaActual && <p className="text-[11px] text-orange-600 mb-1.5">{reglaFactura?.mensaje_ayuda || 'Ingresa el número de factura de esta venta.'}</p>}
                     <div className="flex gap-2">
                       <input value={facturaInput} onChange={e => setFacturaInput(e.target.value.toUpperCase())}
                         onKeyDown={e => { if (e.key === 'Enter') guardarFactura() }}
@@ -1441,7 +1450,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 {/* Formulario inline: Fecha de entrega */}
                 {enEtapaFechaEntrega && (!fechaEntregaActual || editandoFechaEntrega) && (
                   <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
-                    {!fechaEntregaActual && <p className="text-[11px] text-sky-600 mb-1.5">Ingresa la fecha de entrega de la moto al cliente.</p>}
+                    {!fechaEntregaActual && <p className="text-[11px] text-sky-600 mb-1.5">{reglaFechaEntrega?.mensaje_ayuda || 'Ingresa la fecha de entrega de la moto al cliente.'}</p>}
                     <div className="flex gap-2">
                       <input type="date" value={fechaEntregaInput} onChange={e => setFechaEntregaInput(e.target.value)}
                         onBlur={guardarFechaEntrega}
@@ -1460,9 +1469,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 )}
 
                 {/* Aprobación para matrícula */}
-                {etapasPipeline.etapaMap[etapa]?.requiere_aprobacion_gerencia === true && (
+                {!!reglaAprobacion && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                    <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1.5">Estado de aprobación para matrícula</p>
+                    <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1.5">{reglaAprobacion?.etiqueta ?? 'Estado de aprobación para matrícula'}</p>
                     <div className="flex gap-2">
                       {([
                         { key: 'pendiente', label: '⏳ Pendiente',  activo: 'bg-amber-500 border-amber-500 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-amber-300'  },
@@ -1657,11 +1666,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   {(sinCelular || (enEtapaCarta && !cartaActual) || (enEtapaConPlaca && !placaActual) || (enEtapaAlistamiento && !tieneAlistamientoFinal) || (enEtapaFactura && !facturaActual)) && (
                     <div className="space-y-2">
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Alertas</p>
-                      {sinCelular && <button onClick={() => setTabDer('datos')} className="w-full text-left text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">⚠ Sin celular → Datos</button>}
-                      {enEtapaCarta && !cartaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">⚠ Sin carta negociación → Resumen</button>}
-                      {enEtapaConPlaca && !placaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">⚠ Sin placa → Resumen</button>}
-                      {enEtapaAlistamiento && !tieneAlistamientoFinal && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">⚠ Sin alistamiento → Resumen</button>}
-                      {enEtapaFactura && !facturaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2.5">⚠ Sin factura → Resumen</button>}
+                      {sinCelular && <button onClick={() => setTabDer('datos')} className="w-full text-left text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">⚠ {reglaCelular?.etiqueta ?? 'Sin celular'} → Datos</button>}
+                      {enEtapaCarta && !cartaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">⚠ {reglaCarta?.etiqueta ?? 'Sin carta negociación'} → Resumen</button>}
+                      {enEtapaConPlaca && !placaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">⚠ {reglaPlaca?.etiqueta ?? 'Sin placa'} → Resumen</button>}
+                      {enEtapaAlistamiento && !tieneAlistamientoFinal && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">⚠ {reglaAlistamiento?.etiqueta ?? 'Sin alistamiento'} → Resumen</button>}
+                      {enEtapaFactura && !facturaActual && <button onClick={() => setTabDer('resumen')} className="w-full text-left text-sm font-semibold text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2.5">⚠ {reglaFactura?.etiqueta ?? 'Sin factura'} → Resumen</button>}
                     </div>
                   )}
 
