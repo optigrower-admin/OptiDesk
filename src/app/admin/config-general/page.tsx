@@ -145,7 +145,7 @@ export default function ConfigGeneralPage() {
         </p>
         <div className="flex items-center gap-4">
           {logoUrl ? (
-            <img src={logoUrl} alt="Logo" className="w-16 h-16 rounded-xl object-contain bg-gray-50 border border-gray-200" />
+            <img src={logoUrl} alt="Logo" className="max-h-16 max-w-[9.5rem] w-auto h-auto object-contain" />
           ) : (
             <div className="w-16 h-16 rounded-xl bg-gray-100 border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs text-center px-1">Sin logo</div>
           )}

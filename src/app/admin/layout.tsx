@@ -526,10 +526,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Recuadro con el logo de la empresa (grande) + "OptiDesk V1.5" en cursiva.
   // Es lo único que queda visible cuando el sidebar de escritorio está colapsado.
-  const logoBlock = (isDesktop: boolean) => (
-    <div className="p-4 border-b flex flex-col items-center text-center gap-1.5 relative flex-shrink-0">
+  const logoBlock = (isDesktop: boolean, withBorder = true) => (
+    <div className={cn('p-4 flex flex-col items-center text-center gap-1.5 relative flex-shrink-0', withBorder && 'border-b')}>
       {logoUrl ? (
-        <img src={logoUrl} alt="Logo" className="w-16 h-16 rounded-xl object-contain bg-gray-50" onError={() => setLogoUrl(null)} />
+        <img src={logoUrl} alt="Logo" className="max-h-16 max-w-[9.5rem] w-auto h-auto object-contain" onError={() => setLogoUrl(null)} />
       ) : (
         <div className="w-16 h-16 bg-blue-700 rounded-xl flex items-center justify-center">
           <span className="text-white font-bold text-2xl">OD</span>
@@ -766,12 +766,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       )}
 
       <div className="flex flex-1 min-h-0">
-      <aside className={cn(
-        'hidden md:flex print:hidden bg-white border-r border-gray-200 flex-col flex-shrink-0 transition-[width]',
-        sidebarCollapsed ? 'w-24' : 'w-48'
-      )}>
-        {sidebarCollapsed ? logoBlock(true) : sidebarContent(true)}
-      </aside>
+      {sidebarCollapsed ? (
+        <div className="hidden md:flex print:hidden fixed top-3 left-3 z-40 flex-col bg-white border border-gray-200 rounded-xl shadow-md">
+          {logoBlock(true, false)}
+        </div>
+      ) : (
+        <aside className="hidden md:flex print:hidden w-48 bg-white border-r border-gray-200 flex-col flex-shrink-0">
+          {sidebarContent(true)}
+        </aside>
+      )}
 
       <main className="flex-1 overflow-y-auto relative">
         {children}
