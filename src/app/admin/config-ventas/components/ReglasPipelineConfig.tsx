@@ -1,7 +1,18 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 
-type EtapaFlat = { id: string; label: string; pipelineNombre: string; grupoNombre: string; color: string }
+type EtapaFlat = {
+  id: string; label: string; pipelineNombre: string; grupoNombre: string; color: string
+  es_etapa_inicial: boolean
+  es_ganado: boolean
+  es_perdido: boolean
+  requiere_celular: boolean
+  requiere_placa: boolean
+  requiere_fecha_entrega: boolean
+  requiere_carta_negociacion: boolean
+  requiere_factura: boolean
+  requiere_aprobacion_gerencia: boolean
+}
 
 type Regla = {
   id: string
@@ -70,7 +81,14 @@ export default function ReglasPipelineConfig() {
       for (const p of jsonPipelines.pipelines ?? []) {
         for (const g of p.grupos ?? []) {
           for (const e of g.etapas ?? []) {
-            flat.push({ id: e.id, label: e.label, pipelineNombre: p.nombre, grupoNombre: g.nombre, color: e.color })
+            flat.push({
+              id: e.id, label: e.label, pipelineNombre: p.nombre, grupoNombre: g.nombre, color: e.color,
+              es_etapa_inicial: e.es_etapa_inicial, es_ganado: e.es_ganado, es_perdido: e.es_perdido,
+              requiere_celular: e.requiere_celular, requiere_placa: e.requiere_placa,
+              requiere_fecha_entrega: e.requiere_fecha_entrega,
+              requiere_carta_negociacion: e.requiere_carta_negociacion,
+              requiere_factura: e.requiere_factura, requiere_aprobacion_gerencia: e.requiere_aprobacion_gerencia,
+            })
           }
         }
       }
@@ -111,12 +129,80 @@ export default function ReglasPipelineConfig() {
 
   if (loading) return <div className="p-5 text-sm text-gray-400">Cargando…</div>
 
+  const inicial   = etapas.filter(e => e.es_etapa_inicial)
+  const ganado     = etapas.filter(e => e.es_ganado)
+  const perdido    = etapas.filter(e => e.es_perdido)
+  const aprobGer   = etapas.filter(e => e.requiere_aprobacion_gerencia)
+  const reqPlaca   = etapas.filter(e => e.requiere_placa)
+  const reqFactura = etapas.filter(e => e.requiere_factura)
+  const reqCarta   = etapas.filter(e => e.requiere_carta_negociacion)
+  const reqFecha   = etapas.filter(e => e.requiere_fecha_entrega)
+  const reqCelular = etapas.filter(e => e.requiere_celular)
+
   return (
     <div className="p-5 space-y-4">
+      {/* Reglas ya activas del sistema (definidas como casillas por etapa en "Pipelines y Etapas") */}
+      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Reglas activas del sistema</p>
+        </div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          Estas ya están funcionando hoy. Se editan marcando/desmarcando las casillas de cada etapa en
+          "🧭 Pipelines y Etapas" — arriba de esta sección.
+        </p>
+        <div className="space-y-2 text-xs">
+          {inicial.length > 0 && (
+            <p><span className="font-semibold text-gray-700">📩 Mensajes nuevos entran en:</span>{' '}
+              {inicial.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
+            </p>
+          )}
+          {ganado.length > 0 && (
+            <p><span className="font-semibold text-gray-700">✅ Marca venta ganada (cierra fecha):</span>{' '}
+              {ganado.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
+            </p>
+          )}
+          {perdido.length > 0 && (
+            <p><span className="font-semibold text-gray-700">❌ Marca venta perdida (cierra fecha):</span>{' '}
+              {perdido.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
+            </p>
+          )}
+          {aprobGer.length > 0 && (
+            <p><span className="font-semibold text-gray-700">🔒 Requieren aprobación de gerencia:</span>{' '}
+              {aprobGer.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
+            </p>
+          )}
+          {reqPlaca.length > 0 && (
+            <p><span className="font-semibold text-gray-700">🏍️ Exigen placa asignada:</span>{' '}
+              {reqPlaca.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
+            </p>
+          )}
+          {reqFecha.length > 0 && (
+            <p><span className="font-semibold text-gray-700">📅 Exigen fecha de entrega:</span>{' '}
+              {reqFecha.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
+            </p>
+          )}
+          {reqCarta.length > 0 && (
+            <p><span className="font-semibold text-gray-700">📝 Exigen carta de negociación:</span>{' '}
+              {reqCarta.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
+            </p>
+          )}
+          {reqFactura.length > 0 && (
+            <p><span className="font-semibold text-gray-700">🧾 Exigen número de factura:</span>{' '}
+              {reqFactura.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
+            </p>
+          )}
+          {reqCelular.length > 0 && (
+            <p><span className="font-semibold text-gray-700">📱 Exigen celular registrado:</span>{' '}
+              {reqCelular.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
+            </p>
+          )}
+        </div>
+      </div>
+
       <p className="text-xs text-gray-500">
-        Mueve clientes automáticamente de una etapa a otra (incluso entre pipelines distintos) cuando llevan
-        cierta cantidad de días sin moverse. Se evalúa una vez al día. Si la etapa destino requiere aprobación
-        de gerencia, el cliente se queda quieto hasta que se apruebe.
+        Además puedes crear automatizaciones nuevas: mover clientes de una etapa a otra (incluso entre
+        pipelines distintos) cuando llevan cierta cantidad de días sin moverse. Se evalúan una vez al día. Si
+        la etapa destino requiere aprobación de gerencia, el cliente se queda quieto hasta que se apruebe.
       </p>
 
       {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
