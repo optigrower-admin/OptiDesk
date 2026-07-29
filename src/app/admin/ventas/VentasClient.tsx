@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useEtapasPipeline } from '@/hooks/useEtapasPipeline'
@@ -31,6 +31,24 @@ const TIPOS_DOCUMENTO = [
   { value: 'PEP', label: 'Permiso especial de permanencia' },
 ]
 
+const DOMINIOS_CORREO = ['gmail.com', 'hotmail.com', 'outlook.com']
+
+function formatCelular(digits: string) {
+  const d = digits.replace(/\D/g, '').slice(0, 10)
+  if (d.length <= 3) return d
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+}
+
+function Campo({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <label className="text-[11px] font-semibold text-gray-500 mb-1 block">{label}</label>
+      {children}
+    </div>
+  )
+}
+
 function NuevoClienteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (clienteId: string) => void }) {
   const supabase = createClient()
   const [primerNombre, setPrimerNombre]       = useState('')
@@ -39,8 +57,9 @@ function NuevoClienteModal({ onClose, onCreated }: { onClose: () => void; onCrea
   const [segundoApellido, setSegundoApellido] = useState('')
   const [tipoDocumento, setTipoDocumento]     = useState('CC')
   const [numeroDocumento, setNumeroDocumento] = useState('') // solo dígitos
-  const [celular, setCelular]     = useState('')
+  const [celular, setCelular]     = useState('') // solo dígitos
   const [email, setEmail]         = useState('')
+  const [emailFocused, setEmailFocused] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [error, setError]         = useState('')
 
@@ -51,6 +70,15 @@ function NuevoClienteModal({ onClose, onCreated }: { onClose: () => void; onCrea
 
   const hayDuplicado = !!(dupCelular || dupDocumento)
   const valido = primerNombre.trim() !== '' && celular.trim() !== ''
+
+  // Sugerencias de dominio de correo — solo si hay exactamente un "@" y el
+  // usuario no ha terminado de escribir el dominio (sigue siendo opcional).
+  const arrobaIdx = email.indexOf('@')
+  const dominioEscrito = arrobaIdx >= 0 ? email.slice(arrobaIdx + 1) : ''
+  const sugerenciasCorreo = arrobaIdx >= 0 && !dominioEscrito.includes('.')
+    ? DOMINIOS_CORREO.filter(d => d.startsWith(dominioEscrito))
+    : []
+  const mostrarSugerencias = emailFocused && sugerenciasCorreo.length > 0
 
   async function verificarCelular(val: string) {
     if (!val.trim()) { setDupCelular(null); return }
@@ -123,46 +151,84 @@ function NuevoClienteModal({ onClose, onCreated }: { onClose: () => void; onCrea
         <div className="px-5 overflow-y-auto flex-1 min-h-0">
           <div className="space-y-3 pb-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <input value={primerNombre} onChange={e => setPrimerNombre(e.target.value.toUpperCase())} placeholder="Primer nombre *"
-                autoFocus
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <input value={segundoNombre} onChange={e => setSegundoNombre(e.target.value.toUpperCase())} placeholder="Segundo nombre (opcional)"
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <Campo label="Primer nombre *">
+                <input value={primerNombre} onChange={e => setPrimerNombre(e.target.value.toUpperCase())} placeholder="Ej: JUAN"
+                  autoFocus
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </Campo>
+              <Campo label="Segundo nombre (opcional)">
+                <input value={segundoNombre} onChange={e => setSegundoNombre(e.target.value.toUpperCase())} placeholder="Ej: CARLOS"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </Campo>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <input value={primerApellido} onChange={e => setPrimerApellido(e.target.value.toUpperCase())} placeholder="Primer apellido (opcional)"
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <input value={segundoApellido} onChange={e => setSegundoApellido(e.target.value.toUpperCase())} placeholder="Segundo apellido (opcional)"
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <Campo label="Primer apellido (opcional)">
+                <input value={primerApellido} onChange={e => setPrimerApellido(e.target.value.toUpperCase())} placeholder="Ej: PÉREZ"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </Campo>
+              <Campo label="Segundo apellido (opcional)">
+                <input value={segundoApellido} onChange={e => setSegundoApellido(e.target.value.toUpperCase())} placeholder="Ej: GÓMEZ"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </Campo>
             </div>
-            <input
-              value={celular}
-              onChange={e => { setCelular(e.target.value); setDupCelular(null) }}
-              onBlur={e => verificarCelular(e.target.value)}
-              placeholder="Celular *"
-              type="tel" inputMode="tel"
-              className={`w-full border rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 ${
-                dupCelular ? 'border-amber-400 focus:ring-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
-              }`}
-            />
-            <div className="grid grid-cols-[auto,1fr] gap-2.5">
-              <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}
-                className="border border-gray-200 rounded-xl px-2.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {TIPOS_DOCUMENTO.map(t => <option key={t.value} value={t.value}>{t.value}</option>)}
-              </select>
+            <Campo label="Celular *">
               <input
-                value={numeroDocumento ? Number(numeroDocumento).toLocaleString('es-CO') : ''}
-                onChange={e => { setNumeroDocumento(e.target.value.replace(/\D/g, '')); setDupDocumento(null) }}
-                onBlur={e => verificarDocumento(e.target.value.replace(/\D/g, ''))}
-                inputMode="numeric" placeholder="Número de documento (opcional)"
+                value={formatCelular(celular)}
+                onChange={e => { setCelular(e.target.value.replace(/\D/g, '').slice(0, 10)); setDupCelular(null) }}
+                onBlur={e => verificarCelular(e.target.value.replace(/\D/g, ''))}
+                placeholder="(321) 313-2978"
+                type="tel" inputMode="tel"
                 className={`w-full border rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 ${
-                  dupDocumento ? 'border-amber-400 focus:ring-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
+                  dupCelular ? 'border-amber-400 focus:ring-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
                 }`}
               />
+            </Campo>
+            <div className="grid grid-cols-[auto,1fr] gap-2.5">
+              <Campo label="Tipo doc.">
+                <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-2.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {TIPOS_DOCUMENTO.map(t => <option key={t.value} value={t.value}>{t.value}</option>)}
+                </select>
+              </Campo>
+              <Campo label="Número de documento (opcional)">
+                <input
+                  value={numeroDocumento ? Number(numeroDocumento).toLocaleString('es-CO') : ''}
+                  onChange={e => { setNumeroDocumento(e.target.value.replace(/\D/g, '')); setDupDocumento(null) }}
+                  onBlur={e => verificarDocumento(e.target.value.replace(/\D/g, ''))}
+                  inputMode="numeric" placeholder="Ej: 1.234.567"
+                  className={`w-full border rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 ${
+                    dupDocumento ? 'border-amber-400 focus:ring-amber-400 bg-amber-50' : 'border-gray-200 focus:ring-blue-500'
+                  }`}
+                />
+              </Campo>
             </div>
-            <input value={email} onChange={e => setEmail(e.target.value.toLowerCase())} placeholder="Correo electrónico (opcional)"
-              type="email" inputMode="email" autoCapitalize="none"
-              className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <Campo label="Correo electrónico (opcional)">
+              <div className="relative">
+                <input
+                  value={email}
+                  onChange={e => setEmail(e.target.value.toLowerCase())}
+                  onFocus={() => setEmailFocused(true)}
+                  onBlur={() => setTimeout(() => setEmailFocused(false), 150)}
+                  placeholder="correo@ejemplo.com"
+                  type="email" inputMode="email" autoCapitalize="none"
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                {mostrarSugerencias && (
+                  <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                    {sugerenciasCorreo.map(dominio => (
+                      <button
+                        key={dominio}
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => { setEmail(`${email.slice(0, arrobaIdx)}@${dominio}`); setEmailFocused(false) }}
+                        className="w-full text-left px-3.5 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                      >
+                        {email.slice(0, arrobaIdx)}@{dominio}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Campo>
           </div>
 
           {/* Avisos de duplicado */}
@@ -171,7 +237,7 @@ function NuevoClienteModal({ onClose, onCreated }: { onClose: () => void; onCrea
             <div className="mt-3 bg-red-50 border border-red-300 rounded-xl px-3 py-2.5">
               <p className="text-xs font-bold text-red-700">🚫 Celular ya registrado</p>
               <p className="text-xs text-red-600 mt-0.5">
-                El número <span className="font-semibold">{celular}</span> ya pertenece a{' '}
+                El número <span className="font-semibold">{formatCelular(celular)}</span> ya pertenece a{' '}
                 <span className="font-semibold">{dupCelular}</span>.
                 No se puede crear un nuevo cliente con ese número.
               </p>
