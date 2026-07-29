@@ -25,6 +25,11 @@ export default function ConfigGeneralPage() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [msg, setMsg]           = useState<{ text: string; type: 'ok' | 'err' } | null>(null)
 
+  const [tenantId, setTenantId]         = useState<string | null>(null)
+  const [logoUrl, setLogoUrl]           = useState<string | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement | null>(null)
+
   useEffect(() => {
     cargar()
   }, [])
@@ -34,9 +39,30 @@ export default function ConfigGeneralPage() {
     if (!user) return
     const { data: perfil } = await supabase.from('usuarios').select('tenant_id').eq('id', user.id).single()
     if (!perfil?.tenant_id) return
-    const { data: tenant } = await supabase.from('tenants').select('manuales_config').eq('id', perfil.tenant_id).single()
+    setTenantId(perfil.tenant_id)
+    const { data: tenant } = await supabase.from('tenants').select('manuales_config, logo_url').eq('id', perfil.tenant_id).single()
     setConfig((tenant?.manuales_config ?? {}) as Record<string, string>)
+    setLogoUrl((tenant?.logo_url as string | null) ?? null)
     setLoading(false)
+  }
+
+  async function subirLogo(file: File) {
+    if (!tenantId) return
+    setUploadingLogo(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('tenant_id', tenantId)
+      const res = await fetch('/api/admin/upload-logo', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al subir el logo')
+      setLogoUrl(json.logo_url)
+      toast('Logo actualizado', 'ok')
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : 'Error al subir el logo', 'err')
+    }
+    setUploadingLogo(false)
+    if (logoInputRef.current) logoInputRef.current.value = ''
   }
 
   function toast(text: string, type: 'ok' | 'err') {
@@ -111,6 +137,42 @@ export default function ConfigGeneralPage() {
         </div>
       )}
 
+      {/* Logo de la empresa */}
+      <div className="mb-8 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <p className="font-semibold text-gray-900 text-sm mb-1">Logo de la empresa</p>
+        <p className="text-xs text-gray-400 mb-3">
+          Se muestra en el menú lateral del sistema. JPG, PNG, WebP o SVG, máximo 3 MB.
+        </p>
+        <div className="flex items-center gap-4">
+          {logoUrl ? (
+            <img src={logoUrl} alt="Logo" className="w-16 h-16 rounded-xl object-contain bg-gray-50 border border-gray-200" />
+          ) : (
+            <div className="w-16 h-16 rounded-xl bg-gray-100 border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs text-center px-1">Sin logo</div>
+          )}
+          <label className={`cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+            uploadingLogo ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-blue-600 hover:bg-blue-700 text-white'
+          }`}>
+            {uploadingLogo ? (
+              <>
+                <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                Subiendo...
+              </>
+            ) : (
+              <>⬆ {logoUrl ? 'Reemplazar logo' : 'Subir logo'}</>
+            )}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/svg+xml"
+              className="hidden"
+              ref={logoInputRef}
+              disabled={uploadingLogo}
+              onChange={e => { if (e.target.files?.[0]) subirLogo(e.target.files[0]) }}
+            />
+          </label>
+        </div>
+      </div>
+
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Documentación por sección</p>
       <div className="space-y-3">
         {SECCIONES.map(sec => {
           const tieneManual = !!config[sec.key]

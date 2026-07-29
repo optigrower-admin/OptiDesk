@@ -524,38 +524,36 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const totalAlertasMobile = unreadTotal + nuevosComentarios + recordatoriosVencidos
 
+  // Recuadro con el logo de la empresa (grande) + "OptiDesk V1.5" en cursiva.
+  // Es lo único que queda visible cuando el sidebar de escritorio está colapsado.
+  const logoBlock = (isDesktop: boolean) => (
+    <div className="p-4 border-b flex flex-col items-center text-center gap-1.5 relative flex-shrink-0">
+      {logoUrl ? (
+        <img src={logoUrl} alt="Logo" className="w-16 h-16 rounded-xl object-contain bg-gray-50" onError={() => setLogoUrl(null)} />
+      ) : (
+        <div className="w-16 h-16 bg-blue-700 rounded-xl flex items-center justify-center">
+          <span className="text-white font-bold text-2xl">OD</span>
+        </div>
+      )}
+      <span className="italic text-xs text-gray-500 font-medium truncate max-w-full">OptiDesk V1.5</span>
+      {isDesktop && (
+        <button
+          onClick={toggleSidebar}
+          className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded flex-shrink-0"
+          aria-label={sidebarCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
+          title={sidebarCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
+    </div>
+  )
+
   const sidebarContent = (isDesktop: boolean) => (
     <>
-        {/* Logo */}
-        <div className="p-4 border-b">
-          <div className="flex items-center gap-2 justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              {logoUrl ? (
-                <img src={logoUrl} alt="Logo" className="w-8 h-8 rounded-lg object-contain bg-gray-50 flex-shrink-0" onError={() => setLogoUrl(null)} />
-              ) : (
-                <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <span className="text-white font-bold text-xs">OD</span>
-                </div>
-              )}
-              <div className="min-w-0">
-                <span className="font-bold text-gray-900 text-sm truncate block">{nombreNegocio || 'OptiDesk'}</span>
-                <span className="text-xs text-gray-400 font-medium">v1.5</span>
-              </div>
-            </div>
-            {isDesktop && (
-              <button
-                onClick={toggleSidebar}
-                className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded flex-shrink-0"
-                aria-label="Ocultar menú"
-                title="Ocultar menú"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
+        {logoBlock(isDesktop)}
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {permisosLoading ? (
@@ -768,24 +766,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       )}
 
       <div className="flex flex-1 min-h-0">
-      {!sidebarCollapsed && (
-        <aside className="hidden md:flex print:hidden w-48 bg-white border-r border-gray-200 flex-col flex-shrink-0">
-          {sidebarContent(true)}
-        </aside>
-      )}
-
-      {sidebarCollapsed && (
-        <button
-          onClick={toggleSidebar}
-          className="hidden md:flex print:hidden fixed top-3 left-3 z-40 p-2 bg-white border border-gray-200 rounded-lg shadow-md hover:bg-gray-50 text-gray-600"
-          aria-label="Mostrar menú"
-          title="Mostrar menú"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-      )}
+      <aside className={cn(
+        'hidden md:flex print:hidden bg-white border-r border-gray-200 flex-col flex-shrink-0 transition-[width]',
+        sidebarCollapsed ? 'w-24' : 'w-48'
+      )}>
+        {sidebarCollapsed ? logoBlock(true) : sidebarContent(true)}
+      </aside>
 
       <main className="flex-1 overflow-y-auto relative">
         {children}

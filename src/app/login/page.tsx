@@ -72,7 +72,7 @@ export default function LoginPage() {
             <span className="text-white font-bold text-2xl">OD</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">OptiDesk</h1>
-          <p className="text-sm text-gray-500 mt-1">Gestión de servicio técnico</p>
+          <p className="text-sm text-gray-500 mt-1">CRM integral</p>
         </div>
 
         {/* Toggle modo login */}
