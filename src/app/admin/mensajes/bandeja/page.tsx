@@ -904,7 +904,7 @@ export default function BandejaPage() {
                 <div className="flex items-center gap-1.5">
                   <p className="font-semibold text-gray-900 truncate">{getDisplayName(selectedConv)}</p>
                   <button onClick={() => setShowInfo(!showInfo)} title="Editar contacto"
-                    className="flex-shrink-0 text-gray-400 hover:text-gray-700 transition-colors">
+                    className="lg:hidden flex-shrink-0 text-gray-400 hover:text-gray-700 transition-colors">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                     </svg>
@@ -1280,11 +1280,11 @@ export default function BandejaPage() {
           </div>
 
           {/* ── Panel de info del contacto ───────────────────────────── */}
-          {showInfo && (
-            <div className="w-64 flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
+          {selectedConv && (
+            <div className={`${showInfo ? 'flex' : 'hidden'} lg:flex w-72 flex-shrink-0 border-l border-gray-200 bg-white flex-col overflow-hidden`}>
               <div className="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
                 <p className="font-semibold text-sm text-gray-900">Info del contacto</p>
-                <button onClick={() => setShowInfo(false)} className="text-gray-400 hover:text-gray-600">
+                <button onClick={() => setShowInfo(false)} className="lg:hidden text-gray-400 hover:text-gray-600">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
