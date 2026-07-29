@@ -28,8 +28,32 @@ type DraftRegla = { nombre: string; etapa_origen_id: string; etapa_destino_id: s
 
 const DRAFT_VACIO: DraftRegla = { nombre: '', etapa_origen_id: '', etapa_destino_id: '', dias_en_etapa: 1 }
 
+type FlagKey = 'es_etapa_inicial' | 'es_ganado' | 'es_perdido' | 'requiere_aprobacion_gerencia' |
+  'requiere_placa' | 'requiere_fecha_entrega' | 'requiere_carta_negociacion' | 'requiere_factura' | 'requiere_celular'
+
+const REGLAS_SISTEMA: { key: FlagKey; icon: string; label: string }[] = [
+  { key: 'es_etapa_inicial',             icon: '📩', label: 'Mensajes nuevos entran en' },
+  { key: 'es_ganado',                    icon: '✅', label: 'Marca venta ganada (cierra fecha)' },
+  { key: 'es_perdido',                   icon: '❌', label: 'Marca venta perdida (cierra fecha)' },
+  { key: 'requiere_aprobacion_gerencia', icon: '🔒', label: 'Requieren aprobación de gerencia' },
+  { key: 'requiere_placa',               icon: '🏍️', label: 'Exigen placa asignada' },
+  { key: 'requiere_fecha_entrega',       icon: '📅', label: 'Exigen fecha de entrega' },
+  { key: 'requiere_carta_negociacion',   icon: '📝', label: 'Exigen carta de negociación' },
+  { key: 'requiere_factura',             icon: '🧾', label: 'Exigen número de factura' },
+  { key: 'requiere_celular',             icon: '📱', label: 'Exigen celular registrado' },
+]
+
 async function llamar(body: Record<string, unknown>) {
   const res = await fetch('/api/admin/ventas/reglas-pipeline', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error ?? 'Error')
+  return json
+}
+
+async function llamarPipelines(body: Record<string, unknown>) {
+  const res = await fetch('/api/admin/ventas/pipelines', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   })
   const json = await res.json()
@@ -127,75 +151,45 @@ export default function ReglasPipelineConfig() {
     accionar(() => llamar({ accion: 'eliminar', regla_id: r.id }))
   }
 
-  if (loading) return <div className="p-5 text-sm text-gray-400">Cargando…</div>
+  // Asigna o quita una regla "de sistema" (flag) a una etapa, con clic directo sobre el chip
+  const toggleFlagEtapa = (etapaId: string, flag: FlagKey, valorActual: boolean) =>
+    accionar(() => llamarPipelines({ accion: 'editar_etapa', etapa_id: etapaId, [flag]: !valorActual }))
 
-  const inicial   = etapas.filter(e => e.es_etapa_inicial)
-  const ganado     = etapas.filter(e => e.es_ganado)
-  const perdido    = etapas.filter(e => e.es_perdido)
-  const aprobGer   = etapas.filter(e => e.requiere_aprobacion_gerencia)
-  const reqPlaca   = etapas.filter(e => e.requiere_placa)
-  const reqFactura = etapas.filter(e => e.requiere_factura)
-  const reqCarta   = etapas.filter(e => e.requiere_carta_negociacion)
-  const reqFecha   = etapas.filter(e => e.requiere_fecha_entrega)
-  const reqCelular = etapas.filter(e => e.requiere_celular)
+  if (loading) return <div className="p-5 text-sm text-gray-400">Cargando…</div>
 
   return (
     <div className="p-5 space-y-4">
-      {/* Reglas ya activas del sistema (definidas como casillas por etapa en "Pipelines y Etapas") */}
+      {/* Reglas de sistema — editables acá mismo, con un clic por etapa */}
       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Reglas activas del sistema</p>
-        </div>
+        <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-1">Reglas de sistema</p>
         <p className="text-[11px] text-gray-400 mb-3">
-          Estas ya están funcionando hoy. Se editan marcando/desmarcando las casillas de cada etapa en
-          "🧭 Pipelines y Etapas" — arriba de esta sección.
+          Haz clic en una etapa para asignarle o quitarle la regla. Se aplica al instante.
         </p>
-        <div className="space-y-2 text-xs">
-          {inicial.length > 0 && (
-            <p><span className="font-semibold text-gray-700">📩 Mensajes nuevos entran en:</span>{' '}
-              {inicial.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
-            </p>
-          )}
-          {ganado.length > 0 && (
-            <p><span className="font-semibold text-gray-700">✅ Marca venta ganada (cierra fecha):</span>{' '}
-              {ganado.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
-            </p>
-          )}
-          {perdido.length > 0 && (
-            <p><span className="font-semibold text-gray-700">❌ Marca venta perdida (cierra fecha):</span>{' '}
-              {perdido.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
-            </p>
-          )}
-          {aprobGer.length > 0 && (
-            <p><span className="font-semibold text-gray-700">🔒 Requieren aprobación de gerencia:</span>{' '}
-              {aprobGer.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
-            </p>
-          )}
-          {reqPlaca.length > 0 && (
-            <p><span className="font-semibold text-gray-700">🏍️ Exigen placa asignada:</span>{' '}
-              {reqPlaca.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
-            </p>
-          )}
-          {reqFecha.length > 0 && (
-            <p><span className="font-semibold text-gray-700">📅 Exigen fecha de entrega:</span>{' '}
-              {reqFecha.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
-            </p>
-          )}
-          {reqCarta.length > 0 && (
-            <p><span className="font-semibold text-gray-700">📝 Exigen carta de negociación:</span>{' '}
-              {reqCarta.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
-            </p>
-          )}
-          {reqFactura.length > 0 && (
-            <p><span className="font-semibold text-gray-700">🧾 Exigen número de factura:</span>{' '}
-              {reqFactura.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
-            </p>
-          )}
-          {reqCelular.length > 0 && (
-            <p><span className="font-semibold text-gray-700">📱 Exigen celular registrado:</span>{' '}
-              {reqCelular.map(e => <span key={e.id} className="px-1.5 py-0.5 rounded-full text-white ml-1" style={{ background: e.color }}>{e.label}</span>)}
-            </p>
-          )}
+        <div className="space-y-3">
+          {REGLAS_SISTEMA.map(regla => (
+            <div key={regla.key}>
+              <p className="text-xs font-semibold text-gray-700 mb-1.5">{regla.icon} {regla.label}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {etapas.map(e => {
+                  const activa = e[regla.key]
+                  return (
+                    <button
+                      key={e.id}
+                      disabled={busy}
+                      onClick={() => toggleFlagEtapa(e.id, regla.key, activa)}
+                      title={`${e.pipelineNombre} · ${e.grupoNombre}`}
+                      className="px-2 py-0.5 rounded-full text-xs font-medium border transition-colors disabled:opacity-50"
+                      style={activa
+                        ? { background: e.color, borderColor: e.color, color: '#fff' }
+                        : { background: '#fff', borderColor: '#D1D5DB', color: '#6B7280' }}
+                    >
+                      {e.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
