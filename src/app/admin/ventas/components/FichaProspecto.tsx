@@ -1530,6 +1530,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     <p className="font-semibold text-gray-900">{lead.cliente?.nombre ?? '—'}</p>
                     {lead.cliente?.celular && <p className="text-sm text-gray-600">{lead.cliente.celular}</p>}
                     {lead.lead_source && <p className="text-xs text-gray-400 mt-1">Origen: {lead.lead_source}</p>}
+                    {clienteRegistradoEn && (
+                      <p className="text-xs text-gray-400 mt-1">🗓️ Agregado el {formatDate(clienteRegistradoEn)} a las {formatTime(clienteRegistradoEn)}</p>
+                    )}
                     {lead.cliente?.id && (
                       <div className="flex items-center gap-3 mt-1.5">
                         <a href={`/admin/clientes/${lead.cliente.id}`} className="text-xs text-blue-600 hover:underline">

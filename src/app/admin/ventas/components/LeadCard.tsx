@@ -41,6 +41,7 @@ export type LeadData = {
   automatizado?: boolean
   flujo_nombre?: string | null
   updated_at?: string | null
+  created_at?: string | null
 }
 
 const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
@@ -52,6 +53,13 @@ const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> 
 
 function formatHora(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatFechaHora(dateStr: string) {
+  const d = new Date(dateStr)
+  const fecha = d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
+  const hora = d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' })
+  return `${fecha}, ${hora}`
 }
 
 function diasMovimientoBadge(dias: number): { bg: string; text: string; pulse: boolean } {
@@ -258,6 +266,11 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, 
       {/* Próximos pasos */}
       {lead.proxima_accion && (
         <p className="text-xs text-blue-700 font-medium mb-1.5 truncate">📌 {lead.proxima_accion}</p>
+      )}
+
+      {/* Fecha de creación del cliente */}
+      {lead.created_at && (
+        <p className="text-[11px] text-gray-400 mb-1.5">🗓️ Agregado {formatFechaHora(lead.created_at)}</p>
       )}
 
       {/* Etapa badge visible en la tarjeta */}

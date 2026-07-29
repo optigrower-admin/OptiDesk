@@ -325,7 +325,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         lead_source, sin_respuesta_asesor_desde, assigned_to,
         nombre_pendiente_aprobacion, alistamiento_orden_id,
         primer_apellido, cedula, email, estado_aprobacion_matricula, aprobado_matricula_por,
-        placa, numero_factura,
+        placa, numero_factura, created_at,
         conversaciones ( id, canal, no_leidos_count )
       `)
       .eq('id', clienteId).single()
@@ -358,6 +358,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       estadoAprobacionMatricula: ((c.estado_aprobacion_matricula ?? 'pendiente') as 'pendiente' | 'aprobado' | 'rechazado'),
       aprobadoMatriculaPor: (c.aprobado_matricula_por ?? null) as string | null,
       numero_factura: (c.numero_factura ?? null) as string | null,
+      created_at: (c.created_at ?? null) as string | null,
     }
 
     setLeadsState(prev => [nuevoLead, ...prev.filter(l => l.id !== nuevoLead.id)])

@@ -48,6 +48,7 @@ export default function VentasPage() {
           fecha_entrega,
           automatizado,
           flujo_activo_id,
+          created_at,
           updated_at,
           primer_apellido,
           cedula,
@@ -221,6 +222,7 @@ export default function VentasPage() {
           creditoRechazadoEntidades: creditoMap[c.id as string]?.rechazadas ?? [],
           automatizado: cr.automatizado === true,
           updated_at: (cr.updated_at ?? null) as string | null,
+          created_at: (cr.created_at ?? null) as string | null,
         }
       })
 
