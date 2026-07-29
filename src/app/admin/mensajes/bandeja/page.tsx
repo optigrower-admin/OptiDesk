@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import SeguimientoModal from '@/components/SeguimientoModal'
+import EtiquetasPicker, { type Etiqueta } from '@/app/admin/ventas/components/EtiquetasPicker'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,22 @@ type Mensaje = {
 }
 
 type Usuario = { id: string; nombre: string }
+
+type NotaCliente = {
+  id: string
+  contenido: string
+  created_at: string
+  autor_id: string | null
+  usuarios: { nombre: string } | { nombre: string }[] | null
+}
+
+type CampoCustom = { id: string; clave: string; valor: string | null; created_at: string }
+
+function nombreAutorNota(n: NotaCliente): string {
+  const u = n.usuarios
+  if (!u) return 'Alguien'
+  return Array.isArray(u) ? (u[0]?.nombre ?? 'Alguien') : (u.nombre ?? 'Alguien')
+}
 
 type Segmento = 'todo' | 'mia' | 'sin_asignar' | 'sin_responder' | 'seguimiento' | 'no_leido' | 'resueltas'
 
@@ -161,6 +178,21 @@ export default function BandejaPage() {
   const [showInfo, setShowInfo]       = useState(false)
   const [editNombre, setEditNombre]   = useState('')
   const [savingNombre, setSavingNombre] = useState(false)
+
+  // Datos guardados (campos personalizados por cliente)
+  const [camposCustom, setCamposCustom]           = useState<CampoCustom[]>([])
+  const [agregandoCampo, setAgregandoCampo]       = useState(false)
+  const [nuevoCampoClave, setNuevoCampoClave]     = useState('')
+  const [nuevoCampoValor, setNuevoCampoValor]     = useState('')
+  const [guardandoCampo, setGuardandoCampo]       = useState(false)
+
+  // Notas internas del cliente
+  const [notasCliente, setNotasCliente]           = useState<NotaCliente[]>([])
+  const [nuevaNotaCliente, setNuevaNotaCliente]   = useState('')
+  const [guardandoNotaCliente, setGuardandoNotaCliente] = useState(false)
+
+  // Etiquetas del cliente
+  const [etiquetasCliente, setEtiquetasCliente]   = useState<Etiqueta[]>([])
 
   // Modal agregar a seguimiento
   const [seguimientoOpen, setSeguimientoOpen] = useState(false)
@@ -424,6 +456,75 @@ export default function BandejaPage() {
     setEditNombre(selectedConv?.clientes?.[0]?.nombre ?? '')
     setVentanaActiva(null) // reset mientras cargan mensajes
   }, [selectedConv?.id])
+
+  // Cargar datos guardados, notas y etiquetas del cliente vinculado a la conversación
+  useEffect(() => {
+    const clienteId = selectedConv?.cliente_id
+    setAgregandoCampo(false); setNuevoCampoClave(''); setNuevoCampoValor('')
+    setNuevaNotaCliente('')
+    if (!clienteId) {
+      setCamposCustom([]); setNotasCliente([]); setEtiquetasCliente([])
+      return
+    }
+    fetch(`/api/admin/mensajes/campos-custom?cliente_id=${clienteId}`)
+      .then(r => r.json()).then(j => setCamposCustom(j.campos ?? [])).catch(() => setCamposCustom([]))
+    fetch(`/api/admin/mensajes/notas-cliente?cliente_id=${clienteId}`)
+      .then(r => r.json()).then(j => setNotasCliente(j.notas ?? [])).catch(() => setNotasCliente([]))
+    supabase
+      .from('clientes_etiquetas')
+      .select('etiquetas_venta(id, nombre, color)')
+      .eq('cliente_id', clienteId)
+      .then(({ data }) => {
+        const rows = (data ?? []) as { etiquetas_venta: Etiqueta | Etiqueta[] | null }[]
+        setEtiquetasCliente(rows.flatMap(r => r.etiquetas_venta ? (Array.isArray(r.etiquetas_venta) ? r.etiquetas_venta : [r.etiquetas_venta]) : []))
+      })
+  }, [selectedConv?.cliente_id, supabase])
+
+  async function guardarCampoCustom() {
+    const clienteId = selectedConv?.cliente_id
+    if (!clienteId || !nuevoCampoClave.trim() || guardandoCampo) return
+    setGuardandoCampo(true)
+    try {
+      const res = await fetch('/api/admin/mensajes/campos-custom', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cliente_id: clienteId, clave: nuevoCampoClave, valor: nuevoCampoValor }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al guardar')
+      setCamposCustom(prev => [...prev, json.campo])
+      setAgregandoCampo(false); setNuevoCampoClave(''); setNuevoCampoValor('')
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : 'Error al guardar el dato', false)
+    } finally { setGuardandoCampo(false) }
+  }
+
+  async function eliminarCampoCustom(id: string) {
+    setCamposCustom(prev => prev.filter(c => c.id !== id))
+    await fetch(`/api/admin/mensajes/campos-custom?id=${id}`, { method: 'DELETE' })
+  }
+
+  async function guardarNotaCliente() {
+    const clienteId = selectedConv?.cliente_id
+    if (!clienteId || !nuevaNotaCliente.trim() || guardandoNotaCliente) return
+    setGuardandoNotaCliente(true)
+    try {
+      const res = await fetch('/api/admin/mensajes/notas-cliente', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cliente_id: clienteId, contenido: nuevaNotaCliente }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al guardar')
+      setNotasCliente(prev => [json.nota, ...prev])
+      setNuevaNotaCliente('')
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : 'Error al guardar la nota', false)
+    } finally { setGuardandoNotaCliente(false) }
+  }
+
+  async function eliminarNotaCliente(id: string) {
+    setNotasCliente(prev => prev.filter(n => n.id !== id))
+    await fetch(`/api/admin/mensajes/notas-cliente?id=${id}`, { method: 'DELETE' })
+  }
 
   // Cargar estado de flujo de automatización para la conversación seleccionada
   useEffect(() => {
@@ -1243,8 +1344,113 @@ export default function BandejaPage() {
                   </span>
                 </div>
 
+                {/* Etiquetas */}
+                {selectedConv.cliente_id && (
+                  <div className="pt-3 border-t border-gray-100">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Etiquetas</p>
+                    <EtiquetasPicker
+                      tenantId={profile?.tenant_id ?? ''}
+                      clienteId={selectedConv.cliente_id}
+                      etiquetasIniciales={etiquetasCliente}
+                      onChange={setEtiquetasCliente}
+                    />
+                  </div>
+                )}
+
+                {/* Datos guardados (campos personalizados) */}
+                <div className="pt-3 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Datos guardados</p>
+                  <div className="space-y-1.5">
+                    {camposCustom.map(c => (
+                      <div key={c.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                        <div className="min-w-0">
+                          <p className="text-[10px] text-gray-400 uppercase truncate">{c.clave}</p>
+                          <p className="text-xs text-gray-800 truncate">{c.valor || '—'}</p>
+                        </div>
+                        <button onClick={() => eliminarCampoCustom(c.id)}
+                          className="text-gray-300 hover:text-red-500 flex-shrink-0" title="Quitar dato">
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {camposCustom.length === 0 && <p className="text-xs text-gray-400">Sin datos guardados</p>}
+                  </div>
+                  {agregandoCampo ? (
+                    <div className="mt-2 space-y-1.5">
+                      <input
+                        value={nuevoCampoClave}
+                        onChange={e => setNuevoCampoClave(e.target.value)}
+                        placeholder="Nombre del dato (ej: Cédula)"
+                        autoFocus
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        value={nuevoCampoValor}
+                        onChange={e => setNuevoCampoValor(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && guardarCampoCustom()}
+                        placeholder="Valor"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => { setAgregandoCampo(false); setNuevoCampoClave(''); setNuevoCampoValor('') }}
+                          className="flex-1 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50">
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={guardarCampoCustom}
+                          disabled={!nuevoCampoClave.trim() || guardandoCampo}
+                          className="flex-1 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-semibold disabled:opacity-40">
+                          {guardandoCampo ? 'Guardando...' : 'Guardar'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setAgregandoCampo(true)}
+                      className="mt-2 w-full text-xs text-blue-600 hover:text-blue-800 border border-dashed border-gray-300 hover:border-blue-400 rounded-lg py-1.5 transition-colors">
+                      + Añadir dato
+                    </button>
+                  )}
+                </div>
+
+                {/* Notas */}
+                <div className="pt-3 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Notas {notasCliente.length > 0 && `(${notasCliente.length})`}
+                  </p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {notasCliente.map(n => (
+                      <div key={n.id} className="group relative bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2">
+                        <p className="text-xs text-gray-700 whitespace-pre-wrap pr-4">{n.contenido}</p>
+                        <p className="text-[10px] text-gray-400 mt-1">{nombreAutorNota(n)} · {timeAgo(n.created_at)}</p>
+                        <button onClick={() => eliminarNotaCliente(n.id)}
+                          className="absolute top-1.5 right-1.5 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Eliminar nota">
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {notasCliente.length === 0 && <p className="text-xs text-gray-400">Sin notas</p>}
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    <textarea
+                      value={nuevaNotaCliente}
+                      onChange={e => setNuevaNotaCliente(e.target.value)}
+                      placeholder="Escribe una nota interna..."
+                      rows={2}
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    />
+                    <button
+                      onClick={guardarNotaCliente}
+                      disabled={!nuevaNotaCliente.trim() || guardandoNotaCliente}
+                      className="w-full py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-semibold disabled:opacity-40">
+                      {guardandoNotaCliente ? 'Guardando...' : '+ Añadir nota'}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Seguimiento de Ventas */}
-                <div className="pt-1 border-t border-gray-100">
+                <div className="pt-3 border-t border-gray-100">
                   <p className="text-xs text-gray-400 mb-2">Seguimiento de Ventas</p>
                   <button
                     onClick={() => setSeguimientoOpen(true)}
