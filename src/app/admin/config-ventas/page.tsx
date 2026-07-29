@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/ventas/pipeline'
 import PipelinesConfig from './components/PipelinesConfig'
+import ReglasPipelineConfig from './components/ReglasPipelineConfig'
 
 /* ─── Tipos ─────────────────────────────────────────── */
 interface Entidad       { id: string; nombre: string; activa: boolean }
@@ -1483,6 +1484,10 @@ export default function ConfigVentasPage() {
       {/* ── Etiquetas de cliente ── */}
       <SeccionColapsable titulo="Pipelines y Etapas (beta)" icono="🧭" defaultOpen={false}>
         <PipelinesConfig />
+      </SeccionColapsable>
+
+      <SeccionColapsable titulo="Automatizaciones de Pipeline (beta)" icono="🔀" defaultOpen={false}>
+        <ReglasPipelineConfig />
       </SeccionColapsable>
 
       <SeccionColapsable titulo="Etiquetas de cliente" icono="🏷️" badge={etiquetas.length} defaultOpen={false}>
