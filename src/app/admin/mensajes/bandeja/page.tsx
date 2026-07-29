@@ -38,6 +38,31 @@ type Mensaje = {
 
 type Usuario = { id: string; nombre: string }
 
+type Segmento = 'todo' | 'mia' | 'sin_asignar' | 'sin_responder' | 'seguimiento' | 'no_leido' | 'resueltas'
+
+const SEGMENTOS: { id: Segmento; label: string; icon: string }[] = [
+  { id: 'todo',          label: 'Todo',          icon: '💬' },
+  { id: 'mia',           label: 'Mi bandeja',    icon: '👤' },
+  { id: 'sin_asignar',   label: 'Sin asignar',   icon: '❔' },
+  { id: 'sin_responder', label: 'Sin responder', icon: '⏳' },
+  { id: 'seguimiento',   label: 'Seguimiento',   icon: '📌' },
+  { id: 'no_leido',      label: 'No leído',      icon: '✉️' },
+  { id: 'resueltas',     label: 'Resueltas',     icon: '✅' },
+]
+
+function enSegmento(c: Conversacion, s: Segmento, miId?: string): boolean {
+  const activa = c.estado === 'abierta' || c.estado === 'pendiente'
+  switch (s) {
+    case 'todo':          return activa
+    case 'mia':           return activa && !!miId && c.assigned_to === miId
+    case 'sin_asignar':   return activa && !c.assigned_to
+    case 'sin_responder': return activa && c.ultimo_mensaje_direccion === 'entrante'
+    case 'seguimiento':   return c.estado === 'pendiente'
+    case 'no_leido':      return activa && c.no_leidos_count > 0
+    case 'resueltas':     return c.estado === 'resuelta'
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function timeAgo(dateStr: string | null): string {
@@ -120,9 +145,8 @@ export default function BandejaPage() {
   const [sending, setSending]         = useState(false)
   const [input, setInput]             = useState('')
   const [esNota, setEsNota]           = useState(false)
-  const [filterMias, setFilterMias]   = useState(false)
   const [filterCanal, setFilterCanal] = useState('todos')
-  const [filterEstado, setFilterEstado] = useState('activas')
+  const [segmento, setSegmento]       = useState<Segmento>('todo')
   const [search, setSearch]           = useState('')
   const [toastMsg, setToastMsg]       = useState<{ text: string; ok: boolean } | null>(null)
 
@@ -214,12 +238,9 @@ export default function BandejaPage() {
       .select('id, canal, canal_contact_id, estado, prioridad, no_leidos_count, ultimo_mensaje_at, ultimo_mensaje_texto, ultimo_mensaje_direccion, assigned_to, cliente_id, clientes(id, nombre, automatizado)')
       .eq('tenant_id', profile.tenant_id)
       .order('ultimo_mensaje_at', { ascending: false, nullsFirst: false })
-      .limit(100)
+      .limit(300)
 
-    if (filterEstado === 'activas') q = q.in('estado', ['abierta', 'pendiente'])
-    else if (filterEstado !== 'todas') q = q.eq('estado', filterEstado)
     if (filterCanal !== 'todos') q = q.eq('canal', filterCanal)
-    if (filterMias && profile.id) q = q.eq('assigned_to', profile.id)
 
     const { data } = await q
     // Normalize clientes: PostgREST returns object for many-to-one joins, but we need arrays
@@ -249,7 +270,7 @@ export default function BandejaPage() {
       return { ...c, clientes: c.clientes?.length ? c.clientes : old?.clientes ?? [] }
     }))
     setLoadingConvs(false)
-  }, [profile?.tenant_id, profile?.id, filterEstado, filterCanal, filterMias, selectedId, notificar])
+  }, [profile?.tenant_id, profile?.id, filterCanal, selectedId, notificar])
 
   const enviarMedia = useCallback(async () => {
     if (!mediaFile || !selectedId || sendingMedia) return
@@ -554,7 +575,13 @@ export default function BandejaPage() {
     toast('Conversación eliminada')
   }
 
+  const segmentoCounts = SEGMENTOS.reduce((acc, s) => {
+    acc[s.id] = convs.filter(c => enSegmento(c, s.id, profile?.id)).length
+    return acc
+  }, {} as Record<Segmento, number>)
+
   const convsFiltradas = convs.filter(c => {
+    if (!enSegmento(c, segmento, profile?.id)) return false
     if (!search) return true
     const q = search.toLowerCase()
     return getDisplayName(c).toLowerCase().includes(q) || (c.ultimo_mensaje_texto ?? '').toLowerCase().includes(q)
@@ -599,20 +626,51 @@ export default function BandejaPage() {
         </div>
       )}
 
+      {/* ── Barra de segmentos (escritorio) ──────────────────────────────── */}
+      <div className="hidden md:flex md:w-52 flex-shrink-0 border-r border-gray-200 bg-gray-50 flex-col">
+        <div className="p-4 border-b border-gray-200">
+          <h1 className="font-bold text-gray-900">Bandeja</h1>
+        </div>
+        <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+          {SEGMENTOS.map(s => {
+            const activo = segmento === s.id
+            const count = segmentoCounts[s.id]
+            return (
+              <button key={s.id} onClick={() => setSegmento(s.id)}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  activo ? 'bg-blue-700 text-white font-semibold' : 'text-gray-600 hover:bg-gray-100'
+                }`}>
+                <span className="flex items-center gap-2 truncate">
+                  <span>{s.icon}</span>{s.label}
+                </span>
+                {count > 0 && (
+                  <span className={`flex-shrink-0 text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                    activo ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </nav>
+      </div>
+
       {/* ── Lista de conversaciones ──────────────────────────────────────── */}
       <div className={`${selectedId ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 flex-shrink-0 border-r border-gray-200 bg-white`}>
         <div className="p-4 border-b space-y-2">
           <div className="flex items-center justify-between">
-            <h1 className="font-bold text-gray-900">Bandeja</h1>
-            <span className="text-xs text-gray-400">{convsFiltradas.length} conv.</span>
+            <h1 className="font-bold text-gray-900 md:hidden">Bandeja</h1>
+            <span className="text-xs text-gray-400 md:ml-auto">{convsFiltradas.length} conv.</span>
           </div>
           <input type="search" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar..." className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          <div className="flex gap-1 flex-wrap">
-            {['activas', 'todas', 'resuelta'].map(e => (
-              <button key={e} onClick={() => setFilterEstado(e)}
-                className={`px-2 py-0.5 rounded-full text-xs transition-colors ${filterEstado === e ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                {e === 'activas' ? 'Activas' : e === 'todas' ? 'Todas' : 'Resueltas'}
+          {/* Segmentos — chips horizontales, solo en móvil (en escritorio va la barra lateral) */}
+          <div className="flex gap-1 flex-wrap md:hidden">
+            {SEGMENTOS.map(s => (
+              <button key={s.id} onClick={() => setSegmento(s.id)}
+                className={`px-2 py-0.5 rounded-full text-xs transition-colors ${segmento === s.id ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                {s.icon} {s.label}{segmentoCounts[s.id] > 0 ? ` (${segmentoCounts[s.id]})` : ''}
               </button>
             ))}
           </div>
@@ -623,10 +681,6 @@ export default function BandejaPage() {
                 {c === 'todos' ? 'Todos' : CANAL_META[c]?.label}
               </button>
             ))}
-            <button onClick={() => setFilterMias(!filterMias)}
-              className={`px-2 py-0.5 rounded-full text-xs transition-colors ${filterMias ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-              Solo mías
-            </button>
           </div>
         </div>
 
