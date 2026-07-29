@@ -9,81 +9,33 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, type EtapaVenta } from '@/lib/ventas/pipeline'
+import type { EtapaVenta } from '@/lib/ventas/pipeline'
+import type { EtapaDinamica, PipelineDinamico } from '@/hooks/useEtapasPipeline'
 import LeadCard, { type LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
 import ModalPerdida from './ModalPerdida'
 
-// ─── Pipeline definitions ──────────────────────────────────────────────────────
+// ─── Pipeline dinámico (leído de etapas_pipeline / pipelines_venta / pipeline_grupos) ──
 
-type GrupoConfig = {
-  grupoId: string
-  grupoLabel: string
-  color: string  // hex
-  bg: string     // hex
-  etapas: EtapaVenta[]
+type EtapasPipelineData = {
+  etapas: EtapaDinamica[]
+  pipelines: PipelineDinamico[]
+  etapaMap: Record<string, EtapaDinamica>
+  etapaOrden: Record<string, number>
+  loading: boolean
 }
 
-const PIPELINE_VENTAS: GrupoConfig[] = [
-  {
-    grupoId: 'prospectos', grupoLabel: 'Prospectos',
-    color: '#2563EB', bg: '#EFF6FF',
-    etapas: ['nuevo_mensaje', 'nuevo', 'con_interes', 'con_objecion'],
-  },
-  {
-    grupoId: 'proceso', grupoLabel: 'En Proceso',
-    color: '#7C3AED', bg: '#F5F3FF',
-    etapas: ['seguimiento', 'buscando_credito', 'en_proceso_credito'],
-  },
-  {
-    grupoId: 'vendida', grupoLabel: 'Vendida/Carta Aprobación',
-    color: '#16A34A', bg: '#DCFCE7',
-    etapas: ['ganado'],
-  },
-  {
-    grupoId: 'entrega', grupoLabel: 'Entrega',
-    color: '#D97706', bg: '#FFFBEB',
-    etapas: ['aprobado_matricula', 'en_matricula', 'alistamiento', 'espera_entrega'],
-  },
-  {
-    grupoId: 'entregada', grupoLabel: 'Entregada',
-    color: '#15803D', bg: '#ECFDF5',
-    etapas: ['entregada'],
-  },
-  {
-    grupoId: 'perdido', grupoLabel: 'Perdido',
-    color: '#DC2626', bg: '#FEF2F2',
-    etapas: ['perdido'],
-  },
-]
-
-const PIPELINE_POSTVENTA: GrupoConfig[] = [
-  {
-    grupoId: 'revisiones', grupoLabel: 'Post-Venta',
-    color: '#4338CA', bg: '#EEF2FF',
-    etapas: ['primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado'],
-  },
-]
-
-// Flujo de avance para "Siguiente etapa"
-const FLUJO_AVANCE: EtapaVenta[] = [
-  'nuevo_mensaje', 'nuevo', 'con_interes', 'con_objecion',
-  'seguimiento', 'buscando_credito', 'en_proceso_credito',
-  'ganado', 'aprobado_matricula', 'en_matricula',
-  'alistamiento', 'espera_entrega', 'entregada',
-  'primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado',
-]
-
-function nextEtapa(etapa: EtapaVenta): EtapaVenta | null {
-  const idx = FLUJO_AVANCE.indexOf(etapa)
-  if (idx === -1 || idx >= FLUJO_AVANCE.length - 1) return null
-  return FLUJO_AVANCE[idx + 1]
+function nextEtapa(etapas: EtapaDinamica[], etapaActual: string): string | null {
+  const ordenadas = [...etapas].sort((a, b) => a.orden - b.orden)
+  const idx = ordenadas.findIndex(e => e.id === etapaActual)
+  if (idx === -1 || idx >= ordenadas.length - 1) return null
+  return ordenadas[idx + 1].id
 }
 
 // ─── KanbanColumn ──────────────────────────────────────────────────────────────
 
 function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuarioId, onQuickDone, onQuickNote, onQuickReminder, onQuickNext, grupoBg }: {
-  etapaConfig: typeof ETAPAS[0]
+  etapaConfig: EtapaDinamica
   leads: LeadData[]
   onOpen: (id: string) => void
   usuariosMap: Record<string, string>
@@ -123,6 +75,7 @@ function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuar
               lead={lead}
               onClick={() => onOpen(lead.id)}
               asignado={lead.assigned_to ? (usuariosMap[lead.assigned_to] ?? undefined) : undefined}
+              etapaInfo={etapaConfig}
               tenantId={tenantId}
               usuarioId={usuarioId}
               onQuickDone={() => onQuickDone(lead.id)}
@@ -140,7 +93,7 @@ function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuar
 // ─── ConfirmMoveModal ──────────────────────────────────────────────────────────
 
 function ConfirmMoveModal({ to, onConfirm, onCancel }: {
-  to: typeof ETAPAS[0]; onConfirm: () => void; onCancel: () => void
+  to: EtapaDinamica; onConfirm: () => void; onCancel: () => void
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -178,20 +131,31 @@ interface Props {
   // contador de arriba y las demás vistas queden al día sin recargar la página.
   onLeadPatch?: (id: string, patch: Record<string, unknown>) => void
   onLeadRemove?: (id: string) => void
+  etapasPipeline: EtapasPipelineData
 }
 
 // ─── Componente principal ──────────────────────────────────────────────────────
 
-export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId, tabsSlot, onLeadPatch, onLeadRemove }: Props) {
+export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId, tabsSlot, onLeadPatch, onLeadRemove, etapasPipeline }: Props) {
   const supabase = createClient()
   const { profile } = useAuth()
   const [leads, setLeads]             = useState<LeadData[]>(leadsIniciales)
   const [activeId, setActiveId]       = useState<string | null>(null)
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [perdidaId, setPerdidaId]     = useState<string | null>(null)
-  const [pendingMove, setPendingMove] = useState<{ leadId: string; targetEtapa: typeof ETAPAS[0] } | null>(null)
+  const [pendingMove, setPendingMove] = useState<{ leadId: string; targetEtapa: EtapaDinamica } | null>(null)
   const [bloqueoMsg, setBloqueoMsg]   = useState<string | null>(null)
-  const [activePipeline, setActivePipeline] = useState<'ventas' | 'postventa'>('ventas')
+  const [activePipelineId, setActivePipelineId] = useState<string | null>(null)
+
+  const { etapas, pipelines, etapaMap } = etapasPipeline
+
+  // Seleccionar el primer pipeline en cuanto carguen (o si el activo desaparece)
+  useEffect(() => {
+    if (pipelines.length === 0) return
+    if (!activePipelineId || !pipelines.some(p => p.id === activePipelineId)) {
+      setActivePipelineId(pipelines[0].id)
+    }
+  }, [pipelines, activePipelineId])
 
   // Keep local leads in sync with filtered leadsIniciales from parent
   const lastIniciales = useRef<LeadData[]>(leadsIniciales)
@@ -213,26 +177,26 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
 
   // Mapa pre-indexado: O(N) una vez, luego O(1) por columna en cada render
   const leadsByEtapa = useMemo(() => {
-    const map = new Map<EtapaVenta, LeadData[]>()
+    const map = new Map<string, LeadData[]>()
     for (const l of leads) {
       if (!map.has(l.etapa_venta)) map.set(l.etapa_venta, [])
       map.get(l.etapa_venta)!.push(l)
     }
     return map
   }, [leads])
-  const leadsEn     = useCallback((etapa: EtapaVenta) => leadsByEtapa.get(etapa) ?? [], [leadsByEtapa])
+  const leadsEn     = useCallback((etapa: string) => leadsByEtapa.get(etapa) ?? [], [leadsByEtapa])
 
   const activeLead  = activeId ? leads.find(l => l.id === activeId) ?? null : null
   const fichaLead   = fichaId  ? leads.find(l => l.id === fichaId)  ?? null : null
 
-  function moverLead(id: string, nuevaEtapa: EtapaVenta) {
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, etapa_venta: nuevaEtapa } : l))
+  function moverLead(id: string, nuevaEtapa: string) {
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, etapa_venta: nuevaEtapa as EtapaVenta } : l))
     onLeadPatch?.(id, { etapa_venta: nuevaEtapa })
   }
 
-  async function persistirEtapa(id: string, etapa: EtapaVenta, motivoPerdida?: string, detallePerdida?: string) {
-    const body: Record<string, unknown> = { cliente_id: id, etapa_venta: etapa, etapa_venta_orden: ETAPA_ORDEN[etapa] }
-    if (etapa === 'perdido' && motivoPerdida) body.motivo_perdida = motivoPerdida + (detallePerdida ? ` — ${detallePerdida}` : '')
+  async function persistirEtapa(id: string, etapa: string, motivoPerdida?: string, detallePerdida?: string) {
+    const body: Record<string, unknown> = { cliente_id: id, etapa_venta: etapa }
+    if (motivoPerdida) body.motivo_perdida = motivoPerdida + (detallePerdida ? ` — ${detallePerdida}` : '')
     const res = await fetch('/api/admin/ventas/guardar', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })
@@ -255,28 +219,28 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     const overId = over.id as string
     const lead   = leads.find(l => l.id === leadId)
     if (!lead) return
-    let targetEtapa: EtapaVenta | null = null
-    if (ETAPA_MAP[overId as EtapaVenta]) {
-      targetEtapa = overId as EtapaVenta
+    let targetEtapa: string | null = null
+    if (etapaMap[overId]) {
+      targetEtapa = overId
     } else {
       const targetLead = leads.find(l => l.id === overId)
       targetEtapa = targetLead?.etapa_venta ?? null
     }
     if (!targetEtapa || targetEtapa === lead.etapa_venta) return
-    if (ETAPA_ORDEN[targetEtapa] > ETAPA_ORDEN['aprobado_matricula'] &&
-        lead.estadoAprobacionMatricula !== 'aprobado') {
+    const destino = etapaMap[targetEtapa]
+    if (destino?.requiere_aprobacion_gerencia && lead.estadoAprobacionMatricula !== 'aprobado') {
       setBloqueoMsg('Debes pedir aprobación para matricular para poder cambiar de etapa')
       return
     }
-    setPendingMove({ leadId, targetEtapa: ETAPA_MAP[targetEtapa] })
+    if (destino) setPendingMove({ leadId, targetEtapa: destino })
   }
 
   function confirmarMove() {
     if (!pendingMove) return
     const { leadId, targetEtapa } = pendingMove
-    moverLead(leadId, targetEtapa.id as EtapaVenta)
-    if (targetEtapa.id === 'perdido') setPerdidaId(leadId)
-    else persistirEtapa(leadId, targetEtapa.id as EtapaVenta)
+    moverLead(leadId, targetEtapa.id)
+    if (targetEtapa.es_perdido) setPerdidaId(leadId)
+    else persistirEtapa(leadId, targetEtapa.id)
     setPendingMove(null)
   }
 
@@ -372,9 +336,10 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   function handleQuickNext(leadId: string) {
     const lead = leads.find(l => l.id === leadId)
     if (!lead) return
-    const next = nextEtapa(lead.etapa_venta)
+    const next = nextEtapa(etapas, lead.etapa_venta)
     if (!next) return
-    setPendingMove({ leadId, targetEtapa: ETAPA_MAP[next] })
+    const destino = etapaMap[next]
+    if (destino) setPendingMove({ leadId, targetEtapa: destino })
   }
 
   const colCallbacks = {
@@ -386,13 +351,18 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     onQuickNext: handleQuickNext,
   }
 
-  const pipeline = activePipeline === 'ventas' ? PIPELINE_VENTAS : PIPELINE_POSTVENTA
+  const activePipelineObj = pipelines.find(p => p.id === activePipelineId) ?? pipelines[0]
+  const pipeline = activePipelineObj?.grupos ?? []
 
-  // Counts for tab labels
-  const etapasVentas   = new Set<EtapaVenta>(PIPELINE_VENTAS.flatMap(g => g.etapas))
-  const etapasPostventa = new Set<EtapaVenta>(PIPELINE_POSTVENTA.flatMap(g => g.etapas))
-  const cntVentas    = leads.filter(l => etapasVentas.has(l.etapa_venta)).length
-  const cntPostventa = leads.filter(l => etapasPostventa.has(l.etapa_venta)).length
+  // Counts for tab labels — un contador por pipeline
+  const countsPorPipeline = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const p of pipelines) {
+      const etapasDelPipeline = new Set(p.grupos.flatMap(g => g.etapas.map(e => e.id)))
+      m.set(p.id, leads.filter(l => etapasDelPipeline.has(l.etapa_venta)).length)
+    }
+    return m
+  }, [pipelines, leads])
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false)
@@ -403,26 +373,27 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  if (etapasPipeline.loading || !activePipelineObj) {
+    return <div className="py-16 text-center text-gray-400 text-sm">Cargando pipeline...</div>
+  }
+
   // ── Pipeline tab switcher (shared between mobile and desktop) ──
   const pipelineTabsButtons = (
     <div className="flex items-center gap-0 bg-white border border-gray-200 rounded-xl overflow-hidden w-fit shadow-sm flex-shrink-0">
-      {([
-        { key: 'ventas',    label: 'Pipeline Ventas',     count: cntVentas,    color: '#2563EB' },
-        { key: 'postventa', label: 'Pipeline Post-Venta', count: cntPostventa, color: '#4338CA' },
-      ] as const).map(tab => (
+      {pipelines.map(p => (
         <button
-          key={tab.key}
-          onClick={() => setActivePipeline(tab.key)}
+          key={p.id}
+          onClick={() => setActivePipelineId(p.id)}
           className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-            activePipeline === tab.key ? 'text-white' : 'text-gray-600 hover:bg-gray-50'
+            activePipelineId === p.id ? 'text-white' : 'text-gray-600 hover:bg-gray-50'
           }`}
-          style={activePipeline === tab.key ? { background: tab.color } : {}}
+          style={activePipelineId === p.id ? { background: p.grupos[0]?.color ?? '#2563EB' } : {}}
         >
-          {tab.label}
+          {p.nombre}
           <span className={`text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center ${
-            activePipeline === tab.key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+            activePipelineId === p.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
           }`}>
-            {tab.count}
+            {countsPorPipeline.get(p.id) ?? 0}
           </span>
         </button>
       ))}
@@ -447,6 +418,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
             onEtapaChange={handleEtapaChange}
             onLeadUpdate={handleLeadUpdate}
             onLeadDelete={handleLeadDelete}
+            etapasPipeline={etapasPipeline}
           />
         )}
         {pendingMove && (
@@ -458,15 +430,9 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
 
         {PipelineTabs}
 
-        {activePipeline === 'postventa' && (
-          <p className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 mb-3">
-            Clientes entregados en revisiones de mantenimiento (1era, 2da, 3cera).
-          </p>
-        )}
-
         <div className="space-y-4 pb-8">
           {pipeline.map(grupo => {
-            const grupoLeads = grupo.etapas.flatMap(e => leads.filter(l => l.etapa_venta === e))
+            const grupoLeads = grupo.etapas.flatMap(e => leads.filter(l => l.etapa_venta === e.id))
             if (grupoLeads.length === 0) return null
             return (
               <div key={grupo.grupoId}>
@@ -508,8 +474,8 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-white"
-                            style={{ background: ETAPA_MAP[lead.etapa_venta].color }}>
-                            {ETAPA_MAP[lead.etapa_venta].label}
+                            style={{ background: etapaMap[lead.etapa_venta]?.color ?? '#9CA3AF' }}>
+                            {etapaMap[lead.etapa_venta]?.label ?? lead.etapa_venta}
                           </span>
                           {asignado && <span className="text-[10px] text-gray-500">{asignado}</span>}
                           {lead.moto_interes && (
@@ -526,7 +492,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
               </div>
             )
           })}
-          {pipeline.flatMap(g => g.etapas).every(e => !leads.some(l => l.etapa_venta === e)) && (
+          {pipeline.flatMap(g => g.etapas).every(e => !leads.some(l => l.etapa_venta === e.id)) && (
             <p className="text-sm text-gray-400 text-center py-8">Sin leads en este pipeline</p>
           )}
         </div>
@@ -546,18 +512,10 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
 
       {desktopTabs}
 
-      {/* Post-Venta hint */}
-      {activePipeline === 'postventa' && (
-        <p className="text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 mb-3 w-fit">
-          Muestra clientes entregados activos en revisiones de mantenimiento (1era, 2da, 3cera).
-          Pasa un cliente a revisión desde la columna <strong>Entregada</strong> en el pipeline Ventas.
-        </p>
-      )}
-
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <div className="flex gap-5 overflow-x-auto pb-4 h-[calc(100vh-200px)] items-start">
           {pipeline.map(grupo => {
-            const totalGrupo = grupo.etapas.reduce((s, e) => s + leadsEn(e).length, 0)
+            const totalGrupo = grupo.etapas.reduce((s, e) => s + leadsEn(e.id).length, 0)
             return (
               <div key={grupo.grupoId} className="flex flex-col gap-2 flex-shrink-0 h-full">
                 {/* Group banner */}
@@ -579,9 +537,9 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
                 <div className="flex gap-3 flex-1 min-h-0">
                   {grupo.etapas.map(etapa => (
                     <KanbanColumn
-                      key={etapa}
-                      etapaConfig={ETAPA_MAP[etapa]}
-                      leads={leadsEn(etapa)}
+                      key={etapa.id}
+                      etapaConfig={etapa}
+                      leads={leadsEn(etapa.id)}
                       onOpen={setFichaId}
                       usuariosMap={usuariosMap}
                       grupoBg={grupo.bg}
@@ -596,7 +554,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
 
         {typeof window !== 'undefined' && createPortal(
           <DragOverlay>
-            {activeLead && <LeadCard lead={activeLead} onClick={() => {}} overlay />}
+            {activeLead && <LeadCard lead={activeLead} onClick={() => {}} overlay etapaInfo={etapaMap[activeLead.etapa_venta]} />}
           </DragOverlay>,
           document.body
         )}
@@ -611,6 +569,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
           onEtapaChange={handleEtapaChange}
           onLeadUpdate={handleLeadUpdate}
           onLeadDelete={handleLeadDelete}
+          etapasPipeline={etapasPipeline}
         />
       )}
 

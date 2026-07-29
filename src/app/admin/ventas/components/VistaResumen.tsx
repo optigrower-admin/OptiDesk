@@ -8,6 +8,7 @@ import {
 import { calcularRango } from '@/lib/dashboard/periodos'
 import type { LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
+import { useEtapasPipeline } from '@/hooks/useEtapasPipeline'
 
 /* ─── constantes ─────────────────────────────────────────────────── */
 const EXCLUIR_RESUMEN: EtapaVenta[] = ['perdido', 'proceso_finalizado']
@@ -258,6 +259,7 @@ function AccionRow({ l, usuariosMap, onOpen, vencido }: { l: LeadData; usuariosM
 
 /* ─── componente principal ────────────────────────────────────────── */
 export default function VistaResumen({ leads, tenantId, usuarios, asesoresFiltro, periodoRango }: Props) {
+  const etapasPipeline = useEtapasPipeline(tenantId)
   const supabase = createClient()
   const [actividad,     setActividad]     = useState<ActividadMap>({})
   const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([])
@@ -822,6 +824,7 @@ export default function VistaResumen({ leads, tenantId, usuarios, asesoresFiltro
         onEtapaChange={(id, etapa) => setLeadsLocal(prev => prev.map(l => l.id === id ? { ...l, etapa_venta: etapa } : l))}
         onLeadUpdate={handleLeadUpdate}
         onLeadDelete={(id) => { setLeadsLocal(prev => prev.filter(l => l.id !== id)); setFichaId(null) }}
+        etapasPipeline={etapasPipeline}
       />
     )}
     </>

@@ -2,7 +2,8 @@
 import { useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ETAPA_MAP, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, tiempoSinResponder, estadoSeguimiento, formatCOP, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { tiempoSinResponder, estadoSeguimiento, formatCOP, type EtapaVenta } from '@/lib/ventas/pipeline'
+import type { EtapaDinamica } from '@/hooks/useEtapasPipeline'
 
 export type ConvCanal = { id: string; canal: string; no_leidos_count: number }
 
@@ -68,13 +69,14 @@ interface Props {
   asignado?: string
   tenantId?: string
   usuarioId?: string
+  etapaInfo?: EtapaDinamica
   onQuickDone?: () => void
   onQuickNote?: (text: string) => void
   onQuickReminder?: (nota: string, fecha: string) => void
   onQuickNext?: () => void
 }
 
-export default function LeadCard({ lead, onClick, overlay, asignado, onQuickDone, onQuickNote, onQuickReminder, onQuickNext }: Props) {
+export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, onQuickDone, onQuickNote, onQuickReminder, onQuickNext }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: lead.id })
   const [hovered,         setHovered]         = useState(false)
   const [showNote,        setShowNote]        = useState(false)
@@ -102,9 +104,9 @@ export default function LeadCard({ lead, onClick, overlay, asignado, onQuickDone
   const necesitaAlistamiento =
     (lead.etapa_venta === 'espera_entrega' || lead.etapa_venta === 'entregada') &&
     lead.tieneAlistamiento === false
-  const necesitaCelular = (ETAPAS_LEADS as EtapaVenta[]).includes(lead.etapa_venta) && !lead.cliente?.celular
-  const necesitaPlaca   = (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(lead.etapa_venta) && lead.tienePlaca === false
-  const esAprobado      = lead.etapa_venta === 'aprobado_matricula'
+  const necesitaCelular = etapaInfo?.es_lead === true && !lead.cliente?.celular
+  const necesitaPlaca   = etapaInfo?.requiere_placa === true && lead.tienePlaca === false
+  const esAprobado      = etapaInfo?.requiere_aprobacion_gerencia === true
   const campana       = lead.leads_campana?.[0]?.utm_campaign
   const canales       = lead.todas_conversaciones.length > 0
     ? lead.todas_conversaciones
@@ -258,8 +260,8 @@ export default function LeadCard({ lead, onClick, overlay, asignado, onQuickDone
       {/* Etapa badge visible en la tarjeta */}
       <div className="mb-2 flex flex-wrap gap-1 items-center">
         <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-white"
-          style={{ background: ETAPA_MAP[lead.etapa_venta].color }}>
-          {ETAPA_MAP[lead.etapa_venta].label}
+          style={{ background: etapaInfo?.color ?? '#9CA3AF' }}>
+          {etapaInfo?.label ?? lead.etapa_venta}
         </span>
         {lead.etiquetas.map(e => (
           <span key={e.id}

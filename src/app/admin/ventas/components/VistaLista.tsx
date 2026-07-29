@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { ETAPAS, ETAPA_MAP, formatCOP, estadoSeguimiento, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
+import { useEtapasPipeline } from '@/hooks/useEtapasPipeline'
 
 interface Props {
   leads: LeadData[]
@@ -21,6 +22,7 @@ const CANAL_BADGE: Record<string, string> = {
 }
 
 export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove }: Props) {
+  const etapasPipeline = useEtapasPipeline(tenantId)
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [busqueda, setBusqueda]       = useState('')
   const [etapaFiltro, setEtapaFiltro] = useState<EtapaVenta | 'todas'>('todas')
@@ -273,6 +275,7 @@ export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove 
           onEtapaChange={(id, etapa) => handleLeadUpdate(id, { etapa_venta: etapa })}
           onLeadUpdate={handleLeadUpdate}
           onLeadDelete={(id) => { setLeadsLocal(p => p.filter(l => l.id !== id)); setFichaId(null); onLeadRemove?.(id) }}
+          etapasPipeline={etapasPipeline}
         />
       )}
     </>

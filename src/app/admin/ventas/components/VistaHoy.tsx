@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ETAPA_MAP, tiempoSinResponder, estadoSeguimiento, formatCOP, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
+import { useEtapasPipeline } from '@/hooks/useEtapasPipeline'
 
 interface Props {
   leads: LeadData[]
@@ -32,6 +33,7 @@ function calcPrioridad(lead: LeadData): Prioridad {
 }
 
 export default function VistaHoy({ leads, tenantId, onLeadPatch, onLeadRemove }: Props) {
+  const etapasPipeline = useEtapasPipeline(tenantId)
   const [fichaId, setFichaId] = useState<string | null>(null)
   const [leadsLocal, setLeadsLocal] = useState<LeadData[]>(leads)
 
@@ -117,6 +119,7 @@ export default function VistaHoy({ leads, tenantId, onLeadPatch, onLeadRemove }:
           onEtapaChange={(id, etapa) => handleLeadUpdate(id, { etapa_venta: etapa })}
           onLeadUpdate={handleLeadUpdate}
           onLeadDelete={(id) => { setLeadsLocal(p => p.filter(l => l.id !== id)); setFichaId(null); onLeadRemove?.(id) }}
+          etapasPipeline={etapasPipeline}
         />
       )}
     </>

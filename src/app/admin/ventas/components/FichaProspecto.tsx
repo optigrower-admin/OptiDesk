@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, ETAPAS_LEADS, ETAPAS_NECESITAN_PLACA, ETAPAS_NECESITAN_FACTURA, ETAPAS_NECESITAN_FECHA_ENTREGA, ETAPAS_POSVENTA, type EtapaVenta } from '@/lib/ventas/pipeline'
+import type { EtapaVenta } from '@/lib/ventas/pipeline'
+import type { EtapaDinamica } from '@/hooks/useEtapasPipeline'
 import { showGlobalLoading, hideGlobalLoading } from '@/lib/globalLoading'
 import type { LeadData } from './LeadCard'
 import VincularClienteModal from './VincularClienteModal'
@@ -52,6 +53,30 @@ interface Props {
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
   onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_carta_negociacion?: string | null; numero_factura?: string | null; fecha_entrega?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[]; estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'; aprobadoMatriculaPor?: string | null }) => void
   onLeadDelete?: (id: string) => void
+  etapasPipeline: { etapas: EtapaDinamica[]; etapaMap: Record<string, EtapaDinamica> }
+}
+
+// Aproxima un color hex al punto de color (emoji) más cercano, para el selector de etapa.
+const PALETA_DOTS: { emoji: string; rgb: [number, number, number] }[] = [
+  { emoji: '🔴', rgb: [239, 68, 68] },
+  { emoji: '🟠', rgb: [249, 115, 22] },
+  { emoji: '🟡', rgb: [234, 179, 8] },
+  { emoji: '🟢', rgb: [34, 197, 94] },
+  { emoji: '🔵', rgb: [59, 130, 246] },
+  { emoji: '🟣', rgb: [168, 85, 247] },
+  { emoji: '⚫', rgb: [0, 0, 0] },
+]
+function colorToDot(hex: string): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex ?? '')
+  if (!m) return '⚪'
+  const [r, g, b] = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)]
+  let mejor = PALETA_DOTS[0]
+  let mejorDist = Infinity
+  for (const p of PALETA_DOTS) {
+    const d = (r - p.rgb[0]) ** 2 + (g - p.rgb[1]) ** 2 + (b - p.rgb[2]) ** 2
+    if (d < mejorDist) { mejorDist = d; mejor = p }
+  }
+  return mejor.emoji
 }
 
 function formatTime(d: string) {
@@ -81,7 +106,7 @@ const TABS_GERENCIA: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'visibilidad', label: 'Visibilidad', icon: '🔒' },
 ]
 
-export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange, onLeadUpdate, onLeadDelete }: Props) {
+export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange, onLeadUpdate, onLeadDelete, etapasPipeline }: Props) {
   const supabase = createClient()
   const { profile } = useAuth()
   const endRef   = useRef<HTMLDivElement>(null)
@@ -235,14 +260,13 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [assignedTo, setAssignedTo] = useState('')
 
   // Derivados de alerta — usan `etapa` (estado local) para que los campos aparezcan de inmediato
-  const sinCelular          = (ETAPAS_LEADS as EtapaVenta[]).includes(lead.etapa_venta) && !celularActual
-  const enEtapaConPlaca     = (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(etapa)
+  const sinCelular          = etapasPipeline.etapaMap[lead.etapa_venta]?.es_lead === true && !celularActual
+  const enEtapaConPlaca     = etapasPipeline.etapaMap[etapa]?.requiere_placa === true
   const enEtapaAlistamiento    = etapa === 'espera_entrega' || etapa === 'entregada'
   const tieneAlistamientoFinal = lead.tieneAlistamiento === true || !!alistamientoOrdenId
-  const enEtapaFactura         = (ETAPAS_NECESITAN_FACTURA as EtapaVenta[]).includes(etapa)
-  const enEtapaFechaEntrega    = (ETAPAS_NECESITAN_FECHA_ENTREGA as EtapaVenta[]).includes(etapa)
-  // Carta de negociación aplica en las mismas etapas que la factura
-  const enEtapaCarta           = enEtapaFactura
+  const enEtapaFactura         = etapasPipeline.etapaMap[etapa]?.requiere_factura === true
+  const enEtapaFechaEntrega    = etapasPipeline.etapaMap[etapa]?.requiere_fecha_entrega === true
+  const enEtapaCarta           = etapasPipeline.etapaMap[etapa]?.requiere_carta_negociacion === true
 
   const cargar = useCallback(async () => {
     const [{ data: msgs }, { data: ords }, { data: us }, { data: cliente }, { data: etapasHist }] = await Promise.all([
@@ -347,7 +371,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   // Auto-guarda etapa al cambiarla en el select
   const autoSaveEtapa = async (newEtapa: EtapaVenta) => {
-    if (ETAPA_ORDEN[newEtapa] > ETAPA_ORDEN['aprobado_matricula'] &&
+    if (etapasPipeline.etapaMap[newEtapa]?.requiere_aprobacion_gerencia &&
         aprobacionStatus !== 'aprobado') {
       setBloqueoMsg('Debes pedir aprobación para matricular para poder cambiar de etapa')
       return
@@ -359,12 +383,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     try {
       const res = await fetch('/api/admin/ventas/guardar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cliente_id: lead.id, etapa_venta: newEtapa, etapa_venta_orden: ETAPA_ORDEN[newEtapa] }),
+        body: JSON.stringify({ cliente_id: lead.id, etapa_venta: newEtapa }),
       })
       if (res.ok) {
         onEtapaChange(lead.id, newEtapa)
         mostrarGuardado()
-        await logCambio('etapa', ETAPA_MAP[prev]?.label ?? prev, ETAPA_MAP[newEtapa]?.label ?? newEtapa)
+        await logCambio('etapa', etapasPipeline.etapaMap[prev]?.label ?? prev, etapasPipeline.etapaMap[newEtapa]?.label ?? newEtapa)
       } else {
         setEtapa(prev)
       }
@@ -603,44 +627,26 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setSavingPanel(false); panelToast()
   }
 
-  const etapaActual = ETAPA_MAP[etapa]
+  const etapaActual = etapasPipeline.etapaMap[etapa]
 
-  const posventaSet = new Set<EtapaVenta>(['primera_revision', 'segunda_revision', 'tercera_revision', 'proceso_finalizado'])
-  // Bolita de color por grupo (misma agrupación que las columnas del Kanban en
-  // PipelineKanban.tsx) antes del texto — un <option> nativo no soporta spans con
-  // estilos propios, así que usamos un emoji de círculo de color como "bolita".
-  const ETAPA_GRUPO_DOT: Record<EtapaVenta, string> = {
-    perdido:             '🔴',
-    nuevo_mensaje:       '🔵',
-    nuevo:               '🔵',
-    con_interes:         '🔵',
-    con_objecion:        '🔵',
-    seguimiento:         '🟣',
-    buscando_credito:    '🟣',
-    en_proceso_credito:  '🟣',
-    ganado:              '🟢',
-    aprobado_matricula:  '🟠',
-    en_matricula:        '🟠',
-    alistamiento:        '🟠',
-    espera_entrega:      '🟠',
-    entregada:           '🟢',
-    primera_revision:    '🔵',
-    segunda_revision:    '🔵',
-    tercera_revision:    '🔵',
-    proceso_finalizado:  '🔵',
-  }
+  const gruposEtapaOrdenados = (() => {
+    const porGrupo = new Map<string, { label: string; orden: number; etapas: EtapaDinamica[] }>()
+    for (const e of [...etapasPipeline.etapas].sort((a, b) => a.orden - b.orden)) {
+      const key = e.grupoId || e.grupoLabel || '—'
+      if (!porGrupo.has(key)) porGrupo.set(key, { label: e.grupoLabel || '—', orden: e.orden, etapas: [] })
+      porGrupo.get(key)!.etapas.push(e)
+    }
+    return Array.from(porGrupo.values())
+  })()
   const gruposEtapa = (
     <>
-      <optgroup label="── Etapas de Ventas ──">
-        {ETAPAS.filter(e => !posventaSet.has(e.id)).map(e => (
-          <option key={e.id} value={e.id} style={{ background: '#fff', color: '#374151' }}>{ETAPA_GRUPO_DOT[e.id]} {e.label}</option>
-        ))}
-      </optgroup>
-      <optgroup label="── Post-Venta ──">
-        {ETAPAS.filter(e => posventaSet.has(e.id)).map(e => (
-          <option key={e.id} value={e.id} style={{ background: '#fff', color: '#374151' }}>{ETAPA_GRUPO_DOT[e.id]} {e.label}</option>
-        ))}
-      </optgroup>
+      {gruposEtapaOrdenados.map(g => (
+        <optgroup key={g.label} label={`── ${g.label} ──`}>
+          {g.etapas.map(e => (
+            <option key={e.id} value={e.id} style={{ background: '#fff', color: '#374151' }}>{colorToDot(e.color)} {e.label}</option>
+          ))}
+        </optgroup>
+      ))}
     </>
   )
 
@@ -754,8 +760,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               </div>
             )}
             <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-white flex-shrink-0"
-              style={{ background: etapaActual.color }}>
-              {etapaActual.label}
+              style={{ background: etapaActual?.color ?? '#9CA3AF' }}>
+              {etapaActual?.label ?? etapa}
             </span>
             {lead.cliente?.celular && (
               <span className="text-xs text-gray-400 flex-shrink-0">{lead.cliente.celular}</span>
@@ -803,7 +809,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Etapa</label>
                 <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)} disabled={saving}
                   className="w-full text-xs rounded-lg px-2 py-1.5 font-bold text-white border border-[#2a3550] focus:outline-none disabled:opacity-60"
-                  style={{ background: etapaActual.color }}>
+                  style={{ background: etapaActual?.color ?? '#9CA3AF' }}>
                   {gruposEtapa}
                 </select>
               </div>
@@ -1122,7 +1128,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           <div className={`flex-1 overflow-y-auto p-4 ${tabDer === 'chats' ? 'hidden' : ''}`}>
 
             {/* ── Barra: Carta · Placa · Alistamiento · Factura · Fecha entrega · Aprobación ── */}
-            {(enEtapaCarta || enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || ETAPA_ORDEN[etapa] >= ETAPA_ORDEN['aprobado_matricula']) && (
+            {(enEtapaCarta || enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || etapasPipeline.etapaMap[etapa]?.requiere_aprobacion_gerencia === true) && (
               <div className="mb-4 space-y-2">
 
                 {/* Fila de pills */}
@@ -1454,7 +1460,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 )}
 
                 {/* Aprobación para matrícula */}
-                {ETAPA_ORDEN[etapa] >= ETAPA_ORDEN['aprobado_matricula'] && (
+                {etapasPipeline.etapaMap[etapa]?.requiere_aprobacion_gerencia === true && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                     <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1.5">Estado de aprobación para matrícula</p>
                     <div className="flex gap-2">
@@ -1566,7 +1572,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Etapa</label>
                     <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)} disabled={saving}
                       className="w-full text-sm rounded-xl px-3 py-2.5 font-bold text-white border-0 focus:outline-none"
-                      style={{ background: etapaActual.color }}>
+                      style={{ background: etapaActual?.color ?? '#9CA3AF' }}>
                       {gruposEtapa}
                     </select>
                   </div>

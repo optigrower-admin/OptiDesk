@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { ETAPAS, ETAPA_MAP, tiempoSinResponder, estadoSeguimiento, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './components/LeadCard'
 import FichaProspecto from './components/FichaProspecto'
+import { useEtapasPipeline } from '@/hooks/useEtapasPipeline'
 
 /* ─── tipos ───────────────────────────────────────────────────────────────── */
 interface Props {
@@ -241,6 +242,7 @@ function PanelCRM({ lead, tenantId, usuarios, onLeadUpdate }: {
 
 /* ─── Componente principal ────────────────────────────────────────────────── */
 export default function VistaBandeja({ leads, tenantId, usuarios, onLeadPatch, onLeadRemove }: Props) {
+  const etapasPipeline = useEtapasPipeline(tenantId)
   const supabase = createClient()
   const [selectedId,  setSelectedId]  = useState<string | null>(null)
   const [mensajes,    setMensajes]    = useState<Mensaje[]>([])
@@ -481,6 +483,7 @@ export default function VistaBandeja({ leads, tenantId, usuarios, onLeadPatch, o
           onEtapaChange={(id, etapa) => handleLeadUpdate(id, { etapa_venta: etapa })}
           onLeadUpdate={(id, updates) => handleLeadUpdate(id, updates as Record<string, unknown>)}
           onLeadDelete={(id) => { setLeadsLocal(p => p.filter(l => l.id !== id)); setFichaId(null); onLeadRemove?.(id) }}
+          etapasPipeline={etapasPipeline}
         />
       )}
     </div>

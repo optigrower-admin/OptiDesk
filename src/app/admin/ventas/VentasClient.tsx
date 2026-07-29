@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { ETAPAS_ACTIVAS } from '@/lib/ventas/pipeline'
+import { useEtapasPipeline } from '@/hooks/useEtapasPipeline'
 import type { LeadData } from './components/LeadCard'
 import PipelineKanban from './components/PipelineKanban'
 import VistaHoy from './components/VistaHoy'
@@ -211,6 +211,7 @@ function NuevoClienteModal({ onClose, onCreated }: { onClose: () => void; onCrea
 export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const { profile } = useAuth()
   const supabase = createClient()
+  const etapasPipeline = useEtapasPipeline(tenantId)
   const [tab, setTab] = useState<Tab>('kanban')
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [usuarios, setUsuarios] = useState<UsuarioFiltro[]>([])
@@ -353,8 +354,8 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   }, [busqueda, tenantId])
 
   const activos = useMemo(
-    () => leadsState.filter(l => ETAPAS_ACTIVAS.includes(l.etapa_venta as typeof ETAPAS_ACTIVAS[0])),
-    [leadsState]
+    () => leadsState.filter(l => etapasPipeline.etapaMap[l.etapa_venta]?.es_activa),
+    [leadsState, etapasPipeline.etapaMap]
   )
 
   const leadsFiltrados = useMemo(() => {
@@ -503,7 +504,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
 
       {/* Content */}
       {tab === 'kanban' && (
-        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} tabsSlot={pipelineTabsSlot} onLeadPatch={patchLead} onLeadRemove={removeLead} />
+        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} tabsSlot={pipelineTabsSlot} onLeadPatch={patchLead} onLeadRemove={removeLead} etapasPipeline={etapasPipeline} />
       )}
       {tab === 'bandeja' && (
         <VistaBandeja leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} onLeadPatch={patchLead} onLeadRemove={removeLead} />

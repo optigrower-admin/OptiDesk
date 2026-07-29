@@ -46,6 +46,22 @@ export async function POST(req: NextRequest) {
     .single()
   if (!clienteActual) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
+  // Validar que la etapa exista de verdad para este tenant (ya no hay CHECK
+  // constraint en la base de datos — las etapas son dinámicas por tenant desde
+  // Config Ventas → Pipelines y Etapas, así que la validación vive acá).
+  if (typeof campos.etapa_venta === 'string') {
+    const { data: etapaRow } = await admin
+      .from('etapas_pipeline')
+      .select('orden')
+      .eq('tenant_id', perfil.tenant_id)
+      .eq('clave', campos.etapa_venta)
+      .maybeSingle()
+    if (!etapaRow) {
+      return NextResponse.json({ error: `La etapa "${campos.etapa_venta}" no existe en este pipeline` }, { status: 400 })
+    }
+    campos.etapa_venta_orden = etapaRow.orden
+  }
+
   const { error } = await admin
     .from('clientes')
     .update(campos)
