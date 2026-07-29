@@ -90,25 +90,33 @@ export async function iniciarFlujoParaConversacion(
   }
   console.log(`[flow-executor] flujo encontrado: ${flujo.id} trigger_tipo=${flujo.trigger_tipo}`)
 
+  await crearYArrancarEjecucion(supabase, tenantId, conversacionId, clienteId, flujo, { marcarAutomatizado: true })
+}
+
+// ─── Arranca una ejecución nueva para un flujo ya resuelto ────────────────────
+async function crearYArrancarEjecucion(
+  supabase: Supa,
+  tenantId: string,
+  conversacionId: string,
+  clienteId: string | null,
+  flujo: { id: string; nodos: unknown },
+  opciones: { marcarAutomatizado: boolean }
+) {
   const nodos = flujo.nodos as { nodes: Node[]; edges: Edge[] } | null
   if (!nodos?.nodes?.length) {
-    console.log(`[flow-executor] ✗ flujo sin nodos`)
+    console.log(`[flow-executor] ✗ flujo ${flujo.id} sin nodos`)
     return
   }
 
-  // Encontrar el nodo trigger
-  const nodosOrdenados = nodos.nodes
-  const nodoTrigger = nodosOrdenados.find(n => n.type === 'trigger')
+  const nodoTrigger = nodos.nodes.find(n => n.type === 'trigger')
   if (!nodoTrigger) {
-    console.log(`[flow-executor] ✗ no hay nodo tipo 'trigger' en el flujo`)
+    console.log(`[flow-executor] ✗ no hay nodo tipo 'trigger' en el flujo ${flujo.id}`)
     return
   }
-  console.log(`[flow-executor] nodoTrigger=${nodoTrigger.id} → insertando ejecución...`)
+  console.log(`[flow-executor] nodoTrigger=${nodoTrigger.id} → insertando ejecución para flujo ${flujo.id}...`)
 
-  // Obtener contexto del cliente
   const contexto = await construirContexto(supabase, tenantId, conversacionId, clienteId)
 
-  // Crear ejecución
   const { data: ejecucion, error: errEjec } = await supabase
     .from('flujo_ejecuciones')
     .insert({
@@ -130,15 +138,65 @@ export async function iniciarFlujoParaConversacion(
   }
   console.log(`[flow-executor] ✓ ejecución creada: ${ejecucion.id}`)
 
-  // Marcar cliente como automatizado
-  if (clienteId) {
+  // Marcar cliente como "el bot le está escribiendo" — solo aplica a flujos conversacionales
+  // (mensajería). Las automatizaciones de pipeline corren en silencio, sin este badge.
+  if (clienteId && opciones.marcarAutomatizado) {
     await supabase.from('clientes')
       .update({ automatizado: true, flujo_activo_id: flujo.id })
       .eq('id', clienteId)
   }
 
-  // Procesar desde el nodo trigger (avanza al primer nodo real)
   await continuarEjecucion(supabase, ejecucion.id)
+}
+
+// ─── Disparar automatizaciones de pipeline (grupo "automatizaciones") ─────────
+// A diferencia de los flujos de mensajería (un solo flujo activo por conversación,
+// pensado para una conversación de bot secuencial), aquí SÍ se evalúan y arrancan
+// TODAS las automatizaciones activas cuyo disparador coincida — pueden correr varias
+// en paralelo entre sí y en paralelo con el flujo de mensajería que esté activo en
+// esa conversación, sin pisarse.
+export async function dispararAutomatizacionesEtapa(
+  tenantId: string,
+  conversacionId: string,
+  clienteId: string | null,
+  nuevaEtapa: string,
+) {
+  const supabase = createAdminClient()
+
+  const { data: flujos } = await supabase
+    .from('flujos_automatizacion')
+    .select('id, nodos')
+    .eq('tenant_id', tenantId)
+    .eq('activo', true)
+    .eq('trigger_tipo', 'etapa_cambiada')
+
+  if (!flujos?.length) return
+
+  for (const flujo of flujos) {
+    const nodos = flujo.nodos as { nodes: Node[]; edges: Edge[] } | null
+    const nodoTrigger = nodos?.nodes?.find(n => n.type === 'trigger')
+    const etapaTrigger = String((nodoTrigger?.data as Record<string, unknown> | undefined)?.etapa_trigger ?? '')
+
+    // Etapa_trigger vacío = "cualquier etapa"; si no, debe coincidir exactamente
+    if (etapaTrigger && etapaTrigger !== nuevaEtapa) continue
+
+    // Evitar arrancar dos veces la MISMA automatización si ya tiene una ejecución
+    // activa para este cliente (ej. está pausada en "esperar días en etapa")
+    const { data: existente } = await supabase
+      .from('flujo_ejecuciones')
+      .select('id')
+      .eq('conversacion_id', conversacionId)
+      .eq('flujo_id', flujo.id)
+      .eq('estado', 'activo')
+      .maybeSingle()
+
+    if (existente) {
+      console.log(`[flow-executor] automatización ${flujo.id} ya tiene una ejecución activa — se omite`)
+      continue
+    }
+
+    await crearYArrancarEjecucion(supabase, tenantId, conversacionId, clienteId, flujo, { marcarAutomatizado: false })
+  }
 }
 
 // ─── Continuar ejecución pendiente (llamado por cron o tras recibir mensaje) ──
@@ -212,11 +270,14 @@ export async function continuarEjecucion(supabase: Supa, ejecucionId: string) {
         updated_at: new Date().toISOString(),
       }).eq('id', ejecucionId)
 
-      // Limpiar automatizado del cliente
+      // Limpiar automatizado del cliente — solo si ESTA ejecución era la que estaba
+      // marcada como activa (evita que una automatización de pipeline en paralelo
+      // apague el badge de un flujo de mensajería real que sigue corriendo)
       if (ejec.cliente_id) {
         await supabase.from('clientes')
           .update({ automatizado: false, flujo_activo_id: null })
-          .eq('id', ejec.cliente_id)
+          .eq('id', ejec.cliente_id as string)
+          .eq('flujo_activo_id', ejec.flujo_id as string)
       }
       return
     }

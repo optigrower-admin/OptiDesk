@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { renameDriveFolder } from '@/lib/drive'
+import { dispararAutomatizacionesEtapa } from '@/lib/mensajeria/flow-executor'
 
 const CAMPOS_NOMBRE = new Set(['primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido', 'nombre', 'celular'])
 
@@ -57,6 +58,28 @@ export async function POST(req: NextRequest) {
   const afectaNombre = Object.keys(campos).some(k => CAMPOS_NOMBRE.has(k))
   if (afectaNombre) {
     renombrarCarpetaDrive(admin, cliente_id, perfil.tenant_id).catch(() => {})
+  }
+
+  // Si cambió la etapa, evaluar y arrancar las automatizaciones de pipeline que
+  // apliquen (grupo "Automatizaciones" en Flujos) — corren en paralelo entre sí y
+  // sin interferir con el flujo de mensajería que esté activo en la conversación.
+  if (typeof campos.etapa_venta === 'string') {
+    try {
+      const { data: conv } = await admin
+        .from('conversaciones')
+        .select('id')
+        .eq('cliente_id', cliente_id)
+        .eq('tenant_id', perfil.tenant_id)
+        .order('ultimo_mensaje_at', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (conv?.id) {
+        await dispararAutomatizacionesEtapa(perfil.tenant_id, conv.id, cliente_id as string, campos.etapa_venta)
+      }
+    } catch (e) {
+      console.error('[guardar] error al disparar automatizaciones de pipeline:', e)
+    }
   }
 
   return NextResponse.json({ ok: true })
