@@ -527,19 +527,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // Recuadro con el logo de la empresa (grande) + "OptiDesk V1.5" en cursiva.
   // Es lo único que queda visible cuando el sidebar de escritorio está colapsado.
   const logoBlock = (isDesktop: boolean, withBorder = true) => (
-    <div className={cn('p-4 flex flex-col items-center text-center gap-1.5 relative flex-shrink-0', withBorder && 'border-b')}>
-      {logoUrl ? (
-        <img src={logoUrl} alt="Logo" className="max-h-16 max-w-[9.5rem] w-auto h-auto object-contain" onError={() => setLogoUrl(null)} />
-      ) : (
-        <div className="w-16 h-16 bg-blue-700 rounded-xl flex items-center justify-center">
-          <span className="text-white font-bold text-2xl">OD</span>
-        </div>
-      )}
-      <span className="italic text-xs text-gray-500 font-medium truncate max-w-full">OptiDesk V1.5</span>
+    <div className={cn('p-3 flex flex-col items-center text-center gap-1.5 flex-shrink-0', withBorder && 'border-b')}>
       {isDesktop && (
         <button
           onClick={toggleSidebar}
-          className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded flex-shrink-0"
+          className="self-end -mt-1 -mb-0.5 p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded flex-shrink-0"
           aria-label={sidebarCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
           title={sidebarCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
         >
@@ -548,6 +540,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </svg>
         </button>
       )}
+      {logoUrl ? (
+        <img src={logoUrl} alt="Logo" className="max-h-16 max-w-[9.5rem] w-auto h-auto object-contain" onError={() => setLogoUrl(null)} />
+      ) : (
+        <div className="w-16 h-16 bg-blue-700 rounded-xl flex items-center justify-center">
+          <span className="text-white font-bold text-2xl">OD</span>
+        </div>
+      )}
+      <span className="italic text-xs text-gray-500 font-medium truncate max-w-full">OptiDesk V1.5</span>
     </div>
   )
 
