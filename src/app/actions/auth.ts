@@ -8,6 +8,8 @@ const ROL_RUTAS: Record<string, string> = {
   control_total: '/control_total/tenants',
   gerencia: '/admin/ordenes',
   admin: '/admin/ordenes',
+  dueno: '/admin/dashboard/servicio-tecnico',
+  freelancer: '/admin/ventas',
   mecanico: '/mecanico',
 }
 

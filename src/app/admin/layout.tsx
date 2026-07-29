@@ -187,7 +187,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const router   = useRouter()
   const { profile } = useAuth()
-  const { tienePermiso, getOrden } = usePermisos()
+  const { tienePermiso, getOrden, loading: permisosLoading } = usePermisos()
   const supabase = createClient()
 
   const [logoUrl, setLogoUrl]           = useState<string | null>(null)
@@ -558,6 +558,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+          {permisosLoading ? (
+            // Evita el "flash": mientras se cargan los permisos del rol no se
+            // sabe todavía qué secciones ocultar, así que no se muestra nada
+            // en vez de mostrar el menú completo un instante y luego encogerlo.
+            <div className="space-y-2 animate-pulse px-1 pt-1">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="h-4 bg-gray-100 rounded" style={{ width: `${70 - i * 8}%` }} />
+              ))}
+            </div>
+          ) : (
+          <>
           {NAV_GROUPS.map((group, idx) => {
             const groupItems = filterAndSort(group.items)
             if (groupItems.length === 0) return null
@@ -657,6 +668,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               {item.label}
             </Link>
           ))}
+          </>
+          )}
         </nav>
 
         {/* Perfil, notificaciones y logout */}
@@ -664,7 +677,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="px-3 py-2">
             <p className="text-xs font-medium text-gray-900 truncate">{profile?.nombre}</p>
             <p className="text-xs text-gray-500 truncate">
-              {profile?.rol === 'gerencia' ? 'Gerencia' : profile?.rol === 'dueno' ? 'Dueño' : 'Administración'}
+              {profile?.rol === 'gerencia' ? 'Gerencia' : profile?.rol === 'dueno' ? 'Dueño' : profile?.rol === 'freelancer' ? 'Freelancer' : profile?.rol === 'mecanico' ? 'Profesional' : 'Administración'}
             </p>
           </div>
 
