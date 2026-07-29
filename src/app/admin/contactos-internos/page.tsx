@@ -2,6 +2,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 
+interface MetodoPago {
+  tipo: string
+  banco?: string | null
+  numero: string
+}
+
 interface Contacto {
   id: string
   nombre: string
@@ -9,9 +15,16 @@ interface Contacto {
   celulares: string[]
   correos: string[]
   links: string[]
+  metodos_pago: MetodoPago[]
   notas: string | null
   created_at: string
 }
+
+const TIPOS_PAGO = ['Cuenta bancaria', 'Nequi', 'Daviplata', 'Llave']
+const ICONO_PAGO: Record<string, string> = {
+  'Cuenta bancaria': '🏦', 'Nequi': '💜', 'Daviplata': '🔴', 'Llave': '🔑',
+}
+function iconoPago(tipo: string) { return ICONO_PAGO[tipo] ?? '💳' }
 
 const CAT_ICONS: Record<string, string> = {
   'Proveedores': '🏭', 'Soporte Técnico': '🛠️', 'Aliados': '🤝',
@@ -91,9 +104,72 @@ function ListaValores({ label, placeholder, type, values, onChange }: {
   )
 }
 
+// Editor de "cero, uno o varios" métodos de pago — cada uno con su propio
+// tipo (algunos piden banco, otros no), así que no todos los contactos
+// terminan con los mismos campos ni la misma cantidad de métodos.
+function MetodosPagoEditor({ values, onChange }: { values: MetodoPago[]; onChange: (v: MetodoPago[]) => void }) {
+  function agregar() {
+    onChange([...values, { tipo: 'Cuenta bancaria', banco: '', numero: '' }])
+  }
+  function quitar(idx: number) {
+    onChange(values.filter((_, i) => i !== idx))
+  }
+  function actualizar(idx: number, patch: Partial<MetodoPago>) {
+    onChange(values.map((m, i) => i === idx ? { ...m, ...patch } : m))
+  }
+
+  return (
+    <div>
+      <label className="text-xs font-medium text-gray-600 block mb-1">Métodos de pago <span className="text-gray-400">(opcional)</span></label>
+      {values.length > 0 && (
+        <div className="space-y-2 mb-2">
+          {values.map((m, idx) => (
+            <div key={idx} className="bg-gray-50 rounded-lg p-2.5 space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={m.tipo}
+                  onChange={e => actualizar(idx, { tipo: e.target.value })}
+                  className="flex-1 px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  {TIPOS_PAGO.map(t => <option key={t} value={t}>{iconoPago(t)} {t}</option>)}
+                </select>
+                <button type="button" onClick={() => quitar(idx)} className="p-1 text-gray-400 hover:text-red-600 transition-colors flex-shrink-0" title="Quitar">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              {m.tipo === 'Cuenta bancaria' && (
+                <input
+                  type="text"
+                  value={m.banco ?? ''}
+                  onChange={e => actualizar(idx, { banco: e.target.value })}
+                  placeholder="Nombre del banco"
+                  className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+              <input
+                type="text"
+                value={m.numero}
+                onChange={e => actualizar(idx, { numero: e.target.value })}
+                placeholder={m.tipo === 'Cuenta bancaria' ? 'Número de cuenta' : m.tipo === 'Llave' ? 'Valor de la llave' : 'Número de celular'}
+                className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      <button type="button" onClick={agregar}
+        className="w-full text-xs text-blue-600 hover:text-blue-800 border border-dashed border-gray-300 hover:border-blue-400 rounded-lg py-1.5 transition-colors">
+        + Agregar método de pago
+      </button>
+    </div>
+  )
+}
+
 const CATS_DEFAULT = ['General', 'Proveedores', 'Soporte Técnico', 'Aliados', 'Bancos', 'Transporte', 'Legal / Contable']
 
-const EMPTY_FORM = { nombre: '', categoria: 'General', catNueva: '', celulares: [] as string[], correos: [] as string[], links: [] as string[], notas: '' }
+const EMPTY_FORM = { nombre: '', categoria: 'General', catNueva: '', celulares: [] as string[], correos: [] as string[], links: [] as string[], metodosPago: [] as MetodoPago[], notas: '' }
 
 export default function ContactosInternosPage() {
   const { profile } = useAuth()
@@ -130,7 +206,7 @@ export default function ContactosInternosPage() {
   }
 
   function abrirEditar(c: Contacto) {
-    setForm({ nombre: c.nombre, categoria: c.categoria, catNueva: '', celulares: [...c.celulares], correos: [...c.correos], links: [...c.links], notas: c.notas ?? '' })
+    setForm({ nombre: c.nombre, categoria: c.categoria, catNueva: '', celulares: [...c.celulares], correos: [...c.correos], links: [...c.links], metodosPago: (c.metodos_pago ?? []).map(m => ({ ...m })), notas: c.notas ?? '' })
     setSel(c)
     setEditMode(true)
     setError(null)
@@ -153,6 +229,7 @@ export default function ContactosInternosPage() {
       celulares:  form.celulares,
       correos:    form.correos,
       links:      form.links,
+      metodos_pago: form.metodosPago,
       notas:      form.notas.trim() || null,
     }
 
@@ -302,6 +379,19 @@ export default function ContactosInternosPage() {
                     </div>
                   ))}
 
+                  {(c.metodos_pago ?? []).map((m, idx) => (
+                    <div key={`pago-${idx}`} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                      <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                        <span className="text-xs flex-shrink-0">{iconoPago(m.tipo)}</span>
+                        <div className="min-w-0">
+                          <p className="text-[10px] text-gray-400 font-medium truncate">{m.tipo}{m.banco ? ` · ${m.banco}` : ''}</p>
+                          <p className="text-xs text-gray-700 font-mono truncate">{m.numero}</p>
+                        </div>
+                      </div>
+                      <CopyBtn text={m.numero} />
+                    </div>
+                  ))}
+
                   {c.links.map((link, idx) => (
                     <a
                       key={`link-${idx}`}
@@ -409,6 +499,12 @@ export default function ContactosInternosPage() {
                 type="url"
                 values={form.links}
                 onChange={v => setForm(p => ({ ...p, links: v }))}
+              />
+
+              {/* Métodos de pago */}
+              <MetodosPagoEditor
+                values={form.metodosPago}
+                onChange={v => setForm(p => ({ ...p, metodosPago: v }))}
               />
 
               {/* Notas */}

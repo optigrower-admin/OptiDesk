@@ -21,6 +21,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     celulares?: string[]
     correos?: string[]
     links?: string[]
+    metodos_pago?: { tipo: string; banco?: string | null; numero: string }[]
     notas?: string | null
   }
 
@@ -30,6 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.celulares !== undefined) updates.celulares = body.celulares.filter(Boolean)
   if (body.correos !== undefined) updates.correos = body.correos.filter(Boolean)
   if (body.links !== undefined) updates.links = body.links.filter(Boolean)
+  if (body.metodos_pago !== undefined) updates.metodos_pago = body.metodos_pago.filter(m => m.numero?.trim())
   if (body.notas !== undefined) updates.notas = body.notas?.trim() || null
 
   const admin = createAdminClient()

@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
     celulares?: string[]
     correos?: string[]
     links?: string[]
+    metodos_pago?: { tipo: string; banco?: string | null; numero: string }[]
     notas?: string | null
   }
 
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest) {
       celulares: (body.celulares ?? []).filter(Boolean),
       correos: (body.correos ?? []).filter(Boolean),
       links: (body.links ?? []).filter(Boolean),
+      metodos_pago: (body.metodos_pago ?? []).filter(m => m.numero?.trim()),
       notas: body.notas?.trim() || null,
     })
     .select().single()
