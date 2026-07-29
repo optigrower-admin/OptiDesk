@@ -989,7 +989,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 ⚙️ Gestión
               </button>
             )}
-            {[...TABS, ...(esGerencia ? TABS_GERENCIA : [])].map(t => (
+            {[...TABS.filter(t => !(t.id === 'chats' && rolNorm === 'freelancer')), ...(esGerencia ? TABS_GERENCIA : [])].map(t => (
               <button key={t.id} onClick={() => setTabDer(t.id)}
                 className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-2 text-[10px] font-semibold whitespace-nowrap border-b-2 transition-colors ${
                   tabDer === t.id

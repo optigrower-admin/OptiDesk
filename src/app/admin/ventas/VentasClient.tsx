@@ -276,6 +276,8 @@ function NuevoClienteModal({ onClose, onCreated }: { onClose: () => void; onCrea
 
 export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const { profile } = useAuth()
+  const rolNorm = (profile?.rol ?? '').toLowerCase().replace('ñ', 'n')
+  const esFreelancer = rolNorm === 'freelancer'
   const supabase = createClient()
   const etapasPipeline = useEtapasPipeline(tenantId)
   const [tab, setTab] = useState<Tab>('kanban')
@@ -488,7 +490,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
           <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
             {([
               { id: 'kanban',  label: 'Kanban' },
-              { id: 'bandeja', label: '📥 Bandeja' },
+              ...(esFreelancer ? [] : [{ id: 'bandeja' as Tab, label: '📥 Bandeja' }]),
               { id: 'hoy',     label: 'Hoy' },
               { id: 'lista',   label: 'Lista' },
             ] as { id: Tab; label: string }[]).map(t => (
@@ -606,7 +608,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       {tab === 'kanban' && (
         <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} tabsSlot={pipelineTabsSlot} onLeadPatch={patchLead} onLeadRemove={removeLead} etapasPipeline={etapasPipeline} />
       )}
-      {tab === 'bandeja' && (
+      {tab === 'bandeja' && !esFreelancer && (
         <VistaBandeja leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} onLeadPatch={patchLead} onLeadRemove={removeLead} />
       )}
       {tab === 'hoy' && (
