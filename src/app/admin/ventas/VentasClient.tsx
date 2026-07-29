@@ -384,7 +384,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Seguimiento Ventas</h1>
+          <h1 className="text-xl font-bold text-gray-900">Pipeline - Seguimiento Clientes</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {activos.length} clientes activos
             {sinSeguim > 0 && (
