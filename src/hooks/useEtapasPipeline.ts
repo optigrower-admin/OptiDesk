@@ -60,9 +60,10 @@ export interface PipelineDinamico {
   nombre: string
   orden: number
   grupos: GrupoDinamico[]
+  rolesOcultos: string[] // roles a los que este pipeline no se les muestra como pestaña
 }
 
-interface RowPipeline { id: string; clave: string; nombre: string; orden: number }
+interface RowPipeline { id: string; clave: string; nombre: string; orden: number; roles_ocultos: string[] | null }
 interface RowGrupo { id: string; pipeline_id: string; clave: string; nombre: string; color: string; orden: number }
 interface RowEtapa {
   id: string; pipeline_id: string; grupo_id: string | null; clave: string; label: string
@@ -85,7 +86,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
 
     async function cargar() {
       const [{ data: pv }, { data: pg }, { data: ep }, { data: rg }, { data: br }] = await Promise.all([
-        supabase.from('pipelines_venta').select('id, clave, nombre, orden').eq('tenant_id', tenantId).order('orden'),
+        supabase.from('pipelines_venta').select('id, clave, nombre, orden, roles_ocultos').eq('tenant_id', tenantId).order('orden'),
         supabase.from('pipeline_grupos').select('id, pipeline_id, clave, nombre, color, orden').eq('tenant_id', tenantId).order('orden'),
         supabase.from('etapas_pipeline').select('*').eq('tenant_id', tenantId).order('orden'),
         supabase.from('reglas_etapa').select('*').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
@@ -122,6 +123,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
 
       const pipelinesOut: PipelineDinamico[] = pipelinesRaw.map(p => ({
         id: p.id, clave: p.clave, nombre: p.nombre, orden: p.orden,
+        rolesOcultos: p.roles_ocultos ?? [],
         grupos: gruposRaw
           .filter(g => g.pipeline_id === p.id)
           .map(g => ({

@@ -17,7 +17,7 @@ type Etapa = {
 }
 
 type Grupo = { id: string; clave: string; nombre: string; color: string; orden: number; etapas: Etapa[] }
-type Pipeline = { id: string; clave: string; nombre: string; orden: number; grupos: Grupo[] }
+type Pipeline = { id: string; clave: string; nombre: string; orden: number; grupos: Grupo[]; roles_ocultos: string[] | null }
 
 type FlagKey = 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido'
 
@@ -472,6 +472,23 @@ export default function PipelinesConfig() {
                 <button onClick={() => eliminarPipeline(p.id, p.nombre)} className="text-xs text-red-500 hover:underline">Eliminar</button>
               </>
             )}
+          </div>
+
+          {/* Ocultar este pipeline (pestaña completa) para ciertos roles */}
+          <div className="px-4 py-2.5 bg-gray-50/60 border-b border-gray-100 flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-1">Ocultar pipeline para:</span>
+            {ROLES_BLOQUEO.map(r => {
+              const oculto = (p.roles_ocultos ?? []).includes(r.value)
+              return (
+                <button key={r.value} disabled={busy}
+                  onClick={() => accionar(() => llamar({ accion: 'set_pipeline_oculto', pipeline_id: p.id, rol: r.value, oculto: !oculto }))}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors disabled:opacity-50 ${
+                    oculto ? 'bg-gray-700 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'
+                  }`}>
+                  {oculto ? '🚫 ' : ''}{r.label}
+                </button>
+              )
+            })}
           </div>
 
           <div className="p-4 space-y-3">

@@ -148,7 +148,10 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   const [bloqueoMsg, setBloqueoMsg]   = useState<string | null>(null)
   const [activePipelineId, setActivePipelineId] = useState<string | null>(null)
 
-  const { etapas, pipelines, etapaMap } = etapasPipeline
+  const { etapas, pipelines: todosPipelines, etapaMap } = etapasPipeline
+  // Pipelines ocultos para mi rol (ej. Freelancer no ve Pipeline Post-Venta) —
+  // configurable desde Config Ventas → Pipelines y Etapas → "Ocultar pipeline para".
+  const pipelines = todosPipelines.filter(p => !p.rolesOcultos?.includes(rolNorm))
 
   // Seleccionar el primer pipeline en cuanto carguen (o si el activo desaparece)
   useEffect(() => {

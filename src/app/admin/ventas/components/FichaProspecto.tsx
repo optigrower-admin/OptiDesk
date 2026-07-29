@@ -383,6 +383,10 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   // Auto-guarda etapa al cambiarla en el select
   const autoSaveEtapa = async (newEtapa: EtapaVenta) => {
+    if (etapasPipeline.etapaMap[newEtapa]?.rolesBloqueados?.includes(rolNorm)) {
+      setBloqueoMsg('No tienes permiso para mover clientes a esta etapa.')
+      return
+    }
     const reglaAprobacionNueva = etapasPipeline.etapaMap[newEtapa]?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
     if (reglaAprobacionNueva?.bloquea_cambio_etapa &&
         aprobacionStatus !== 'aprobado') {

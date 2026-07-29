@@ -83,6 +83,8 @@ export async function POST(req: NextRequest) {
     bg?: string
     border?: string
     direccion?: 'arriba' | 'abajo'
+    rol?: string
+    oculto?: boolean
   } & EtapaFlags
 
   const { accion } = body
@@ -126,6 +128,18 @@ export async function POST(req: NextRequest) {
     if (!body.pipeline_id || !body.direccion) return NextResponse.json({ error: 'Faltan campos' }, { status: 400 })
     const { data: hermanos } = await admin.from('pipelines_venta').select('id, orden').eq('tenant_id', tenantId)
     await mover(admin, 'pipelines_venta', hermanos ?? [], body.pipeline_id, body.direccion)
+    return NextResponse.json({ ok: true })
+  }
+
+  if (accion === 'set_pipeline_oculto') {
+    if (!body.pipeline_id || !body.rol) return NextResponse.json({ error: 'Faltan campos' }, { status: 400 })
+    const { data: pl } = await admin.from('pipelines_venta').select('roles_ocultos').eq('id', body.pipeline_id).eq('tenant_id', tenantId).single()
+    if (!pl) return NextResponse.json({ error: 'Pipeline no encontrado' }, { status: 404 })
+    const actuales = new Set((pl.roles_ocultos as string[] | null) ?? [])
+    if (body.oculto) actuales.add(body.rol); else actuales.delete(body.rol)
+    const { error } = await admin.from('pipelines_venta')
+      .update({ roles_ocultos: Array.from(actuales) }).eq('id', body.pipeline_id).eq('tenant_id', tenantId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })
   }
 
