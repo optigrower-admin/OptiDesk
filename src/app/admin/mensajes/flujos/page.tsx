@@ -38,6 +38,7 @@ type Flujo = {
   nombre: string
   descripcion: string | null
   trigger_tipo: string
+  grupo: string
   nodos: { nodes: Node[]; edges: Edge[] } | null
   activo: boolean
   created_at: string
@@ -125,11 +126,17 @@ const TriggerNode = ({ id, data }: NodeProps) => {
           <option value="nuevo_cliente">Cliente nuevo creado</option>
         </select>
         {(data.trigger_tipo === 'etapa_cambiada') && (
-          <select defaultValue={data.etapa_trigger ?? ''} onChange={e => upd('etapa_trigger', e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400">
-            <option value="">Cualquier etapa</option>
-            {ETAPAS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
-          </select>
+          <>
+            <select defaultValue={data.etapa_trigger ?? ''} onChange={e => upd('etapa_trigger', e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400">
+              <option value="">Cualquier etapa</option>
+              {ETAPAS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
+            </select>
+            <p className="text-[10px] text-amber-600 leading-tight">
+              ⚠️ Este disparador todavía no se activa solo al mover una tarjeta en el Kanban — por ahora solo
+              corre si el flujo se inicia manualmente. Muy pronto quedará conectado automáticamente.
+            </p>
+          </>
         )}
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-blue-400 !w-3 !h-3" />
@@ -257,6 +264,34 @@ const EsperarNode = ({ id, data }: NodeProps) => {
   )
 }
 
+// ─── NODO: Esperar días en la etapa actual ────────────────────────────────────
+const EsperaEtapaNode = ({ id, data }: NodeProps) => {
+  const { setNodes, setEdges } = useReactFlow()
+  const upd = (k: string, v: string) =>
+    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
+
+  return (
+    <div className={`${nodeBaseClass} border-amber-400`}>
+      <Handle type="target" position={Position.Top} className="!bg-amber-400 !w-3 !h-3" />
+      <NodeHeader color="bg-amber-500" icon="⏳" label="Esperar días en etapa" onDelete={eliminar} />
+      <div className="px-3 py-2.5 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 whitespace-nowrap">Días sin moverse:</span>
+          <input type="number" defaultValue={data.dias ?? 1} min={0} max={365}
+            onChange={e => upd('dias', e.target.value)}
+            className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400" />
+        </div>
+        <p className="text-[10px] text-gray-400 leading-tight">
+          Pausa el flujo hasta que el cliente lleve esta cantidad de días en su etapa actual (contados desde
+          el último cambio de etapa), y luego sigue al siguiente nodo.
+        </p>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!bg-amber-400 !w-3 !h-3" />
+    </div>
+  )
+}
+
 // ─── NODO: Etapa ─────────────────────────────────────────────────────────────
 const EtapaNode = ({ id, data }: NodeProps) => {
   const { setNodes, setEdges } = useReactFlow()
@@ -295,7 +330,7 @@ const CondicionNode = ({ id, data }: NodeProps) => {
   const needsTexto    = ['respuesta_contiene','palabras_clave','contiene_todas','es_exactamente','empieza_con','termina_con']
   const needsLongitud = tipo === 'longitud_mayor'
   const needsCanal    = tipo === 'canal'
-  const needsEtapa    = tipo === 'etapa'
+  const needsEtapa    = tipo === 'etapa' || tipo === 'etapa_o_posterior'
   const needsIA       = tipo === 'ia_evalua'
 
   const placeholderTexto: Record<string,string> = {
@@ -336,6 +371,10 @@ const CondicionNode = ({ id, data }: NodeProps) => {
             <option value="tiene_celular">Tiene celular registrado</option>
             <option value="es_nuevo">Es cliente nuevo</option>
             <option value="horario_laboral">Está en horario laboral</option>
+          </optgroup>
+          <optgroup label="── Pipeline / Automatización ──">
+            <option value="etapa_o_posterior">Etapa: esta o más adelante</option>
+            <option value="aprobacion_pendiente">Aprobación de gerencia pendiente</option>
           </optgroup>
           <optgroup label="── Inteligencia Artificial ──">
             <option value="ia_evalua">IA evalúa si se cumple condición</option>
@@ -847,7 +886,7 @@ const IrANodoNode = ({ id, data }: NodeProps) => {
     trigger: '⚡', mensaje: '💬', esperar: '⏱️', condicion: '🔀',
     menu_opciones: '📋', capturar_dato: '💾', asignar: '👤', etapa: '📊',
     etiqueta: '🏷️', agente_ia: '🤖', plantilla: '📄', media: '📎',
-    nota_interna: '📝', subflujo: '🔗', fin: '🏁',
+    nota_interna: '📝', subflujo: '🔗', fin: '🏁', espera_etapa: '⏳',
   }
 
   const labelNodo = (n: typeof otrosNodos[number]) => {
@@ -861,6 +900,8 @@ const IrANodoNode = ({ id, data }: NodeProps) => {
       return `${icono} Menú (${d.cantidad ?? 3} opciones)`
     if (n.type === 'condicion')
       return `${icono} Condición: ${d.condicion_tipo ?? ''}`
+    if (n.type === 'espera_etapa')
+      return `${icono} Esperar ${d.dias ?? 1} día${Number(d.dias ?? 1) !== 1 ? 's' : ''} en etapa`
     const tipoNombre: Record<string, string> = {
       trigger: 'Disparador', asignar: 'Asignar asesor', etapa: 'Cambiar etapa',
       etiqueta: 'Etiquetar', capturar_dato: 'Guardar dato', agente_ia: 'Agente IA',
@@ -924,25 +965,27 @@ const NODE_TYPES: NodeTypes = {
   menu_opciones:  MenuOpcionesNode,
   ir_a_nodo:      IrANodoNode,
   fin:            FinNode,
+  espera_etapa:   EsperaEtapaNode,
 }
 
 // ─── Paleta de nodos ──────────────────────────────────────────────────────────
 const PALETTE_ITEMS = [
-  { type: 'mensaje',       icon: '💬', label: 'Enviar mensaje',    color: 'border-green-300 bg-green-50 hover:bg-green-100'    },
-  { type: 'agente_ia',    icon: '🤖', label: 'Agente IA',         color: 'border-indigo-300 bg-indigo-50 hover:bg-indigo-100'  },
-  { type: 'plantilla',    icon: '📋', label: 'Plantilla Meta',    color: 'border-teal-300 bg-teal-50 hover:bg-teal-100'       },
-  { type: 'media',        icon: '📎', label: 'Archivo/Media',     color: 'border-pink-300 bg-pink-50 hover:bg-pink-100'       },
-  { type: 'condicion',    icon: '🔀', label: 'Condición',         color: 'border-yellow-300 bg-yellow-50 hover:bg-yellow-100'  },
-  { type: 'capturar_dato', icon: '💾', label: 'Guardar respuesta', color: 'border-violet-300 bg-violet-50 hover:bg-violet-100' },
-  { type: 'menu_opciones', icon: '📋', label: 'Menú de opciones', color: 'border-fuchsia-300 bg-fuchsia-50 hover:bg-fuchsia-100' },
-  { type: 'ir_a_nodo',    icon: '↩',  label: 'Ir a nodo',       color: 'border-sky-300 bg-sky-50 hover:bg-sky-100'             },
-  { type: 'asignar',      icon: '👤', label: 'Asignar asesor',    color: 'border-purple-300 bg-purple-50 hover:bg-purple-100'  },
-  { type: 'etapa',        icon: '📊', label: 'Cambiar etapa',     color: 'border-cyan-300 bg-cyan-50 hover:bg-cyan-100'       },
-  { type: 'esperar',      icon: '⏱️', label: 'Esperar / Delay',   color: 'border-orange-300 bg-orange-50 hover:bg-orange-100'  },
-  { type: 'etiqueta',     icon: '🏷️', label: 'Etiquetar cliente', color: 'border-rose-300 bg-rose-50 hover:bg-rose-100'       },
-  { type: 'nota_interna', icon: '📝', label: 'Nota interna',      color: 'border-yellow-200 bg-yellow-50 hover:bg-yellow-100'  },
-  { type: 'subflujo',     icon: '🔗', label: 'Subflujo',          color: 'border-slate-300 bg-slate-50 hover:bg-slate-100'    },
-  { type: 'fin',          icon: '🏁', label: 'Fin del flujo',     color: 'border-gray-300 bg-gray-50 hover:bg-gray-100'       },
+  { type: 'mensaje',       icon: '💬', label: 'Enviar mensaje',    color: 'border-green-300 bg-green-50 hover:bg-green-100',    categoria: 'mensajeria' },
+  { type: 'agente_ia',    icon: '🤖', label: 'Agente IA',         color: 'border-indigo-300 bg-indigo-50 hover:bg-indigo-100',  categoria: 'mensajeria' },
+  { type: 'plantilla',    icon: '📋', label: 'Plantilla Meta',    color: 'border-teal-300 bg-teal-50 hover:bg-teal-100',        categoria: 'mensajeria' },
+  { type: 'media',        icon: '📎', label: 'Archivo/Media',     color: 'border-pink-300 bg-pink-50 hover:bg-pink-100',        categoria: 'mensajeria' },
+  { type: 'condicion',    icon: '🔀', label: 'Condición',         color: 'border-yellow-300 bg-yellow-50 hover:bg-yellow-100',  categoria: 'mensajeria' },
+  { type: 'capturar_dato', icon: '💾', label: 'Guardar respuesta', color: 'border-violet-300 bg-violet-50 hover:bg-violet-100', categoria: 'mensajeria' },
+  { type: 'menu_opciones', icon: '📋', label: 'Menú de opciones', color: 'border-fuchsia-300 bg-fuchsia-50 hover:bg-fuchsia-100', categoria: 'mensajeria' },
+  { type: 'ir_a_nodo',    icon: '↩',  label: 'Ir a nodo',       color: 'border-sky-300 bg-sky-50 hover:bg-sky-100',            categoria: 'mensajeria' },
+  { type: 'asignar',      icon: '👤', label: 'Asignar asesor',    color: 'border-purple-300 bg-purple-50 hover:bg-purple-100', categoria: 'mensajeria' },
+  { type: 'esperar',      icon: '⏱️', label: 'Esperar / Delay',   color: 'border-orange-300 bg-orange-50 hover:bg-orange-100', categoria: 'mensajeria' },
+  { type: 'etiqueta',     icon: '🏷️', label: 'Etiquetar cliente', color: 'border-rose-300 bg-rose-50 hover:bg-rose-100',       categoria: 'mensajeria' },
+  { type: 'nota_interna', icon: '📝', label: 'Nota interna',      color: 'border-yellow-200 bg-yellow-50 hover:bg-yellow-100', categoria: 'mensajeria' },
+  { type: 'subflujo',     icon: '🔗', label: 'Subflujo',          color: 'border-slate-300 bg-slate-50 hover:bg-slate-100',    categoria: 'mensajeria' },
+  { type: 'etapa',        icon: '📊', label: 'Cambiar etapa',        color: 'border-cyan-300 bg-cyan-50 hover:bg-cyan-100',   categoria: 'pipeline' },
+  { type: 'espera_etapa', icon: '⏳', label: 'Esperar días en etapa', color: 'border-amber-300 bg-amber-50 hover:bg-amber-100', categoria: 'pipeline' },
+  { type: 'fin',          icon: '🏁', label: 'Fin del flujo',     color: 'border-gray-300 bg-gray-50 hover:bg-gray-100',       categoria: 'ambos' },
 ]
 
 function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[]; etiquetas: Etiqueta[] }): Record<string, unknown> {
@@ -966,6 +1009,7 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
       { etiqueta: '', tipo_match: 'numero', valor_match: '' },
     ] }
     case 'ir_a_nodo':      return { nodo_destino_id: '' }
+    case 'espera_etapa':   return { dias: 1 }
     case 'fin':            return {}
     default:              return {}
   }
@@ -981,9 +1025,10 @@ type EditorProps = {
   onClose: () => void
   onSaved: () => void
   tenantId: string
+  grupoInicial: string
 }
 
-function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId }: EditorProps) {
+function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial }: EditorProps) {
   const supabase   = createClient()
   const rfWrapper  = useRef<HTMLDivElement>(null)
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null)
@@ -1068,7 +1113,7 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId }: EditorProp
       } else {
         const { error } = await supabase.from('flujos_automatizacion').insert({
           tenant_id: tenantId, nombre, descripcion: descripcion || null,
-          trigger_tipo: triggerTipo, nodos, activo,
+          trigger_tipo: triggerTipo, nodos, activo, grupo: grupoInicial,
         })
         if (error) throw error
       }
@@ -1123,9 +1168,34 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId }: EditorProp
       <div className="flex flex-1 overflow-hidden">
         {/* Paleta de nodos */}
         <div className="w-48 bg-white border-r border-gray-200 p-3 flex-shrink-0 overflow-y-auto">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Nodos disponibles</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Mensajería</p>
+          <div className="space-y-1 mb-4">
+            {PALETTE_ITEMS.filter(item => item.categoria === 'mensajeria').map(item => (
+              <div key={item.type} draggable
+                onDragStart={e => { e.dataTransfer.setData('application/reactflow', item.type); e.dataTransfer.effectAllowed = 'move' }}
+                onClick={() => addNode(item.type)}
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-grab active:cursor-grabbing transition-colors ${item.color}`}>
+                <span className="text-sm">{item.icon}</span>
+                <span className="text-xs font-medium text-gray-700">{item.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Pipeline / Automatización</p>
+          <div className="space-y-1 mb-4">
+            {PALETTE_ITEMS.filter(item => item.categoria === 'pipeline').map(item => (
+              <div key={item.type} draggable
+                onDragStart={e => { e.dataTransfer.setData('application/reactflow', item.type); e.dataTransfer.effectAllowed = 'move' }}
+                onClick={() => addNode(item.type)}
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-grab active:cursor-grabbing transition-colors ${item.color}`}>
+                <span className="text-sm">{item.icon}</span>
+                <span className="text-xs font-medium text-gray-700">{item.label}</span>
+              </div>
+            ))}
+          </div>
+
           <div className="space-y-1">
-            {PALETTE_ITEMS.map(item => (
+            {PALETTE_ITEMS.filter(item => item.categoria === 'ambos').map(item => (
               <div key={item.type} draggable
                 onDragStart={e => { e.dataTransfer.setData('application/reactflow', item.type); e.dataTransfer.effectAllowed = 'move' }}
                 onClick={() => addNode(item.type)}
@@ -1233,6 +1303,7 @@ export default function FlujoPage() {
   const [loading,  setLoading]  = useState(true)
   const [editando, setEditando] = useState<Flujo | null | 'new'>(null)
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
+  const [tab, setTab] = useState<'mensajeria' | 'automatizaciones'>('mensajeria')
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
@@ -1288,9 +1359,12 @@ export default function FlujoPage() {
         onClose={() => setEditando(null)}
         onSaved={onSaved}
         tenantId={profile?.tenant_id ?? ''}
+        grupoInicial={editando === 'new' ? tab : editando.grupo}
       />
     )
   }
+
+  const flujosFiltrados = flujos.filter(f => (f.grupo ?? 'mensajeria') === tab)
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -1310,30 +1384,57 @@ export default function FlujoPage() {
         )}
       </div>
 
+      {/* Pestañas de grupo */}
+      <div className="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1 w-fit">
+        <button onClick={() => setTab('mensajeria')}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === 'mensajeria' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          💬 Mensajería
+        </button>
+        <button onClick={() => setTab('automatizaciones')}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === 'automatizaciones' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          🔀 Automatizaciones
+        </button>
+      </div>
+
       {/* Info box */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-xs text-blue-800">
-        <p className="font-semibold mb-1">⚡ Cómo funcionan los flujos</p>
-        <p>Cuando llega un mensaje de WhatsApp, Messenger o Instagram, el sistema detecta si hay un flujo activo con ese disparador y lo ejecuta automáticamente. Los <strong>delays</strong> se procesan cada minuto. Los <strong>Agentes IA</strong> requieren configurar las API keys en <em>Config Ventas → APIs IA</em>.</p>
+        {tab === 'mensajeria' ? (
+          <>
+            <p className="font-semibold mb-1">⚡ Cómo funcionan los flujos</p>
+            <p>Cuando llega un mensaje de WhatsApp, Messenger o Instagram, el sistema detecta si hay un flujo activo con ese disparador y lo ejecuta automáticamente. Los <strong>delays</strong> se procesan cada minuto. Los <strong>Agentes IA</strong> requieren configurar las API keys en <em>Config Ventas → APIs IA</em>.</p>
+          </>
+        ) : (
+          <>
+            <p className="font-semibold mb-1">🔀 Automatizaciones de pipeline</p>
+            <p>Arma reglas con los nodos de la categoría <strong>Pipeline / Automatización</strong> en la paleta: condiciones de etapa, aprobación pendiente, esperar días en una etapa, y cambiar de etapa — todo dentro del mismo motor de flujos, para que después puedas mezclarlas con mensajes, asignaciones, etc.</p>
+          </>
+        )}
       </div>
 
       {loading ? (
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : flujos.length === 0 ? (
+      ) : flujosFiltrados.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-2xl border border-gray-200">
-          <span className="text-4xl block mb-3">⚡</span>
-          <h3 className="font-semibold text-gray-900 mb-1">Sin flujos aún</h3>
-          <p className="text-sm text-gray-500 mb-5 max-w-xs mx-auto">Crea tu primer flujo para automatizar respuestas y gestión de clientes.</p>
+          <span className="text-4xl block mb-3">{tab === 'mensajeria' ? '⚡' : '🔀'}</span>
+          <h3 className="font-semibold text-gray-900 mb-1">
+            {tab === 'mensajeria' ? 'Sin flujos de mensajería aún' : 'Sin automatizaciones aún'}
+          </h3>
+          <p className="text-sm text-gray-500 mb-5 max-w-xs mx-auto">
+            {tab === 'mensajeria'
+              ? 'Crea tu primer flujo para automatizar respuestas y gestión de clientes.'
+              : 'Crea tu primera automatización de pipeline: mover etapas, pedir datos o bloquear el avance según condiciones.'}
+          </p>
           {profile?.rol === 'gerencia' && (
             <button onClick={() => setEditando('new')} className="px-5 py-2 bg-blue-700 text-white rounded-xl text-sm hover:bg-blue-800">
-              Crear primer flujo
+              {tab === 'mensajeria' ? 'Crear primer flujo' : 'Crear primera automatización'}
             </button>
           )}
         </div>
       ) : (
         <div className="space-y-3">
-          {flujos.map(flujo => {
+          {flujosFiltrados.map(flujo => {
             const nodosCount = flujo.nodos?.nodes?.length ?? 0
             return (
               <div key={flujo.id} className={`bg-white border rounded-xl p-4 flex items-center gap-4 hover:border-gray-300 transition-colors ${flujo.activo ? 'border-blue-200 bg-blue-50/30' : 'border-gray-200'}`}>

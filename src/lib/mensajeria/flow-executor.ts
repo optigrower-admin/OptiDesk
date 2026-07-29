@@ -391,6 +391,33 @@ async function procesarNodo(
       }
     }
 
+    // ── Esperar N días en la etapa actual del cliente ─────────────────────────
+    // Reutiliza el mismo mecanismo de pausa/reanudación que el nodo 'esperar'
+    // (proxima_ejecucion_at), en vez de un cron aparte. Usa historial_etapas_cliente
+    // (ya existente desde la v39) para saber con precisión desde cuándo el cliente
+    // está en su etapa actual.
+    case 'espera_etapa': {
+      const dias = Number(data.dias ?? 1)
+      const siguienteId = getSiguienteNodo(edges, nodo.id)
+      if (!clienteId) return { tipo: 'continuar', siguiente_nodo_id: siguienteId }
+
+      const { data: historial } = await supabase
+        .from('historial_etapas_cliente')
+        .select('created_at')
+        .eq('cliente_id', clienteId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const desde = historial?.created_at ? new Date(historial.created_at).getTime() : Date.now()
+      const objetivo = desde + dias * 86_400_000
+
+      if (Date.now() >= objetivo) {
+        return { tipo: 'continuar', siguiente_nodo_id: siguienteId }
+      }
+      return { tipo: 'pausar', proxima_ejecucion_at: new Date(objetivo).toISOString(), siguiente_nodo_id: nodo.id }
+    }
+
     // ── Condición (bifurcación) ───────────────────────────────────────────────
     case 'condicion': {
       const condicionTipo  = String(data.condicion_tipo  ?? '')
@@ -415,6 +442,25 @@ async function procesarNodo(
         case 'etapa':
           resultado = (contexto.etapa_actual ?? '') === condicionValor
           break
+
+        // ── Etapa (esta o más adelante en el pipeline) ───────────────────────
+        case 'etapa_o_posterior': {
+          const { ETAPAS } = await import('@/lib/ventas/pipeline')
+          const ordenActual   = ETAPAS.findIndex(e => e.id === contexto.etapa_actual)
+          const ordenObjetivo = ETAPAS.findIndex(e => e.id === condicionValor)
+          resultado = ordenActual >= 0 && ordenObjetivo >= 0 && ordenActual >= ordenObjetivo
+          break
+        }
+
+        // ── Aprobación de gerencia pendiente ─────────────────────────────────
+        case 'aprobacion_pendiente': {
+          if (clienteId) {
+            const { data: cl } = await supabase
+              .from('clientes').select('estado_aprobacion_matricula').eq('id', clienteId).maybeSingle()
+            resultado = cl?.estado_aprobacion_matricula !== 'aprobado'
+          }
+          break
+        }
 
         // ── Tiene celular ────────────────────────────────────────────────────
         case 'tiene_celular': {

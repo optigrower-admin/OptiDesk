@@ -22,6 +22,7 @@ export type TipoNodo =
   | 'menu_opciones'
   | 'ir_a_nodo'
   | 'fin'
+  | 'espera_etapa'
 
 // ─── Tipos de disparador ──────────────────────────────────────────────────────
 export type TriggerTipo =
@@ -60,8 +61,13 @@ export interface DatosEtapa {
 }
 
 export interface DatosCondicion {
-  condicion_tipo: 'etiqueta' | 'canal' | 'respuesta_contiene' | 'etapa' | 'tiene_celular' | 'es_nuevo'
+  condicion_tipo: 'etiqueta' | 'canal' | 'respuesta_contiene' | 'etapa' | 'tiene_celular' | 'es_nuevo' |
+    'etapa_o_posterior' | 'aprobacion_pendiente'
   condicion_valor?: string
+}
+
+export interface DatosEsperaEtapa {
+  dias: number
 }
 
 export interface DatosAgenteIA {
@@ -125,6 +131,7 @@ export type DatosNodo =
   | (DatosMenuOpciones & { tipo: 'menu_opciones' })
   | ({ tipo: 'ir_a_nodo'; nodo_destino_id: string })
   | ({ tipo: 'fin' })
+  | (DatosEsperaEtapa & { tipo: 'espera_etapa' })
 
 // ─── Estructura del flujo guardado en DB (nodos JSONB) ────────────────────────
 export interface NodosGuardados {
@@ -139,6 +146,7 @@ export interface Flujo {
   nombre: string
   descripcion: string | null
   trigger_tipo: TriggerTipo
+  grupo: string
   nodos: NodosGuardados | null
   activo: boolean
   created_at: string
