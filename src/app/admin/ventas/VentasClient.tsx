@@ -284,6 +284,8 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [usuariosFiltro, setUsuariosFiltro] = useState<Set<string>>(new Set())
   const [abrirClienteId, setAbrirClienteId] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
   const [pipelineTabsSlot, setPipelineTabsSlot] = useState<HTMLDivElement | null>(null)
   const [whatsappOpen, setWhatsappOpen] = useState(false)
   const [idsExtraSearch, setIdsExtraSearch] = useState<Set<string>>(new Set())
@@ -439,8 +441,16 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         idsExtraSearch.has(l.id)
       )
     }
+    if (fechaDesde) {
+      const desde = new Date(fechaDesde + 'T00:00:00').getTime()
+      lista = lista.filter(l => l.created_at && new Date(l.created_at).getTime() >= desde)
+    }
+    if (fechaHasta) {
+      const hasta = new Date(fechaHasta + 'T23:59:59.999').getTime()
+      lista = lista.filter(l => l.created_at && new Date(l.created_at).getTime() <= hasta)
+    }
     return lista
-  }, [leadsState, usuariosFiltro, busqueda, idsExtraSearch])
+  }, [leadsState, usuariosFiltro, busqueda, idsExtraSearch, fechaDesde, fechaHasta])
 
   const sinSeguim = activos.filter(l => !l.proxima_accion_fecha).length
 
@@ -539,8 +549,8 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       {/* Buscador */}
       {tab !== 'bandeja' && (
         <div className="mb-4">
-          <div className="flex items-center gap-3">
-            <div className="relative max-w-sm flex-1">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative max-w-sm flex-1 min-w-[200px]">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
               <input
                 value={busqueda}
@@ -555,6 +565,24 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
                 </button>
               )}
             </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400 flex-shrink-0">Agregado:</span>
+              <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
+                title="Desde"
+                className="border-2 border-gray-300 rounded-xl px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white" />
+              <span className="text-xs text-gray-400 flex-shrink-0">a</span>
+              <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
+                title="Hasta"
+                className="border-2 border-gray-300 rounded-xl px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white" />
+              {(fechaDesde || fechaHasta) && (
+                <button onClick={() => { setFechaDesde(''); setFechaHasta('') }}
+                  className="text-xs text-gray-400 hover:text-gray-600 flex-shrink-0">
+                  × Limpiar
+                </button>
+              )}
+            </div>
+
             {tab === 'kanban' && <div ref={setPipelineTabsSlot} className="flex-shrink-0" />}
           </div>
           {busqueda.trim() && (
@@ -564,6 +592,11 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
                 : leadsFiltrados.length === 0
                   ? 'Sin resultados para esta búsqueda.'
                   : `${leadsFiltrados.length} cliente${leadsFiltrados.length === 1 ? '' : 's'} encontrado${leadsFiltrados.length === 1 ? '' : 's'}`}
+            </p>
+          )}
+          {!busqueda.trim() && (fechaDesde || fechaHasta) && (
+            <p className="text-xs text-gray-500 mt-1.5 ml-1">
+              {leadsFiltrados.length} cliente{leadsFiltrados.length === 1 ? '' : 's'} agregado{leadsFiltrados.length === 1 ? '' : 's'} en ese rango
             </p>
           )}
         </div>
