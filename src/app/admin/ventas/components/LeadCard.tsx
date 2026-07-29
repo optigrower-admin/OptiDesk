@@ -109,14 +109,16 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, 
   const esUrgente        = sinResponder.urgente || seguimiento === 'vencido'
   const nombrePendiente  = lead.nombre_pendiente_aprobacion === true
   const esAutomatizado   = lead.automatizado === true
-  const reglaAlistamiento = etapaInfo?.reglas?.find(r => r.campo === 'alistamiento')
-  const reglaCelular      = etapaInfo?.reglas?.find(r => r.campo === 'celular')
-  const reglaPlaca        = etapaInfo?.reglas?.find(r => r.campo === 'placa')
-  const reglaAprobacion   = etapaInfo?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
+  const reglaAlistamiento  = etapaInfo?.reglas?.find(r => r.campo === 'alistamiento')
+  const reglaCelular       = etapaInfo?.reglas?.find(r => r.campo === 'celular')
+  const reglaPlaca         = etapaInfo?.reglas?.find(r => r.campo === 'placa')
+  const reglaFechaEntrega  = etapaInfo?.reglas?.find(r => r.campo === 'fecha_entrega')
+  const reglaAprobacion    = etapaInfo?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
 
-  const necesitaAlistamiento = !!reglaAlistamiento && lead.tieneAlistamiento === false
-  const necesitaCelular = !!reglaCelular && !lead.cliente?.celular
-  const necesitaPlaca   = !!reglaPlaca && lead.tienePlaca === false
+  const necesitaAlistamiento  = !!reglaAlistamiento && lead.tieneAlistamiento === false
+  const necesitaCelular       = !!reglaCelular && !lead.cliente?.celular
+  const necesitaPlaca         = !!reglaPlaca && lead.tienePlaca === false
+  const necesitaFechaEntrega  = !!reglaFechaEntrega && !lead.fecha_entrega
   const esAprobado      = !!reglaAprobacion
   const campana       = lead.leads_campana?.[0]?.utm_campaign
   const canales       = lead.todas_conversaciones.length > 0
@@ -157,6 +159,8 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, 
       className={`rounded-xl border shadow-sm p-3 cursor-pointer select-none transition-shadow hover:shadow-md ${
         necesitaAlistamiento || necesitaPlaca
           ? 'bg-red-50 border-red-400 border-l-4 border-l-red-600'
+          : necesitaFechaEntrega
+            ? 'bg-orange-50 border-orange-300 border-l-4 border-l-orange-500'
           : necesitaCelular
             ? 'bg-orange-50 border-orange-300 border-l-4 border-l-orange-500'
             : nombrePendiente
@@ -198,6 +202,13 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, 
       {necesitaPlaca && (
         <div className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5">
           ⚠ {(reglaPlaca?.etiqueta ?? 'Sin placa asignada').toUpperCase()}
+        </div>
+      )}
+
+      {/* Banner SIN FECHA DE ENTREGA */}
+      {necesitaFechaEntrega && (
+        <div className="bg-orange-500 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5">
+          ⚠ {(reglaFechaEntrega?.etiqueta ?? 'Sin fecha de entrega').toUpperCase()}
         </div>
       )}
 
