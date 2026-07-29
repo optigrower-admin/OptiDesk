@@ -2,6 +2,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 
+function formatCelular(digits: string) {
+  const d = digits.replace(/\D/g, '').slice(0, 10)
+  if (d.length <= 3) return digits
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+}
+
 interface MetodoPago {
   tipo: string
   banco?: string | null
@@ -49,12 +56,13 @@ function CopyBtn({ text }: { text: string }) {
 }
 
 // Input de "uno o más" valores (celulares, correos, links) para el modal.
-function ListaValores({ label, placeholder, type, values, onChange }: {
+function ListaValores({ label, placeholder, type, values, onChange, format }: {
   label: string
   placeholder: string
   type: 'tel' | 'email' | 'url'
   values: string[]
   onChange: (v: string[]) => void
+  format?: (v: string) => string
 }) {
   const [nuevo, setNuevo] = useState('')
 
@@ -76,7 +84,7 @@ function ListaValores({ label, placeholder, type, values, onChange }: {
         <div className="space-y-1.5 mb-2">
           {values.map((v, idx) => (
             <div key={idx} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
-              <span className="text-xs text-gray-700 truncate">{v}</span>
+              <span className="text-xs text-gray-700 truncate">{format ? format(v) : v}</span>
               <button type="button" onClick={() => quitar(idx)} className="p-0.5 text-gray-400 hover:text-red-600 transition-colors flex-shrink-0" title="Quitar">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -363,9 +371,9 @@ export default function ContactosInternosPage() {
                     <div key={`tel-${idx}`} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
                       <div className="min-w-0 flex-1 flex items-center gap-1.5">
                         <span className="text-xs flex-shrink-0">📱</span>
-                        <p className="text-xs text-gray-700 font-mono truncate">{tel}</p>
+                        <p className="text-xs text-gray-700 font-mono truncate">{formatCelular(tel)}</p>
                       </div>
-                      <CopyBtn text={tel} />
+                      <CopyBtn text={tel.replace(/\D/g, '') || tel} />
                     </div>
                   ))}
 
@@ -481,6 +489,7 @@ export default function ContactosInternosPage() {
                 type="tel"
                 values={form.celulares}
                 onChange={v => setForm(p => ({ ...p, celulares: v }))}
+                format={formatCelular}
               />
 
               {/* Correos */}
