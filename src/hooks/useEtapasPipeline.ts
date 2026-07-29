@@ -86,7 +86,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
 
     async function cargar() {
       const [{ data: pv }, { data: pg }, { data: ep }, { data: rg }, { data: br }] = await Promise.all([
-        supabase.from('pipelines_venta').select('id, clave, nombre, orden, roles_ocultos').eq('tenant_id', tenantId).order('orden'),
+        supabase.from('pipelines_venta').select('*').eq('tenant_id', tenantId).order('orden'),
         supabase.from('pipeline_grupos').select('id, pipeline_id, clave, nombre, color, orden').eq('tenant_id', tenantId).order('orden'),
         supabase.from('etapas_pipeline').select('*').eq('tenant_id', tenantId).order('orden'),
         supabase.from('reglas_etapa').select('*').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
