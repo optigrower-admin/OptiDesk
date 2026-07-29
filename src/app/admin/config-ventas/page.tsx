@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/ventas/pipeline'
+import PipelinesConfig from './components/PipelinesConfig'
 
 /* ─── Tipos ─────────────────────────────────────────── */
 interface Entidad       { id: string; nombre: string; activa: boolean }
@@ -1480,6 +1481,10 @@ export default function ConfigVentasPage() {
       </SeccionColapsable>
 
       {/* ── Etiquetas de cliente ── */}
+      <SeccionColapsable titulo="Pipelines y Etapas (beta)" icono="🧭" defaultOpen={false}>
+        <PipelinesConfig />
+      </SeccionColapsable>
+
       <SeccionColapsable titulo="Etiquetas de cliente" icono="🏷️" badge={etiquetas.length} defaultOpen={false}>
         <div className="p-5 space-y-4">
           <p className="text-xs text-gray-500">Crea etiquetas para clasificar el origen o tipo de tus clientes. Puedes asignarlas automáticamente desde los flujos.</p>
