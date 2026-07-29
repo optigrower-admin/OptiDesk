@@ -31,8 +31,9 @@ const NAV_GROUPS: NavGroup[] = [
     key: 'dashboard',
     label: 'Dashboard',
     items: [
-      { href: '/admin/dashboard/servicio-tecnico', label: 'Servicio Técnico', seccion: 'dashboard_servicio_tecnico', soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 5 },
-      { href: '/admin/dashboard/repuestos',        label: 'Repuestos',       seccion: 'dashboard_repuestos',        soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 6 },
+      { href: '/admin/dashboard/servicio-tecnico',   label: 'Servicio Técnico', seccion: 'dashboard_servicio_tecnico',   soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 5 },
+      { href: '/admin/dashboard/repuestos',          label: 'Repuestos',        seccion: 'dashboard_repuestos',          soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 6 },
+      { href: '/admin/dashboard/ventas-vehiculos',   label: 'Ventas Vehículos', seccion: 'dashboard_ventas_vehiculos',   soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 7 },
     ],
   },
   {
