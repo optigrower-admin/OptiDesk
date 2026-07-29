@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface Tenant { id: string; nombre: string }
-type Rol = 'gerencia' | 'admin' | 'mecanico'
+type Rol = 'gerencia' | 'admin' | 'mecanico' | 'dueno' | 'freelancer'
 
 interface SeccionDef { key: string; label: string; descripcion: string; defaultOrden: number; soloGerencia?: boolean }
 interface GrupoDef { key: string; label: string; secciones: SeccionDef[] }
@@ -67,16 +67,26 @@ const SECCIONES_MECANICO: SeccionDef[] = [
   { key: 'recepcion',        label: 'Recepcionar moto',     descripcion: 'Crear nueva orden de entrada',  defaultOrden: 20 },
 ]
 
+const SECCIONES_FREELANCER: SeccionDef[] = [
+  { key: 'ventas',                     label: 'Seguimiento Ventas',         descripcion: 'Pipeline, Resumen y Actividades (acotado a sus clientes)', defaultOrden: 55 },
+  { key: 'dashboard_ventas_vehiculos', label: 'Dashboard Ventas Vehículos', descripcion: 'Solo sus propios clientes',                                defaultOrden: 7  },
+  { key: 'lista_motos',                label: 'Lista de Motos',             descripcion: 'Lista de precios imprimible',                              defaultOrden: 57 },
+]
+
 const SECCIONES_POR_ROL: Record<Rol, SeccionDef[]> = {
-  gerencia: SECCIONES_ADMIN,
-  admin:    SECCIONES_ADMIN,
-  mecanico: SECCIONES_MECANICO,
+  gerencia:   SECCIONES_ADMIN,
+  admin:      SECCIONES_ADMIN,
+  dueno:      SECCIONES_ADMIN,
+  mecanico:   SECCIONES_MECANICO,
+  freelancer: SECCIONES_FREELANCER,
 }
 
 const ROL_TABS: { value: Rol; label: string; color: string }[] = [
-  { value: 'gerencia', label: 'Gerencia',           color: 'bg-green-600' },
-  { value: 'admin',    label: 'Administración',     color: 'bg-amber-500' },
-  { value: 'mecanico', label: 'Profesional',        color: 'bg-blue-600'  },
+  { value: 'gerencia',   label: 'Gerencia',       color: 'bg-green-600'  },
+  { value: 'dueno',      label: 'Dueño',          color: 'bg-emerald-600' },
+  { value: 'admin',      label: 'Administración', color: 'bg-amber-500'  },
+  { value: 'mecanico',   label: 'Profesional',    color: 'bg-blue-600'   },
+  { value: 'freelancer', label: 'Freelancer',     color: 'bg-purple-600' },
 ]
 
 export default function PermisosPage() {
@@ -235,7 +245,7 @@ export default function PermisosPage() {
           </p>
         </div>
 
-        {selectedRol !== 'mecanico' ? (
+        {selectedRol !== 'mecanico' && selectedRol !== 'freelancer' ? (
           <>
             {GRUPOS_ADMIN.map((grupo) => {
               const secsGrupo = grupo.secciones.filter(s => selectedRol === 'gerencia' || !s.soloGerencia)

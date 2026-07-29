@@ -9,7 +9,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 
 type Tab = 'integrantes' | 'secciones'
-type Rol = 'gerencia' | 'admin' | 'mecanico' | 'dueno'
+type Rol = 'gerencia' | 'admin' | 'mecanico' | 'dueno' | 'freelancer'
 
 interface UsuarioEquipo {
   id: string
@@ -31,16 +31,18 @@ interface GrupoDef { key: string; label: string; secciones: SeccionDef[] }
 interface PermisoLocal { habilitado: boolean; orden: number }
 
 const ROL_LABEL: Record<Rol, string> = {
-  gerencia: 'Gerencia',
-  admin:    'Administración',
-  mecanico: 'Profesional',
-  dueno:    'Dueño',
+  gerencia:   'Gerencia',
+  admin:      'Administración',
+  mecanico:   'Profesional',
+  dueno:      'Dueño',
+  freelancer: 'Freelancer',
 }
 const ROL_COLOR: Record<Rol, string> = {
-  gerencia: 'bg-green-100 text-green-700 border border-green-200',
-  admin:    'bg-amber-100 text-amber-700 border border-amber-200',
-  mecanico: 'bg-blue-100 text-blue-700 border border-blue-200',
-  dueno:    'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  gerencia:   'bg-green-100 text-green-700 border border-green-200',
+  admin:      'bg-amber-100 text-amber-700 border border-amber-200',
+  mecanico:   'bg-blue-100 text-blue-700 border border-blue-200',
+  dueno:      'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  freelancer: 'bg-purple-100 text-purple-700 border border-purple-200',
 }
 
 const GRUPOS_ADMIN: GrupoDef[] = [
@@ -50,6 +52,7 @@ const GRUPOS_ADMIN: GrupoDef[] = [
     secciones: [
       { key: 'dashboard_servicio_tecnico', label: 'Dashboard Servicio Técnico', defaultOrden: 5, soloRoles: ['gerencia', 'dueno'] },
       { key: 'dashboard_repuestos',        label: 'Dashboard Repuestos',        defaultOrden: 6, soloRoles: ['gerencia', 'dueno'] },
+      { key: 'dashboard_ventas_vehiculos', label: 'Dashboard Ventas Vehículos', defaultOrden: 7, soloRoles: ['gerencia', 'dueno', 'freelancer'] },
     ],
   },
   {
@@ -70,6 +73,7 @@ const GRUPOS_ADMIN: GrupoDef[] = [
     label: 'Ventas',
     secciones: [
       { key: 'ventas',        label: 'Seguimiento Ventas', defaultOrden: 55 },
+      { key: 'lista_motos',   label: 'Lista de Motos',     defaultOrden: 57 },
       { key: 'config_ventas', label: 'Config Ventas',      defaultOrden: 56, soloGerencia: true },
     ],
   },
@@ -108,14 +112,25 @@ const SECCIONES_MECANICO: SeccionDef[] = [
   { key: 'recepcion',        label: 'Recepcionar moto',     defaultOrden: 20 },
 ]
 
+// El Freelancer es un rol restringido por diseño: solo Seguimiento Ventas (Pipeline,
+// Resumen y Actividades comparten la sección "ventas"), el Dashboard Ventas Vehículos
+// y la Lista de Motos. Los clientes que ve están acotados a los suyos (asignados o
+// con visibilidad compartida) — ver migration_v105_rol_freelancer.sql.
+const SECCIONES_FREELANCER: SeccionDef[] = [
+  { key: 'ventas',                      label: 'Seguimiento Ventas',         defaultOrden: 55 },
+  { key: 'dashboard_ventas_vehiculos',  label: 'Dashboard Ventas Vehículos', defaultOrden: 7  },
+  { key: 'lista_motos',                 label: 'Lista de Motos',             defaultOrden: 57 },
+]
+
 const SECCIONES_POR_ROL: Record<Rol, SeccionDef[]> = {
-  gerencia: SECCIONES_ADMIN,
-  admin:    SECCIONES_ADMIN,
-  mecanico: SECCIONES_MECANICO,
-  dueno:    SECCIONES_ADMIN,
+  gerencia:   SECCIONES_ADMIN,
+  admin:      SECCIONES_ADMIN,
+  mecanico:   SECCIONES_MECANICO,
+  dueno:      SECCIONES_ADMIN,
+  freelancer: SECCIONES_FREELANCER,
 }
 
-const ROLES_ORDEN: Rol[] = ['gerencia', 'dueno', 'admin', 'mecanico']
+const ROLES_ORDEN: Rol[] = ['gerencia', 'dueno', 'admin', 'mecanico', 'freelancer']
 
 export default function EquipoPage() {
   const { profile } = useAuth()
@@ -472,6 +487,7 @@ export default function EquipoPage() {
             <option value="admin">Administración</option>
             <option value="gerencia">Gerencia</option>
             <option value="dueno">Dueño</option>
+            <option value="freelancer">Freelancer</option>
           </select>
           <div className="flex gap-2 pt-2">
             <Button
@@ -706,9 +722,10 @@ export default function EquipoPage() {
           {ROLES_ORDEN.map((rol) => {
             const abierto = expandidoRol === rol
             const conteoUsuarios = usuarios.filter((u) => u.rol === rol).length
-            const conteoSecciones = rol !== 'mecanico'
+            const esListaPlana = rol === 'mecanico' || rol === 'freelancer'
+            const conteoSecciones = !esListaPlana
               ? SECCIONES_ADMIN.filter(s => seccionVisibleParaRol(s, rol)).length
-              : SECCIONES_MECANICO.length
+              : SECCIONES_POR_ROL[rol].length
 
             return (
               <div key={rol} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
@@ -734,7 +751,7 @@ export default function EquipoPage() {
                 {/* Secciones */}
                 {abierto && (
                   <div className="border-t border-gray-100">
-                    {rol !== 'mecanico' ? (
+                    {!esListaPlana ? (
                       <>
                         {/* Grupos con sus paneles */}
                         {GRUPOS_ADMIN.map((grupo) => {
@@ -839,7 +856,7 @@ export default function EquipoPage() {
                         })()}
                       </>
                     ) : (
-                      /* Mecanico: lista plana con reorden */
+                      /* Mecánico / Freelancer: lista plana con reorden (roles restringidos) */
                       <div className="divide-y divide-gray-50">
                         {seccionesOrdenadas(rol).map((s, idx) => {
                           const p = getPermiso(rol, s.key)

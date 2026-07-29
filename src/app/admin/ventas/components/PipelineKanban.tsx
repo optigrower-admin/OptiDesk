@@ -139,6 +139,7 @@ interface Props {
 export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId, tabsSlot, onLeadPatch, onLeadRemove, etapasPipeline }: Props) {
   const supabase = createClient()
   const { profile } = useAuth()
+  const rolNorm = (profile?.rol ?? '').toLowerCase().replace('ñ', 'n')
   const [leads, setLeads]             = useState<LeadData[]>(leadsIniciales)
   const [activeId, setActiveId]       = useState<string | null>(null)
   const [fichaId, setFichaId]         = useState<string | null>(null)
@@ -219,6 +220,10 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     const overId = over.id as string
     const lead   = leads.find(l => l.id === leadId)
     if (!lead) return
+    if (etapaMap[lead.etapa_venta]?.rolesBloqueados?.includes(rolNorm)) {
+      setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.')
+      return
+    }
     let targetEtapa: string | null = null
     if (etapaMap[overId]) {
       targetEtapa = overId
@@ -228,6 +233,10 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     }
     if (!targetEtapa || targetEtapa === lead.etapa_venta) return
     const destino = etapaMap[targetEtapa]
+    if (destino?.rolesBloqueados?.includes(rolNorm)) {
+      setBloqueoMsg('No tienes permiso para mover clientes a esta etapa.')
+      return
+    }
     const reglaAprobacionDestino = destino?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
     if (reglaAprobacionDestino?.bloquea_cambio_etapa && lead.estadoAprobacionMatricula !== 'aprobado') {
       setBloqueoMsg(reglaAprobacionDestino.mensaje_ayuda || 'Debes pedir aprobación para matricular para poder cambiar de etapa')
@@ -337,9 +346,17 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   function handleQuickNext(leadId: string) {
     const lead = leads.find(l => l.id === leadId)
     if (!lead) return
+    if (etapaMap[lead.etapa_venta]?.rolesBloqueados?.includes(rolNorm)) {
+      setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.')
+      return
+    }
     const next = nextEtapa(etapas, lead.etapa_venta)
     if (!next) return
     const destino = etapaMap[next]
+    if (destino?.rolesBloqueados?.includes(rolNorm)) {
+      setBloqueoMsg('No tienes permiso para mover clientes a esta etapa.')
+      return
+    }
     if (destino) setPendingMove({ leadId, targetEtapa: destino })
   }
 

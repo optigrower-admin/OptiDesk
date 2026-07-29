@@ -240,8 +240,8 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
   const cargar = useCallback(async () => {
     setLoading(true)
 
-    // 1. Clientes en seguimiento
-    const { data: clientes } = await supabase
+    // 1. Clientes en seguimiento (acotado a los propios + los que tenga visibilidad, salvo roles gerenciales)
+    let clientesQuery = supabase
       .from('clientes')
       .select(`
         id, nombre, celular, cedula, placa, numero_factura, assigned_to, etapa_venta,
@@ -249,6 +249,18 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
       `)
       .eq('tenant_id', tenantId)
       .eq('en_seguimiento_ventas', true)
+
+    const rolNorm = (rol ?? '').toLowerCase().replace('ñ', 'n')
+    if (rolNorm !== 'gerencia' && rolNorm !== 'control_total' && rolNorm !== 'dueno') {
+      const { data: compartidos } = await supabase
+        .from('clientes_visibilidad').select('cliente_id').eq('usuario_id', usuarioId)
+      const idsCompartidos = (compartidos ?? []).map(c => c.cliente_id)
+      clientesQuery = idsCompartidos.length > 0
+        ? clientesQuery.or(`assigned_to.eq.${usuarioId},id.in.(${idsCompartidos.join(',')})`)
+        : clientesQuery.eq('assigned_to', usuarioId)
+    }
+
+    const { data: clientes } = await clientesQuery
 
     if (!clientes || clientes.length === 0) { setActividades([]); setLoading(false); return }
 

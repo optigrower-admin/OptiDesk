@@ -14,7 +14,7 @@ type NavItem = {
   label: string
   seccion: string | null
   soloGerencia: boolean
-  rolesPermitidos?: ('gerencia' | 'dueno')[]
+  rolesPermitidos?: ('gerencia' | 'dueno' | 'freelancer')[]
   defaultOrden: number
   external?: boolean
   exactMatch?: boolean
@@ -33,7 +33,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/admin/dashboard/servicio-tecnico',   label: 'Servicio Técnico', seccion: 'dashboard_servicio_tecnico',   soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 5 },
       { href: '/admin/dashboard/repuestos',          label: 'Repuestos',        seccion: 'dashboard_repuestos',          soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 6 },
-      { href: '/admin/dashboard/ventas-vehiculos',   label: 'Ventas Vehículos', seccion: 'dashboard_ventas_vehiculos',   soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 7 },
+      { href: '/admin/dashboard/ventas-vehiculos',   label: 'Ventas Vehículos', seccion: 'dashboard_ventas_vehiculos',   soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno', 'freelancer'], defaultOrden: 7 },
     ],
   },
   {
@@ -508,7 +508,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     items
       .filter(i => {
         if (i.soloGerencia && profile?.rol !== 'gerencia') return false
-        if (i.rolesPermitidos && !i.rolesPermitidos.includes(profile?.rol as 'gerencia' | 'dueno')) return false
+        if (i.rolesPermitidos && !i.rolesPermitidos.includes(profile?.rol as 'gerencia' | 'dueno' | 'freelancer')) return false
         return i.seccion === null || tienePermiso(i.seccion)
       })
       .sort((a, b) => {

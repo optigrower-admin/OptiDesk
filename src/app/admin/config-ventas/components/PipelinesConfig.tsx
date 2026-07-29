@@ -254,6 +254,91 @@ function ReglasEtapaConfig({ etapaId }: { etapaId: string }) {
   )
 }
 
+// ─── Bloqueo de edición por rol (constructor libre) ────────────────────────
+// Roles que a partir de cierta etapa quedan en solo-lectura para esos clientes
+// (siguen viendo la tarjeta/ficha, pero no pueden cambiar etapa ni editar campos).
+
+type RolBloqueo = 'mecanico' | 'admin' | 'gerencia' | 'dueno' | 'freelancer'
+const ROLES_BLOQUEO: { value: RolBloqueo; label: string }[] = [
+  { value: 'freelancer', label: 'Freelancer' },
+  { value: 'mecanico',   label: 'Profesional' },
+  { value: 'admin',      label: 'Administración' },
+  { value: 'gerencia',   label: 'Gerencia' },
+  { value: 'dueno',      label: 'Dueño' },
+]
+
+async function llamarBloqueo(body: Record<string, unknown>) {
+  const res = await fetch('/api/admin/ventas/bloqueo-rol', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error ?? 'Error')
+  return json
+}
+
+function BloqueoRolConfig({ etapaId }: { etapaId: string }) {
+  const [bloqueados, setBloqueados] = useState<Set<RolBloqueo>>(new Set())
+  const [loading, setLoading]       = useState(true)
+  const [busy, setBusy]             = useState(false)
+  const [error, setError]           = useState('')
+
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/ventas/bloqueo-rol?etapa_id=${etapaId}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al cargar')
+      setBloqueados(new Set((json.bloqueos ?? []).map((b: { rol: RolBloqueo }) => b.rol)))
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al cargar')
+    } finally { setLoading(false) }
+  }, [etapaId])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  const toggle = async (rol: RolBloqueo) => {
+    setBusy(true); setError('')
+    const nuevoValor = !bloqueados.has(rol)
+    try {
+      await llamarBloqueo({ accion: 'set_bloqueo', etapa_id: etapaId, rol, bloqueado: nuevoValor })
+      setBloqueados(prev => {
+        const next = new Set(prev)
+        if (nuevoValor) next.add(rol); else next.delete(rol)
+        return next
+      })
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error')
+    } finally { setBusy(false) }
+  }
+
+  if (loading) return <p className="text-[11px] text-gray-400 px-1">Cargando bloqueos…</p>
+
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 space-y-1.5">
+      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+        Bloquear edición en esta etapa para
+      </p>
+      <p className="text-[10px] text-gray-400 -mt-1">
+        El rol marcado ve al cliente pero no puede cambiarle nada mientras esté en esta etapa.
+      </p>
+      {error && <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1">{error}</p>}
+      <div className="flex flex-wrap gap-1.5">
+        {ROLES_BLOQUEO.map(r => {
+          const activo = bloqueados.has(r.value)
+          return (
+            <button key={r.value} disabled={busy} onClick={() => toggle(r.value)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors disabled:opacity-50 ${
+                activo ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-red-300'
+              }`}>
+              {activo ? '🔒 ' : ''}{r.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function PipelinesConfig() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
   const [loading, setLoading]     = useState(true)
@@ -430,6 +515,7 @@ export default function PipelinesConfig() {
                             <button onClick={() => setEditEtapa(null)} className="flex-1 py-1.5 bg-gray-200 rounded-lg text-xs">Cancelar</button>
                           </div>
                           <ReglasEtapaConfig etapaId={e.id} />
+                          <BloqueoRolConfig etapaId={e.id} />
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">

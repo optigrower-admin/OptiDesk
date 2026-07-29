@@ -43,6 +43,7 @@ export interface EtapaDinamica {
   requiere_factura: boolean
   requiere_aprobacion_gerencia: boolean
   reglas: ReglaEtapa[]
+  rolesBloqueados: string[] // roles que ya no pueden editar/mover clientes en esta etapa
 }
 
 export interface GrupoDinamico {
@@ -83,11 +84,12 @@ export function useEtapasPipeline(tenantId: string | undefined) {
     let cancelado = false
 
     async function cargar() {
-      const [{ data: pv }, { data: pg }, { data: ep }, { data: rg }] = await Promise.all([
+      const [{ data: pv }, { data: pg }, { data: ep }, { data: rg }, { data: br }] = await Promise.all([
         supabase.from('pipelines_venta').select('id, clave, nombre, orden').eq('tenant_id', tenantId).order('orden'),
         supabase.from('pipeline_grupos').select('id, pipeline_id, clave, nombre, color, orden').eq('tenant_id', tenantId).order('orden'),
         supabase.from('etapas_pipeline').select('*').eq('tenant_id', tenantId).order('orden'),
         supabase.from('reglas_etapa').select('*').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
+        supabase.from('etapas_bloqueo_rol').select('etapa_id, rol').eq('tenant_id', tenantId),
       ])
       if (cancelado) return
 
@@ -95,6 +97,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
       const gruposRaw = (pg as RowGrupo[]) ?? []
       const etapasRaw = (ep as RowEtapa[]) ?? []
       const reglasRaw = (rg as ReglaEtapa[]) ?? []
+      const bloqueosRaw = (br as { etapa_id: string; rol: string }[]) ?? []
 
       const gruposMap = new Map(gruposRaw.map(g => [g.id, g]))
       const pipelinesMap = new Map(pipelinesRaw.map(p => [p.id, p]))
@@ -113,6 +116,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
           requiere_carta_negociacion: e.requiere_carta_negociacion,
           requiere_factura: e.requiere_factura, requiere_aprobacion_gerencia: e.requiere_aprobacion_gerencia,
           reglas: reglasRaw.filter(r => r.etapa_id === e.id).sort((a, b) => a.orden - b.orden),
+          rolesBloqueados: bloqueosRaw.filter(b => b.etapa_id === e.id).map(b => b.rol),
         }
       })
 

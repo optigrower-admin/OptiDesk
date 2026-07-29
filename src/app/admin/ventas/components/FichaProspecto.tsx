@@ -112,6 +112,10 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const endRef   = useRef<HTMLDivElement>(null)
   const rolNorm = (profile?.rol ?? '').toLowerCase().replace('ñ', 'n')
   const esGerencia = rolNorm === 'gerencia' || rolNorm === 'control_total' || rolNorm === 'dueno'
+  // Roles a los que Config Ventas les bloqueó la edición para la etapa ACTUAL de este
+  // cliente (ej. Freelancer desde "Aprobados para Matricular" en adelante) — sigue
+  // viendo la ficha, pero no puede modificar nada mientras el cliente esté ahí.
+  const etapaClienteBloqueada = etapasPipeline.etapaMap[lead.etapa_venta]?.rolesBloqueados?.includes(rolNorm) ?? false
 
   const [mensajes, setMensajes]         = useState<Mensaje[]>([])
   const [ordenes, setOrdenes]           = useState<Orden[]>([])
@@ -408,6 +412,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   // Auto-guarda asesor al cambiarlo en el select (solo gerencia)
   const autoSaveAssigned = async (newId: string) => {
+    if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     const prevNombre = usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'
     setAssignedTo(newId)
     setSaving(true)
@@ -426,6 +431,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const handleRenombrar = async () => {
+    if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     const nombre = nuevoNombre.trim().toUpperCase()
     if (!nombre || !lead.cliente?.id) return
     setSavingNombre(true)
@@ -438,6 +444,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const guardarCelular = async () => {
+    if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     const cel = celularInput.trim()
     if (!cel || cel === celularActual) return
     showGlobalLoading()
@@ -457,6 +464,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const guardarCarta = async () => {
+    if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     const carta = cartaInput.trim()
     if (!carta || carta === cartaActual) { setEditandoCarta(false); return }
     showGlobalLoading()
@@ -478,6 +486,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const guardarPlaca = async () => {
+    if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     const pl = placaInput.trim().toUpperCase()
     if (!pl || pl === placaActual) { setEditandoPlaca(false); return }
     showGlobalLoading()
@@ -499,6 +508,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const guardarFactura = async () => {
+    if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     const fac = facturaInput.trim().toUpperCase()
     if (!fac || fac === facturaActual) { setEditandoFactura(false); return }
     showGlobalLoading()
@@ -520,6 +530,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const guardarFechaEntrega = async () => {
+    if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     const fecha = fechaEntregaInput.trim()
     if (!fecha || fecha === fechaEntregaActual) { setEditandoFechaEntrega(false); return }
     showGlobalLoading()
@@ -572,6 +583,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const vincularAlistamiento = async (ordenId: string) => {
+    if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     await supabase.from('clientes').update({ alistamiento_orden_id: ordenId }).eq('id', lead.id).eq('tenant_id', tenantId)
     setAlistamientoOrdenId(ordenId)
     onLeadUpdate?.(lead.id, { alistamientoOrdenId: ordenId })
@@ -579,6 +591,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const desvincularAlistamiento = async () => {
+    if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     await supabase.from('clientes').update({ alistamiento_orden_id: null }).eq('id', lead.id).eq('tenant_id', tenantId)
     setAlistamientoOrdenId(null)
     setOrdenesUMALoaded(false)
@@ -628,6 +641,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const panelToast = useCallback(() => { setSavedPanel(true); setTimeout(() => setSavedPanel(false), 2000) }, [])
 
   const guardarProximaAccionPanel = async () => {
+    if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     if (!proximaFecha) return
     const fecha = new Date(proximaFecha).toISOString()
     setSavingPanel(true)
@@ -772,6 +786,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               style={{ background: etapaActual?.color ?? '#9CA3AF' }}>
               {etapaActual?.label ?? etapa}
             </span>
+            {etapaClienteBloqueada && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-700 text-white flex-shrink-0" title="No puedes modificar este cliente mientras esté en esta etapa">
+                🔒 Solo lectura
+              </span>
+            )}
             {lead.cliente?.celular && (
               <span className="text-xs text-gray-400 flex-shrink-0">{lead.cliente.celular}</span>
             )}
@@ -816,7 +835,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               {/* Etapa */}
               <div>
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Etapa</label>
-                <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)} disabled={saving}
+                <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)} disabled={saving || etapaClienteBloqueada}
                   className="w-full text-xs rounded-lg px-2 py-1.5 font-bold text-white border border-[#2a3550] focus:outline-none disabled:opacity-60"
                   style={{ background: etapaActual?.color ?? '#9CA3AF' }}>
                   {gruposEtapa}
@@ -827,7 +846,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               <div>
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Asesor</label>
                 {esGerencia ? (
-                  <select value={assignedTo} onChange={e => autoSaveAssigned(e.target.value)} disabled={saving}
+                  <select value={assignedTo} onChange={e => autoSaveAssigned(e.target.value)} disabled={saving || etapaClienteBloqueada}
                     className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none disabled:opacity-60">
                     <option value="">Sin asignar</option>
                     {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
@@ -1579,7 +1598,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Etapa</label>
-                    <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)} disabled={saving}
+                    <select value={etapa} onChange={e => autoSaveEtapa(e.target.value as EtapaVenta)} disabled={saving || etapaClienteBloqueada}
                       className="w-full text-sm rounded-xl px-3 py-2.5 font-bold text-white border-0 focus:outline-none"
                       style={{ background: etapaActual?.color ?? '#9CA3AF' }}>
                       {gruposEtapa}
@@ -1589,7 +1608,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Asesor</label>
                     {esGerencia ? (
-                      <select value={assignedTo} onChange={e => autoSaveAssigned(e.target.value)} disabled={saving}
+                      <select value={assignedTo} onChange={e => autoSaveAssigned(e.target.value)} disabled={saving || etapaClienteBloqueada}
                         className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none">
                         <option value="">Sin asignar</option>
                         {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
