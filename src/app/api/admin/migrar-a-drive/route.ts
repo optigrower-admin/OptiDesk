@@ -57,16 +57,17 @@ export async function POST(req: NextRequest) {
   // Tomar un lote de medios aún en R2
   const { data: candidatos } = await supabase
     .from('medios')
-    .select('id, url, nombre_archivo, tipo, tamano_bytes, ordenes(placa, numero)')
+    .select('id, url, nombre_archivo, tipo, tamano_bytes, orden_id, ordenes(placa, numero, drive_folder_id)')
     .eq('tenant_id', tenantId)
     .eq('storage_location', 'r2')
     .limit(LOTE)
 
   const procesados: string[] = []
   const errores: { id: string; nombre: string; error: string }[] = []
+  const admin = createAdminClient()
 
   for (const medio of candidatos ?? []) {
-    const ord = medio.ordenes as unknown as { placa: string | null; numero: number } | null
+    const ord = medio.ordenes as unknown as { placa: string | null; numero: number; drive_folder_id: string | null } | null
     const placa = (ord?.placa ?? 'SIN_PLACA').replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()
 
     try {
@@ -86,12 +87,19 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Crear sub-carpeta por placa dentro de la carpeta raíz
-      const subFolderId = await getOrCreateDriveSubfolder(
-        folderId,
-        placa,
-        tenant.google_refresh_token,
-      )
+      // Reusar la subcarpeta ya asociada a la orden si existe, para no
+      // duplicarla cuando la placa se corrigió después de la primera subida.
+      let subFolderId = ord?.drive_folder_id ?? null
+      if (!subFolderId) {
+        subFolderId = await getOrCreateDriveSubfolder(
+          folderId,
+          placa,
+          tenant.google_refresh_token,
+        )
+        if (medio.orden_id) {
+          await admin.from('ordenes').update({ drive_folder_id: subFolderId }).eq('id', medio.orden_id)
+        }
+      }
 
       // Subir a Drive
       const { id: driveFileId, webViewLink } = await uploadToDrive(
@@ -105,7 +113,6 @@ export async function POST(req: NextRequest) {
       // Actualizar medios usando service role para evitar restricciones RLS.
       // Guarda el file ID de Drive en url (para CDN inline) y el webViewLink
       // en drive_url (para descargar/abrir en Drive).
-      const admin = createAdminClient()
       const { error: updateErr, count: updateCount } = await admin.from('medios').update({
         url: driveFileId,
         storage_location: 'drive',

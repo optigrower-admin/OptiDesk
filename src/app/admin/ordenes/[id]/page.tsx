@@ -641,6 +641,15 @@ export default function AdminOrdenDetallePage() {
       descripcion: `Admin editó ${campo} de orden #${orden.numero}`,
       usuario_id: profile?.id,
     })
+    if (campo === 'placa') {
+      // Si ya hay una carpeta de Drive creada para esta orden, renombrarla
+      // en vez de dejar que la próxima subida cree una duplicada.
+      fetch('/api/admin/ordenes/renombrar-carpeta-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orden_id: ordenId }),
+      }).catch(() => {})
+    }
     setEditingOrden(null)
     setSavingOrden(false)
     await cargar()

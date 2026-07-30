@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
 
   // Obtener placa de la orden para crear la subcarpeta
   const { data: orden } = await supabase
-    .from('ordenes').select('placa, numero').eq('id', ordenId).single()
+    .from('ordenes').select('placa, numero, drive_folder_id').eq('id', ordenId).single()
 
   const placaNorm = (orden?.placa ?? 'SIN_PLACA').replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()
   const numero = orden?.numero ?? 0
@@ -63,12 +63,18 @@ export async function POST(req: NextRequest) {
     ? (folderRaw.split('/folders/')[1]?.split('?')[0] ?? folderRaw)
     : folderRaw
 
-  // Crear/buscar subcarpeta por placa dentro de la carpeta raíz
-  const subFolderId = await getOrCreateDriveSubfolder(
-    folderId,
-    placaNorm,
-    tenant.google_refresh_token,
-  )
+  // Reusar la subcarpeta ya asociada a esta orden si existe, para no crear
+  // una carpeta duplicada cuando la placa se corrigió después de la primera
+  // subida (la carpeta se renombra aparte, ver /api/admin/ordenes/renombrar-carpeta-drive).
+  let subFolderId = orden?.drive_folder_id ?? null
+  if (!subFolderId) {
+    subFolderId = await getOrCreateDriveSubfolder(
+      folderId,
+      placaNorm,
+      tenant.google_refresh_token,
+    )
+    await supabase.from('ordenes').update({ drive_folder_id: subFolderId }).eq('id', ordenId)
+  }
 
   // Subir archivo a Drive
   const { id: driveFileId, webViewLink } = await uploadToDrive(

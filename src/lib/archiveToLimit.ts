@@ -25,7 +25,7 @@ interface MedioRow {
   nombre_archivo: string | null
   tamano_bytes: number | null
   orden_id: string | null
-  ordenes: { placa: string | null; numero: number } | null
+  ordenes: { placa: string | null; numero: number; drive_folder_id: string | null } | null
 }
 
 export async function archiveToLimit(
@@ -63,7 +63,7 @@ export async function archiveToLimit(
 
   const { data: medios, error: mediosError } = await db
     .from('medios')
-    .select('id, url, tipo, nombre_archivo, tamano_bytes, orden_id, ordenes(placa, numero)')
+    .select('id, url, tipo, nombre_archivo, tamano_bytes, orden_id, ordenes(placa, numero, drive_folder_id)')
     .eq('tenant_id', tenantId)
     .eq('storage_location', 'r2')
     .order('created_at', { ascending: true })
@@ -87,9 +87,17 @@ export async function archiveToLimit(
       const fileName = `${placa}_#${numero}_${medio.id.slice(0, 8)}.${ext}`
       const mimeType = medio.tipo === 'video' ? 'video/mp4' : 'image/jpeg'
 
-      const subFolderId = await getOrCreateDriveSubfolder(
-        driveFolder, placa, tenant.google_refresh_token,
-      )
+      // Reusar la subcarpeta ya asociada a la orden si existe, para no
+      // duplicarla cuando la placa se corrigió después de la primera subida.
+      let subFolderId = medio.ordenes?.drive_folder_id ?? null
+      if (!subFolderId) {
+        subFolderId = await getOrCreateDriveSubfolder(
+          driveFolder, placa, tenant.google_refresh_token,
+        )
+        if (medio.orden_id) {
+          await db.from('ordenes').update({ drive_folder_id: subFolderId }).eq('id', medio.orden_id)
+        }
+      }
       const buffer = await downloadFromR2(medio.url)
       const { webViewLink } = await uploadToDrive(
         fileName, mimeType, buffer, subFolderId, tenant.google_refresh_token,
