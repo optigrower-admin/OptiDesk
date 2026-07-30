@@ -2053,6 +2053,11 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">UMA</span>
               )}
               <OrderStatus estado={orden.estado} />
+              {orden.fecha_programada && (
+                <span className="text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full" title="Esta entrada se marcó como Programada en algún momento">
+                  📅 Programada
+                </span>
+              )}
               <PaymentStatus estado={orden.estado_pago} metodoPago={(orden.metodos_pago as { nombre: string } | null)?.nombre} />
             </div>
             <p className="text-gray-600 mt-0.5">{orden.cliente}</p>

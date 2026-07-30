@@ -566,7 +566,16 @@ export default function AdminOrdenesPage() {
                         ? new Date(orden.fecha_finalizacion).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
                         : '—'}
                     </td>
-                    <td className="py-2.5 px-4"><OrderStatus estado={orden.estado} /></td>
+                    <td className="py-2.5 px-4">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <OrderStatus estado={orden.estado} />
+                        {orden.fecha_programada && (
+                          <span className="text-[10px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Esta entrada se marcó como Programada en algún momento">
+                            📅 Programada
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-2.5 px-4 text-right text-gray-600 whitespace-nowrap">
                       {formatCOP(costosProveedorPorOrden.get(orden.id) ?? 0)}
                     </td>
@@ -663,6 +672,11 @@ export default function AdminOrdenesPage() {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {ordenActual && <OrderStatus estado={ordenActual.estado} />}
+                    {ordenActual?.fecha_programada && (
+                      <span className="text-[10px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Esta entrada se marcó como Programada en algún momento">
+                        📅 Programada
+                      </span>
+                    )}
                     <svg
                       className={`w-4 h-4 text-gray-400 transition-transform ${grupo.expandido ? 'rotate-180' : ''}`}
                       fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -699,7 +713,7 @@ export default function AdminOrdenesPage() {
                                 </span>
                               )
                             })()}
-                            {orden.estado === 'programado' && orden.fecha_programada ? (
+                            {orden.fecha_programada ? (
                               <span className="text-orange-600 font-semibold">
                                 📅 Programado: {formatFechaPlaca(orden.fecha_programada)}
                                 {orden.duracion_estimada_horas != null && ` · ${orden.duracion_estimada_horas}h estimadas`}
