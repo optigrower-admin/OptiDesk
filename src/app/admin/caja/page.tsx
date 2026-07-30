@@ -9,8 +9,8 @@ import { registrarAuditoria } from '@/lib/audit'
 import PlanillaWorldOfficeModal from '@/components/PlanillaWorldOfficeModal'
 
 type Periodo = 'hoy' | 'semana' | 'mes' | 'rango'
-type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'pago_proveedor' | 'gasto' | 'ajuste' | 'porta_placas'
-type FiltroGrupo = 'todos' | 'servicios_tecnicos' | 'venta_repuestos' | 'ingreso_caja' | 'gastos_caja' | 'transferencias' | 'ajuste_caja' | 'costos_externos' | 'costos_lavado' | 'porta_placas'
+type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'pago_proveedor' | 'gasto' | 'ajuste' | 'porta_placas' | 'pago_colaborador'
+type FiltroGrupo = 'todos' | 'servicios_tecnicos' | 'venta_repuestos' | 'ingreso_caja' | 'gastos_caja' | 'transferencias' | 'ajuste_caja' | 'costos_externos' | 'costos_lavado' | 'porta_placas' | 'pago_colaborador'
 type FiltroMetodo = 'todos' | 'efectivo' | 'nequi' | 'caja_fuerte'
 
 const FILTROS_METODO: { id: FiltroMetodo; label: string; color: string; activeColor: string }[] = [
@@ -31,6 +31,7 @@ const FILTROS_GRUPO: { id: FiltroGrupo; label: string }[] = [
   { id: 'costos_lavado',      label: 'Costo Serv. Lavado' },
   { id: 'transferencias',     label: 'Transferencias' },
   { id: 'ajuste_caja',        label: 'Ajuste de Caja' },
+  { id: 'pago_colaborador',   label: 'Pago Colaborador' },
 ]
 
 function esTransferenciaConcepto(concepto: string): boolean {
@@ -65,6 +66,7 @@ const CATEGORIA_LABEL: Record<Categoria, string> = {
   gasto:           'Gastos de Caja',
   ajuste:          'Ajuste de Caja',
   porta_placas:    'Porta Placas',
+  pago_colaborador: 'Pago Colaborador',
 }
 
 const CATEGORIA_BADGE: Record<Categoria, string> = {
@@ -80,6 +82,7 @@ const CATEGORIA_BADGE: Record<Categoria, string> = {
   gasto:           'bg-red-100 text-red-700',
   ajuste:          'bg-gray-700 text-white',
   porta_placas:    'bg-orange-100 text-orange-700',
+  pago_colaborador: 'bg-fuchsia-100 text-fuchsia-700',
 }
 
 function grupoOrden(ord: { numero: number; placa: string; cliente: string } | null): string {
@@ -550,6 +553,223 @@ function EditarIngresoModal({ tenantId, usuarioId, ingreso, esGerencia = false, 
   )
 }
 
+function NuevoPagoColaboradorModal({ tenantId, usuarioId, esGerencia = false, onClose, onCreado }: {
+  tenantId: string; usuarioId: string; esGerencia?: boolean; onClose: () => void; onCreado: () => void
+}) {
+  const supabase = createClient()
+  const [descripcion, setDescripcion] = useState('')
+  const [monto, setMonto] = useState('')
+  const [metodoPagoId, setMetodoPagoId] = useState('')
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [usuarioPagadoId, setUsuarioPagadoId] = useState('')
+  const [usuarios, setUsuarios] = useState<{ id: string; nombre: string }[]>([])
+  const [fecha, setFecha] = useState(nowDatetimeLocal())
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).order('nombre')
+      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
+    supabase.from('usuarios').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).order('nombre')
+      .then(({ data }) => setUsuarios((data as { id: string; nombre: string }[]) ?? []))
+  }, [supabase, tenantId])
+
+  const valido = descripcion.trim() !== '' && parseInt(monto.replace(/\D/g, ''), 10) > 0 && metodoPagoId !== '' && usuarioPagadoId !== ''
+
+  async function guardar() {
+    if (!valido) return
+    setGuardando(true); setError('')
+    const montoNum = parseInt(monto.replace(/\D/g, ''), 10)
+    const colaborador = usuarios.find(u => u.id === usuarioPagadoId)?.nombre ?? ''
+    try {
+      const payload: Record<string, unknown> = {
+        tenant_id: tenantId,
+        descripcion: descripcion.trim(),
+        monto: montoNum,
+        metodo_pago_id: metodoPagoId,
+        usuario_pagado_id: usuarioPagadoId,
+        registrado_por: usuarioId,
+      }
+      if (esGerencia && fecha) payload.fecha = new Date(fecha).toISOString()
+      const { data, error: err } = await supabase.from('pagos_colaborador_caja').insert(payload).select('id').single()
+      if (err) throw new Error(err.message)
+      await registrarAuditoria(supabase, {
+        tenant_id: tenantId,
+        tabla: 'pagos_colaborador_caja',
+        registro_id: (data as { id: string }).id,
+        tipo: 'movimiento',
+        valor_nuevo: { descripcion: descripcion.trim(), monto: montoNum, usuario_pagado_id: usuarioPagadoId, ...(esGerencia && fecha ? { fecha: new Date(fecha).toISOString() } : {}) },
+        descripcion: `Registró un pago a colaborador (${colaborador}): "${descripcion.trim()}" por ${formatCOP(montoNum)}`,
+        usuario_id: usuarioId,
+      })
+      onCreado()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al guardar el pago')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h2 className="font-bold text-gray-900 mb-1">Nuevo pago a colaborador</h2>
+        {!esGerencia && <p className="text-xs text-gray-500 mb-4">Se registra con la fecha de hoy.</p>}
+        <div className="space-y-2">
+          {esGerencia && (
+            <div>
+              <label className="text-xs text-purple-700 font-semibold">Fecha y hora</label>
+              <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
+                className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 mt-0.5 bg-purple-50" />
+            </div>
+          )}
+          <div>
+            <label className="text-xs text-gray-500">Colaborador</label>
+            <select value={usuarioPagadoId} onChange={e => setUsuarioPagadoId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400 mt-0.5 bg-white">
+              <option value="">Selecciona...</option>
+              {usuarios.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Concepto</label>
+            <input value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Ej: Comisión, préstamo, bono..."
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400 mt-0.5" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Monto</label>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-fuchsia-400 bg-white mt-0.5">
+              <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-1.5">$</span>
+              <input type="text" inputMode="numeric"
+                value={monto ? Number(monto.replace(/\D/g, '')).toLocaleString('es-CO') : ''}
+                onChange={e => setMonto(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="flex-1 px-2 py-1.5 text-sm font-mono text-right focus:outline-none" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Método de pago</label>
+            <select value={metodoPagoId} onChange={e => setMetodoPagoId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400 mt-0.5 bg-white">
+              <option value="">Selecciona...</option>
+              {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={!valido || guardando}
+            className="flex-1 py-2 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
+            {guardando ? 'Guardando...' : 'Guardar pago'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EditarPagoColaboradorModal({ tenantId, usuarioId, pago, esGerencia = false, onClose, onEditado }: {
+  tenantId: string; usuarioId: string; esGerencia?: boolean
+  pago: { id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string }
+  onClose: () => void; onEditado: () => void
+}) {
+  const supabase = createClient()
+  const [monto, setMonto] = useState(String(pago.monto))
+  const [metodoPagoId, setMetodoPagoId] = useState(pago.metodoPagoId ?? '')
+  const [fecha, setFecha] = useState(isoToDatetimeLocal(pago.fecha))
+  const [metodosPago, setMetodosPago] = useState<{ id: string; nombre: string }[]>([])
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    supabase.from('metodos_pago').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).order('nombre')
+      .then(({ data }) => setMetodosPago((data as { id: string; nombre: string }[]) ?? []))
+  }, [supabase, tenantId])
+
+  const valido = parseInt(monto.replace(/\D/g, ''), 10) > 0 && metodoPagoId !== ''
+
+  async function guardar() {
+    if (!valido) return
+    if (!confirm('¿Seguro que deseas editar este pago?')) return
+    setGuardando(true); setError('')
+    const montoNum = parseInt(monto.replace(/\D/g, ''), 10)
+    const nuevaFechaISO = esGerencia && fecha ? new Date(fecha).toISOString() : pago.fecha
+    try {
+      const updatePayload: Record<string, unknown> = { monto: montoNum, metodo_pago_id: metodoPagoId }
+      if (esGerencia && fecha) updatePayload.fecha = nuevaFechaISO
+      const { error: err } = await supabase.from('pagos_colaborador_caja').update(updatePayload).eq('id', pago.id)
+      if (err) throw new Error(err.message)
+      await registrarAuditoria(supabase, {
+        tenant_id: tenantId,
+        tabla: 'pagos_colaborador_caja',
+        registro_id: pago.id,
+        tipo: 'edicion',
+        valor_anterior: { monto: pago.monto, metodo_pago_id: pago.metodoPagoId, fecha: pago.fecha },
+        valor_nuevo: { monto: montoNum, metodo_pago_id: metodoPagoId, fecha: nuevaFechaISO },
+        descripcion: `Editó el pago a colaborador "${pago.descripcion}"`,
+        usuario_id: usuarioId,
+      })
+      onEditado()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al editar el pago')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+        <h2 className="font-bold text-gray-900 mb-1">Editar pago a colaborador</h2>
+        <p className="text-xs text-gray-500 mb-4">{pago.descripcion}</p>
+        <div className="space-y-2">
+          {esGerencia && (
+            <div>
+              <label className="text-xs text-purple-700 font-semibold">Fecha y hora</label>
+              <input type="datetime-local" value={fecha} onChange={e => setFecha(e.target.value)}
+                className="w-full border border-purple-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 mt-0.5 bg-purple-50" />
+            </div>
+          )}
+          <div>
+            <label className="text-xs text-gray-500">Monto</label>
+            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-fuchsia-400 bg-white mt-0.5">
+              <span className="px-2 text-gray-400 text-sm border-r border-gray-200 py-1.5">$</span>
+              <input type="text" inputMode="numeric"
+                value={monto ? Number(monto.replace(/\D/g, '')).toLocaleString('es-CO') : ''}
+                onChange={e => setMonto(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="flex-1 px-2 py-1.5 text-sm font-mono text-right focus:outline-none" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Método de pago</label>
+            <select value={metodoPagoId} onChange={e => setMetodoPagoId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400 mt-0.5 bg-white">
+              <option value="">Selecciona...</option>
+              {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+          </div>
+        </div>
+        {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={!valido || guardando}
+            className="flex-1 py-2 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-lg text-sm font-semibold disabled:opacity-40">
+            {guardando ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const OPCION_CAJA_FUERTE = '__caja_fuerte__'
 
 function AjusteModal({ tenantId, usuarioId, cuentaInicial = '', onClose, onCreado }: {
@@ -732,7 +952,7 @@ function EditarAjusteModal({ tenantId, usuarioId, ajuste, onClose, onEditado }: 
   )
 }
 
-const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_manual', 'gasto', 'costo_lavado', 'costo_externo', 'pago_proveedor', 'ajuste']
+const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_manual', 'gasto', 'costo_lavado', 'costo_externo', 'pago_proveedor', 'ajuste', 'pago_colaborador']
 
 // Construye la lista de movimientos para un tenant. Si desdeISO/hastaISO son null no se
 // filtra por fecha (uso para el saldo histórico, que no depende del período seleccionado).
@@ -796,14 +1016,20 @@ async function construirMovimientos(
   if (desdeISO) qIngresos = qIngresos.gte('fecha', desdeISO)
   if (hastaISO) qIngresos = qIngresos.lte('fecha', hastaISO)
 
+  let qPagosColab = supabase.from('pagos_colaborador_caja')
+    .select('id, descripcion, monto, fecha, metodo_pago_id, metodos_pago(nombre), usuario_pagado_id, usuarios!usuario_pagado_id(nombre)')
+    .eq('tenant_id', tenantId)
+  if (desdeISO) qPagosColab = qPagosColab.gte('fecha', desdeISO)
+  if (hastaISO) qPagosColab = qPagosColab.lte('fecha', hastaISO)
+
   let qPagosProvPeriodo = supabase.from('pagos_proveedor')
     .select('id, orden_id, monto, fecha, metodo_pago_id, metodos_pago(nombre), ordenes(numero, placa, cliente)')
     .eq('tenant_id', tenantId)
   if (desdeISO) qPagosProvPeriodo = qPagosProvPeriodo.gte('fecha', desdeISO)
   if (hastaISO) qPagosProvPeriodo = qPagosProvPeriodo.lte('fecha', hastaISO)
 
-  const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }, { data: ajustes }, { data: ingresos }, { data: pagosProvPeriodo }] =
-    await Promise.all([qPagos, qCostosExt, qGastos, qInsumos, qLavados, qVentaDirecta, qAjustes, qIngresos, qPagosProvPeriodo])
+  const [{ data: pagos }, { data: costosExt }, { data: gastos }, { data: insumos }, { data: lavados }, { data: ventaDirecta }, { data: ajustes }, { data: ingresos }, { data: pagosProvPeriodo }, { data: pagosColab }] =
+    await Promise.all([qPagos, qCostosExt, qGastos, qInsumos, qLavados, qVentaDirecta, qAjustes, qIngresos, qPagosProvPeriodo, qPagosColab])
 
   const lista: Movimiento[] = []
 
@@ -1090,6 +1316,23 @@ async function construirMovimientos(
     })
   }
 
+  for (const pc of (pagosColab ?? []) as unknown as { id: string; descripcion: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; usuarios: { nombre: string } | null }[]) {
+    lista.push({
+      id: `pagocolab_${pc.id}`,
+      rawId: pc.id,
+      fecha: pc.fecha,
+      categoria: 'pago_colaborador',
+      concepto: `${pc.descripcion} · ${pc.usuarios?.nombre ?? 'Colaborador'}`,
+      nombre: pc.usuarios?.nombre ?? null,
+      codigo: null,
+      monto: -pc.monto,
+      metodoPagoId: pc.metodo_pago_id,
+      metodoPago: pc.metodos_pago?.nombre ?? null,
+      cuentaEspecial: null,
+      grupo: CATEGORIA_LABEL.pago_colaborador,
+    })
+  }
+
   lista.sort((a, b) => b.fecha.localeCompare(a.fecha))
   return lista
 }
@@ -1289,9 +1532,11 @@ export default function CajaPage() {
   const [editGasto, setEditGasto] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
   const [ingresoModalOpen, setIngresoModalOpen] = useState(false)
   const [editIngreso, setEditIngreso] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
+  const [pagoColabModalOpen, setPagoColabModalOpen] = useState(false)
+  const [editPagoColab, setEditPagoColab] = useState<{ id: string; descripcion: string; monto: number; metodoPagoId: string | null; fecha: string } | null>(null)
   const [vistaTabla, setVistaTabla] = useState<'item' | 'metodo'>('item')
 
-  const esGerencia = profile?.rol === 'gerencia'
+  const esGerencia = profile?.rol === 'gerencia' || profile?.rol === 'dueno'
   // Editar/eliminar gastos de caja (incluye transferencias) — Gerencia y Admin.
   // Los ajustes de caja siguen exclusivos de Gerencia (requisito explícito distinto).
   const puedeEditarGastos = esGerencia || profile?.rol === 'admin'
@@ -1346,6 +1591,7 @@ export default function CajaPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_caja',       filter: `tenant_id=eq.${tid}` }, trigger)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ingresos_caja',     filter: `tenant_id=eq.${tid}` }, trigger)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ajustes_caja',      filter: `tenant_id=eq.${tid}` }, trigger)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_colaborador_caja', filter: `tenant_id=eq.${tid}` }, trigger)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lava_moto_ordenes', filter: `tenant_id=eq.${tid}` }, trigger)
       .subscribe()
 
@@ -1375,6 +1621,7 @@ export default function CajaPage() {
           case 'costos_lavado':     return m.categoria === 'costo_lavado'
           case 'transferencias':    return esTransfer
           case 'ajuste_caja':       return m.categoria === 'ajuste' && !esTransfer
+          case 'pago_colaborador':  return m.categoria === 'pago_colaborador'
           default:                  return true
         }
       })
@@ -1554,6 +1801,22 @@ export default function CajaPage() {
     await cargar()
   }
 
+  async function eliminarPagoColaborador(m: { rawId: string; concepto: string; monto: number }) {
+    if (!confirm(`¿Eliminar "${m.concepto}" por ${formatCOP(Math.abs(m.monto))}?`)) return
+    const { error } = await supabase.from('pagos_colaborador_caja').delete().eq('id', m.rawId)
+    if (error) { alert(`No se pudo eliminar: ${error.message}`); return }
+    await registrarAuditoria(supabase, {
+      tenant_id: profile!.tenant_id,
+      tabla: 'pagos_colaborador_caja',
+      registro_id: m.rawId,
+      tipo: 'eliminacion',
+      valor_anterior: { descripcion: m.concepto, monto: Math.abs(m.monto) },
+      descripcion: `Eliminó el pago a colaborador "${m.concepto}"`,
+      usuario_id: profile?.id,
+    })
+    await cargar()
+  }
+
   return (
     <div className="p-6 space-y-5 max-w-6xl">
       {gastoModal && profile?.tenant_id && profile?.id && (
@@ -1637,6 +1900,27 @@ export default function CajaPage() {
         />
       )}
 
+      {pagoColabModalOpen && profile?.tenant_id && profile?.id && (
+        <NuevoPagoColaboradorModal
+          tenantId={profile.tenant_id}
+          usuarioId={profile.id}
+          esGerencia={esGerencia}
+          onClose={() => setPagoColabModalOpen(false)}
+          onCreado={cargar}
+        />
+      )}
+
+      {editPagoColab && profile?.tenant_id && profile?.id && (
+        <EditarPagoColaboradorModal
+          tenantId={profile.tenant_id}
+          usuarioId={profile.id}
+          pago={editPagoColab}
+          esGerencia={esGerencia}
+          onClose={() => setEditPagoColab(null)}
+          onEditado={cargar}
+        />
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Caja</h1>
@@ -1652,6 +1936,10 @@ export default function CajaPage() {
           <button onClick={() => setIngresoModalOpen(true)}
             className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors">
             + Ingreso a caja
+          </button>
+          <button onClick={() => setPagoColabModalOpen(true)}
+            className="px-3 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-lg text-sm font-semibold transition-colors">
+            + Pago Colaborador
           </button>
           <button onClick={() => setTransferirOpen(true)}
             className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold transition-colors">
@@ -1913,6 +2201,19 @@ export default function CajaPage() {
                         </button>
                       </>
                     )}
+                    {m.categoria === 'pago_colaborador' && puedeEditarGastos && (
+                      <>
+                        <button
+                          onClick={() => setEditPagoColab({ id: m.rawId, descripcion: m.concepto, monto: Math.abs(m.monto), metodoPagoId: m.metodoPagoId, fecha: m.fecha })}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                        >
+                          Editar
+                        </button>
+                        <button onClick={() => eliminarPagoColaborador(m)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
+                          Eliminar
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1997,6 +2298,19 @@ export default function CajaPage() {
                           Editar
                         </button>
                         <button onClick={() => eliminarIngreso(f)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
+                          Eliminar
+                        </button>
+                      </>
+                    )}
+                    {f.categoria === 'pago_colaborador' && puedeEditarGastos && (
+                      <>
+                        <button
+                          onClick={() => setEditPagoColab({ id: f.rawId, descripcion: f.concepto, monto: Math.abs(f.monto), metodoPagoId: f.metodoPagoId, fecha: f.fecha })}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium underline"
+                        >
+                          Editar
+                        </button>
+                        <button onClick={() => eliminarPagoColaborador(f)} className="text-xs text-red-600 hover:text-red-800 font-medium underline">
                           Eliminar
                         </button>
                       </>
