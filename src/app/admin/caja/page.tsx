@@ -1538,7 +1538,7 @@ export default function CajaPage() {
             </button>
           )}
         </div>
-        <div className="mt-3">
+        <div className="mt-3 w-full flex items-center justify-between">
           <button
             onClick={() => setPlanillaOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
@@ -1550,12 +1550,12 @@ export default function CajaPage() {
           </button>
           <button
             onClick={() => setCierresModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gray-700 hover:bg-gray-800 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm ml-2"
+            className="group flex flex-col items-center justify-center gap-0.5 w-16 h-16 bg-white hover:bg-gray-50 text-gray-700 rounded-2xl text-[10px] font-semibold leading-tight text-center border border-gray-200 shadow-[0_4px_12px_rgba(0,0,0,0.12)] hover:shadow-[0_6px_16px_rgba(0,0,0,0.18)] hover:-translate-y-0.5 transition-all"
           >
-            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-5 h-5 flex-shrink-0 text-gray-600 group-hover:text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Registro Cierres Diario
+            Cierres<br />Diario
           </button>
         </div>
       </div>
