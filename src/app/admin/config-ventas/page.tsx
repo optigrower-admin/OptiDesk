@@ -10,6 +10,7 @@ import ReglasPipelineConfig from './components/ReglasPipelineConfig'
 /* ─── Tipos ─────────────────────────────────────────── */
 interface Entidad       { id: string; nombre: string; activa: boolean }
 interface CategoriaPago { id: string; nombre: string; activa: boolean; orden: number }
+interface Bono          { id: string; nombre: string; activa: boolean; orden: number }
 
 interface ColorVariante {
   id?: string
@@ -560,6 +561,10 @@ export default function ConfigVentasPage() {
   const [nuevaCategoriaPago, setNuevaCategoriaPago] = useState('')
   const [editandoCatId, setEditandoCatId]       = useState<string | null>(null)
   const [editandoCatNombre, setEditandoCatNombre] = useState('')
+  const [bonos, setBonos]                 = useState<Bono[]>([])
+  const [nuevoBono, setNuevoBono]         = useState('')
+  const [editandoBonoId, setEditandoBonoId]       = useState<string | null>(null)
+  const [editandoBonoNombre, setEditandoBonoNombre] = useState('')
   const [motos, setMotos]                 = useState<MotoCat[]>([])
   const [tipos, setTipos]                 = useState<TipoRecordatorio[]>([])
   const [plantillas, setPlantillas]       = useState<Plantilla[]>([])
@@ -738,6 +743,11 @@ export default function ConfigVentasPage() {
       .select('id, nombre, activa, orden').eq('tenant_id', profile.tenant_id).order('orden')
     setCategoriasPago((cats ?? []) as CategoriaPago[])
 
+    // Bonos (defensiva, pueden no existir si la migración v113 no corrió)
+    const { data: bns } = await supabase.from('bonos')
+      .select('id, nombre, activa, orden').eq('tenant_id', profile.tenant_id).order('orden')
+    setBonos((bns ?? []) as Bono[])
+
     // APIs IA + Agentes (defensivo, migración v78)
     const [{ data: apisCfg }, { data: agts }] = await Promise.all([
       supabase.from('config_apis_ia').select('*').eq('tenant_id', profile.tenant_id).maybeSingle(),
@@ -869,6 +879,39 @@ export default function ConfigVentasPage() {
     await supabase.from('entidades_financieras').update({ nombre: editandoEntidadNombre.trim() }).eq('id', editandoEntidadId)
     setEntidades(p => p.map(e => e.id === editandoEntidadId ? { ...e, nombre: editandoEntidadNombre.trim() } : e))
     setEditandoEntidadId(null); setEditandoEntidadNombre('')
+  }
+
+  /* ── Bonos ── */
+  const DEFAULT_BONOS = ['Financiera', 'UMA', 'Motospace38']
+
+  async function agregarBono() {
+    if (!nuevoBono.trim() || !profile?.tenant_id) return
+    const orden = bonos.length
+    await supabase.from('bonos').insert({ tenant_id: profile.tenant_id, nombre: nuevoBono.trim(), orden })
+    setNuevoBono('')
+    cargar()
+  }
+  async function toggleBono(id: string, activa: boolean) {
+    await supabase.from('bonos').update({ activa: !activa }).eq('id', id)
+    setBonos(p => p.map(b => b.id === id ? { ...b, activa: !activa } : b))
+  }
+  async function eliminarBono(id: string) {
+    if (!confirm('¿Eliminar este bono?')) return
+    await supabase.from('bonos').delete().eq('id', id)
+    cargar()
+  }
+  async function renombrarBono() {
+    if (!editandoBonoId || !editandoBonoNombre.trim()) return
+    await supabase.from('bonos').update({ nombre: editandoBonoNombre.trim() }).eq('id', editandoBonoId)
+    setBonos(p => p.map(b => b.id === editandoBonoId ? { ...b, nombre: editandoBonoNombre.trim() } : b))
+    setEditandoBonoId(null); setEditandoBonoNombre('')
+  }
+  async function sembrarBonos() {
+    if (!profile?.tenant_id) return
+    await Promise.all(DEFAULT_BONOS.map((nombre, orden) =>
+      supabase.from('bonos').insert({ tenant_id: profile.tenant_id, nombre, orden })
+    ))
+    cargar()
   }
 
   /* ── Asesores ── */
@@ -1424,6 +1467,54 @@ export default function ConfigVentasPage() {
               onKeyDown={e => { if (e.key === 'Enter') agregarEntidad() }}
               className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button onClick={agregarEntidad} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">+ Agregar</button>
+          </div>
+        </div>
+      </SeccionColapsable>
+
+      {/* ── Bonos ── */}
+      <SeccionColapsable titulo="Bonos" icono="🎁" badge={bonos.filter(b => b.activa).length} defaultOpen={false}>
+        <div className="p-5">
+          {bonos.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-xs text-gray-400 mb-3">Sin bonos. Puedes agregar los predeterminados o crear los tuyos.</p>
+              <button onClick={sembrarBonos}
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-200 transition-colors">
+                Cargar bonos predeterminados
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2 mb-3">
+              {bonos.map(b => (
+                <div key={b.id} className={`rounded-lg border px-3 py-2 ${!b.activa ? 'opacity-60 border-gray-200' : 'border-gray-200'}`}>
+                  {editandoBonoId === b.id ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        value={editandoBonoNombre}
+                        onChange={ev => setEditandoBonoNombre(ev.target.value)}
+                        onKeyDown={ev => { if (ev.key === 'Enter') renombrarBono(); if (ev.key === 'Escape') { setEditandoBonoId(null); setEditandoBonoNombre('') } }}
+                        className="flex-1 border border-blue-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button onClick={renombrarBono} className="text-xs font-semibold text-blue-700 hover:text-blue-900">Guardar</button>
+                      <button onClick={() => { setEditandoBonoId(null); setEditandoBonoNombre('') }} className="text-xs text-gray-400 hover:text-gray-600">Cancelar</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="flex-1 text-sm font-medium text-gray-800">{b.nombre}</span>
+                      <button onClick={() => { setEditandoBonoId(b.id); setEditandoBonoNombre(b.nombre) }} className="text-xs text-blue-500 hover:text-blue-700">Editar</button>
+                      <ToggleSwitch activo={b.activa} onChange={() => toggleBono(b.id, b.activa)} />
+                      <button onClick={() => eliminarBono(b.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input value={nuevoBono} onChange={e => setNuevoBono(e.target.value)} placeholder="ej: Financiera"
+              onKeyDown={e => { if (e.key === 'Enter') agregarBono() }}
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={agregarBono} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">+ Agregar</button>
           </div>
         </div>
       </SeccionColapsable>

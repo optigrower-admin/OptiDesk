@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCOP, calcularPrecioMoto } from '@/lib/ventas/pipeline'
+import MoneyInput from '@/components/ui/MoneyInput'
 
 const METODOS_PAGO_FIJOS = ['Transferencia', 'Efectivo', 'Financiera']
 
@@ -13,7 +14,9 @@ interface Props {
 }
 
 type Entidad       = { id: string; nombre: string }
-type Estudio       = { id: string; entidad_id: string; estado: 'sin_iniciar' | 'en_estudio' | 'aprobado' | 'rechazado'; monto_aprobado: number | null }
+type Estudio       = { id: string; entidad_id: string; estado: 'sin_iniciar' | 'en_estudio' | 'aprobado' | 'rechazado'; monto_aprobado: number | null; bono: boolean }
+type Bono          = { id: string; nombre: string }
+type BonoAplicado  = { id: string; bono_id: string; monto: number }
 type PagoRegistrado = {
   id: string
   codigo_factura: string | null
@@ -46,10 +49,15 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   const [cuotaInicialSi, setCuotaInicialSi] = useState(false)
   const [cuotaInicial, setCuotaInicial]     = useState('')
   const [cuotaDeseada, setCuotaDeseada]     = useState('')
+  const [plazoMeses, setPlazoMeses]         = useState('')
   const [entidades, setEntidades]           = useState<Entidad[]>([])
   const [estudios, setEstudios]             = useState<Estudio[]>([])
   const [totalMotos, setTotalMotos]         = useState(0)
   const [saving, setSaving]                 = useState(false)
+
+  /* ── Estado bonos ── */
+  const [bonosCatalogo, setBonosCatalogo]   = useState<Bono[]>([])
+  const [bonosAplicados, setBonosAplicados] = useState<BonoAplicado[]>([])
 
   /* ── Estado pagos registrados ── */
   const [pagos, setPagos]                   = useState<PagoRegistrado[]>([])
@@ -63,18 +71,20 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   const [loading, setLoading] = useState(true)
 
   const cargar = useCallback(async () => {
-    const [{ data: cliente }, { data: ent }, { data: est }, { data: motos }, { data: pagosList }, { data: tenant }] =
+    const [{ data: cliente }, { data: ent }, { data: est }, { data: motos }, { data: pagosList }, { data: tenant }, { data: bns }, { data: bnsAp }] =
       await Promise.all([
         supabase.from('clientes')
-          .select('forma_pago, credito_tiene_cuota_inicial, cuota_inicial, cuota_deseada')
+          .select('forma_pago, credito_tiene_cuota_inicial, cuota_inicial, cuota_deseada, plazo_meses')
           .eq('id', clienteId).single(),
         supabase.from('entidades_financieras').select('id, nombre').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
-        supabase.from('clientes_credito_estudio').select('id, entidad_id, estado, monto_aprobado').eq('cliente_id', clienteId),
+        supabase.from('clientes_credito_estudio').select('id, entidad_id, estado, monto_aprobado, bono').eq('cliente_id', clienteId),
         supabase.from('clientes_motos_interes')
           .select('disponibilidad, con_papeles, con_tarjeta, pignorada, motos_catalogo(precio, costo_documentos, costo_prenda)')
           .eq('cliente_id', clienteId),
         supabase.from('clientes_pagos').select('id, codigo_factura, monto, metodo_pago, created_at').eq('cliente_id', clienteId).order('created_at', { ascending: false }),
         supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tenantId).single(),
+        supabase.from('bonos').select('id, nombre').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
+        supabase.from('clientes_bonos').select('id, bono_id, monto').eq('cliente_id', clienteId),
       ])
 
     if (cliente) {
@@ -82,10 +92,13 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
       setCuotaInicialSi(!!cliente.credito_tiene_cuota_inicial)
       setCuotaInicial(cliente.cuota_inicial?.toString() ?? '')
       setCuotaDeseada(cliente.cuota_deseada?.toString() ?? '')
+      setPlazoMeses(cliente.plazo_meses?.toString() ?? '')
     }
     setEntidades((ent ?? []) as Entidad[])
     setEstudios((est ?? []) as Estudio[])
     setPagos((pagosList ?? []) as PagoRegistrado[])
+    setBonosCatalogo((bns ?? []) as Bono[])
+    setBonosAplicados((bnsAp ?? []) as BonoAplicado[])
 
     const recargoTarjeta = Number(tenant?.recargo_tarjeta_porcentaje ?? 5)
     const total = (motos ?? []).reduce((s, m) => {
@@ -113,10 +126,35 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   }
 
   async function guardarCuotas() {
+    const esCredito = formaPago === 'credito' || formaPago === 'credito_ci'
     await supabase.from('clientes').update({
       cuota_inicial: cuotaInicial ? parseFloat(cuotaInicial) : null,
-      cuota_deseada: (formaPago === 'credito' || formaPago === 'credito_ci') && cuotaDeseada ? parseFloat(cuotaDeseada) : null,
+      cuota_deseada: esCredito && cuotaDeseada ? parseFloat(cuotaDeseada) : null,
+      plazo_meses: esCredito && plazoMeses ? parseInt(plazoMeses, 10) : null,
     }).eq('id', clienteId)
+  }
+
+  /* ── Bonos ── */
+  async function toggleBono(bonoId: string, activo: boolean) {
+    if (activo) {
+      const { data } = await supabase.from('clientes_bonos')
+        .insert({ cliente_id: clienteId, tenant_id: tenantId, bono_id: bonoId, monto: 0 })
+        .select('id, bono_id, monto').single()
+      if (data) setBonosAplicados(p => [...p, data as BonoAplicado])
+    } else {
+      const existente = bonosAplicados.find(b => b.bono_id === bonoId)
+      if (!existente) return
+      await supabase.from('clientes_bonos').delete().eq('id', existente.id)
+      setBonosAplicados(p => p.filter(b => b.id !== existente.id))
+    }
+  }
+
+  async function setMontoBono(bonoId: string, monto: string) {
+    const existente = bonosAplicados.find(b => b.bono_id === bonoId)
+    if (!existente) return
+    const val = monto ? parseFloat(monto) : 0
+    await supabase.from('clientes_bonos').update({ monto: val }).eq('id', existente.id)
+    setBonosAplicados(p => p.map(b => b.id === existente.id ? { ...b, monto: val } : b))
   }
 
   /* ── Estudios de crédito ── */
@@ -130,7 +168,7 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
     cargar()
     if (onCreditoChange) {
       const updatedEstudios = estudios.map(e => e.entidad_id === entidadId ? { ...e, estado } : e)
-      if (!existente) updatedEstudios.push({ id: '', entidad_id: entidadId, estado, monto_aprobado: null })
+      if (!existente) updatedEstudios.push({ id: '', entidad_id: entidadId, estado, monto_aprobado: null, bono: false })
       const aprobada = entidades.find(e => updatedEstudios.some(es => es.entidad_id === e.id && es.estado === 'aprobado'))?.nombre ?? null
       const rechazadas = entidades.filter(e => updatedEstudios.some(es => es.entidad_id === e.id && es.estado === 'rechazado')).map(e => e.nombre)
       onCreditoChange(aprobada, rechazadas)
@@ -142,6 +180,13 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
     if (!existente) return
     await supabase.from('clientes_credito_estudio').update({ monto_aprobado: monto ? parseFloat(monto) : null }).eq('id', existente.id)
     setEstudios(p => p.map(e => e.id === existente.id ? { ...e, monto_aprobado: monto ? parseFloat(monto) : null } : e))
+  }
+
+  async function setBonoEstudio(entidadId: string, bono: boolean) {
+    const existente = estudios.find(e => e.entidad_id === entidadId)
+    if (!existente) return
+    await supabase.from('clientes_credito_estudio').update({ bono }).eq('id', existente.id)
+    setEstudios(p => p.map(e => e.id === existente.id ? { ...e, bono } : e))
   }
 
   /* ── Pagos registrados ── */
@@ -200,6 +245,38 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
         </div>
       </div>
 
+      {/* ── BONOS ── */}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Bonos</p>
+        {bonosCatalogo.length === 0 ? (
+          <p className="text-xs text-gray-400">Sin bono (predeterminado). Configura bonos en Config Ventas → Bonos.</p>
+        ) : (
+          <div className="space-y-2">
+            {bonosCatalogo.map(b => {
+              const aplicado = bonosAplicados.find(x => x.bono_id === b.id)
+              return (
+                <div key={b.id} className="flex items-center gap-2">
+                  <button onClick={() => toggleBono(b.id, !aplicado)}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
+                      aplicado ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}>
+                    {b.nombre}
+                  </button>
+                  {aplicado && (
+                    <MoneyInput value={aplicado.monto ? String(aplicado.monto) : ''}
+                      onChange={raw => setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
+                      onCommit={raw => setMontoBono(b.id, raw)}
+                      placeholder="Valor del bono"
+                      className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  )}
+                </div>
+              )
+            })}
+            {bonosAplicados.length === 0 && <p className="text-[11px] text-gray-400">Sin bono aplicado (predeterminado)</p>}
+          </div>
+        )}
+      </div>
+
       {/* ── CONTADO: valor de referencia, ya definido en Motos de interés ── */}
       {formaPago === 'contado' && (
         <div className="border border-gray-200 rounded-xl p-3">
@@ -215,15 +292,19 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
           <p className="text-xs text-gray-400">Referencia motos: {formatCOP(totalMotos)}</p>
           {formaPago === 'credito_ci' && (
             <div>
-              <label className="text-xs text-gray-500">Monto cuota inicial (COP)</label>
-              <input type="number" value={cuotaInicial} onChange={e => setCuotaInicial(e.target.value)}
-                onBlur={guardarCuotas}
+              <label className="text-xs text-gray-500">Cuota inicial (COP)</label>
+              <MoneyInput value={cuotaInicial} onChange={setCuotaInicial} onCommit={guardarCuotas}
                 className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
             </div>
           )}
           <div>
-            <label className="text-xs text-gray-500">Cuota mensual deseada (COP)</label>
-            <input type="number" value={cuotaDeseada} onChange={e => setCuotaDeseada(e.target.value)}
+            <label className="text-xs text-gray-500">Cuota mensual estimada (COP)</label>
+            <MoneyInput value={cuotaDeseada} onChange={setCuotaDeseada} onCommit={guardarCuotas}
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Plazo estimado en meses</label>
+            <input type="number" value={plazoMeses} onChange={e => setPlazoMeses(e.target.value)}
               onBlur={guardarCuotas}
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
           </div>
@@ -261,7 +342,7 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
             <input type="date" value={formFecha} onChange={e => setFormFecha(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
 
-            <input type="number" value={formMonto} onChange={e => setFormMonto(e.target.value)}
+            <MoneyInput value={formMonto} onChange={setFormMonto}
               placeholder="Monto *"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
 
@@ -342,9 +423,24 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
                 ))}
               </div>
               {estado === 'aprobado' && (
-                <input type="number" placeholder="Monto aprobado" defaultValue={est?.monto_aprobado ?? ''}
-                  onBlur={e => setMonto(ent.id, e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs mt-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <div className="mt-1.5 space-y-1.5">
+                  <MoneyInput value={est?.monto_aprobado != null ? String(est.monto_aprobado) : ''}
+                    onChange={raw => setEstudios(p => p.map(e => e.entidad_id === ent.id ? { ...e, monto_aprobado: raw ? parseFloat(raw) : null } : e))}
+                    onCommit={raw => setMonto(ent.id, raw)}
+                    placeholder="Monto aprobado"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500">Bono:</span>
+                    <button onClick={() => setBonoEstudio(ent.id, true)}
+                      className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+                        est?.bono ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}>Sí</button>
+                    <button onClick={() => setBonoEstudio(ent.id, false)}
+                      className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+                        !est?.bono ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}>No</button>
+                  </div>
+                </div>
               )}
             </div>
           )
