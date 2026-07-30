@@ -299,6 +299,9 @@ export default function AdminOrdenDetallePage() {
   const ordenEstadoRef = useRef<string | undefined>(undefined)
   const umaSinNumeroRef = useRef(false)
   const pagoCompletoSinMarcarRef = useRef(false)
+  const motivoPendienteFaltaRef = useRef(false)
+  const notaIncompletoFaltaRef = useRef(false)
+  const [bloqueoSalidaMsg, setBloqueoSalidaMsg] = useState<string | null>(null)
   const skipNextPopstate = useRef(false)
 
   // Pagos consecutivos
@@ -485,7 +488,13 @@ export default function AdminOrdenDetallePage() {
   useEffect(() => {
     const onPopState = () => {
       if (skipNextPopstate.current) { skipNextPopstate.current = false; return }
-      if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
+      if (motivoPendienteFaltaRef.current) {
+        window.history.pushState(null, '', window.location.href)
+        setBloqueoSalidaMsg('Falta el motivo del estado Pendiente. Complétalo antes de salir de esta orden.')
+      } else if (notaIncompletoFaltaRef.current) {
+        window.history.pushState(null, '', window.location.href)
+        setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
+      } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         window.history.pushState(null, '', window.location.href)
         setPendingNavBack(true); setPendingNavUrl(null)
         setFinalizeDialogModo('finalizar')
@@ -507,7 +516,13 @@ export default function AdminOrdenDetallePage() {
       const href = anchor.getAttribute('href')
       if (!href || href.startsWith('#') || href.startsWith('http') || href.startsWith('//')) return
       if (href === window.location.pathname) return
-      if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
+      if (motivoPendienteFaltaRef.current) {
+        e.preventDefault(); e.stopPropagation()
+        setBloqueoSalidaMsg('Falta el motivo del estado Pendiente. Complétalo antes de salir de esta orden.')
+      } else if (notaIncompletoFaltaRef.current) {
+        e.preventDefault(); e.stopPropagation()
+        setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
+      } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         e.preventDefault(); e.stopPropagation()
         setPendingNavUrl(href); setPendingNavBack(false)
         setFinalizeDialogModo('finalizar')
@@ -1727,6 +1742,8 @@ export default function AdminOrdenDetallePage() {
   const totalAPagarGuardadoGlobal = total + totalLavado
   pagoCompletoSinMarcarRef.current = !['pagado', 'listo'].includes(orden.estado) &&
     totalAPagarGuardadoGlobal > 0 && totalPagadoClienteGlobal >= totalAPagarGuardadoGlobal
+  motivoPendienteFaltaRef.current = estado === 'pendiente' && !motivoPendiente.trim()
+  notaIncompletoFaltaRef.current = esGerencia && estado === 'finalizado_incompleto' && !(orden.nota_finalizado_incompleto ?? '').trim()
 
   const imprimirConIframe = (html: string) => {
     const iframe = document.createElement('iframe')
@@ -1820,6 +1837,29 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
       />
     )}
     <div className="p-6 max-w-5xl mx-auto space-y-6">
+      {/* Dialog bloqueo de salida: falta motivo Pendiente / nota Finalizado - Incompleto */}
+      {bloqueoSalidaMsg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+              </div>
+              <h3 className="font-bold text-gray-900">No puedes salir todavía</h3>
+            </div>
+            <p className="text-sm text-gray-600">{bloqueoSalidaMsg}</p>
+            <button
+              onClick={() => setBloqueoSalidaMsg(null)}
+              className="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold transition-colors"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Dialog finalizar orden / marcar como pagada */}
       {finalizeDialogModo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -2025,7 +2065,11 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
         <div className="flex items-center gap-4">
           <button
             onClick={() => {
-              if (orden.estado === 'pagado' && !(esUMA && numerosOrdenUMA.length === 0)) {
+              if (motivoPendienteFaltaRef.current) {
+                setBloqueoSalidaMsg('Falta el motivo del estado Pendiente. Complétalo antes de salir de esta orden.')
+              } else if (notaIncompletoFaltaRef.current) {
+                setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
+              } else if (orden.estado === 'pagado' && !(esUMA && numerosOrdenUMA.length === 0)) {
                 setPendingNavBack(true); setPendingNavUrl(null)
                 setFinalizeDialogModo('finalizar')
               } else if (pagoCompletoSinMarcarRef.current) {
