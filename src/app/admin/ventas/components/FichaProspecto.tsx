@@ -192,16 +192,20 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   async function guardarOrigen(valor: string) {
     if (valor === '__nuevo__') { setOrigenNuevo(true); setOrigenInput(''); return }
+    const anterior = origen
     setOrigen(valor)
-    await supabase.from('clientes').update({ lead_source: valor || null }).eq('id', lead.cliente?.id ?? lead.id)
+    const { error } = await supabase.from('clientes').update({ lead_source: valor || null }).eq('id', lead.cliente?.id ?? lead.id)
+    if (error) { setOrigen(anterior); alert(`No se pudo guardar el origen: ${error.message}`) }
   }
 
   async function confirmarOrigenNuevo() {
     const v = origenInput.trim()
     if (!v) return
+    const anterior = origen
     setOrigen(v)
     setOrigenes(prev => Array.from(new Set([...prev, v])).sort())
-    await supabase.from('clientes').update({ lead_source: v }).eq('id', lead.cliente?.id ?? lead.id)
+    const { error } = await supabase.from('clientes').update({ lead_source: v }).eq('id', lead.cliente?.id ?? lead.id)
+    if (error) { setOrigen(anterior); setOrigenes(prev => prev.filter(o => o !== v)); alert(`No se pudo guardar el origen: ${error.message}`); return }
     setOrigenNuevo(false); setOrigenInput('')
   }
 
