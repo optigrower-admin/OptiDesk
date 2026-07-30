@@ -37,7 +37,7 @@ export default function RegistroCierresModal({ tenantId, onClose }: { tenantId: 
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
           <div>
             <h2 className="font-bold text-gray-900 text-lg">Registro Cierres Diario</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Saldo de cada cuenta al cierre de cada día (11:59 p.m.)</p>
+            <p className="text-xs text-gray-500 mt-0.5">Saldo de cada cuenta al cierre de cada día (11:45 p.m.)</p>
           </div>
           <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg flex-shrink-0">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -60,7 +60,7 @@ export default function RegistroCierresModal({ tenantId, onClose }: { tenantId: 
               <span className="text-4xl">🌙</span>
               <p className="text-sm text-center">
                 Aún no hay cierres registrados.<br />
-                El primero se guardará hoy a las 11:59 p.m.
+                El primero se guardará hoy a las 11:45 p.m.
               </p>
             </div>
           ) : (

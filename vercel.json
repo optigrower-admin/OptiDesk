@@ -18,7 +18,7 @@
     },
     {
       "path": "/api/cron/cierre-diario-caja",
-      "schedule": "59 4 * * *"
+      "schedule": "45 4 * * *"
     }
   ]
 }

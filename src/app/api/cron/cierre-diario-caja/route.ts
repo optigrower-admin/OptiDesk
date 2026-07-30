@@ -4,8 +4,9 @@ import { calcularSaldosCaja } from '@/lib/caja/saldos'
 
 export const dynamic = 'force-dynamic'
 
-// Corre todos los días a las 11:59pm hora Colombia (vercel.json: "59 4 * * *" UTC,
-// ya que Colombia es UTC-5 todo el año, sin horario de verano).
+// Corre todos los días a las 11:45pm hora Colombia (vercel.json: "45 4 * * *" UTC,
+// ya que Colombia es UTC-5 todo el año, sin horario de verano) — un poco antes de
+// medianoche por si el cron tarda en ejecutarse.
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {

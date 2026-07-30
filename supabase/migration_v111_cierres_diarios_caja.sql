@@ -1,6 +1,6 @@
 -- v111: Cierres diarios de Caja
 --
--- Todos los días a las 11:59pm (hora Colombia) se guarda una "foto" del
+-- Todos los días a las 11:45pm (hora Colombia) se guarda una "foto" del
 -- saldo de cada cuenta (Nequi, Efectivo, etc — lo que exista en metodos_pago
 -- de cada tenant) y de Caja Fuerte, para poder consultar el histórico de
 -- cierres por fecha desde el botón "Registro Cierres Diario" en Caja.
