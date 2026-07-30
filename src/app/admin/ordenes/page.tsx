@@ -51,7 +51,7 @@ interface Categoria {
   subcategorias_servicio: { id: string; nombre: string }[]
 }
 
-type FiltroEstado = 'todos' | 'activos' | 'programado' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
+type FiltroEstado = 'todos' | 'activos' | 'programado' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo' | 'finalizado_incompleto'
 
 const SELECT_FIELDS = 'id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, fecha_programada, duracion_estimada_horas, tipo_orden, tipo_servicio, created_at, fecha_finalizacion, numeros_orden_uma, categorias_servicio(nombre), usuarios:mecanico_id(nombre)'
 
@@ -469,6 +469,7 @@ export default function AdminOrdenesPage() {
           { value: 'pendiente', label: 'Pendiente' },
           { value: 'pagado', label: 'Pagado' },
           { value: 'listo', label: 'Finalizado' },
+          { value: 'finalizado_incompleto', label: 'Finalizado - Incompleto' },
         ] as { value: FiltroEstado; label: string }[]).map((f) => (
           <button
             key={f.value}
