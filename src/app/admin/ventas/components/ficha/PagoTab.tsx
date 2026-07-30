@@ -58,6 +58,7 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   /* ── Estado bonos ── */
   const [bonosCatalogo, setBonosCatalogo]   = useState<Bono[]>([])
   const [bonosAplicados, setBonosAplicados] = useState<BonoAplicado[]>([])
+  const [editandoPago, setEditandoPago]     = useState(false)
 
   /* ── Estado pagos registrados ── */
   const [pagos, setPagos]                   = useState<PagoRegistrado[]>([])
@@ -222,92 +223,134 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   if (loading) return <p className="text-sm text-gray-400 text-center py-8">Cargando...</p>
 
   const esCredito = formaPago === 'credito' || formaPago === 'credito_ci'
+  const modoEdicionPago = editandoPago || !formaPago
+  const bonosResumen = bonosAplicados.length === 0
+    ? 'Sin bono'
+    : bonosAplicados.map(ba => `${bonosCatalogo.find(b => b.id === ba.bono_id)?.nombre ?? 'Bono'} (${formatCOP(ba.monto)})`).join(', ')
 
   return (
     <div className="space-y-4">
 
       {/* ── FORMA DE PAGO ── */}
-      <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Forma de pago
-          {saving && <span className="ml-2 text-blue-400 font-normal normal-case text-[10px]">Guardando...</span>}
-        </p>
-        <div className="flex gap-2 flex-wrap">
-          {FORMA_OPCIONES.map(opt => (
-            <button key={opt.value}
-              onClick={() => { setFormaPago(opt.value); guardarFormaPago(opt.value) }}
-              className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${
-                formaPago === opt.value ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}>
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── BONOS ── */}
-      <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Bonos</p>
-        {bonosCatalogo.length === 0 ? (
-          <p className="text-xs text-gray-400">Sin bono (predeterminado). Configura bonos en Config Ventas → Bonos.</p>
-        ) : (
-          <div className="space-y-2">
-            {bonosCatalogo.map(b => {
-              const aplicado = bonosAplicados.find(x => x.bono_id === b.id)
-              return (
-                <div key={b.id} className="flex items-center gap-2">
-                  <button onClick={() => toggleBono(b.id, !aplicado)}
-                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
-                      aplicado ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}>
-                    {b.nombre}
-                  </button>
-                  {aplicado && (
-                    <MoneyInput value={aplicado.monto ? String(aplicado.monto) : ''}
-                      onChange={raw => setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
-                      onCommit={raw => setMontoBono(b.id, raw)}
-                      placeholder="Valor del bono"
-                      className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  )}
-                </div>
-              )
-            })}
-            {bonosAplicados.length === 0 && <p className="text-[11px] text-gray-400">Sin bono aplicado (predeterminado)</p>}
+      {modoEdicionPago ? (
+        <>
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Forma de pago
+              {saving && <span className="ml-2 text-blue-400 font-normal normal-case text-[10px]">Guardando...</span>}
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              {FORMA_OPCIONES.map(opt => (
+                <button key={opt.value}
+                  onClick={() => { setFormaPago(opt.value); guardarFormaPago(opt.value) }}
+                  className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${
+                    formaPago === opt.value ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* ── CONTADO: valor de referencia, ya definido en Motos de interés ── */}
-      {formaPago === 'contado' && (
-        <div className="border border-gray-200 rounded-xl p-3">
-          <p className="text-xs text-gray-500">Valor total a pagar de contado</p>
-          <p className="text-lg font-bold text-emerald-700 mt-0.5">{formatCOP(totalMotos)}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">Definido en Motos de interés</p>
-        </div>
-      )}
+          {/* ── BONOS ── */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Bonos</p>
+            {bonosCatalogo.length === 0 ? (
+              <p className="text-xs text-gray-400">Sin bono (predeterminado). Configura bonos en Config Ventas → Bonos.</p>
+            ) : (
+              <div className="space-y-2">
+                {bonosCatalogo.map(b => {
+                  const aplicado = bonosAplicados.find(x => x.bono_id === b.id)
+                  return (
+                    <div key={b.id} className="flex items-center gap-2">
+                      <button onClick={() => toggleBono(b.id, !aplicado)}
+                        className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
+                          aplicado ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}>
+                        {b.nombre}
+                      </button>
+                      {aplicado && (
+                        <MoneyInput value={aplicado.monto ? String(aplicado.monto) : ''}
+                          onChange={raw => setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
+                          onCommit={raw => setMontoBono(b.id, raw)}
+                          placeholder="Valor del bono"
+                          className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      )}
+                    </div>
+                  )
+                })}
+                {bonosAplicados.length === 0 && <p className="text-[11px] text-gray-400">Sin bono aplicado (predeterminado)</p>}
+              </div>
+            )}
+          </div>
 
-      {/* ── DETALLES CRÉDITO ── */}
-      {esCredito && (
-        <div className="space-y-2 border border-gray-200 rounded-xl p-3">
-          <p className="text-xs text-gray-400">Referencia motos: {formatCOP(totalMotos)}</p>
-          {formaPago === 'credito_ci' && (
-            <div>
-              <label className="text-xs text-gray-500">Cuota inicial (COP)</label>
-              <MoneyInput value={cuotaInicial} onChange={setCuotaInicial} onCommit={guardarCuotas}
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+          {/* ── CONTADO: valor de referencia, ya definido en Motos de interés ── */}
+          {formaPago === 'contado' && (
+            <div className="border border-gray-200 rounded-xl p-3">
+              <p className="text-xs text-gray-500">Valor total a pagar de contado</p>
+              <p className="text-lg font-bold text-emerald-700 mt-0.5">{formatCOP(totalMotos)}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">Definido en Motos de interés</p>
             </div>
           )}
-          <div>
-            <label className="text-xs text-gray-500">Cuota mensual estimada (COP)</label>
-            <MoneyInput value={cuotaDeseada} onChange={setCuotaDeseada} onCommit={guardarCuotas}
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Plazo estimado en meses</label>
-            <input type="number" value={plazoMeses} onChange={e => setPlazoMeses(e.target.value)}
-              onBlur={guardarCuotas}
-              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
-          </div>
+
+          {/* ── DETALLES CRÉDITO ── */}
+          {esCredito && (
+            <div className="space-y-2 border border-gray-200 rounded-xl p-3">
+              <p className="text-xs text-gray-400">Referencia motos: {formatCOP(totalMotos)}</p>
+              {formaPago === 'credito_ci' && (
+                <div>
+                  <label className="text-xs text-gray-500">Cuota inicial (COP)</label>
+                  <MoneyInput value={cuotaInicial} onChange={setCuotaInicial} onCommit={guardarCuotas}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+                </div>
+              )}
+              <div>
+                <label className="text-xs text-gray-500">Cuota mensual estimada (COP)</label>
+                <MoneyInput value={cuotaDeseada} onChange={setCuotaDeseada} onCommit={guardarCuotas}
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Plazo estimado en meses</label>
+                <input type="number" value={plazoMeses} onChange={e => setPlazoMeses(e.target.value)}
+                  onBlur={guardarCuotas}
+                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
+              </div>
+            </div>
+          )}
+
+          {formaPago && (
+            <button onClick={() => setEditandoPago(false)}
+              className="text-xs text-blue-700 font-semibold hover:text-blue-900 flex items-center gap-1">
+              ✓ Listo
+            </button>
+          )}
+        </>
+      ) : (
+        <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+          <span className="font-semibold text-gray-800 whitespace-nowrap">
+            {FORMA_OPCIONES.find(o => o.value === formaPago)?.label}
+          </span>
+          {formaPago === 'contado' && (
+            <span className="text-gray-500 whitespace-nowrap">{formatCOP(totalMotos)}</span>
+          )}
+          {esCredito && (
+            <>
+              {formaPago === 'credito_ci' && cuotaInicial && (
+                <span className="text-gray-500 whitespace-nowrap">Inicial: {formatCOP(parseFloat(cuotaInicial))}</span>
+              )}
+              {cuotaDeseada && (
+                <span className="text-gray-500 whitespace-nowrap">Cuota: {formatCOP(parseFloat(cuotaDeseada))}/mes</span>
+              )}
+              {plazoMeses && (
+                <span className="text-gray-500 whitespace-nowrap">Plazo: {plazoMeses} meses</span>
+              )}
+            </>
+          )}
+          <span className="text-gray-400 truncate">Bonos: {bonosResumen}</span>
+          <button onClick={() => setEditandoPago(true)}
+            className="ml-auto text-xs text-blue-700 font-semibold hover:text-blue-900 flex items-center gap-1 flex-shrink-0">
+            ✎ Editar
+          </button>
         </div>
       )}
 
