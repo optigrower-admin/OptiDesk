@@ -58,6 +58,8 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   /* ── Estado bonos ── */
   const [bonosCatalogo, setBonosCatalogo]   = useState<Bono[]>([])
   const [bonosAplicados, setBonosAplicados] = useState<BonoAplicado[]>([])
+  const [nuevoBonoInput, setNuevoBonoInput] = useState('')
+  const [creandoBono, setCreandoBono]       = useState(false)
   const [editandoPago, setEditandoPago]     = useState(false)
 
   /* ── Estado pagos registrados ── */
@@ -158,6 +160,27 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
     setBonosAplicados(p => p.map(b => b.id === existente.id ? { ...b, monto: val } : b))
   }
 
+  async function crearYAplicarBono() {
+    const nombre = nuevoBonoInput.trim()
+    if (!nombre) return
+    setCreandoBono(true)
+    try {
+      const { data: bono, error: errBono } = await supabase.from('bonos')
+        .insert({ tenant_id: tenantId, nombre, orden: bonosCatalogo.length })
+        .select('id, nombre').single()
+      if (errBono || !bono) { alert(`No se pudo crear el bono: ${errBono?.message ?? 'error desconocido'}`); return }
+      setBonosCatalogo(p => [...p, bono as Bono])
+      const { data: aplicado, error: errAp } = await supabase.from('clientes_bonos')
+        .insert({ cliente_id: clienteId, tenant_id: tenantId, bono_id: bono.id, monto: 0 })
+        .select('id, bono_id, monto').single()
+      if (errAp) { alert(`El bono se creó pero no se pudo aplicar: ${errAp.message}`); return }
+      if (aplicado) setBonosAplicados(p => [...p, aplicado as BonoAplicado])
+      setNuevoBonoInput('')
+    } finally {
+      setCreandoBono(false)
+    }
+  }
+
   /* ── Estudios de crédito ── */
   async function cambiarEstado(entidadId: string, estado: Estudio['estado']) {
     const existente = estudios.find(e => e.entidad_id === entidadId)
@@ -255,33 +278,44 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
           {/* ── BONOS ── */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Bonos</p>
-            {bonosCatalogo.length === 0 ? (
-              <p className="text-xs text-gray-400">Sin bono (predeterminado). Configura bonos en Config Ventas → Bonos.</p>
-            ) : (
-              <div className="space-y-2">
-                {bonosCatalogo.map(b => {
-                  const aplicado = bonosAplicados.find(x => x.bono_id === b.id)
-                  return (
-                    <div key={b.id} className="flex items-center gap-2">
-                      <button onClick={() => toggleBono(b.id, !aplicado)}
-                        className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
-                          aplicado ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                        }`}>
-                        {b.nombre}
-                      </button>
-                      {aplicado && (
-                        <MoneyInput value={aplicado.monto ? String(aplicado.monto) : ''}
-                          onChange={raw => setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
-                          onCommit={raw => setMontoBono(b.id, raw)}
-                          placeholder="Valor del bono"
-                          className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      )}
-                    </div>
-                  )
-                })}
-                {bonosAplicados.length === 0 && <p className="text-[11px] text-gray-400">Sin bono aplicado (predeterminado)</p>}
-              </div>
+            {bonosCatalogo.length === 0 && (
+              <p className="text-xs text-gray-400 mb-2">Sin bonos creados todavía. Agrega uno abajo (ej: Financiera, UMA, Motospace38) o desde Config Ventas → Bonos.</p>
             )}
+            <div className="space-y-2">
+              {bonosCatalogo.map(b => {
+                const aplicado = bonosAplicados.find(x => x.bono_id === b.id)
+                return (
+                  <div key={b.id} className="flex items-center gap-2">
+                    <button onClick={() => toggleBono(b.id, !aplicado)}
+                      className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
+                        aplicado ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      }`}>
+                      {b.nombre}
+                    </button>
+                    {aplicado && (
+                      <MoneyInput value={aplicado.monto ? String(aplicado.monto) : ''}
+                        onChange={raw => setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
+                        onCommit={raw => setMontoBono(b.id, raw)}
+                        placeholder="Valor del bono"
+                        className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    )}
+                  </div>
+                )
+              })}
+              {bonosCatalogo.length > 0 && bonosAplicados.length === 0 && (
+                <p className="text-[11px] text-gray-400">Sin bono aplicado (predeterminado)</p>
+              )}
+              <div className="flex items-center gap-2 pt-1">
+                <input value={nuevoBonoInput} onChange={e => setNuevoBonoInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') crearYAplicarBono() }}
+                  placeholder="Nuevo bono..."
+                  className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <button onClick={crearYAplicarBono} disabled={!nuevoBonoInput.trim() || creandoBono}
+                  className="text-xs px-2.5 py-1 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg font-semibold whitespace-nowrap">
+                  {creandoBono ? '...' : '+ Agregar'}
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* ── CONTADO: valor de referencia, ya definido en Motos de interés ── */}
