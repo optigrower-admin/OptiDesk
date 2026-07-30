@@ -263,7 +263,7 @@ export default function AdminOrdenesPage() {
 
       const ESTADO_LABELS: Record<string, string> = {
         programado: 'Programado', falta_revision: 'Falta revisión', en_proceso: 'En proceso',
-        pendiente: 'Pendiente', pagado: 'Pagado', listo: 'Finalizado',
+        pendiente: 'Pendiente', pagado: 'Pagado', listo: 'Finalizado', finalizado_incompleto: 'Finalizado - Incompleto',
       }
       const PAGO_LABELS: Record<string, string> = {
         pagado: 'Pagado', abono: 'Abono', pendiente: 'Pendiente',

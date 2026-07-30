@@ -111,7 +111,7 @@ function PriceInput({ value, onChange, className }: { value: string; onChange: (
   )
 }
 
-type EstadoOrden = 'programado' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo'
+type EstadoOrden = 'programado' | 'falta_revision' | 'en_proceso' | 'pendiente' | 'pagado' | 'listo' | 'finalizado_incompleto'
 type EstadoPago = 'pagado' | 'abono' | 'pendiente'
 
 interface Categoria {
@@ -149,6 +149,7 @@ interface OrdenDetalle {
   tenant_id: string
   created_at: string
   fecha_finalizacion: string | null
+  nota_finalizado_incompleto: string | null
   categorias_servicio: { nombre: string } | null
   subcategorias_servicio: { nombre: string } | null
   metodos_pago: { id: string; nombre: string } | null
@@ -345,12 +346,16 @@ export default function AdminOrdenDetallePage() {
   const [lavadoFechaInputValue, setLavadoFechaInputValue] = useState('')
   const [savingLavadoFecha, setSavingLavadoFecha] = useState(false)
   const esGerencia = profile?.rol === 'gerencia'
+  const soloLectura = orden?.estado === 'finalizado_incompleto' && !esGerencia
+  const [showNotaIncompletoModal, setShowNotaIncompletoModal] = useState(false)
+  const [notaIncompletoInput, setNotaIncompletoInput] = useState('')
+  const [savingFinalizadoIncompleto, setSavingFinalizadoIncompleto] = useState(false)
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
     const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }, { data: lmCfg }, { data: lmOrd }, { data: pprov }, { data: coments }] = await Promise.all([
       supabase.from('ordenes')
-        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, moto_id, cliente_id, gestiona_pago_proveedor,
+        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, nota_finalizado_incompleto, moto_id, cliente_id, gestiona_pago_proveedor,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
         .eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto, metodo_pago_id, created_at').eq('orden_id', ordenId),
@@ -1642,6 +1647,35 @@ export default function AdminOrdenDetallePage() {
     )
   }
 
+  const confirmarFinalizadoIncompleto = async () => {
+    if (!orden || !notaIncompletoInput.trim()) return
+    setSavingFinalizadoIncompleto(true)
+    try {
+      const nota = notaIncompletoInput.trim()
+      const { error: err } = await supabase.from('ordenes').update({
+        estado: 'finalizado_incompleto',
+        nota_finalizado_incompleto: nota,
+      }).eq('id', ordenId)
+      if (err) { alert(`No se pudo guardar: ${err.message}`); return }
+      await registrarAuditoria(supabase, {
+        tenant_id: orden.tenant_id,
+        tabla: 'ordenes',
+        registro_id: ordenId,
+        tipo: 'edicion',
+        valor_anterior: { estado: orden.estado },
+        valor_nuevo: { estado: 'finalizado_incompleto', nota_finalizado_incompleto: nota },
+        descripcion: `Marcó la orden #${orden.numero} como "Finalizado - Incompleto": ${nota}`,
+        usuario_id: profile?.id,
+      })
+      setEstado('finalizado_incompleto')
+      setOrden((prev) => prev ? { ...prev, estado: 'finalizado_incompleto', nota_finalizado_incompleto: nota } : null)
+      setShowNotaIncompletoModal(false)
+      setNotaIncompletoInput('')
+    } finally {
+      setSavingFinalizadoIncompleto(false)
+    }
+  }
+
   const actualizarNumerosUMA = (updater: (prev: string[]) => string[]) => {
     setNumerosOrdenUMA((prev) => {
       const next = updater(prev)
@@ -1887,6 +1921,42 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
         </div>
       )}
 
+      {/* Modal nota obligatoria: Finalizado - Incompleto (solo gerencia) */}
+      {showNotaIncompletoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-3">
+            <h3 className="font-bold text-gray-900">Finalizado - Incompleto</h3>
+            <p className="text-sm text-gray-600">
+              Esta orden quedará marcada como <strong>Finalizado - Incompleto</strong> y solo Gerencia podrá seguir editándola. Escribe el motivo (obligatorio):
+            </p>
+            <textarea
+              autoFocus
+              value={notaIncompletoInput}
+              onChange={(e) => setNotaIncompletoInput(e.target.value)}
+              placeholder="Motivo *"
+              rows={4}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-500"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowNotaIncompletoModal(false); setNotaIncompletoInput('') }}
+                disabled={savingFinalizadoIncompleto}
+                className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarFinalizadoIncompleto}
+                disabled={!notaIncompletoInput.trim() || savingFinalizadoIncompleto}
+                className="flex-1 py-2 bg-gray-800 hover:bg-gray-900 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors"
+              >
+                {savingFinalizadoIncompleto ? 'Guardando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal seleccionar formato de impresión */}
       {showPrintModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -2106,6 +2176,28 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
         </div>
       </div>
 
+      {orden.estado === 'finalizado_incompleto' && (
+        <div className="bg-gray-800 text-white rounded-xl p-4 flex items-start gap-3">
+          <span className="text-xl flex-shrink-0">🔒</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold">Finalizado - Incompleto</p>
+            <p className="text-sm text-gray-300 mt-0.5 whitespace-pre-wrap">{orden.nota_finalizado_incompleto}</p>
+            {soloLectura && (
+              <p className="text-xs text-gray-400 mt-1.5">Esta orden está bloqueada: solo Gerencia puede modificarla.</p>
+            )}
+          </div>
+          {esGerencia && (
+            <button
+              onClick={() => { setNotaIncompletoInput(orden.nota_finalizado_incompleto ?? ''); setShowNotaIncompletoModal(true) }}
+              className="text-xs underline text-gray-300 hover:text-white flex-shrink-0"
+            >
+              Editar nota
+            </button>
+          )}
+        </div>
+      )}
+
+      <fieldset disabled={soloLectura} className="contents">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Columna izquierda — Descripción, Ítems y medios */}
         <div className="lg:col-span-2 space-y-6">
@@ -3456,6 +3548,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 { value: 'pendiente', label: 'Pendiente' },
                 { value: 'pagado', label: 'Pagado' },
                 { value: 'listo', label: 'Finalizado' },
+                ...(esGerencia ? [{ value: 'finalizado_incompleto' as EstadoOrden, label: 'Finalizado - Incompleto' }] : []),
               ] as { value: EstadoOrden; label: string }[]).filter((s) => !esVenta || s.value !== 'programado').map((s) => {
                 const tieneRepPendientes = s.value === 'listo' &&
                   items.some((i) => i.origen !== 'mano_obra' && i.estado_repuesto === 'pedido')
@@ -3483,6 +3576,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     key={s.value}
                     onClick={() => {
                       if (bloqueado) { alert(titleMsg ?? 'No se puede cambiar a este estado todavía.'); return }
+                      if (s.value === 'finalizado_incompleto') { setNotaIncompletoInput(''); setShowNotaIncompletoModal(true); return }
                       cambiarEstado(s.value)
                     }}
                     title={titleMsg}
@@ -3490,7 +3584,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                       bloqueado
                         ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
                         : estado === s.value
-                          ? s.value === 'programado' ? 'bg-orange-500 text-white' : 'bg-blue-700 text-white'
+                          ? s.value === 'finalizado_incompleto' ? 'bg-gray-800 text-white' : s.value === 'programado' ? 'bg-orange-500 text-white' : 'bg-blue-700 text-white'
                           : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
                     }`}
                   >
@@ -3576,6 +3670,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
           )}
         </div>
       </div>
+      </fieldset>
 
       {/* Modal historial de cambios */}
       {showAudit && (
