@@ -30,6 +30,7 @@ export default function PermisosConsultasSQLPage() {
     puede_acceder: false, tablas_permitidas: [], puede_exportar: true, limite_filas_preview: 500,
   })
   const [guardando, setGuardando] = useState(false)
+  const [errorGuardar, setErrorGuardar] = useState<string | null>(null)
 
   const esGerencia = profile?.rol === 'gerencia' || profile?.rol === 'control_total'
 
@@ -50,6 +51,7 @@ export default function PermisosConsultasSQLPage() {
   const abrirEditor = (usuario_id: string | null, rol: string) => {
     const existente = filaPara(usuario_id, rol)
     setEditando({ usuario_id, rol })
+    setErrorGuardar(null)
     setForm({
       puede_acceder: existente?.puede_acceder ?? false,
       tablas_permitidas: existente?.tablas_permitidas ?? [],
@@ -61,14 +63,28 @@ export default function PermisosConsultasSQLPage() {
   const guardar = async () => {
     if (!editando) return
     setGuardando(true)
-    await fetch('/api/admin/sql-console/permisos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ usuario_id: editando.usuario_id, rol: editando.rol, ...form }),
-    })
-    setGuardando(false)
-    setEditando(null)
-    cargar()
+    setErrorGuardar(null)
+    try {
+      const r = await fetch('/api/admin/sql-console/permisos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario_id: editando.usuario_id, rol: editando.rol, ...form }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setErrorGuardar(j.error ?? 'No se pudo guardar'); return }
+      setEditando(null)
+      cargar()
+    } catch {
+      setErrorGuardar('No se pudo conectar con el servidor')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const aplicarAtajo = (atajo: 'total' | 'sin_exportar' | 'sin_acceso') => {
+    if (atajo === 'total') setForm({ puede_acceder: true, tablas_permitidas: [], puede_exportar: true, limite_filas_preview: 500 })
+    if (atajo === 'sin_exportar') setForm({ puede_acceder: true, tablas_permitidas: [], puede_exportar: false, limite_filas_preview: 500 })
+    if (atajo === 'sin_acceso') setForm({ puede_acceder: false, tablas_permitidas: [], puede_exportar: false, limite_filas_preview: 500 })
   }
 
   if (cargandoAuth) return null
@@ -182,6 +198,25 @@ export default function PermisosConsultasSQLPage() {
             <h3 className="font-bold text-gray-900">
               {editando.usuario_id ? `Excepción: ${usuarios.find(u => u.id === editando.usuario_id)?.nombre}` : `Rol: ${editando.rol}`}
             </h3>
+
+            {errorGuardar && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">{errorGuardar}</div>
+            )}
+
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Atajos rápidos</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => aplicarAtajo('total')} className="text-xs px-2.5 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg font-medium hover:bg-green-100">
+                  ✓ Acceso total
+                </button>
+                <button type="button" onClick={() => aplicarAtajo('sin_exportar')} className="text-xs px-2.5 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg font-medium hover:bg-amber-100">
+                  Solo consultar (sin exportar)
+                </button>
+                <button type="button" onClick={() => aplicarAtajo('sin_acceso')} className="text-xs px-2.5 py-1.5 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg font-medium hover:bg-gray-100">
+                  ✕ Sin acceso
+                </button>
+              </div>
+            </div>
 
             <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
               <input type="checkbox" checked={form.puede_acceder} onChange={e => setForm(f => ({ ...f, puede_acceder: e.target.checked }))} />

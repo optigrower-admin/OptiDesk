@@ -48,7 +48,11 @@ $$;
 -- (Descomenta y ajusta si necesitas rotarla más adelante)
 -- ALTER ROLE optidesk_query_readonly WITH PASSWORD 'NUEVA_CONTRASEÑA';
 
-ALTER ROLE optidesk_query_readonly NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+-- Nota: no incluimos NOSUPERUSER aquí — el rol "postgres" del SQL Editor de
+-- Supabase no es un superusuario real, así que Postgres rechaza cualquier
+-- ALTER ROLE que toque el atributo SUPERUSER (incluso para confirmar que NO
+-- lo tenga). No hace falta: CREATE ROLE nunca le dio superuser de entrada.
+ALTER ROLE optidesk_query_readonly NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 
 GRANT USAGE ON SCHEMA public TO optidesk_query_readonly;
 GRANT USAGE ON SCHEMA auth TO optidesk_query_readonly;

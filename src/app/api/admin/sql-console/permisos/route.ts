@@ -49,8 +49,19 @@ export async function POST(req: NextRequest) {
     updated_at: new Date().toISOString(),
   }
 
-  const onConflict = usuario_id ? 'tenant_id,usuario_id' : 'tenant_id,rol'
-  const { error } = await supabase.from('sql_console_permisos').upsert(fila, { onConflict })
+  // No usamos upsert(onConflict) porque los índices únicos de esta tabla son
+  // PARCIALES (uno para "fila de rol" con usuario_id IS NULL, otro para "fila
+  // de excepción por usuario" con usuario_id IS NOT NULL) — Postgres no deja
+  // usar ON CONFLICT sobre un índice parcial solo con la lista de columnas,
+  // así que hacemos el select-then-insert/update a mano.
+  let buscar = supabase.from('sql_console_permisos').select('id').eq('tenant_id', chk.perfil.tenant_id)
+  buscar = usuario_id ? buscar.eq('usuario_id', usuario_id) : buscar.eq('rol', rol).is('usuario_id', null)
+  const { data: existente, error: errorBuscar } = await buscar.maybeSingle()
+  if (errorBuscar) return NextResponse.json({ error: errorBuscar.message }, { status: 500 })
+
+  const { error } = existente
+    ? await supabase.from('sql_console_permisos').update(fila).eq('id', existente.id)
+    : await supabase.from('sql_console_permisos').insert(fila)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ ok: true })
