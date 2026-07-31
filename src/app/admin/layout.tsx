@@ -79,6 +79,15 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/comentarios/bandeja', label: 'Publicaciones', seccion: 'comentarios', soloGerencia: false, defaultOrden: 200 },
     ],
   },
+  {
+    key: 'integraciones',
+    label: 'Integraciones',
+    items: [
+      { href: '/admin/integraciones/api-keys',  label: 'API Keys',          seccion: 'integraciones_api',      soloGerencia: true, defaultOrden: 300 },
+      { href: '/admin/integraciones/webhooks',  label: 'Webhooks',          seccion: 'integraciones_webhooks', soloGerencia: true, defaultOrden: 310 },
+      { href: '/admin/integraciones/ia',        label: 'Integraciones IA',  seccion: 'integraciones_ia',       soloGerencia: true, defaultOrden: 320 },
+    ],
+  },
 ]
 
 const STANDALONE_NAV: NavItem[] = [
