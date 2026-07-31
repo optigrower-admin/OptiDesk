@@ -30,8 +30,15 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
+  // Rutas que se autentican con su propio esquema (CRON_SECRET / API key /
+  // firma de webhook), no con sesión de usuario — el middleware no debe
+  // interceptarlas ni redirigirlas a /login.
+  if (pathname.startsWith('/api/cron/') || pathname.startsWith('/api/v1/') || pathname.startsWith('/api/webhooks/')) {
+    return supabaseResponse
+  }
+
   // Rutas públicas
-  if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/api/webhooks/') || pathname.startsWith('/privacy') || pathname.startsWith('/terms')) {
+  if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/privacy') || pathname.startsWith('/terms') || pathname.startsWith('/docs/')) {
     if (user) {
       const { data: usuario } = await supabase
         .from('usuarios')
