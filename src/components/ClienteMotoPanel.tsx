@@ -107,7 +107,7 @@ export function ClienteMotoPanel({ tenantId, placa, cedula, onAutoFill, onResult
         }
         setMoto(m)
         setMotoNotFound(false)
-        setExtras(EMPTY_EXTRAS)
+        setExtras({ ...EMPTY_EXTRAS, kilometraje: m.kilometraje ? formatKm(String(m.kilometraje)) : '' })
         if (m.clientes) {
           onAutoFillRef.current?.({
             nombre: m.clientes.nombre,
@@ -208,18 +208,9 @@ export function ClienteMotoPanel({ tenantId, placa, cedula, onAutoFill, onResult
             <input
               type="text"
               value={extras.marca}
-              onChange={(e) => setExtras((p) => ({ ...p, marca: e.target.value, modelo: '' }))}
+              onChange={(e) => setExtras((p) => ({ ...p, marca: e.target.value.toUpperCase(), modelo: '' }))}
               placeholder="Marca y modelo (ej: Honda CRX 200)"
-              className="col-span-2 px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
-            />
-            {/* Kilometraje */}
-            <input
-              type="text"
-              inputMode="numeric"
-              value={extras.kilometraje}
-              onChange={(e) => setExtras((p) => ({ ...p, kilometraje: formatKm(e.target.value) }))}
-              placeholder="Kilometraje (ej: 12.500)"
-              className="px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+              className="col-span-2 px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white uppercase placeholder:normal-case focus:outline-none focus:ring-1 focus:ring-amber-400"
             />
             {/* Año */}
             <input
@@ -240,6 +231,21 @@ export function ClienteMotoPanel({ tenantId, placa, cedula, onAutoFill, onResult
               className="px-3 py-2 border border-amber-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
             />
           </div>
+        </div>
+      )}
+
+      {/* ── Kilometraje — siempre visible, cambia en cada entrada ── */}
+      {!loadingMoto && (moto || motoNotFound) && (
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Kilometraje actual</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={extras.kilometraje}
+            onChange={(e) => setExtras((p) => ({ ...p, kilometraje: formatKm(e.target.value) }))}
+            placeholder="ej: 12.500"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+          />
         </div>
       )}
 

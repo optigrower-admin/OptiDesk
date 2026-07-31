@@ -35,6 +35,8 @@ export async function upsertMotoCliente({
 
   // 1. Crear moto si no existe y hay placa
   const placaNorm = placa ? normalizarPlaca(placa) : null
+  const kilometrajeNum = motoExtras?.kilometraje ? parseInt(motoExtras.kilometraje.replace(/\./g, ''), 10) : null
+
   if (placaNorm && !finalMotoId) {
     const { data } = await supabase
       .from('motos')
@@ -45,11 +47,17 @@ export async function upsertMotoCliente({
         modelo: motoExtras?.modelo || null,
         año: motoExtras?.año ? parseInt(motoExtras.año) : null,
         color: motoExtras?.color || null,
-        kilometraje: motoExtras?.kilometraje ? parseInt(motoExtras.kilometraje.replace(/\./g, '')) : null,
+        kilometraje: kilometrajeNum,
       })
       .select('id')
       .single()
     finalMotoId = data?.id ?? null
+  } else if (finalMotoId && kilometrajeNum != null) {
+    // La moto ya existía — el kilometraje cambia en cada entrada al taller,
+    // así que se actualiza siempre. Vía RPC (no UPDATE directo) por la misma
+    // razón que vincular_moto_cliente: la política RLS de motos solo permite
+    // UPDATE a admin/gerencia y un mecánico creando la orden no podría.
+    await supabase.rpc('actualizar_kilometraje_moto', { p_moto_id: finalMotoId, p_kilometraje: kilometrajeNum })
   }
 
   // 2. Buscar o crear cliente

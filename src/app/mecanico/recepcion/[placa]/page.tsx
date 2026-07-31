@@ -98,7 +98,7 @@ export default function RecepcionPage() {
         }
         if (d.placa) setPlaca(d.placa)
         if (d.tipoServicio) setTipoServicio(d.tipoServicio)
-        if (d.cliente) setCliente(d.cliente)
+        if (d.cliente) setCliente(String(d.cliente).toUpperCase())
         if (d.telefono) setTelefono(d.telefono)
         if (d.descripcion) setDescripcion(d.descripcion)
         if (d.manifiestaCliente) setManifiestaCliente(d.manifiestaCliente)
@@ -224,6 +224,7 @@ export default function RecepcionPage() {
           placa: placaNorm,
           cliente,
           telefono: telefono || null,
+          kilometraje_ingreso: panelResult.motoExtras.kilometraje ? parseInt(panelResult.motoExtras.kilometraje.replace(/\./g, ''), 10) : null,
           descripcion: esGarantia ? null : descripcion,
           manifiesta_cliente: esGarantia ? manifiestaCliente || null : null,
           diagnostico: esGarantia ? diagnostico || null : null,
@@ -375,9 +376,10 @@ export default function RecepcionPage() {
             tenantId={profile.tenant_id}
             placa={placa}
             onAutoFill={({ nombre, celular }) => {
-              if (nombre) setCliente(nombre)
+              const nombreMayus = nombre?.toUpperCase()
+              if (nombreMayus) setCliente(nombreMayus)
               if (celular && !telefono) setTelefono(celular)
-              setAutoCliente({ nombre: nombre ?? '', celular: celular ?? '' })
+              setAutoCliente({ nombre: nombreMayus ?? '', celular: celular ?? '' })
             }}
             onResult={setPanelResult}
           />
@@ -387,9 +389,9 @@ export default function RecepcionPage() {
           <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
           <input
             value={cliente}
-            onChange={(e) => setCliente(e.target.value)}
+            onChange={(e) => setCliente(e.target.value.toUpperCase())}
             required
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm uppercase placeholder:normal-case focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Nombre del cliente"
           />
           {autoCliente && (cliente.trim() !== autoCliente.nombre.trim() || (telefono || '') !== (autoCliente.celular || '')) && (
@@ -400,12 +402,12 @@ export default function RecepcionPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Celular (opcional)</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Celular</label>
           <input
             type="tel"
             value={telefono}
             onChange={(e) => setTelefono(formatTelefono(e.target.value))}
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${!telefono ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
             placeholder="(310) 000-0000"
           />
         </div>

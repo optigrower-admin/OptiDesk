@@ -68,7 +68,7 @@ export default function NuevaOrdenAdminPage() {
       if (saved) {
         const d = JSON.parse(saved)
         if (d.placa) setPlaca(d.placa)
-        if (d.cliente) setCliente(d.cliente)
+        if (d.cliente) setCliente(String(d.cliente).toUpperCase())
         if (d.telefono) setTelefono(d.telefono)
         if (d.cedula) setCedula(d.cedula)
         if (d.descripcion) setDescripcion(d.descripcion)
@@ -108,7 +108,7 @@ export default function NuevaOrdenAdminPage() {
   }, [profile?.tenant_id])
 
   function seleccionarCliente(c: ClienteEncontrado) {
-    setCliente(c.nombre)
+    setCliente(c.nombre.toUpperCase())
     if (c.cedula)  setCedula(c.cedula)
     if (c.celular) setTelefono(c.celular)
     setClienteIdSeleccionado(c.id)
@@ -195,6 +195,7 @@ export default function NuevaOrdenAdminPage() {
           cliente: cliente || '—',
           telefono: telefono || null,
           cedula: cedula || null,
+          kilometraje_ingreso: panelResult.motoExtras.kilometraje ? parseInt(panelResult.motoExtras.kilometraje.replace(/\./g, ''), 10) : null,
           descripcion: esGarantia ? null : descripcion,
           manifiesta_cliente: esGarantia ? manifiestaCliente || null : null,
           diagnostico: esGarantia ? diagnostico || null : null,
@@ -405,7 +406,7 @@ export default function NuevaOrdenAdminPage() {
               placa={placa}
               cedula={cedula}
               onAutoFill={({ nombre, cedula: cc, celular }) => {
-                if (nombre && !cliente) setCliente(nombre)
+                if (nombre && !cliente) setCliente(nombre.toUpperCase())
                 if (cc && !cedula) setCedula(cc)
                 if (celular && !telefono) setTelefono(celular)
               }}
@@ -432,9 +433,9 @@ export default function NuevaOrdenAdminPage() {
               </div>
               <input
                 value={cliente}
-                onChange={(e) => setCliente(e.target.value)}
+                onChange={(e) => setCliente(e.target.value.toUpperCase())}
                 required={tipoOrden === 'servicio'}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm uppercase placeholder:normal-case"
                 placeholder="Nombre del cliente"
               />
             </div>
@@ -444,7 +445,7 @@ export default function NuevaOrdenAdminPage() {
                 type="tel"
                 value={telefono}
                 onChange={(e) => setTelefono(formatTelefono(e.target.value))}
-                className={`w-full px-3 py-2 border rounded-lg text-sm ${!telefono && tipoOrden === 'servicio' ? 'border-amber-300 bg-amber-50' : 'border-gray-200'}`}
+                className={`w-full px-3 py-2 border rounded-lg text-sm ${!telefono ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                 placeholder="(310) 000-0000"
               />
             </div>
