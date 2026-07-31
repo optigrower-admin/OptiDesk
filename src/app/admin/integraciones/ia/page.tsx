@@ -19,6 +19,7 @@ const USOS = [
   { key: 'clasificacion_intencion', label: 'Clasificar intención del mensaje' },
   { key: 'transcripcion_audio', label: 'Transcripción de audio a texto' },
   { key: 'generar_audio', label: 'Generar audio desde texto' },
+  { key: 'generar_imagen', label: 'Generar imagen' },
 ] as const
 
 type Integracion = {

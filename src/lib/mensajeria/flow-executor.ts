@@ -725,7 +725,7 @@ async function procesarNodo(
           return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
         }
 
-        const salida = resultado.texto ?? resultado.audioBase64 ?? ''
+        const salida = resultado.texto ?? resultado.imagenUrl ?? resultado.audioBase64 ?? ''
         const nuevasVars = variableSalida
           ? { ...(contexto.variables ?? {}), [variableSalida]: salida }
           : contexto.variables

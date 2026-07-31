@@ -16,6 +16,7 @@ export interface ResultadoIA {
   ok: boolean
   texto?: string
   audioBase64?: string
+  imagenUrl?: string
   proveedor?: ProveedorIA
   error?: string
 }
@@ -101,6 +102,17 @@ async function llamarProveedor(
   proveedor: ProveedorIA, apiKey: string, modelo: string | undefined, prompt: string,
   maxTokens: number, temperatura: number, opciones: OpcionesIA, uso: string,
 ): Promise<ResultadoIA> {
+  if (proveedor === 'OPENAI' && uso === 'generar_imagen') {
+    const r = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: modelo || 'dall-e-3', prompt, n: 1, size: '1024x1024' }),
+    })
+    const data = await r.json()
+    if (!r.ok) return { ok: false, error: data?.error?.message ?? 'Error de OpenAI (imagen)', proveedor }
+    return { ok: true, imagenUrl: data.data?.[0]?.url ?? '', proveedor }
+  }
+
   if (proveedor === 'OPENAI' || proveedor === 'GROK') {
     const url = proveedor === 'OPENAI' ? 'https://api.openai.com/v1/chat/completions' : 'https://api.x.ai/v1/chat/completions'
     const r = await fetch(url, {

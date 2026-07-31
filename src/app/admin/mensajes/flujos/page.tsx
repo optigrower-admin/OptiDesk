@@ -57,12 +57,27 @@ const ACCIONES_IA = [
   { key: 'clasificacion_intencion', label: 'Clasificar intención del mensaje' },
   { key: 'transcripcion_audio', label: 'Transcribir audio a texto' },
   { key: 'generar_audio', label: 'Generar audio desde texto (ElevenLabs)' },
+  { key: 'generar_imagen', label: 'Generar imagen (OpenAI)' },
 ] as const
+
+const ACCION_IA_AYUDA: Record<string, string> = {
+  resumenes_conversacion: 'Genera un resumen corto de la conversación. El resultado se guarda como texto.',
+  sugerencias_respuesta: 'Sugiere una respuesta para el cliente según el prompt. El resultado se guarda como texto.',
+  clasificacion_intencion: 'Clasifica la intención del mensaje (ej: interesado, reclamo, pregunta). El resultado se guarda como texto corto.',
+  transcripcion_audio: 'Convierte un audio en texto. El resultado se guarda como texto.',
+  generar_audio: 'Convierte el prompt en un audio de voz (ElevenLabs). El resultado se guarda como referencia del audio generado.',
+  generar_imagen: 'Genera una imagen a partir de la descripción del prompt (OpenAI). El resultado se guarda como URL de la imagen.',
+}
+
+const ACCION_IA_PLACEHOLDER: Record<string, string> = {
+  generar_imagen: 'Describe la imagen a generar — ej: "una moto deportiva roja de frente, fondo blanco"',
+}
 
 const MODELOS_POR_PROVEEDOR: Record<string, { modelo: string; label: string; ayuda: string }[]> = {
   OPENAI: [
     { modelo: 'gpt-4o-mini', label: 'GPT-4o mini', ayuda: 'Más económico y rápido — ideal para clasificar, respuestas cortas. No analiza a fondo.' },
     { modelo: 'gpt-4o', label: 'GPT-4o', ayuda: 'Más capaz — mejor para resúmenes largos y análisis complejo. Más lento y más costoso.' },
+    { modelo: 'dall-e-3', label: 'DALL-E 3', ayuda: 'Genera imágenes a partir de texto. Solo aplica para la acción "Generar imagen".' },
   ],
   ANTHROPIC: [
     { modelo: 'claude-haiku-4-5-20251001', label: 'Claude Haiku', ayuda: 'Más económico y rápido — ideal para clasificar, respuestas cortas.' },
@@ -532,7 +547,7 @@ const AgenteIANode = ({ id, data }: NodeProps) => {
 
 // ─── NODO: Acción IA (integraciones_ia — Módulo C) ────────────────────────────
 const AccionIANode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
+  const { setNodes, setEdges, getNodes } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
   const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
@@ -543,6 +558,19 @@ const AccionIANode = ({ id, data }: NodeProps) => {
   const proveedor = data.proveedor ?? integracionesParaAccion[0]?.proveedor ?? ''
   const modelosDisponibles = MODELOS_POR_PROVEEDOR[proveedor] ?? []
   const modeloSeleccionado = modelosDisponibles.find(m => m.modelo === data.modelo)
+
+  const variableActual: string = data.variable_salida ?? ''
+  const variablesExistentes = Array.from(new Set(
+    getNodes()
+      .map(n => {
+        if (n.id === id) return null
+        if (n.type === 'capturar_dato' && n.data?.campo === 'variable') return n.data?.nombre_variable as string
+        if (n.type === 'accion_ia') return n.data?.variable_salida as string
+        return null
+      })
+      .filter((v): v is string => !!v),
+  ))
+  const [creandoVariable, setCreandoVariable] = useState(() => !!variableActual && !variablesExistentes.includes(variableActual))
 
   return (
     <div className={`${nodeBaseClass} border-fuchsia-400`}>
@@ -555,6 +583,11 @@ const AccionIANode = ({ id, data }: NodeProps) => {
           <option value="">Seleccionar acción...</option>
           {ACCIONES_IA.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
         </select>
+        {accion && ACCION_IA_AYUDA[accion] && (
+          <p className="text-[10px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1.5">
+            {ACCION_IA_AYUDA[accion]}
+          </p>
+        )}
 
         {integracionesParaAccion.length > 1 && (
           <div>
@@ -583,14 +616,34 @@ const AccionIANode = ({ id, data }: NodeProps) => {
         )}
 
         <textarea defaultValue={data.prompt ?? ''} onChange={e => upd('prompt', e.target.value)}
-          placeholder="Prompt — usa {{ultimo_mensaje}}, {{nombre}}, {{variables.x}}..."
+          placeholder={ACCION_IA_PLACEHOLDER[accion] ?? 'Prompt — usa {{ultimo_mensaje}}, {{nombre}}, {{variables.x}}...'}
           rows={3}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400 resize-none font-mono" />
         <div>
           <label className="block text-xs text-gray-500 font-medium mb-1">Guardar resultado en variable</label>
-          <input defaultValue={data.variable_salida ?? ''} onChange={e => upd('variable_salida', e.target.value)}
-            placeholder="ej: resumen_ia"
-            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
+          {!creandoVariable ? (
+            <select
+              value={variablesExistentes.includes(variableActual) ? variableActual : ''}
+              onChange={e => {
+                if (e.target.value === '__nueva__') { setCreandoVariable(true); upd('variable_salida', '') }
+                else upd('variable_salida', e.target.value)
+              }}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
+            >
+              <option value="">No guardar</option>
+              {variablesExistentes.map(v => <option key={v} value={v}>{v}</option>)}
+              <option value="__nueva__">+ Nueva variable...</option>
+            </select>
+          ) : (
+            <div className="flex items-center gap-1">
+              <input autoFocus defaultValue={variableActual} onChange={e => upd('variable_salida', e.target.value)}
+                placeholder="ej: resumen_ia"
+                className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
+              <button onClick={() => setCreandoVariable(false)} className="text-xs text-fuchsia-600 hover:text-fuchsia-800 flex-shrink-0" title="Listo">
+                ✓
+              </button>
+            </div>
+          )}
         </div>
         {sinIntegracion && (
           <p className="text-[10px] text-amber-600">⚠ Integración no conectada para esta acción. Conéctala en Integraciones → Integraciones IA.</p>
