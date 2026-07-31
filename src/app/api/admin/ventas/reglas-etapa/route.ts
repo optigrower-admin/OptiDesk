@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 const CAMPOS_VALIDOS = [
   'celular', 'placa', 'alistamiento', 'numero_factura',
   'numero_carta_negociacion', 'fecha_entrega', 'aprobacion_gerencia',
+  'documento_requerido',
 ] as const
 
 async function getTenantId(supabase: ReturnType<typeof createClient>) {
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
     bloquea_cambio_etapa?: boolean
     activa?: boolean
     direccion?: 'arriba' | 'abajo'
+    documentos_requeridos?: string[]
   }
 
   const { accion } = body
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest) {
         tenant_id: tenantId, etapa_id: body.etapa_id, campo: body.campo,
         etiqueta: body.etiqueta.trim(), mensaje_ayuda: body.mensaje_ayuda?.trim() || null,
         color: body.color ?? '#f97316', bloquea_cambio_etapa: body.bloquea_cambio_etapa ?? false,
-        orden,
+        orden, documentos_requeridos: body.documentos_requeridos ?? null,
       })
       .select('*').single()
     if (error) {
@@ -96,6 +98,7 @@ export async function POST(req: NextRequest) {
     if (body.color) updates.color = body.color
     if (body.bloquea_cambio_etapa !== undefined) updates.bloquea_cambio_etapa = body.bloquea_cambio_etapa
     if (body.activa !== undefined) updates.activa = body.activa
+    if (body.documentos_requeridos !== undefined) (updates as Record<string, unknown>).documentos_requeridos = body.documentos_requeridos
     const { error } = await admin.from('reglas_etapa').update(updates).eq('id', body.regla_id).eq('tenant_id', tenantId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })

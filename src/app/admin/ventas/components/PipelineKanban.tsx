@@ -216,7 +216,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     setActiveId(active.id as string)
   }
 
-  function onDragEnd({ active, over }: DragEndEvent) {
+  async function onDragEnd({ active, over }: DragEndEvent) {
     setActiveId(null)
     if (!over) return
     const leadId = active.id as string
@@ -244,6 +244,17 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     if (reglaAprobacionDestino?.bloquea_cambio_etapa && lead.estadoAprobacionMatricula !== 'aprobado') {
       setBloqueoMsg(reglaAprobacionDestino.mensaje_ayuda || 'Debes pedir aprobación para matricular para poder cambiar de etapa')
       return
+    }
+    const reglaDocsDestino = destino?.reglas?.find(r => r.campo === 'documento_requerido')
+    if (reglaDocsDestino?.bloquea_cambio_etapa && reglaDocsDestino.documentos_requeridos?.length) {
+      const { data: archivos } = await supabase
+        .from('archivos_cliente').select('tipo_documento').eq('cliente_id', leadId)
+      const subidos = new Set((archivos ?? []).map(a => a.tipo_documento).filter(Boolean))
+      const faltantes = reglaDocsDestino.documentos_requeridos.filter(d => !subidos.has(d))
+      if (faltantes.length) {
+        setBloqueoMsg(`Faltan documentos para avanzar: ${faltantes.join(', ')}. Súbelos en la pestaña Archivos.`)
+        return
+      }
     }
     if (destino) setPendingMove({ leadId, targetEtapa: destino })
   }

@@ -76,6 +76,7 @@ function EtapaForm({ draft, onChange }: { draft: EtapaDraft; onChange: (d: Etapa
 type CampoRegla =
   | 'celular' | 'placa' | 'alistamiento' | 'numero_factura'
   | 'numero_carta_negociacion' | 'fecha_entrega' | 'aprobacion_gerencia'
+  | 'documento_requerido'
 
 type Regla = {
   id: string
@@ -87,6 +88,7 @@ type Regla = {
   bloquea_cambio_etapa: boolean
   activa: boolean
   orden: number
+  documentos_requeridos?: string[] | null
 }
 
 const CAMPOS_REGLA: { value: CampoRegla; label: string; hint: string }[] = [
@@ -97,10 +99,11 @@ const CAMPOS_REGLA: { value: CampoRegla; label: string; hint: string }[] = [
   { value: 'numero_carta_negociacion',  label: 'Carta de negociación',       hint: '' },
   { value: 'fecha_entrega',             label: 'Fecha de entrega',           hint: '' },
   { value: 'aprobacion_gerencia',       label: 'Aprobación de gerencia',     hint: 'Muestra el panel de aprobar/rechazar; si "bloquea" está activo, no deja avanzar sin aprobar' },
+  { value: 'documento_requerido',       label: 'Documentos requeridos',      hint: 'Exige subir uno o varios archivos (en la pestaña Archivos del cliente) antes de avanzar' },
 ]
 
-type ReglaDraft = { campo: CampoRegla; etiqueta: string; mensaje_ayuda: string; color: string; bloquea_cambio_etapa: boolean }
-const REGLA_DRAFT_VACIO: ReglaDraft = { campo: 'celular', etiqueta: '', mensaje_ayuda: '', color: '#f97316', bloquea_cambio_etapa: false }
+type ReglaDraft = { campo: CampoRegla; etiqueta: string; mensaje_ayuda: string; color: string; bloquea_cambio_etapa: boolean; documentos_requeridos: string[] }
+const REGLA_DRAFT_VACIO: ReglaDraft = { campo: 'celular', etiqueta: '', mensaje_ayuda: '', color: '#f97316', bloquea_cambio_etapa: false, documentos_requeridos: [] }
 
 async function llamarRegla(body: Record<string, unknown>) {
   const res = await fetch('/api/admin/ventas/reglas-etapa', {
@@ -128,6 +131,21 @@ function ReglaForm({ draft, onChange }: { draft: ReglaDraft; onChange: (d: Regla
       <input value={draft.mensaje_ayuda} onChange={e => onChange({ ...draft, mensaje_ayuda: e.target.value })}
         placeholder="Mensaje de ayuda (opcional)"
         className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none" />
+
+      {draft.campo === 'documento_requerido' && (
+        <div className="space-y-1">
+          <p className="text-[10px] text-gray-500">Documentos requeridos (uno por línea):</p>
+          <textarea
+            value={draft.documentos_requeridos.join('\n')}
+            onChange={e => onChange({ ...draft, documentos_requeridos: e.target.value.split('\n') })}
+            onBlur={e => onChange({ ...draft, documentos_requeridos: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) })}
+            rows={4}
+            placeholder={'Carta de Aprobación\nFactura de Venta\nManifiesto de Importación\nCopia Cédula\nContrato de Mandato\nFUNAL'}
+            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none resize-none"
+          />
+        </div>
+      )}
+
       <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
         <input type="checkbox" checked={draft.bloquea_cambio_etapa}
           onChange={e => onChange({ ...draft, bloquea_cambio_etapa: e.target.checked })} />
@@ -229,7 +247,7 @@ function ReglasEtapaConfig({ etapaId }: { etapaId: string }) {
               <button onClick={() => toggleActiva(r)} className="text-[10px] text-gray-500 hover:underline flex-shrink-0">
                 {r.activa ? 'Desactivar' : 'Activar'}
               </button>
-              <button onClick={() => setEditando({ id: r.id, draft: { campo: r.campo, etiqueta: r.etiqueta, mensaje_ayuda: r.mensaje_ayuda ?? '', color: r.color, bloquea_cambio_etapa: r.bloquea_cambio_etapa } })}
+              <button onClick={() => setEditando({ id: r.id, draft: { campo: r.campo, etiqueta: r.etiqueta, mensaje_ayuda: r.mensaje_ayuda ?? '', color: r.color, bloquea_cambio_etapa: r.bloquea_cambio_etapa, documentos_requeridos: r.documentos_requeridos ?? [] } })}
                 className="text-[10px] text-blue-600 hover:underline flex-shrink-0">Editar</button>
               <button onClick={() => eliminar(r.id, r.etiqueta)} className="text-[10px] text-red-500 hover:underline flex-shrink-0">Eliminar</button>
             </div>

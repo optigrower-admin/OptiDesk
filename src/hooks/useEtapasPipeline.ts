@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 export type CampoRegla =
   | 'celular' | 'placa' | 'alistamiento' | 'numero_factura'
   | 'numero_carta_negociacion' | 'fecha_entrega' | 'aprobacion_gerencia'
+  | 'documento_requerido'
 
 export interface ReglaEtapa {
   id: string
@@ -16,6 +17,7 @@ export interface ReglaEtapa {
   bloquea_cambio_etapa: boolean
   activa: boolean
   orden: number
+  documentos_requeridos?: string[] | null   // solo cuando campo === 'documento_requerido'
 }
 
 export interface EtapaDinamica {

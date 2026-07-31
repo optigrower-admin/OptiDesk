@@ -13,6 +13,7 @@ type Archivo = {
   created_at: string
   storage_location: string
   drive_url: string | null
+  tipo_documento: string | null
 }
 
 const ICONO: Record<string, string> = { pdf: '📄', imagen: '🖼️', excel: '📊', word: '📝', otro: '📎' }
@@ -523,15 +524,76 @@ function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
   )
 }
 
+// ── Sección de archivos de un tipo de documento (o "Otros") ───────────────────
+function SeccionDocumento({
+  titulo, requerido, archivos, uploading, isMobile, onFiles, onScan, onEliminar,
+}: {
+  titulo: string; requerido: boolean; archivos: Archivo[]; uploading: boolean; isMobile: boolean
+  onFiles: (files: FileList | null) => void; onScan: () => void; onEliminar: (id: string) => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const cumplido = !requerido || archivos.length > 0
+
+  return (
+    <div className={`border rounded-xl p-3 space-y-2 ${requerido && !cumplido ? 'border-red-200 bg-red-50/40' : 'border-gray-200'}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+          {titulo}
+          {requerido && (cumplido
+            ? <span className="text-green-600">✓</span>
+            : <span className="text-red-500 text-[10px] font-bold">· obligatorio</span>)}
+        </p>
+      </div>
+
+      <input ref={fileRef} type="file" multiple accept=".pdf,.xls,.xlsx,.csv,.doc,.docx,image/*"
+        onChange={e => { onFiles(e.target.files); if (fileRef.current) fileRef.current.value = '' }} className="hidden" />
+
+      {archivos.length > 0 && (
+        <div className="space-y-1">
+          {archivos.map(a => (
+            <div key={a.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
+              <a href={`/api/archivos-cliente/${a.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="flex-shrink-0 text-sm">{ICONO[a.tipo] ?? '📎'}</span>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-700 hover:text-blue-700 truncate">{a.nombre_archivo ?? 'Archivo'}</p>
+                  <p className="text-[10px] text-gray-400">{fmtFecha(a.created_at)}{a.storage_location === 'drive' ? ' · Drive' : ''}</p>
+                </div>
+              </a>
+              {a.storage_location === 'drive' && a.drive_url && (
+                <a href={a.drive_url} target="_blank" rel="noopener noreferrer" title="Abrir en Google Drive"
+                  className="flex-shrink-0 text-[11px] text-blue-500 hover:text-blue-700 px-1 py-0.5 rounded hover:bg-blue-50">Drive ↗</a>
+              )}
+              <button onClick={() => onEliminar(a.id)} className="flex-shrink-0 text-red-400 hover:text-red-600 text-[11px]">Eliminar</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-1.5">
+        <button onClick={() => fileRef.current?.click()} disabled={uploading}
+          className="flex-1 py-1.5 border-2 border-dashed border-gray-300 rounded-lg text-[11px] text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors disabled:opacity-50">
+          {uploading ? 'Subiendo...' : '+ Subir archivo'}
+        </button>
+        {isMobile && (
+          <button onClick={onScan} disabled={uploading}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold disabled:opacity-50 flex-shrink-0">
+            📷 Escanear
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ArchivosTab({ clienteId }: Props) {
   const supabase = createClient()
-  const fileRef = useRef<HTMLInputElement>(null)
   const [archivos, setArchivos] = useState<Archivo[]>([])
+  const [tiposCatalogo, setTiposCatalogo] = useState<string[]>([])
   const [loading, setLoading]   = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError]       = useState('')
-  const [showScanner, setShowScanner] = useState(false)
+  const [scannerTipo, setScannerTipo] = useState<string | null | 'CERRADO'>('CERRADO')
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -539,23 +601,32 @@ export default function ArchivosTab({ clienteId }: Props) {
   }, [])
 
   const cargar = useCallback(async () => {
-    const { data } = await supabase.from('archivos_cliente')
-      .select('id, tipo, nombre_archivo, created_at, storage_location, drive_url')
-      .eq('cliente_id', clienteId)
-      .order('created_at', { ascending: false })
-    setArchivos((data ?? []) as Archivo[])
+    const [{ data: archs }, { data: reglas }] = await Promise.all([
+      supabase.from('archivos_cliente')
+        .select('id, tipo, nombre_archivo, created_at, storage_location, drive_url, tipo_documento')
+        .eq('cliente_id', clienteId)
+        .order('created_at', { ascending: false }),
+      supabase.from('reglas_etapa').select('documentos_requeridos').eq('campo', 'documento_requerido').eq('activa', true),
+    ])
+    setArchivos((archs ?? []) as Archivo[])
+    const catalogo = new Set<string>()
+    for (const r of reglas ?? []) {
+      for (const d of (r.documentos_requeridos ?? []) as string[]) catalogo.add(d)
+    }
+    setTiposCatalogo([...catalogo])
     setLoading(false)
   }, [clienteId])
 
   useEffect(() => { cargar() }, [cargar])
 
-  async function uploadFile(file: File) {
+  async function uploadFile(file: File, tipoDocumento: string | null) {
     setError('')
     setUploading(true)
     try {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('cliente_id', clienteId)
+      if (tipoDocumento) fd.append('tipo_documento', tipoDocumento)
       const res = await fetch('/api/admin/ventas/archivos/subir', { method: 'POST', body: fd })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -568,10 +639,9 @@ export default function ArchivosTab({ clienteId }: Props) {
     setUploading(false)
   }
 
-  async function onFiles(files: FileList | null) {
+  async function onFiles(files: FileList | null, tipoDocumento: string | null) {
     if (!files || files.length === 0) return
-    for (const file of Array.from(files)) await uploadFile(file)
-    if (fileRef.current) fileRef.current.value = ''
+    for (const file of Array.from(files)) await uploadFile(file, tipoDocumento)
   }
 
   async function eliminar(id: string) {
@@ -582,68 +652,44 @@ export default function ArchivosTab({ clienteId }: Props) {
 
   if (loading) return <p className="text-sm text-gray-400 text-center py-8">Cargando...</p>
 
+  const archivosOtros = archivos.filter(a => !a.tipo_documento || !tiposCatalogo.includes(a.tipo_documento))
+
   return (
     <div className="space-y-3">
-      {showScanner && (
+      {scannerTipo !== 'CERRADO' && (
         <ScannerModal
-          onClose={() => setShowScanner(false)}
-          onUpload={async (file) => { await uploadFile(file) }}
+          onClose={() => setScannerTipo('CERRADO')}
+          onUpload={async (file) => { await uploadFile(file, scannerTipo) }}
         />
       )}
 
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Archivos</p>
-
-      <input ref={fileRef} type="file" multiple accept=".pdf,.xls,.xlsx,.csv,.doc,.docx,image/*"
-        onChange={e => onFiles(e.target.files)} className="hidden" />
-
-      <div className="flex gap-2">
-        <button onClick={() => fileRef.current?.click()} disabled={uploading}
-          className="flex-1 py-2.5 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors disabled:opacity-50">
-          {uploading ? 'Subiendo...' : '+ Subir PDF, imagen, Excel o Word'}
-        </button>
-        {isMobile && (
-          <button onClick={() => setShowScanner(true)} disabled={uploading}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            Escanear
-          </button>
-        )}
-      </div>
-
       {error && <p className="text-xs text-red-600">{error}</p>}
 
-      {archivos.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Sin archivos aún</p>}
+      {tiposCatalogo.map(tipo => (
+        <SeccionDocumento
+          key={tipo}
+          titulo={tipo}
+          requerido
+          archivos={archivos.filter(a => a.tipo_documento === tipo)}
+          uploading={uploading}
+          isMobile={isMobile}
+          onFiles={files => onFiles(files, tipo)}
+          onScan={() => setScannerTipo(tipo)}
+          onEliminar={eliminar}
+        />
+      ))}
 
-      <div className="space-y-1.5">
-        {archivos.map(a => (
-          <div key={a.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-            <a href={`/api/archivos-cliente/${a.id}`} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="flex-shrink-0">{ICONO[a.tipo] ?? '📎'}</span>
-              <div className="min-w-0">
-                <p className="text-sm text-gray-700 hover:text-blue-700 truncate">{a.nombre_archivo ?? 'Archivo'}</p>
-                <p className="text-[10px] text-gray-400">
-                  {fmtFecha(a.created_at)}{a.storage_location === 'drive' ? ' · Drive' : ''}
-                </p>
-              </div>
-            </a>
-            {a.storage_location === 'drive' && a.drive_url && (
-              <a href={a.drive_url} target="_blank" rel="noopener noreferrer"
-                title="Abrir en Google Drive"
-                className="flex-shrink-0 text-xs text-blue-500 hover:text-blue-700 px-1.5 py-0.5 rounded hover:bg-blue-50 transition-colors">
-                Drive ↗
-              </a>
-            )}
-            <button onClick={() => eliminar(a.id)}
-              className="flex-shrink-0 text-red-400 hover:text-red-600 text-xs">
-              Eliminar
-            </button>
-          </div>
-        ))}
-      </div>
+      <SeccionDocumento
+        titulo="Otros archivos"
+        requerido={false}
+        archivos={archivosOtros}
+        uploading={uploading}
+        isMobile={isMobile}
+        onFiles={files => onFiles(files, null)}
+        onScan={() => setScannerTipo(null)}
+        onEliminar={eliminar}
+      />
     </div>
   )
 }
