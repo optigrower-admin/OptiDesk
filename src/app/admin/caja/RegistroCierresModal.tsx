@@ -21,15 +21,42 @@ export default function RegistroCierresModal({ tenantId, onClose }: { tenantId: 
   const supabase = createClient()
   const [cierres, setCierres] = useState<Cierre[]>([])
   const [loading, setLoading] = useState(true)
+  const [fechaReconstruir, setFechaReconstruir] = useState('')
+  const [reconstruyendo, setReconstruyendo] = useState(false)
+  const [msgReconstruir, setMsgReconstruir] = useState<string | null>(null)
 
-  useEffect(() => {
+  const cargar = () => {
+    setLoading(true)
     supabase.from('cierres_diarios_caja')
       .select('id, fecha, saldos_por_cuenta, saldo_caja_fuerte')
       .eq('tenant_id', tenantId)
       .order('fecha', { ascending: false })
       .limit(90)
       .then(({ data }) => { setCierres((data as Cierre[]) ?? []); setLoading(false) })
-  }, [supabase, tenantId])
+  }
+
+  useEffect(() => { cargar() }, [supabase, tenantId])
+
+  const reconstruir = async () => {
+    if (!fechaReconstruir) return
+    setReconstruyendo(true)
+    setMsgReconstruir(null)
+    try {
+      const r = await fetch('/api/admin/caja/reconstruir-cierre', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha: fechaReconstruir }),
+      })
+      const result = await r.json()
+      if (!r.ok) { setMsgReconstruir(`❌ ${result.error ?? 'Error'}`); return }
+      setMsgReconstruir(`✅ Cierre del ${fechaReconstruir} guardado`)
+      cargar()
+    } catch {
+      setMsgReconstruir('❌ No se pudo reconstruir')
+    } finally {
+      setReconstruyendo(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -44,6 +71,22 @@ export default function RegistroCierresModal({ tenantId, onClose }: { tenantId: 
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+        </div>
+
+        <div className="px-5 pt-3 pb-1 border-b border-gray-100 flex-shrink-0">
+          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+            ¿Falta un día? Reconstruir cierre manualmente
+          </p>
+          <div className="flex items-center gap-2">
+            <input type="date" value={fechaReconstruir} onChange={e => setFechaReconstruir(e.target.value)}
+              max={new Date().toISOString().slice(0, 10)}
+              className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-gray-400" />
+            <button onClick={reconstruir} disabled={!fechaReconstruir || reconstruyendo}
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-800 disabled:opacity-40 text-white rounded-lg text-xs font-semibold transition-colors">
+              {reconstruyendo ? 'Calculando...' : 'Reconstruir'}
+            </button>
+          </div>
+          {msgReconstruir && <p className="text-[11px] text-gray-500 mt-1.5">{msgReconstruir}</p>}
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">

@@ -16,8 +16,8 @@ export interface SaldosCaja {
 // saldo histórico (sin filtro de fecha) por cuenta y de Caja fuerte. Se usa
 // tanto para el cron de cierre diario como para cualquier otra necesidad de
 // "saldo actual" fuera de la página de Caja.
-export async function calcularSaldosCaja(supabase: SupabaseClient, tenantId: string): Promise<SaldosCaja> {
-  const movimientos = await construirMovimientos(supabase, tenantId, null, null)
+export async function calcularSaldosCaja(supabase: SupabaseClient, tenantId: string, hastaISO: string | null = null): Promise<SaldosCaja> {
+  const movimientos = await construirMovimientos(supabase, tenantId, null, hastaISO)
 
   const mapa = new Map<string, SaldoMetodo>()
   let saldoCajaFuerte = 0
