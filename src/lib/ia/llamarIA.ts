@@ -8,6 +8,8 @@ export interface OpcionesIA {
   temperatura?: number
   /** Para ElevenLabs TTS ('generar_audio'): id de la voz a usar. */
   voiceId?: string
+  /** Fuerza un proveedor puntual cuando hay varios activos asignados al mismo uso. */
+  proveedor?: ProveedorIA
 }
 
 export interface ResultadoIA {
@@ -64,7 +66,10 @@ export async function llamarIA(tenantId: string, uso: string, prompt: string, op
     .eq('tenant_id', tenantId)
     .eq('activo', true)
 
-  const integracion = (integraciones ?? []).find(i => Array.isArray(i.uso_asignado) && (i.uso_asignado as string[]).includes(uso))
+  const candidatas = (integraciones ?? []).filter(i => Array.isArray(i.uso_asignado) && (i.uso_asignado as string[]).includes(uso))
+  const integracion = opciones.proveedor
+    ? candidatas.find(i => i.proveedor === opciones.proveedor)
+    : candidatas[0]
   if (!integracion) {
     return { ok: false, error: `No hay ninguna integración IA activa asignada al uso "${uso}". Conéctala en Integraciones → Integraciones IA.` }
   }

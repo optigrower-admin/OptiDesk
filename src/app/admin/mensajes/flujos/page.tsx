@@ -59,6 +59,28 @@ const ACCIONES_IA = [
   { key: 'generar_audio', label: 'Generar audio desde texto (ElevenLabs)' },
 ] as const
 
+const MODELOS_POR_PROVEEDOR: Record<string, { modelo: string; label: string; ayuda: string }[]> = {
+  OPENAI: [
+    { modelo: 'gpt-4o-mini', label: 'GPT-4o mini', ayuda: 'Más económico y rápido — ideal para clasificar, respuestas cortas. No analiza a fondo.' },
+    { modelo: 'gpt-4o', label: 'GPT-4o', ayuda: 'Más capaz — mejor para resúmenes largos y análisis complejo. Más lento y más costoso.' },
+  ],
+  ANTHROPIC: [
+    { modelo: 'claude-haiku-4-5-20251001', label: 'Claude Haiku', ayuda: 'Más económico y rápido — ideal para clasificar, respuestas cortas.' },
+    { modelo: 'claude-sonnet-4-6', label: 'Claude Sonnet', ayuda: 'Más capaz — mejor para redacción y análisis complejo. Más costoso.' },
+  ],
+  GOOGLE: [
+    { modelo: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', ayuda: 'Más económico y rápido — ideal para tareas simples.' },
+    { modelo: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', ayuda: 'Más capaz — mejor para análisis complejo. Más costoso.' },
+  ],
+  GROK: [
+    { modelo: 'grok-2-latest', label: 'Grok 2', ayuda: 'Modelo general de xAI, balance entre costo y calidad.' },
+  ],
+  ELEVENLABS: [
+    { modelo: 'eleven_turbo_v2_5', label: 'Turbo v2.5', ayuda: 'Más rápido y económico — calidad de voz buena.' },
+    { modelo: 'eleven_multilingual_v2', label: 'Multilingual v2', ayuda: 'Mejor calidad de voz, más idiomas — más lento.' },
+  ],
+}
+
 // ─── Edge personalizado con botón de eliminar ─────────────────────────────────
 
 function DeletableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, markerEnd, selected }: EdgeProps) {
@@ -518,6 +540,9 @@ const AccionIANode = ({ id, data }: NodeProps) => {
   const accion = data.accion ?? ''
   const integracionesParaAccion = integraciones.filter(i => i.uso_asignado.includes(accion))
   const sinIntegracion = !!accion && integracionesParaAccion.length === 0
+  const proveedor = data.proveedor ?? integracionesParaAccion[0]?.proveedor ?? ''
+  const modelosDisponibles = MODELOS_POR_PROVEEDOR[proveedor] ?? []
+  const modeloSeleccionado = modelosDisponibles.find(m => m.modelo === data.modelo)
 
   return (
     <div className={`${nodeBaseClass} border-fuchsia-400`}>
@@ -530,6 +555,33 @@ const AccionIANode = ({ id, data }: NodeProps) => {
           <option value="">Seleccionar acción...</option>
           {ACCIONES_IA.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
         </select>
+
+        {integracionesParaAccion.length > 1 && (
+          <div>
+            <label className="block text-xs text-gray-500 font-medium mb-1">Proveedor</label>
+            <select value={proveedor} onChange={e => { upd('proveedor', e.target.value); upd('modelo', '') }}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400">
+              {integracionesParaAccion.map(i => <option key={i.id} value={i.proveedor}>{i.proveedor}</option>)}
+            </select>
+          </div>
+        )}
+
+        {!!proveedor && modelosDisponibles.length > 0 && (
+          <div>
+            <label className="block text-xs text-gray-500 font-medium mb-1">Modelo</label>
+            <select defaultValue={data.modelo ?? ''} onChange={e => upd('modelo', e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400">
+              <option value="">Por defecto de la integración</option>
+              {modelosDisponibles.map(m => <option key={m.modelo} value={m.modelo}>{m.label}</option>)}
+            </select>
+            {modeloSeleccionado && (
+              <p className="text-[10px] text-gray-500 mt-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1.5">
+                {modeloSeleccionado.ayuda}
+              </p>
+            )}
+          </div>
+        )}
+
         <textarea defaultValue={data.prompt ?? ''} onChange={e => upd('prompt', e.target.value)}
           placeholder="Prompt — usa {{ultimo_mensaje}}, {{nombre}}, {{variables.x}}..."
           rows={3}
@@ -1052,7 +1104,7 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
     case 'etapa':         return { etapa: 'nuevo' }
     case 'condicion':     return { condicion_tipo: 'respuesta_contiene', condicion_valor: '' }
     case 'agente_ia':     return { agente_id: '', prompt_contexto: '', incluir_historial: true, agentes: ctx.agentes }
-    case 'accion_ia':     return { accion: '', prompt: '', variable_salida: '', integracionesIA: ctx.integracionesIA }
+    case 'accion_ia':     return { accion: '', proveedor: '', modelo: '', prompt: '', variable_salida: '', integracionesIA: ctx.integracionesIA }
     case 'plantilla':     return { plantilla_id: '', plantillas: ctx.plantillas }
     case 'media':         return { media_tipo: 'imagen', media_url: '', media_caption: '' }
     case 'nota_interna':  return { contenido: '' }

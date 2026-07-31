@@ -713,7 +713,12 @@ async function procesarNodo(
       try {
         const { llamarIA } = await import('@/lib/ia/llamarIA')
         const promptFinal = interpolarVariables(promptTemplate, contexto)
-        const resultado = await llamarIA(tenantId, uso, promptFinal)
+        const proveedor = data.proveedor ? String(data.proveedor) : undefined
+        const modelo = data.modelo ? String(data.modelo) : undefined
+        const resultado = await llamarIA(tenantId, uso, promptFinal, {
+          proveedor: proveedor as 'OPENAI' | 'ANTHROPIC' | 'GOOGLE' | 'GROK' | 'ELEVENLABS' | undefined,
+          modelo,
+        })
 
         if (!resultado.ok) {
           console.error(`[flow-executor] accion_ia (${uso}) sin resultado: ${resultado.error}`)
