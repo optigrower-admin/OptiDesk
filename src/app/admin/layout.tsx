@@ -88,6 +88,14 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/integraciones/ia',        label: 'Integraciones IA',  seccion: 'integraciones_ia',       soloGerencia: true, defaultOrden: 320 },
     ],
   },
+  {
+    key: 'consultas-sql',
+    label: '🗄️ Consultas SQL',
+    items: [
+      { href: '/admin/consultas-sql',           label: 'Editor SQL', seccion: 'consultas_sql', soloGerencia: false, defaultOrden: 330 },
+      { href: '/admin/consultas-sql/permisos',  label: 'Permisos',   seccion: 'consultas_sql', soloGerencia: true,  defaultOrden: 340 },
+    ],
+  },
 ]
 
 const STANDALONE_NAV: NavItem[] = [
