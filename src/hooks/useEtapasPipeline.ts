@@ -121,6 +121,37 @@ export function useEtapasPipeline(tenantId: string | undefined) {
         }
       })
 
+      // "Aprobación de gerencia" es una regla en cascada: una vez configurada en
+      // una etapa (ej. "Aprobados para Matricular"), debe seguir aplicando en
+      // TODAS las etapas siguientes del mismo pipeline (por orden), no solo en
+      // la etapa exacta donde se creó — así una vez que un cliente entra a esa
+      // parte del proceso, queda con el panel de aprobación visible y bloqueado
+      // hasta que se apruebe, sin importar cuántas etapas haya después ni si se
+      // reordenan. Para cualquier otro campo de regla (celular, placa, factura,
+      // etc.) el comportamiento sigue siendo exclusivo de su propia etapa.
+      const etapasPorPipeline = new Map<string, EtapaDinamica[]>()
+      for (const e of etapasOut) {
+        if (!etapasPorPipeline.has(e.pipelineId)) etapasPorPipeline.set(e.pipelineId, [])
+        etapasPorPipeline.get(e.pipelineId)!.push(e)
+      }
+      for (const etapasDelPipeline of etapasPorPipeline.values()) {
+        const anclas = etapasDelPipeline
+          .map(e => ({ etapa: e, regla: e.reglas.find(r => r.campo === 'aprobacion_gerencia') }))
+          .filter((x): x is { etapa: EtapaDinamica; regla: ReglaEtapa } => !!x.regla)
+          .sort((a, b) => a.etapa.orden - b.etapa.orden)
+        if (anclas.length === 0) continue
+        const { etapa: etapaAncla, regla: reglaAncla } = anclas[0]
+        for (const e of etapasDelPipeline) {
+          if (e.orden <= etapaAncla.orden) continue // la etapa ancla conserva su propia regla tal cual (entrar a ella no se bloquea)
+          if (e.reglas.some(r => r.campo === 'aprobacion_gerencia')) continue // ya tiene la suya propia
+          // Las etapas heredadas siempre bloquean el avance sin aprobación,
+          // sin importar si la regla de la etapa ancla la marcó como "bloquea"
+          // (esa etapa ancla es donde se revisa/aprueba, no debe bloquearse a
+          // sí misma; pero de ahí en adelante sí debe frenar el progreso).
+          e.reglas = [...e.reglas, { ...reglaAncla, bloquea_cambio_etapa: true }]
+        }
+      }
+
       const pipelinesOut: PipelineDinamico[] = pipelinesRaw.map(p => ({
         id: p.id, clave: p.clave, nombre: p.nombre, orden: p.orden,
         rolesOcultos: p.roles_ocultos ?? [],
