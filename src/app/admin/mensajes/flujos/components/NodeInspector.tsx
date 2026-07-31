@@ -3,12 +3,14 @@ import { useState } from 'react'
 import type { Node } from 'reactflow'
 import { ETAPAS } from '@/lib/ventas/pipeline'
 import { CATEGORIA_INFO, catalogItem, type CatalogCtx } from '../nodeCatalog'
-import type { CondicionTipoSimple, SubtipoAccionConversacion } from '@/types/flujos'
+import type { CondicionTipoSimple, VariableDefinida, TipoVariable, CategoriaAccion, SubtipoBandeja } from '@/types/flujos'
 
 type Props = {
   node: Node
   ctx: CatalogCtx
   allNodes: Node[]
+  variables: VariableDefinida[]
+  onCrearVariable: (v: VariableDefinida) => void
   onChange: (patch: Record<string, unknown>) => void
   onClose: () => void
   onPrev: () => void
@@ -17,6 +19,12 @@ type Props = {
 
 const inputCls = 'w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400'
 const labelCls = 'block text-xs font-medium text-gray-500 mb-1'
+
+const TIPOS_VARIABLE: { value: TipoVariable; label: string }[] = [
+  { value: 'texto', label: 'Texto' }, { value: 'numero', label: 'Número' },
+  { value: 'fecha', label: 'Fecha' }, { value: 'booleano', label: 'Sí/No' },
+  { value: 'imagen', label: 'Imagen (URL)' }, { value: 'audio', label: 'Audio (URL/base64)' },
+]
 
 const CONDICIONES_OPCIONES: { value: CondicionTipoSimple; label: string; grupo: string }[] = [
   { value: 'respuesta_contiene', label: 'Contiene alguna palabra', grupo: 'Texto del mensaje' },
@@ -40,25 +48,56 @@ const CONDICIONES_OPCIONES: { value: CondicionTipoSimple; label: string; grupo: 
 ]
 
 const ACCIONES_IA_PUNTUAL = [
-  { key: 'resumenes_conversacion', label: 'Generar resumen' },
-  { key: 'sugerencias_respuesta', label: 'Generar respuesta sugerida' },
-  { key: 'clasificacion_intencion', label: 'Clasificar intención del mensaje' },
+  { key: 'resumenes_conversacion', label: 'Generar resumen (texto)' },
+  { key: 'sugerencias_respuesta', label: 'Generar respuesta sugerida (texto)' },
+  { key: 'clasificacion_intencion', label: 'Clasificar intención del mensaje (texto)' },
   { key: 'transcripcion_audio', label: 'Transcribir audio a texto' },
   { key: 'generar_audio', label: 'Generar audio desde texto (ElevenLabs)' },
   { key: 'generar_imagen', label: 'Generar imagen (OpenAI)' },
 ] as const
 
-const MODELOS_POR_PROVEEDOR: Record<string, { modelo: string; label: string }[]> = {
-  OPENAI: [{ modelo: 'gpt-4o-mini', label: 'GPT-4o mini (rápido/económico)' }, { modelo: 'gpt-4o', label: 'GPT-4o (más capaz)' }, { modelo: 'dall-e-3', label: 'DALL-E 3 (imágenes)' }],
-  ANTHROPIC: [{ modelo: 'claude-haiku-4-5-20251001', label: 'Claude Haiku' }, { modelo: 'claude-sonnet-4-6', label: 'Claude Sonnet' }],
-  GOOGLE: [{ modelo: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }, { modelo: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' }],
-  GROK: [{ modelo: 'grok-2-latest', label: 'Grok 2' }],
-  ELEVENLABS: [{ modelo: 'eleven_turbo_v2_5', label: 'Turbo v2.5' }, { modelo: 'eleven_multilingual_v2', label: 'Multilingual v2' }],
+const MODELOS_POR_PROVEEDOR: Record<string, { modelo: string; label: string; ayuda: string }[]> = {
+  OPENAI: [
+    { modelo: 'gpt-4o-mini', label: 'GPT-4o mini', ayuda: 'El más económico y rápido — ideal para responder rápido sin analizar a fondo.' },
+    { modelo: 'gpt-4o', label: 'GPT-4o', ayuda: 'Más capaz — mejor para análisis y redacción compleja. Más lento y más costoso.' },
+    { modelo: 'dall-e-3', label: 'DALL-E 3', ayuda: 'Genera imágenes a partir de texto.' },
+  ],
+  ANTHROPIC: [
+    { modelo: 'claude-haiku-4-5-20251001', label: 'Claude Haiku', ayuda: 'Económico y rápido, ideal para tareas simples.' },
+    { modelo: 'claude-sonnet-4-6', label: 'Claude Sonnet', ayuda: 'Más capaz, mejor para redacción y análisis complejo.' },
+  ],
+  GOOGLE: [
+    { modelo: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', ayuda: 'Económico y rápido para tareas simples.' },
+    { modelo: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', ayuda: 'Más capaz para análisis complejo.' },
+  ],
+  GROK: [{ modelo: 'grok-2-latest', label: 'Grok 2', ayuda: 'Modelo general de xAI.' }],
+  ELEVENLABS: [
+    { modelo: 'eleven_turbo_v2_5', label: 'Turbo v2.5', ayuda: 'Rápido y económico, buena calidad de voz.' },
+    { modelo: 'eleven_multilingual_v2', label: 'Multilingual v2', ayuda: 'Mejor calidad, más idiomas, más lento.' },
+  ],
 }
 
 const COLORES_ETIQUETA = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280']
 
-const SUBTIPOS_ACCION_CONVERSACION: { value: SubtipoAccionConversacion; label: string }[] = [
+const CATEGORIAS_ACCION: { value: CategoriaAccion; label: string }[] = [
+  { value: 'bandeja_entrada', label: '📥 Bandeja de Entrada' },
+  { value: 'openai', label: '✨ OpenAI' },
+  { value: 'anadir_etiqueta', label: '🏷️ Añadir Etiqueta' },
+  { value: 'quitar_etiqueta', label: '🏷️ Quitar Etiqueta' },
+  { value: 'notificar_admin', label: '🔔 Notificar a Administradores' },
+  { value: 'campo_set', label: '✏️ Establecer Campo Personalizado' },
+  { value: 'campo_clear', label: '🧽 Limpiar Campo Personalizado' },
+  { value: 'secuencia_sub', label: '📨 Suscribir a Secuencia' },
+  { value: 'secuencia_unsub', label: '📭 Dar de baja de Secuencia' },
+  { value: 'evento_log', label: '📋 Registro de Evento Personalizado' },
+  { value: 'transmision_sub', label: '📡 Suscribir a Transmisiones' },
+  { value: 'transmision_unsub', label: '🔕 Dar de baja de Transmisiones' },
+  { value: 'borrar_datos_usuario', label: '🧹 Borrar Información del Usuario' },
+  { value: 'api_externa', label: '🌐 Solicitud de API Externa' },
+  { value: 'disparador', label: '🤝 Disparador (otro flujo)' },
+]
+
+const SUBTIPOS_BANDEJA: { value: SubtipoBandeja; label: string }[] = [
   { value: 'transferir_humano', label: 'Transferir a humano' },
   { value: 'transferir_bot', label: 'Transferir a otro bot' },
   { value: 'archivar', label: 'Archivar conversación' },
@@ -68,19 +107,61 @@ const SUBTIPOS_ACCION_CONVERSACION: { value: SubtipoAccionConversacion; label: s
   { value: 'bloquear_usuario', label: 'Bloquear usuario' },
   { value: 'desbloquear_usuario', label: 'Desbloquear usuario' },
   { value: 'anadir_nota', label: 'Añadir nota interna' },
-  { value: 'anadir_etiqueta', label: 'Añadir etiqueta' },
-  { value: 'quitar_etiqueta', label: 'Quitar etiqueta' },
   { value: 'cambiar_etapa', label: 'Cambiar etapa' },
   { value: 'asignar_admin', label: 'Asignar administrador' },
-  { value: 'borrar_datos_usuario', label: 'Borrar datos capturados' },
 ]
 
-export default function NodeInspector({ node, ctx, allNodes, onChange, onClose, onPrev, onNext }: Props) {
+// ─── Selector de variable del catálogo del flujo (nombre + tipo) ─────────────
+function VariablePicker({ label, value, tipos, variables, onChange, onCrear }: {
+  label: string; value: string; tipos?: TipoVariable[]
+  variables: VariableDefinida[]; onChange: (nombre: string) => void; onCrear: (v: VariableDefinida) => void
+}) {
+  const [creando, setCreando] = useState(false)
+  const [nuevoNombre, setNuevoNombre] = useState('')
+  const [nuevoTipo, setNuevoTipo] = useState<TipoVariable>('texto')
+  const filtradas = tipos ? variables.filter(v => tipos.includes(v.tipo)) : variables
+
+  if (creando) {
+    return (
+      <div>
+        <label className={labelCls}>{label}</label>
+        <div className="flex items-center gap-1">
+          <input autoFocus value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)} placeholder="nombre_variable" className={inputCls} />
+          <select value={nuevoTipo} onChange={e => setNuevoTipo(e.target.value as TipoVariable)} className="border border-gray-200 rounded-lg px-1.5 py-1.5 text-xs">
+            {TIPOS_VARIABLE.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <button onClick={() => {
+            if (!nuevoNombre.trim()) return
+            onCrear({ nombre: nuevoNombre.trim(), tipo: nuevoTipo })
+            onChange(nuevoNombre.trim())
+            setCreando(false); setNuevoNombre('')
+          }} className="text-xs text-blue-600 px-1" title="Crear">✓</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <label className={labelCls}>{label}</label>
+      <select value={value} onChange={e => {
+        if (e.target.value === '__nueva__') setCreando(true)
+        else onChange(e.target.value)
+      }} className={inputCls}>
+        <option value="">Sin seleccionar</option>
+        {filtradas.map(v => <option key={v.nombre} value={v.nombre}>{v.nombre} ({TIPOS_VARIABLE.find(t => t.value === v.tipo)?.label})</option>)}
+        <option value="__nueva__">+ Nueva variable...</option>
+      </select>
+    </div>
+  )
+}
+
+export default function NodeInspector({ node, ctx, allNodes, variables, onCrearVariable, onChange, onClose, onPrev, onNext }: Props) {
   const tipo = node.type ?? ''
   const data = (node.data ?? {}) as Record<string, unknown>
   const upd = (patch: Record<string, unknown>) => onChange(patch)
 
-  const item = tipo === 'accion_conversacion' ? catalogItem('accion_conversacion', String(data.subtipo ?? '')) : catalogItem(tipo)
+  const item = tipo === 'accion' ? catalogItem('accion', String(data.categoria ?? '')) : catalogItem(tipo)
   const categoria = item?.categoria ?? 'logica'
   const info = CATEGORIA_INFO[categoria]
   const titulo = tipo === 'trigger' ? 'Disparador' : (item?.label ?? tipo)
@@ -103,14 +184,13 @@ export default function NodeInspector({ node, ctx, allNodes, onChange, onClose, 
         {tipo === 'mensaje' && <MensajeForm data={data} upd={upd} ctx={ctx} />}
         {tipo === 'media' && <MediaForm data={data} upd={upd} />}
         {tipo === 'plantilla' && <PlantillaForm data={data} upd={upd} ctx={ctx} />}
-        {tipo === 'ia_generar_texto' && <IAForm data={data} upd={upd} ctx={ctx} allNodes={allNodes} nodeId={node.id} />}
         {tipo === 'condicion' && <CondicionForm data={data} upd={upd} ctx={ctx} />}
         {tipo === 'dividir_trafico' && <DividirTraficoForm data={data} upd={upd} />}
         {tipo === 'esperar' && <EsperarForm data={data} upd={upd} />}
         {tipo === 'ir_a_nodo' && <IrANodoForm data={data} upd={upd} allNodes={allNodes} nodeId={node.id} />}
-        {tipo === 'capturar_dato' && <CapturarDatoForm data={data} upd={upd} />}
+        {tipo === 'capturar_dato' && <CapturarDatoForm data={data} upd={upd} variables={variables} onCrearVariable={onCrearVariable} />}
         {tipo === 'menu_opciones' && <MenuOpcionesForm data={data} upd={upd} />}
-        {tipo === 'accion_conversacion' && <AccionConversacionForm data={data} upd={upd} ctx={ctx} />}
+        {tipo === 'accion' && <AccionForm data={data} upd={upd} ctx={ctx} variables={variables} onCrearVariable={onCrearVariable} />}
         {tipo === 'subflujo' && <SubflujoForm data={data} upd={upd} ctx={ctx} />}
         {tipo === 'fin' && <p className="text-xs text-gray-400">Este nodo termina la ejecución del flujo. No tiene opciones.</p>}
       </div>
@@ -220,114 +300,6 @@ function PlantillaForm({ data, upd, ctx }: { data: Record<string, unknown>; upd:
       </div>
       <p className="text-[10px] text-gray-400">Solo para WhatsApp fuera de la ventana de 24h</p>
       {!aprobadas.length && <p className="text-[10px] text-amber-600">⚠ Sin plantillas aprobadas. Crea una en Mensajes → Plantillas</p>}
-    </>
-  )
-}
-
-// ─── IA: Generar texto ─────────────────────────────────────────────────────
-function IAForm({ data, upd, ctx, allNodes, nodeId }: { data: Record<string, unknown>; upd: (p: Record<string, unknown>) => void; ctx: CatalogCtx; allNodes: Node[]; nodeId: string }) {
-  const modo = String(data.modo ?? 'puntual')
-  const [creandoVariable, setCreandoVariable] = useState(false)
-
-  const integraciones = ctx.integracionesIA.filter(i => i.activo)
-  const proveedores = Array.from(new Set(integraciones.map(i => i.proveedor)))
-  const proveedor = String(data.proveedor ?? '')
-  const integracionSel = integraciones.find(i => i.proveedor === proveedor)
-  const accion = String(data.accion ?? '')
-  const accionesDisp = integracionSel ? ACCIONES_IA_PUNTUAL.filter(a => integracionSel.uso_asignado.includes(a.key)) : []
-  const modelos = MODELOS_POR_PROVEEDOR[proveedor] ?? []
-
-  const variablesExistentes = Array.from(new Set(
-    allNodes.map(n => {
-      if (n.id === nodeId) return null
-      const d = n.data as Record<string, unknown>
-      if (n.type === 'capturar_dato' && d.campo === 'variable') return d.nombre_variable as string
-      if (n.type === 'ia_generar_texto') return d.variable_salida as string
-      return null
-    }).filter((v): v is string => !!v),
-  ))
-  const variableActual = String(data.variable_salida ?? '')
-
-  return (
-    <>
-      <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs">
-        <button onClick={() => upd({ modo: 'puntual' })} className={`flex-1 py-1.5 transition-colors ${modo === 'puntual' ? 'bg-violet-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}>Puntual</button>
-        <button onClick={() => upd({ modo: 'agente' })} className={`flex-1 py-1.5 transition-colors ${modo === 'agente' ? 'bg-violet-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}>Agente configurado</button>
-      </div>
-
-      {modo === 'agente' ? (
-        <>
-          <div>
-            <label className={labelCls}>Agente</label>
-            <select value={String(data.agente_id ?? '')} onChange={e => upd({ agente_id: e.target.value })} className={inputCls}>
-              <option value="">Seleccionar agente...</option>
-              {ctx.agentes.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.proveedor})</option>)}
-            </select>
-          </div>
-          <textarea value={String(data.prompt_contexto ?? '')} onChange={e => upd({ prompt_contexto: e.target.value })} rows={2}
-            placeholder="Contexto adicional para este nodo (opcional)..." className={`${inputCls} resize-none`} />
-          {!ctx.agentes.length && <p className="text-[10px] text-amber-600">⚠ Configura agentes IA en Config Ventas → APIs IA</p>}
-        </>
-      ) : (
-        <>
-          <div>
-            <label className={labelCls}>¿Qué IA usar?</label>
-            <select value={proveedor} onChange={e => upd({ proveedor: e.target.value, accion: '', modelo: '' })} className={inputCls}>
-              <option value="">Seleccionar IA conectada...</option>
-              {proveedores.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-            {!integraciones.length && <p className="text-[10px] text-amber-600 mt-1">⚠ Sin integraciones IA activas. Conéctalas en Integraciones IA.</p>}
-          </div>
-          {!!proveedor && (
-            <div>
-              <label className={labelCls}>Acción</label>
-              <select value={accion} onChange={e => upd({ accion: e.target.value })} className={inputCls}>
-                <option value="">Seleccionar acción...</option>
-                {accionesDisp.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
-              </select>
-            </div>
-          )}
-          {!!proveedor && !!accion && modelos.length > 0 && (
-            <div>
-              <label className={labelCls}>Modelo</label>
-              <select value={String(data.modelo ?? '')} onChange={e => upd({ modelo: e.target.value })} className={inputCls}>
-                <option value="">Por defecto de la integración</option>
-                {modelos.map(m => <option key={m.modelo} value={m.modelo}>{m.label}</option>)}
-              </select>
-            </div>
-          )}
-          {!!proveedor && !!accion && (
-            <textarea value={String(data.prompt ?? '')} onChange={e => upd({ prompt: e.target.value })} rows={4}
-              placeholder="Prompt — usa {{ultimo_mensaje}}, {{nombre}}, o {mi_variable}..." className={`${inputCls} font-mono resize-none`} />
-          )}
-        </>
-      )}
-
-      <div>
-        <label className={labelCls}>Guardar resultado en variable</label>
-        {!creandoVariable ? (
-          <select value={variablesExistentes.includes(variableActual) ? variableActual : ''} onChange={e => {
-            if (e.target.value === '__nueva__') setCreandoVariable(true)
-            else upd({ variable_salida: e.target.value })
-          }} className={inputCls}>
-            <option value="">No guardar</option>
-            {variablesExistentes.map(v => <option key={v} value={v}>{v}</option>)}
-            <option value="__nueva__">+ Nueva variable...</option>
-          </select>
-        ) : (
-          <div className="flex items-center gap-1">
-            <input autoFocus value={variableActual} onChange={e => upd({ variable_salida: e.target.value })} placeholder="ej: resumen_ia" className={inputCls} />
-            <button onClick={() => setCreandoVariable(false)} className="text-xs text-violet-600 px-1" title="Listo">✓</button>
-          </div>
-        )}
-      </div>
-
-      <label className="flex items-start gap-1.5 text-xs text-gray-600 cursor-pointer bg-violet-50 border border-violet-100 rounded-lg px-2.5 py-2">
-        <input type="checkbox" checked={data.enviar_automaticamente !== false} onChange={e => upd({ enviar_automaticamente: e.target.checked })} className="mt-0.5" />
-        <span>{data.enviar_automaticamente !== false
-          ? 'Enviar la respuesta automáticamente al cliente'
-          : `Solo guardar el resultado en {${variableActual || 'variable'}} para usarlo después`}</span>
-      </label>
     </>
   )
 }
@@ -482,7 +454,7 @@ function IrANodoForm({ data, upd, allNodes, nodeId }: { data: Record<string, unk
         <option value="">— Seleccionar nodo —</option>
         {otros.map(n => {
           const d = n.data as Record<string, unknown>
-          const label = n.type === 'accion_conversacion' ? catalogItem('accion_conversacion', String(d.subtipo ?? ''))?.label : catalogItem(n.type ?? '')?.label
+          const label = n.type === 'accion' ? catalogItem('accion', String(d.categoria ?? ''))?.label : catalogItem(n.type ?? '')?.label
           return <option key={n.id} value={n.id}>{label ?? n.type}</option>
         })}
       </select>
@@ -492,7 +464,10 @@ function IrANodoForm({ data, upd, allNodes, nodeId }: { data: Record<string, unk
 }
 
 // ─── Capturar dato ─────────────────────────────────────────────────────────
-function CapturarDatoForm({ data, upd }: { data: Record<string, unknown>; upd: (p: Record<string, unknown>) => void }) {
+function CapturarDatoForm({ data, upd, variables, onCrearVariable }: {
+  data: Record<string, unknown>; upd: (p: Record<string, unknown>) => void
+  variables: VariableDefinida[]; onCrearVariable: (v: VariableDefinida) => void
+}) {
   const campo = String(data.campo ?? 'nombre')
   return (
     <>
@@ -517,7 +492,8 @@ function CapturarDatoForm({ data, upd }: { data: Record<string, unknown>; upd: (
         </select>
       </div>
       {campo === 'variable' && (
-        <input value={String(data.nombre_variable ?? '')} onChange={e => upd({ nombre_variable: e.target.value })} placeholder="Nombre de la variable" className={inputCls} />
+        <VariablePicker label="Variable" value={String(data.nombre_variable ?? '')} variables={variables}
+          onChange={v => upd({ nombre_variable: v })} onCrear={onCrearVariable} />
       )}
       <div>
         <label className={labelCls}>Validar formato</label>
@@ -594,20 +570,136 @@ function MenuOpcionesForm({ data, upd }: { data: Record<string, unknown>; upd: (
   )
 }
 
-// ─── Acción de conversación ────────────────────────────────────────────────
-function AccionConversacionForm({ data, upd, ctx }: { data: Record<string, unknown>; upd: (p: Record<string, unknown>) => void; ctx: CatalogCtx }) {
-  const subtipo = String(data.subtipo ?? 'anadir_nota')
-  const colorNueva = String(data.nueva_etiqueta_color ?? '#3b82f6')
+// ─── Acción (nodo único: categoría + campos según categoría) ──────────────
+function AccionForm({ data, upd, ctx, variables, onCrearVariable }: {
+  data: Record<string, unknown>; upd: (p: Record<string, unknown>) => void; ctx: CatalogCtx
+  variables: VariableDefinida[]; onCrearVariable: (v: VariableDefinida) => void
+}) {
+  const categoria = String(data.categoria ?? 'bandeja_entrada')
 
   return (
     <>
       <div>
-        <label className={labelCls}>Acción</label>
-        <select value={subtipo} onChange={e => upd({ subtipo: e.target.value })} className={inputCls}>
-          {SUBTIPOS_ACCION_CONVERSACION.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+        <label className={labelCls}>Categoría de acción</label>
+        <select value={categoria} onChange={e => upd({ categoria: e.target.value })} className={inputCls}>
+          {CATEGORIAS_ACCION.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
       </div>
 
+      {categoria === 'bandeja_entrada' && <BandejaFields data={data} upd={upd} ctx={ctx} />}
+      {categoria === 'openai' && <OpenAIFields data={data} upd={upd} ctx={ctx} variables={variables} onCrearVariable={onCrearVariable} />}
+
+      {(categoria === 'anadir_etiqueta' || categoria === 'quitar_etiqueta') && (
+        <>
+          <div>
+            <label className={labelCls}>Etiqueta existente</label>
+            <select value={String(data.etiqueta_id ?? '')} onChange={e => upd({ etiqueta_id: e.target.value })} className={inputCls}>
+              <option value="">— Seleccionar —</option>
+              {ctx.etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}
+            </select>
+          </div>
+          {categoria === 'anadir_etiqueta' && (
+            <div>
+              <label className={labelCls}>...o crear una nueva</label>
+              <input value={String(data.nueva_etiqueta_nombre ?? '')} onChange={e => upd({ nueva_etiqueta_nombre: e.target.value })} placeholder="Nombre de etiqueta nueva" className={inputCls} />
+              <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                {COLORES_ETIQUETA.map(c => (
+                  <button key={c} onClick={() => upd({ nueva_etiqueta_color: c })}
+                    className={`w-4 h-4 rounded-full flex-shrink-0 ${String(data.nueva_etiqueta_color ?? '#3b82f6') === c ? 'ring-2 ring-offset-1 ring-gray-500' : ''}`} style={{ backgroundColor: c }} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {categoria === 'notificar_admin' && (
+        <>
+          <div><label className={labelCls}>Título</label><input value={String(data.notif_titulo ?? '')} onChange={e => upd({ notif_titulo: e.target.value })} placeholder="Automatización" className={inputCls} /></div>
+          <div><label className={labelCls}>Mensaje</label><textarea value={String(data.notif_mensaje ?? '')} onChange={e => upd({ notif_mensaje: e.target.value })} rows={2} className={`${inputCls} resize-none`} /></div>
+        </>
+      )}
+
+      {categoria === 'campo_set' && (
+        <>
+          <VariablePicker label="Variable a establecer" value={String(data.variable_nombre ?? '')} variables={variables}
+            onChange={v => upd({ variable_nombre: v })} onCrear={onCrearVariable} />
+          <div><label className={labelCls}>Valor</label><input value={String(data.variable_valor ?? '')} onChange={e => upd({ variable_valor: e.target.value })} placeholder="Valor fijo o con {{variables.x}}" className={inputCls} /></div>
+        </>
+      )}
+
+      {categoria === 'campo_clear' && (
+        <VariablePicker label="Variable a limpiar" value={String(data.variable_nombre ?? '')} variables={variables}
+          onChange={v => upd({ variable_nombre: v })} onCrear={onCrearVariable} />
+      )}
+
+      {(categoria === 'secuencia_sub' || categoria === 'secuencia_unsub') && (
+        <div>
+          <label className={labelCls}>Secuencia</label>
+          <select value={String(data.secuencia_id ?? '')} onChange={e => upd({ secuencia_id: e.target.value })} className={inputCls}>
+            <option value="">Seleccionar secuencia...</option>
+            {ctx.secuencias.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          </select>
+          {!ctx.secuencias.length && <p className="text-[10px] text-amber-600 mt-1">⚠ Crea secuencias en Mensajes → Secuencias</p>}
+        </div>
+      )}
+
+      {categoria === 'evento_log' && (
+        <>
+          <div><label className={labelCls}>Nombre del evento</label><input value={String(data.variable_valor ?? '')} onChange={e => upd({ variable_valor: e.target.value })} placeholder="ej: solicito_cotizacion" className={inputCls} /></div>
+          <div><label className={labelCls}>Datos (JSON, opcional)</label><textarea value={String(data.evento_datos ?? '')} onChange={e => upd({ evento_datos: e.target.value })} rows={2} placeholder='{"producto": "{{variables.moto}}"}' className={`${inputCls} font-mono resize-none`} /></div>
+        </>
+      )}
+
+      {(categoria === 'transmision_sub' || categoria === 'transmision_unsub') && (
+        <p className="text-[10px] text-gray-400">{categoria === 'transmision_sub' ? 'El cliente acepta recibir mensajes masivos futuros.' : 'El cliente deja de recibir mensajes masivos.'}</p>
+      )}
+
+      {categoria === 'borrar_datos_usuario' && (
+        <p className="text-[10px] text-gray-400">Borra solo las variables que este flujo guardó, no los datos del cliente en el CRM.</p>
+      )}
+
+      {categoria === 'api_externa' && (
+        <>
+          <div className="flex gap-1.5">
+            <select value={String(data.api_metodo ?? 'GET')} onChange={e => upd({ api_metodo: e.target.value })} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+              <option value="GET">GET</option><option value="POST">POST</option><option value="PUT">PUT</option><option value="DELETE">DELETE</option>
+            </select>
+            <input value={String(data.api_url ?? '')} onChange={e => upd({ api_url: e.target.value })} placeholder="https://..." className={`${inputCls} flex-1`} />
+          </div>
+          <div><label className={labelCls}>Headers (uno por línea, &quot;Nombre: valor&quot;)</label><textarea value={String(data.api_headers ?? '')} onChange={e => upd({ api_headers: e.target.value })} rows={2} className={`${inputCls} font-mono resize-none`} /></div>
+          {data.api_metodo !== 'GET' && (
+            <div><label className={labelCls}>Body (JSON, admite variables)</label><textarea value={String(data.api_body ?? '')} onChange={e => upd({ api_body: e.target.value })} rows={3} className={`${inputCls} font-mono resize-none`} /></div>
+          )}
+          <VariablePicker label="Guardar respuesta en" value={String(data.api_variable_respuesta ?? '')} variables={variables}
+            onChange={v => upd({ api_variable_respuesta: v })} onCrear={onCrearVariable} />
+        </>
+      )}
+
+      {categoria === 'disparador' && (
+        <div>
+          <label className={labelCls}>Flujo a disparar</label>
+          <select value={String(data.subflujo_id ?? '')} onChange={e => upd({ subflujo_id: e.target.value })} className={inputCls}>
+            <option value="">Seleccionar flujo...</option>
+            {ctx.flujos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+          </select>
+          <p className="text-[10px] text-gray-400 mt-1">Entrega la conversación a ese flujo y termina este.</p>
+        </div>
+      )}
+    </>
+  )
+}
+
+function BandejaFields({ data, upd, ctx }: { data: Record<string, unknown>; upd: (p: Record<string, unknown>) => void; ctx: CatalogCtx }) {
+  const subtipo = String(data.subtipo_bandeja ?? 'anadir_nota')
+  return (
+    <>
+      <div>
+        <label className={labelCls}>Acción</label>
+        <select value={subtipo} onChange={e => upd({ subtipo_bandeja: e.target.value })} className={inputCls}>
+          {SUBTIPOS_BANDEJA.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+      </div>
       {subtipo === 'transferir_bot' && (
         <div>
           <label className={labelCls}>Flujo a transferir</label>
@@ -617,36 +709,10 @@ function AccionConversacionForm({ data, upd, ctx }: { data: Record<string, unkno
           </select>
         </div>
       )}
-
       {subtipo === 'anadir_nota' && (
         <textarea value={String(data.contenido ?? '')} onChange={e => upd({ contenido: e.target.value })} rows={3}
           placeholder="Nota visible solo para el equipo..." className={`${inputCls} resize-none`} />
       )}
-
-      {(subtipo === 'anadir_etiqueta' || subtipo === 'quitar_etiqueta') && (
-        <>
-          <div>
-            <label className={labelCls}>Etiqueta existente</label>
-            <select value={String(data.etiqueta_id ?? '')} onChange={e => upd({ etiqueta_id: e.target.value })} className={inputCls}>
-              <option value="">— Seleccionar —</option>
-              {ctx.etiquetas.map(et => <option key={et.id} value={et.id}>{et.nombre}</option>)}
-            </select>
-          </div>
-          {subtipo === 'anadir_etiqueta' && (
-            <div>
-              <label className={labelCls}>...o crear una nueva</label>
-              <input value={String(data.nueva_etiqueta_nombre ?? '')} onChange={e => upd({ nueva_etiqueta_nombre: e.target.value })} placeholder="Nombre de etiqueta nueva" className={inputCls} />
-              <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                {COLORES_ETIQUETA.map(c => (
-                  <button key={c} onClick={() => upd({ nueva_etiqueta_color: c })}
-                    className={`w-4 h-4 rounded-full flex-shrink-0 ${colorNueva === c ? 'ring-2 ring-offset-1 ring-gray-500' : ''}`} style={{ backgroundColor: c }} />
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
       {subtipo === 'cambiar_etapa' && (
         <div>
           <label className={labelCls}>Nueva etapa</label>
@@ -655,7 +721,6 @@ function AccionConversacionForm({ data, upd, ctx }: { data: Record<string, unkno
           </select>
         </div>
       )}
-
       {subtipo === 'asignar_admin' && (
         <>
           <select value={String(data.tipo_asignacion ?? 'round_robin')} onChange={e => upd({ tipo_asignacion: e.target.value })} className={inputCls}>
@@ -670,10 +735,87 @@ function AccionConversacionForm({ data, upd, ctx }: { data: Record<string, unkno
           )}
         </>
       )}
-
       {subtipo === 'bloquear_usuario' && <p className="text-[10px] text-amber-600">Termina la ejecución del flujo — el bot no volverá a escribirle a este cliente hasta que se desbloquee.</p>}
       {subtipo === 'transferir_humano' && <p className="text-[10px] text-amber-600">Termina la ejecución del flujo — queda en manos de un asesor.</p>}
-      {subtipo === 'borrar_datos_usuario' && <p className="text-[10px] text-gray-400">Borra solo las variables que este flujo guardó, no los datos del cliente en el CRM.</p>}
+    </>
+  )
+}
+
+function OpenAIFields({ data, upd, ctx, variables, onCrearVariable }: {
+  data: Record<string, unknown>; upd: (p: Record<string, unknown>) => void; ctx: CatalogCtx
+  variables: VariableDefinida[]; onCrearVariable: (v: VariableDefinida) => void
+}) {
+  const modo = String(data.modo ?? 'puntual')
+  const integraciones = ctx.integracionesIA.filter(i => i.activo)
+  const proveedores = Array.from(new Set(integraciones.map(i => i.proveedor)))
+  const proveedor = String(data.proveedor ?? '')
+  const integracionSel = integraciones.find(i => i.proveedor === proveedor)
+  const accionIA = String(data.accion_ia ?? '')
+  const accionesDisp = integracionSel ? ACCIONES_IA_PUNTUAL.filter(a => integracionSel.uso_asignado.includes(a.key)) : []
+  const modelos = MODELOS_POR_PROVEEDOR[proveedor] ?? []
+  const modeloSel = modelos.find(m => m.modelo === data.modelo)
+
+  return (
+    <>
+      <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs">
+        <button onClick={() => upd({ modo: 'puntual' })} className={`flex-1 py-1.5 ${modo === 'puntual' ? 'bg-violet-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}>Puntual</button>
+        <button onClick={() => upd({ modo: 'agente' })} className={`flex-1 py-1.5 ${modo === 'agente' ? 'bg-violet-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}>Agente configurado</button>
+      </div>
+
+      {modo === 'agente' ? (
+        <>
+          <div>
+            <label className={labelCls}>Agente</label>
+            <select value={String(data.agente_id ?? '')} onChange={e => upd({ agente_id: e.target.value })} className={inputCls}>
+              <option value="">Seleccionar agente...</option>
+              {ctx.agentes.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.proveedor})</option>)}
+            </select>
+          </div>
+          <textarea value={String(data.prompt_contexto ?? '')} onChange={e => upd({ prompt_contexto: e.target.value })} rows={2}
+            placeholder="Contexto adicional para este nodo (opcional)..." className={`${inputCls} resize-none`} />
+          {!ctx.agentes.length && <p className="text-[10px] text-amber-600">⚠ Configura agentes IA en Config Ventas → APIs IA</p>}
+        </>
+      ) : (
+        <>
+          <div>
+            <label className={labelCls}>¿Qué IA usar?</label>
+            <select value={proveedor} onChange={e => upd({ proveedor: e.target.value, accion_ia: '', modelo: '' })} className={inputCls}>
+              <option value="">Seleccionar IA conectada...</option>
+              {proveedores.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            {!integraciones.length && <p className="text-[10px] text-amber-600 mt-1">⚠ Sin integraciones IA activas. Conéctalas en Integraciones IA.</p>}
+          </div>
+          {!!proveedor && (
+            <div>
+              <label className={labelCls}>Acción (tipo de respuesta)</label>
+              <select value={accionIA} onChange={e => upd({ accion_ia: e.target.value })} className={inputCls}>
+                <option value="">Seleccionar acción...</option>
+                {accionesDisp.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+              </select>
+            </div>
+          )}
+          {!!proveedor && !!accionIA && modelos.length > 0 && (
+            <div>
+              <label className={labelCls}>Modelo</label>
+              <select value={String(data.modelo ?? '')} onChange={e => upd({ modelo: e.target.value })} className={inputCls}>
+                <option value="">Por defecto de la integración</option>
+                {modelos.map(m => <option key={m.modelo} value={m.modelo}>{m.label}</option>)}
+              </select>
+              {modeloSel && <p className="text-[10px] text-gray-500 mt-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1.5">{modeloSel.ayuda}</p>}
+            </div>
+          )}
+          {!!proveedor && !!accionIA && (
+            <textarea value={String(data.prompt ?? '')} onChange={e => upd({ prompt: e.target.value })} rows={4}
+              placeholder="Prompt — usa {{ultimo_mensaje}}, {{nombre}}, o {mi_variable}..." className={`${inputCls} font-mono resize-none`} />
+          )}
+        </>
+      )}
+
+      <VariablePicker label="Guardar resultado en" value={String(data.variable_nombre ?? '')} variables={variables}
+        onChange={v => upd({ variable_nombre: v })} onCrear={onCrearVariable} />
+      <p className="text-[10px] text-gray-400 bg-violet-50 border border-violet-100 rounded-lg px-2.5 py-2">
+        Siempre se guarda en la variable — usa un nodo Mensaje después con {'{'}variable{'}'} para enviarlo al cliente.
+      </p>
     </>
   )
 }
@@ -687,7 +829,7 @@ function SubflujoForm({ data, upd, ctx }: { data: Record<string, unknown>; upd: 
         <option value="">Seleccionar flujo...</option>
         {ctx.flujos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
       </select>
-      <p className="text-[10px] text-gray-400">A diferencia de &quot;Transferir a otro bot&quot;, este nodo sigue corriendo después de llamar al subflujo.</p>
+      <p className="text-[10px] text-gray-400">A diferencia de la acción &quot;Disparador&quot;, este nodo sigue corriendo después de llamar al subflujo.</p>
     </>
   )
 }

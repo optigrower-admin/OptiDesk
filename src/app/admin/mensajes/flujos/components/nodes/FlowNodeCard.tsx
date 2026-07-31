@@ -14,11 +14,6 @@ function resumenNodo(tipo: string, data: Record<string, unknown>): string {
       return String(data.media_url ?? '') ? `${data.media_tipo ?? 'imagen'} · ${String(data.media_url).slice(0, 30)}…` : 'Sin archivo aún'
     case 'plantilla':
       return String(data.plantilla_id ?? '') ? 'Plantilla seleccionada' : 'Sin plantilla aún'
-    case 'ia_generar_texto': {
-      const modo = data.modo === 'agente' ? 'Agente configurado' : String(data.accion ?? 'Sin acción')
-      const auto = data.enviar_automaticamente === false ? ' · solo guarda' : ' · envía respuesta'
-      return `${modo}${auto}`
-    }
     case 'condicion': {
       const ramas = (data.ramas as { nombre?: string }[] | undefined) ?? []
       return `${ramas.length} camino${ramas.length === 1 ? '' : 's'}`
@@ -42,9 +37,25 @@ function resumenNodo(tipo: string, data: Record<string, unknown>): string {
     }
     case 'menu_opciones':
       return `${data.cantidad ?? 3} opciones`
-    case 'accion_conversacion': {
-      const item = catalogItem('accion_conversacion', String(data.subtipo ?? ''))
-      return item?.label ?? 'Sin acción'
+    case 'accion': {
+      const categoria = String(data.categoria ?? '')
+      if (categoria === 'bandeja_entrada') {
+        const item = catalogItem('accion', 'bandeja_entrada')
+        const subLabels: Record<string, string> = {
+          transferir_humano: 'Transferir a humano', transferir_bot: 'Transferir a otro bot',
+          archivar: 'Archivar', desarchivar: 'Desarchivar', marcar_seguimiento: 'Marcar seguimiento',
+          quitar_seguimiento: 'Quitar seguimiento', bloquear_usuario: 'Bloquear usuario',
+          desbloquear_usuario: 'Desbloquear usuario', anadir_nota: 'Añadir nota',
+          cambiar_etapa: 'Cambiar etapa', asignar_admin: 'Asignar administrador',
+        }
+        return `${item?.label ?? 'Bandeja'}: ${subLabels[String(data.subtipo_bandeja ?? '')] ?? '—'}`
+      }
+      if (categoria === 'openai') {
+        const modo = data.modo === 'agente' ? 'Agente configurado' : String(data.accion_ia ?? 'Sin acción')
+        return `${modo} → {${data.variable_nombre || 'variable'}}`
+      }
+      const item = catalogItem('accion', categoria)
+      return item?.label ?? 'Sin categoría'
     }
     case 'subflujo':
       return data.subflujo_id ? 'Flujo seleccionado' : 'Sin flujo aún'
@@ -56,7 +67,7 @@ function resumenNodo(tipo: string, data: Record<string, unknown>): string {
 }
 
 function tituloNodo(tipo: string, data: Record<string, unknown>): string {
-  if (tipo === 'accion_conversacion') return catalogItem('accion_conversacion', String(data.subtipo ?? ''))?.label ?? 'Acción de conversación'
+  if (tipo === 'accion') return catalogItem('accion', String(data.categoria ?? ''))?.label ?? 'Acción'
   return catalogItem(tipo)?.label ?? tipo
 }
 
@@ -110,8 +121,8 @@ export const TriggerNode = ({ id, data, selected }: NodeProps) => {
   )
 }
 
-// ─── Genérico: cubre mensaje, media, plantilla, ia_generar_texto, esperar, ──
-// ─── ir_a_nodo, capturar_dato, subflujo, accion_conversacion (1 in / 1 out) ──
+// ─── Genérico: cubre mensaje, media, plantilla, esperar, ir_a_nodo, ────────
+// ─── capturar_dato, subflujo, accion (1 in / 1 out) ────────────────────────
 const SIN_SOURCE = new Set(['fin', 'ir_a_nodo'])
 
 // Clases del handle escritas literalmente por categoría (el scanner JIT de
@@ -128,7 +139,7 @@ const HANDLE_CLASS: Record<CategoriaNodo, string> = {
 export const GenericNode = ({ id, type, data, selected }: NodeProps) => {
   const tipo = type ?? ''
   const d = data as Record<string, unknown>
-  const item = tipo === 'accion_conversacion' ? catalogItem('accion_conversacion', String(d.subtipo ?? '')) : catalogItem(tipo)
+  const item = tipo === 'accion' ? catalogItem('accion', String(d.categoria ?? '')) : catalogItem(tipo)
   const categoria = item?.categoria ?? 'logica'
   const icono = item?.icono ?? '◼'
   const handleClass = HANDLE_CLASS[categoria]

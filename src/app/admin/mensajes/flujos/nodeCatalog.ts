@@ -3,13 +3,14 @@
 // Fuente de verdad para: el menú "+ Añadir", los valores por defecto de cada
 // nodo nuevo, y los colores/íconos de acento por categoría.
 // ══════════════════════════════════════════════════════════════════════════════
-import type { CategoriaNodo, TipoNodo, SubtipoAccionConversacion } from '@/types/flujos'
+import type { CategoriaNodo, TipoNodo, CategoriaAccion } from '@/types/flujos'
 
 export type Usuario = { id: string; nombre: string }
 export type Plantilla = { id: string; nombre: string; meta_status: string; meta_template_name: string | null }
 export type AgenteIA = { id: string; nombre: string; proveedor: string }
 export type Etiqueta = { id: string; nombre: string; color: string }
 export type IntegracionIA = { id: string; proveedor: string; activo: boolean; uso_asignado: string[] }
+export type Secuencia = { id: string; nombre: string }
 
 export type CatalogCtx = {
   equipo: Usuario[]
@@ -18,11 +19,12 @@ export type CatalogCtx = {
   flujos: { id: string; nombre: string }[]
   etiquetas: Etiqueta[]
   integracionesIA: IntegracionIA[]
+  secuencias: Secuencia[]
 }
 
 export interface CatalogItem {
   tipo: TipoNodo
-  subtipo?: SubtipoAccionConversacion
+  categoriaAccion?: CategoriaAccion
   categoria: CategoriaNodo
   label: string
   descripcionCorta: string
@@ -37,18 +39,18 @@ export const CATEGORIA_INFO: Record<CategoriaNodo, { label: string; border: stri
   ia:           { label: 'IA',                        border: 'border-l-violet-400',  bg: 'bg-violet-50',  text: 'text-violet-600',  dot: 'bg-violet-400',  ring: 'focus:ring-violet-400' },
   logica:       { label: 'Lógica',                    border: 'border-l-amber-400',   bg: 'bg-amber-50',   text: 'text-amber-600',   dot: 'bg-amber-400',   ring: 'focus:ring-amber-400' },
   captura:      { label: 'Captura',                   border: 'border-l-green-400',   bg: 'bg-green-50',   text: 'text-green-600',   dot: 'bg-green-400',   ring: 'focus:ring-green-400' },
-  conversacion: { label: 'Acciones de conversación',  border: 'border-l-fuchsia-400', bg: 'bg-fuchsia-50', text: 'text-fuchsia-600', dot: 'bg-fuchsia-400', ring: 'focus:ring-fuchsia-400' },
+  conversacion: { label: 'Acción',                     border: 'border-l-fuchsia-400', bg: 'bg-fuchsia-50', text: 'text-fuchsia-600', dot: 'bg-fuchsia-400', ring: 'focus:ring-fuchsia-400' },
   estructura:   { label: 'Estructura',                border: 'border-l-cyan-400',    bg: 'bg-cyan-50',    text: 'text-cyan-600',    dot: 'bg-cyan-400',    ring: 'focus:ring-cyan-400' },
 }
 
+// Todas las "categorías de acción" son UN SOLO tipo de nodo ('accion') — igual
+// que el nodo "Acción" de LucidBot, que primero pregunta qué categoría de
+// acción quieres y después muestra los campos de esa categoría específica.
 export const CATALOGO: CatalogItem[] = [
   // ── Contenido ──
   { tipo: 'mensaje',   categoria: 'contenido', label: 'Mensaje',           descripcionCorta: 'Envía texto, con variables y hasta 3 botones', icono: '💬' },
   { tipo: 'media',     categoria: 'contenido', label: 'Media',             descripcionCorta: 'Envía imagen, video, PDF o audio',              icono: '📎' },
   { tipo: 'plantilla', categoria: 'contenido', label: 'Plantilla WhatsApp', descripcionCorta: 'Envía una plantilla aprobada por Meta',        icono: '📋' },
-
-  // ── IA ──
-  { tipo: 'ia_generar_texto', categoria: 'ia', label: 'IA: Generar texto', descripcionCorta: 'Le pide a la IA que redacte una respuesta', icono: '✨' },
 
   // ── Captura ──
   { tipo: 'capturar_dato', categoria: 'captura', label: 'Capturar dato',   descripcionCorta: 'Pregunta y guarda la respuesta, validando el formato', icono: '💾' },
@@ -61,42 +63,37 @@ export const CATALOGO: CatalogItem[] = [
   { tipo: 'ir_a_nodo',       categoria: 'logica', label: 'Ir a nodo',       descripcionCorta: 'Salta a otro punto del flujo',                   icono: '↩' },
   { tipo: 'fin',             categoria: 'logica', label: 'Fin',             descripcionCorta: 'Termina la ejecución del flujo',                 icono: '🏁' },
 
-  // ── Acciones de conversación ──
-  { tipo: 'accion_conversacion', subtipo: 'transferir_humano',   categoria: 'conversacion', label: 'Transferir a humano',    descripcionCorta: 'Termina la automatización y avisa a un asesor', icono: '🙋' },
-  { tipo: 'accion_conversacion', subtipo: 'transferir_bot',      categoria: 'conversacion', label: 'Transferir a otro bot',  descripcionCorta: 'Entrega la conversación a otro flujo',           icono: '🤝' },
-  { tipo: 'accion_conversacion', subtipo: 'archivar',            categoria: 'conversacion', label: 'Archivar conversación',  descripcionCorta: 'Marca la conversación como archivada',           icono: '🗄️' },
-  { tipo: 'accion_conversacion', subtipo: 'desarchivar',         categoria: 'conversacion', label: 'Desarchivar conversación', descripcionCorta: 'Vuelve a abrir la conversación',               icono: '📤' },
-  { tipo: 'accion_conversacion', subtipo: 'marcar_seguimiento',  categoria: 'conversacion', label: 'Marcar seguimiento',     descripcionCorta: 'Pone la conversación en Seguimiento',            icono: '📌' },
-  { tipo: 'accion_conversacion', subtipo: 'quitar_seguimiento',  categoria: 'conversacion', label: 'Quitar seguimiento',     descripcionCorta: 'Saca la conversación de Seguimiento',            icono: '📍' },
-  { tipo: 'accion_conversacion', subtipo: 'bloquear_usuario',    categoria: 'conversacion', label: 'Bloquear usuario',       descripcionCorta: 'El bot deja de responderle a este cliente',      icono: '🚫' },
-  { tipo: 'accion_conversacion', subtipo: 'desbloquear_usuario', categoria: 'conversacion', label: 'Desbloquear usuario',    descripcionCorta: 'El bot vuelve a poder responderle',              icono: '✅' },
-  { tipo: 'accion_conversacion', subtipo: 'anadir_nota',         categoria: 'conversacion', label: 'Añadir nota interna',    descripcionCorta: 'Nota visible solo para el equipo',               icono: '📝' },
-  { tipo: 'accion_conversacion', subtipo: 'anadir_etiqueta',     categoria: 'conversacion', label: 'Añadir etiqueta',        descripcionCorta: 'Etiqueta al cliente',                             icono: '🏷️' },
-  { tipo: 'accion_conversacion', subtipo: 'quitar_etiqueta',     categoria: 'conversacion', label: 'Quitar etiqueta',        descripcionCorta: 'Quita una etiqueta del cliente',                  icono: '🏷️' },
-  { tipo: 'accion_conversacion', subtipo: 'cambiar_etapa',       categoria: 'conversacion', label: 'Cambiar etapa',          descripcionCorta: 'Mueve al cliente a otra etapa del pipeline',      icono: '📊' },
-  { tipo: 'accion_conversacion', subtipo: 'asignar_admin',       categoria: 'conversacion', label: 'Asignar administrador',  descripcionCorta: 'Asigna la conversación a un asesor',             icono: '👤' },
-  { tipo: 'accion_conversacion', subtipo: 'borrar_datos_usuario', categoria: 'conversacion', label: 'Borrar datos capturados', descripcionCorta: 'Limpia las variables que el flujo guardó',      icono: '🧹' },
+  // ── Acción (nodo único, categoría seleccionable) ──
+  { tipo: 'accion', categoriaAccion: 'bandeja_entrada',      categoria: 'conversacion', label: 'Bandeja de Entrada',       descripcionCorta: 'Transferir, archivar, seguimiento, bloquear, notas, asignar', icono: '📥' },
+  { tipo: 'accion', categoriaAccion: 'openai',               categoria: 'ia',           label: 'OpenAI',                    descripcionCorta: 'Genera texto/imagen/audio con IA y lo guarda en una variable', icono: '✨' },
+  { tipo: 'accion', categoriaAccion: 'anadir_etiqueta',      categoria: 'conversacion', label: 'Añadir Etiqueta',          descripcionCorta: 'Etiqueta al cliente',                             icono: '🏷️' },
+  { tipo: 'accion', categoriaAccion: 'quitar_etiqueta',      categoria: 'conversacion', label: 'Quitar Etiqueta',          descripcionCorta: 'Quita una etiqueta del cliente',                  icono: '🏷️' },
+  { tipo: 'accion', categoriaAccion: 'notificar_admin',      categoria: 'conversacion', label: 'Notificar a Administradores', descripcionCorta: 'Manda una notificación push al equipo',        icono: '🔔' },
+  { tipo: 'accion', categoriaAccion: 'campo_set',             categoria: 'conversacion', label: 'Establecer Campo Personalizado', descripcionCorta: 'Guarda un valor en una variable del flujo',  icono: '✏️' },
+  { tipo: 'accion', categoriaAccion: 'campo_clear',           categoria: 'conversacion', label: 'Limpiar Campo Personalizado', descripcionCorta: 'Borra el valor de una variable',              icono: '🧽' },
+  { tipo: 'accion', categoriaAccion: 'secuencia_sub',         categoria: 'conversacion', label: 'Suscribir a Secuencia',    descripcionCorta: 'Inscribe al cliente en una secuencia de mensajes', icono: '📨' },
+  { tipo: 'accion', categoriaAccion: 'secuencia_unsub',       categoria: 'conversacion', label: 'Dar de baja de Secuencia', descripcionCorta: 'Saca al cliente de una secuencia',                icono: '📭' },
+  { tipo: 'accion', categoriaAccion: 'evento_log',            categoria: 'conversacion', label: 'Registro de Evento Personalizado', descripcionCorta: 'Guarda un evento para analizarlo después', icono: '📋' },
+  { tipo: 'accion', categoriaAccion: 'transmision_sub',       categoria: 'conversacion', label: 'Suscribir a Transmisiones', descripcionCorta: 'El cliente acepta recibir mensajes masivos',   icono: '📡' },
+  { tipo: 'accion', categoriaAccion: 'transmision_unsub',     categoria: 'conversacion', label: 'Dar de baja de Transmisiones', descripcionCorta: 'El cliente deja de recibir mensajes masivos', icono: '🔕' },
+  { tipo: 'accion', categoriaAccion: 'borrar_datos_usuario',  categoria: 'conversacion', label: 'Borrar Información del Usuario', descripcionCorta: 'Limpia las variables que el flujo guardó',  icono: '🧹' },
+  { tipo: 'accion', categoriaAccion: 'api_externa',           categoria: 'conversacion', label: 'Solicitud de API Externa', descripcionCorta: 'Llama a una URL externa y guarda la respuesta',  icono: '🌐' },
+  { tipo: 'accion', categoriaAccion: 'disparador',            categoria: 'conversacion', label: 'Disparador (otro flujo)',  descripcionCorta: 'Entrega la conversación a otro flujo y termina', icono: '🤝' },
 
   // ── Estructura ──
   { tipo: 'subflujo', categoria: 'estructura', label: 'Subflujo', descripcionCorta: 'Llama a otro flujo ya creado y sigue', icono: '🔗' },
 ]
 
-export function catalogItem(tipo: string, subtipo?: string): CatalogItem | undefined {
-  return CATALOGO.find(c => c.tipo === tipo && (subtipo ? c.subtipo === subtipo : !c.subtipo))
+export function catalogItem(tipo: string, categoriaAccion?: string): CatalogItem | undefined {
+  return CATALOGO.find(c => c.tipo === tipo && (categoriaAccion ? c.categoriaAccion === categoriaAccion : !c.categoriaAccion))
 }
 
-export function getDefaultData(tipo: string, ctx: CatalogCtx, subtipo?: string): Record<string, unknown> {
+export function getDefaultData(tipo: string, ctx: CatalogCtx, categoriaAccion?: string): Record<string, unknown> {
   switch (tipo) {
     case 'trigger':       return { trigger_tipo: 'mensaje_nuevo' }
     case 'mensaje':       return { contenido: '', usar_plantilla: false, plantillas: ctx.plantillas, botones: [] }
     case 'media':         return { media_tipo: 'imagen', media_url: '', media_caption: '' }
     case 'plantilla':     return { plantilla_id: '', plantillas: ctx.plantillas }
-    case 'ia_generar_texto': return {
-      modo: 'puntual', agente_id: '', prompt_contexto: '', incluir_historial: true,
-      accion: '', proveedor: '', modelo: '', prompt: '', variable_salida: '',
-      temperatura: '0.7', max_tokens: '800', enviar_automaticamente: true,
-      agentes: ctx.agentes, integracionesIA: ctx.integracionesIA,
-    }
     case 'condicion':       return { ramas: [{ id: `rama-${Date.now()}`, nombre: 'Camino 1', modo: 'todas', condiciones: [] }] }
     case 'dividir_trafico': return { variaciones: [
       { id: `var-${Date.now()}-a`, nombre: 'A', porcentaje: 50 },
@@ -111,11 +108,18 @@ export function getDefaultData(tipo: string, ctx: CatalogCtx, subtipo?: string):
       { etiqueta: '', tipo_match: 'numero', valor_match: '' },
       { etiqueta: '', tipo_match: 'numero', valor_match: '' },
     ] }
-    case 'accion_conversacion': return {
-      subtipo: subtipo ?? 'anadir_nota',
-      contenido: '', etiqueta_id: '', nueva_etiqueta_nombre: '', nueva_etiqueta_color: '#3b82f6',
-      etapa: 'nuevo', tipo_asignacion: 'round_robin', asignar_a: '', subflujo_id: '',
+    case 'accion': return {
+      categoria: categoriaAccion ?? 'bandeja_entrada',
+      subtipo_bandeja: 'anadir_nota', contenido: '', etapa: 'nuevo',
+      tipo_asignacion: 'round_robin', asignar_a: '', subflujo_id: '',
+      modo: 'puntual', agente_id: '', prompt_contexto: '',
+      proveedor: '', modelo: '', accion_ia: '', prompt: '', temperatura: '0.7', max_tokens: '800',
+      etiqueta_id: '', nueva_etiqueta_nombre: '', nueva_etiqueta_color: '#3b82f6',
+      notif_titulo: '', notif_mensaje: '',
+      variable_nombre: '', variable_valor: '', evento_datos: '',
+      secuencia_id: '', api_url: '', api_metodo: 'GET', api_headers: '', api_body: '', api_variable_respuesta: '',
       equipo: ctx.equipo, etiquetas: ctx.etiquetas, flujos_disponibles: ctx.flujos,
+      agentes: ctx.agentes, integracionesIA: ctx.integracionesIA, secuencias: ctx.secuencias,
     }
     case 'subflujo':       return { subflujo_id: '', flujos_disponibles: ctx.flujos }
     default:               return {}

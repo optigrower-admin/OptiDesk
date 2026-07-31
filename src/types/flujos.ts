@@ -11,7 +11,6 @@ export type TipoNodo =
   | 'mensaje'
   | 'media'
   | 'plantilla'
-  | 'ia_generar_texto'
   | 'condicion'
   | 'dividir_trafico'
   | 'esperar'
@@ -19,11 +18,19 @@ export type TipoNodo =
   | 'fin'
   | 'capturar_dato'
   | 'menu_opciones'
-  | 'accion_conversacion'
+  | 'accion'
   | 'subflujo'
 
 export type CategoriaNodo =
   | 'contenido' | 'ia' | 'logica' | 'captura' | 'conversacion' | 'estructura'
+
+// ─── Catálogo de variables del flujo (nombre + tipo, reutilizable en todos los nodos) ─
+export type TipoVariable = 'texto' | 'numero' | 'fecha' | 'booleano' | 'imagen' | 'audio'
+
+export interface VariableDefinida {
+  nombre: string
+  tipo: TipoVariable
+}
 
 // ─── Tipos de disparador ──────────────────────────────────────────────────────
 export type TriggerTipo =
@@ -61,22 +68,77 @@ export interface DatosPlantilla {
   variables?: Record<string, string>
 }
 
-export interface DatosIA {
-  modo: 'agente' | 'puntual'
-  // modo 'agente'
+// Nodo único "Acción" (estilo LucidBot): una categoría de acción + sus campos.
+// Todos los campos son opcionales acá porque solo aplican algunos según la
+// categoría elegida — el motor y el panel de edición sí saben cuáles usar.
+export type CategoriaAccion =
+  | 'bandeja_entrada'
+  | 'openai'
+  | 'anadir_etiqueta' | 'quitar_etiqueta'
+  | 'notificar_admin'
+  | 'campo_set' | 'campo_clear'
+  | 'secuencia_sub' | 'secuencia_unsub'
+  | 'evento_log'
+  | 'transmision_sub' | 'transmision_unsub'
+  | 'borrar_datos_usuario'
+  | 'api_externa'
+  | 'disparador'
+
+export type SubtipoBandeja =
+  | 'transferir_humano' | 'transferir_bot'
+  | 'archivar' | 'desarchivar'
+  | 'marcar_seguimiento' | 'quitar_seguimiento'
+  | 'bloquear_usuario' | 'desbloquear_usuario'
+  | 'anadir_nota'
+  | 'cambiar_etapa'
+  | 'asignar_admin'
+
+export interface DatosAccion {
+  categoria: CategoriaAccion
+
+  // bandeja_entrada
+  subtipo_bandeja?: SubtipoBandeja
+  contenido?: string                              // anadir_nota
+  etapa?: string                                   // cambiar_etapa
+  tipo_asignacion?: 'round_robin' | 'usuario_fijo' // asignar_admin
+  asignar_a?: string
+  subflujo_id?: string                             // transferir_bot / disparador
+
+  // openai — SIEMPRE guarda en variable, nunca auto-envía (el usuario decide
+  // si la usa en un nodo Mensaje aparte con {variable})
+  modo?: 'agente' | 'puntual'
   agente_id?: string
   prompt_contexto?: string
-  incluir_historial?: boolean
-  // modo 'puntual'
   proveedor?: string
   modelo?: string
-  accion?: string  // uso: resumenes_conversacion | sugerencias_respuesta | ...
+  accion_ia?: string   // uso: resumenes_conversacion | sugerencias_respuesta | ...
   prompt?: string
   temperatura?: number
   max_tokens?: number
-  // comunes
-  variable_salida?: string
-  enviar_automaticamente?: boolean  // default true
+
+  // anadir_etiqueta / quitar_etiqueta
+  etiqueta_id?: string
+  nueva_etiqueta_nombre?: string
+  nueva_etiqueta_color?: string
+
+  // notificar_admin
+  notif_titulo?: string
+  notif_mensaje?: string
+
+  // campo_set / campo_clear / openai (salida) / evento_log (nombre del evento)
+  variable_nombre?: string   // nombre de una variable del catálogo del flujo
+  variable_valor?: string    // campo_set: valor (admite {{}}); evento_log: se usa como nombre del evento
+  evento_datos?: string      // JSON opcional para evento_log
+
+  // secuencia_sub / secuencia_unsub
+  secuencia_id?: string
+
+  // api_externa
+  api_url?: string
+  api_metodo?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  api_headers?: string   // una línea por header, formato "Nombre: valor"
+  api_body?: string      // JSON, admite variables
+  api_variable_respuesta?: string
 }
 
 // Todos los tipos de condición simple evaluables (se reutilizan igual en el motor)
@@ -139,34 +201,6 @@ export interface DatosMenuOpciones {
   opciones?: DatosMenuOpcion[]
 }
 
-export type SubtipoAccionConversacion =
-  | 'transferir_humano' | 'transferir_bot'
-  | 'archivar' | 'desarchivar'
-  | 'marcar_seguimiento' | 'quitar_seguimiento'
-  | 'bloquear_usuario' | 'desbloquear_usuario'
-  | 'anadir_nota'
-  | 'anadir_etiqueta' | 'quitar_etiqueta'
-  | 'cambiar_etapa'
-  | 'asignar_admin'
-  | 'borrar_datos_usuario'
-
-export interface DatosAccionConversacion {
-  subtipo: SubtipoAccionConversacion
-  // anadir_nota
-  contenido?: string
-  // anadir_etiqueta / quitar_etiqueta
-  etiqueta_id?: string
-  nueva_etiqueta_nombre?: string
-  nueva_etiqueta_color?: string
-  // cambiar_etapa
-  etapa?: string
-  // asignar_admin
-  tipo_asignacion?: 'round_robin' | 'usuario_fijo'
-  asignar_a?: string
-  // transferir_bot
-  subflujo_id?: string
-}
-
 export interface DatosSubflujo {
   subflujo_id: string
   nombre_subflujo?: string
@@ -178,7 +212,6 @@ export type DatosNodo =
   | (DatosMensaje & { tipo: 'mensaje' })
   | (DatosMedia & { tipo: 'media' })
   | (DatosPlantilla & { tipo: 'plantilla' })
-  | (DatosIA & { tipo: 'ia_generar_texto' })
   | (DatosCondicion & { tipo: 'condicion' })
   | (DatosDividirTrafico & { tipo: 'dividir_trafico' })
   | (DatosEsperar & { tipo: 'esperar' })
@@ -186,7 +219,7 @@ export type DatosNodo =
   | ({ tipo: 'fin' })
   | (DatosCapturarDato & { tipo: 'capturar_dato' })
   | (DatosMenuOpciones & { tipo: 'menu_opciones' })
-  | (DatosAccionConversacion & { tipo: 'accion_conversacion' })
+  | (DatosAccion & { tipo: 'accion' })
   | (DatosSubflujo & { tipo: 'subflujo' })
 
 // ─── Estructura del flujo guardado en DB (nodos JSONB) ────────────────────────
@@ -204,6 +237,7 @@ export interface Flujo {
   trigger_tipo: TriggerTipo
   grupo: string
   nodos: NodosGuardados | null
+  variables_definidas: VariableDefinida[]
   activo: boolean
   created_at: string
   updated_at: string

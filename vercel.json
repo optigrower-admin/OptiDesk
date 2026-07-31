@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/webhooks-reintentar",
       "schedule": "50 4 * * *"
+    },
+    {
+      "path": "/api/cron/secuencias",
+      "schedule": "0 10 * * *"
     }
   ]
 }

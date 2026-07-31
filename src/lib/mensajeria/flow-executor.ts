@@ -439,73 +439,6 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
-    // ── IA: generar texto (fusiona los antiguos agente_ia + accion_ia) ────────
-    case 'ia_generar_texto': {
-      const modo = String(data.modo ?? 'puntual')
-      const variableSalida = String(data.variable_salida ?? '')
-      const enviarAuto = data.enviar_automaticamente !== false  // default true
-
-      let salida: string | null = null
-      let advertencia: string | undefined
-
-      if (modo === 'agente') {
-        const agenteId = String(data.agente_id ?? '')
-        const promptContexto = String(data.prompt_contexto ?? '')
-        if (!agenteId) return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
-        try {
-          salida = await llamarAgenteIA(supabase, tenantId, agenteId, contexto, promptContexto)
-        } catch (e) {
-          advertencia = e instanceof Error ? e.message : 'Error desconocido'
-          console.error('[flow-executor] Error ia_generar_texto (agente):', e)
-        }
-      } else {
-        const uso = String(data.accion ?? '')
-        const promptTemplate = String(data.prompt ?? '')
-        if (!uso || !promptTemplate) return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
-        try {
-          const { llamarIA } = await import('@/lib/ia/llamarIA')
-          const promptFinal = interpolarVariables(promptTemplate, contexto)
-          const proveedor = data.proveedor ? String(data.proveedor) : undefined
-          const modelo = data.modelo ? String(data.modelo) : undefined
-          const temperatura = data.temperatura !== undefined ? parseFloat(String(data.temperatura)) : undefined
-          const maxTokens = data.max_tokens !== undefined ? parseInt(String(data.max_tokens), 10) : undefined
-          const resultado = await llamarIA(tenantId, uso, promptFinal, {
-            proveedor: proveedor as 'OPENAI' | 'ANTHROPIC' | 'GOOGLE' | 'GROK' | 'ELEVENLABS' | undefined,
-            modelo,
-            temperatura: isNaN(temperatura as number) ? undefined : temperatura,
-            maxTokens: isNaN(maxTokens as number) ? undefined : maxTokens,
-          })
-          if (!resultado.ok) {
-            advertencia = resultado.error ?? 'Error desconocido'
-            console.error(`[flow-executor] ia_generar_texto (${uso}) sin resultado: ${advertencia}`)
-          } else {
-            salida = resultado.texto ?? resultado.imagenUrl ?? resultado.audioBase64 ?? ''
-          }
-        } catch (e) {
-          advertencia = e instanceof Error ? e.message : 'Error desconocido'
-          console.error('[flow-executor] Error ia_generar_texto (puntual):', e)
-        }
-      }
-
-      const nuevasVars = variableSalida && salida != null
-        ? { ...(contexto.variables ?? {}), [variableSalida]: salida }
-        : contexto.variables
-
-      // Si enviar_automaticamente está activo (default), reutiliza el mismo envío
-      // que el nodo 'mensaje' — así el resultado no se queda "silencioso" en la
-      // variable sin que el usuario lo note (bug real detectado con este nodo).
-      if (enviarAuto && salida && convId) {
-        await enviarMensajeDirecto(supabase, tenantId, convId, salida, 'texto')
-      }
-
-      return {
-        tipo: 'continuar',
-        siguiente_nodo_id: getSiguienteNodo(edges, nodo.id),
-        contexto: { variables: nuevasVars, respuestas: { ...contexto.respuestas, [nodo.id]: salida ?? '' } },
-        advertencia,
-      }
-    }
-
     // ── Condición (bifurcación con ramas AND/OR + fallback) ───────────────────
     case 'condicion': {
       const ramas = (data.ramas ?? []) as { id: string; modo?: string; condiciones?: { tipo: string; valor?: string; agente_id?: string; pregunta?: string }[] }[]
@@ -699,60 +632,166 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: otraSalida }
     }
 
-    // ── Acción de conversación (fusiona asignar/etapa/etiqueta/nota_interna + nuevos subtipos) ─
-    case 'accion_conversacion': {
-      const subtipo = String(data.subtipo ?? '')
+    // ── Acción (nodo único estilo LucidBot: una categoría + sus campos) ───────
+    case 'accion': {
+      const categoria = String(data.categoria ?? '')
       const siguiente = getSiguienteNodo(edges, nodo.id)
 
-      switch (subtipo) {
-        case 'transferir_humano': {
-          // Termina la automatización — el cliente queda en manos de un asesor.
-          // La limpieza de clientes.automatizado la hace el manejo de 'fin' en continuarEjecucion.
-          return { tipo: 'fin' }
+      switch (categoria) {
+        // ── Bandeja de Entrada (submenú con su propio subtipo) ─────────────
+        case 'bandeja_entrada': {
+          const subtipo = String(data.subtipo_bandeja ?? '')
+          switch (subtipo) {
+            case 'transferir_humano':
+              // Termina la automatización — la limpieza de clientes.automatizado
+              // la hace el manejo de 'fin' en continuarEjecucion.
+              return { tipo: 'fin' }
+
+            case 'transferir_bot': {
+              const subflujoId = String(data.subflujo_id ?? '').trim()
+              if (subflujoId && convId) {
+                iniciarFlujoParaConversacion(tenantId, convId, clienteId, 'mensaje_nuevo', subflujoId)
+                  .catch(e => console.error('[flow-executor] Error transferir_bot:', e))
+              }
+              return { tipo: 'fin' }
+            }
+
+            case 'archivar':
+              if (convId) await supabase.from('conversaciones').update({ estado: 'archivada' }).eq('id', convId)
+              return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+            case 'desarchivar':
+              if (convId) await supabase.from('conversaciones').update({ estado: 'abierta' }).eq('id', convId)
+              return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+            case 'marcar_seguimiento':
+              if (convId) await supabase.from('conversaciones').update({ estado: 'pendiente' }).eq('id', convId)
+              return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+            case 'quitar_seguimiento':
+              if (convId) await supabase.from('conversaciones').update({ estado: 'abierta' }).eq('id', convId)
+              return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+            case 'bloquear_usuario':
+              if (clienteId) await supabase.from('clientes').update({ bot_bloqueado: true }).eq('id', clienteId)
+              return { tipo: 'fin' }
+
+            case 'desbloquear_usuario':
+              if (clienteId) await supabase.from('clientes').update({ bot_bloqueado: false }).eq('id', clienteId)
+              return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+            case 'anadir_nota': {
+              const contenido = String(data.contenido ?? '')
+              if (contenido.trim() && convId) {
+                await supabase.from('mensajes').insert({
+                  conversacion_id: convId, tenant_id: tenantId, direccion: 'saliente', tipo: 'nota_interna',
+                  contenido: interpolarVariables(contenido, contexto), enviado_por: null, estado_envio: 'enviado', leido_por_asesor: false,
+                })
+              }
+              return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+            }
+
+            case 'cambiar_etapa': {
+              const etapa = String(data.etapa ?? '')
+              if (etapa && clienteId) {
+                const { ETAPA_MAP, ETAPAS } = await import('@/lib/ventas/pipeline')
+                const etapaInfo = ETAPA_MAP[etapa as keyof typeof ETAPA_MAP]
+                if (etapaInfo) {
+                  const orden = ETAPAS.findIndex(e => e.id === etapa)
+                  await supabase.from('clientes')
+                    .update({ etapa_venta: etapa, etapa_venta_orden: orden >= 0 ? orden : 0, en_seguimiento_ventas: true })
+                    .eq('id', clienteId)
+                  try {
+                    await supabase.from('historial_etapas_cliente').insert({
+                      cliente_id: clienteId, tenant_id: tenantId, etapa_nueva: etapa, origen: 'automatizacion',
+                    })
+                  } catch { /* non-critical */ }
+                }
+              }
+              return { tipo: 'continuar', siguiente_nodo_id: siguiente, contexto: { etapa_actual: etapa } }
+            }
+
+            case 'asignar_admin': {
+              if (!convId) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+              if (data.tipo_asignacion === 'usuario_fijo' && data.asignar_a) {
+                await supabase.from('conversaciones').update({ assigned_to: String(data.asignar_a) }).eq('id', convId)
+                if (clienteId) await supabase.from('clientes').update({ assigned_to: String(data.asignar_a) }).eq('id', clienteId)
+              } else {
+                const { data: asesores } = await supabase
+                  .from('usuarios').select('id').eq('tenant_id', tenantId).in('rol', ['admin', 'gerencia', 'asesor'])
+                if (asesores?.length) {
+                  let menorCarga = Infinity; let seleccionado = asesores[0].id
+                  for (const a of asesores) {
+                    const { count } = await supabase.from('conversaciones')
+                      .select('id', { count: 'exact', head: true }).eq('assigned_to', a.id).eq('estado', 'abierta')
+                    if ((count ?? 0) < menorCarga) { menorCarga = count ?? 0; seleccionado = a.id }
+                  }
+                  await supabase.from('conversaciones').update({ assigned_to: seleccionado }).eq('id', convId)
+                  if (clienteId) await supabase.from('clientes').update({ assigned_to: seleccionado }).eq('id', clienteId)
+                }
+              }
+              return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+            }
+
+            default:
+              return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+          }
         }
 
-        case 'transferir_bot': {
-          const subflujoId = String(data.subflujo_id ?? '').trim()
-          if (subflujoId && convId) {
-            iniciarFlujoParaConversacion(tenantId, convId, clienteId, 'mensaje_nuevo', subflujoId)
-              .catch(e => console.error('[flow-executor] Error transferir_bot:', e))
+        // ── OpenAI — SIEMPRE guarda el resultado en variable, nunca auto-envía ─
+        case 'openai': {
+          const modo = String(data.modo ?? 'puntual')
+          const variableNombre = String(data.variable_nombre ?? '')
+          let salida: string | null = null
+          let advertencia: string | undefined
+
+          if (modo === 'agente') {
+            const agenteId = String(data.agente_id ?? '')
+            const promptContexto = String(data.prompt_contexto ?? '')
+            if (!agenteId) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+            try {
+              salida = await llamarAgenteIA(supabase, tenantId, agenteId, contexto, promptContexto)
+            } catch (e) {
+              advertencia = e instanceof Error ? e.message : 'Error desconocido'
+              console.error('[flow-executor] Error accion/openai (agente):', e)
+            }
+          } else {
+            const uso = String(data.accion_ia ?? '')
+            const promptTemplate = String(data.prompt ?? '')
+            if (!uso || !promptTemplate) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+            try {
+              const { llamarIA } = await import('@/lib/ia/llamarIA')
+              const promptFinal = interpolarVariables(promptTemplate, contexto)
+              const proveedor = data.proveedor ? String(data.proveedor) : undefined
+              const modelo = data.modelo ? String(data.modelo) : undefined
+              const temperatura = data.temperatura !== undefined ? parseFloat(String(data.temperatura)) : undefined
+              const maxTokens = data.max_tokens !== undefined ? parseInt(String(data.max_tokens), 10) : undefined
+              const resultado = await llamarIA(tenantId, uso, promptFinal, {
+                proveedor: proveedor as 'OPENAI' | 'ANTHROPIC' | 'GOOGLE' | 'GROK' | 'ELEVENLABS' | undefined,
+                modelo,
+                temperatura: isNaN(temperatura as number) ? undefined : temperatura,
+                maxTokens: isNaN(maxTokens as number) ? undefined : maxTokens,
+              })
+              if (!resultado.ok) {
+                advertencia = resultado.error ?? 'Error desconocido'
+              } else {
+                salida = resultado.texto ?? resultado.imagenUrl ?? resultado.audioBase64 ?? ''
+              }
+            } catch (e) {
+              advertencia = e instanceof Error ? e.message : 'Error desconocido'
+              console.error('[flow-executor] Error accion/openai (puntual):', e)
+            }
           }
-          return { tipo: 'fin' }
-        }
 
-        case 'archivar':
-          if (convId) await supabase.from('conversaciones').update({ estado: 'archivada' }).eq('id', convId)
-          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+          const nuevasVars = variableNombre && salida != null
+            ? { ...(contexto.variables ?? {}), [variableNombre]: salida }
+            : contexto.variables
 
-        case 'desarchivar':
-          if (convId) await supabase.from('conversaciones').update({ estado: 'abierta' }).eq('id', convId)
-          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
-
-        case 'marcar_seguimiento':
-          if (convId) await supabase.from('conversaciones').update({ estado: 'pendiente' }).eq('id', convId)
-          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
-
-        case 'quitar_seguimiento':
-          if (convId) await supabase.from('conversaciones').update({ estado: 'abierta' }).eq('id', convId)
-          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
-
-        case 'bloquear_usuario':
-          if (clienteId) await supabase.from('clientes').update({ bot_bloqueado: true }).eq('id', clienteId)
-          return { tipo: 'fin' }
-
-        case 'desbloquear_usuario':
-          if (clienteId) await supabase.from('clientes').update({ bot_bloqueado: false }).eq('id', clienteId)
-          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
-
-        case 'anadir_nota': {
-          const contenido = String(data.contenido ?? '')
-          if (contenido.trim() && convId) {
-            await supabase.from('mensajes').insert({
-              conversacion_id: convId, tenant_id: tenantId, direccion: 'saliente', tipo: 'nota_interna',
-              contenido: interpolarVariables(contenido, contexto), enviado_por: null, estado_envio: 'enviado', leido_por_asesor: false,
-            })
+          return {
+            tipo: 'continuar', siguiente_nodo_id: siguiente,
+            contexto: { variables: nuevasVars, respuestas: { ...contexto.respuestas, [nodo.id]: salida ?? '' } },
+            advertencia,
           }
-          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
         }
 
         case 'anadir_etiqueta':
@@ -773,7 +812,7 @@ async function procesarNodo(
           }
 
           if (etiquetaId && clienteId) {
-            if (subtipo === 'anadir_etiqueta') {
+            if (categoria === 'anadir_etiqueta') {
               await supabase.from('clientes_etiquetas').upsert(
                 { cliente_id: clienteId, etiqueta_id: etiquetaId, tenant_id: tenantId },
                 { onConflict: 'cliente_id,etiqueta_id' }
@@ -785,51 +824,122 @@ async function procesarNodo(
           return { tipo: 'continuar', siguiente_nodo_id: siguiente }
         }
 
-        case 'cambiar_etapa': {
-          const etapa = String(data.etapa ?? '')
-          if (etapa && clienteId) {
-            const { ETAPA_MAP, ETAPAS } = await import('@/lib/ventas/pipeline')
-            const etapaInfo = ETAPA_MAP[etapa as keyof typeof ETAPA_MAP]
-            if (etapaInfo) {
-              const orden = ETAPAS.findIndex(e => e.id === etapa)
-              await supabase.from('clientes')
-                .update({ etapa_venta: etapa, etapa_venta_orden: orden >= 0 ? orden : 0, en_seguimiento_ventas: true })
-                .eq('id', clienteId)
-              try {
-                await supabase.from('historial_etapas_cliente').insert({
-                  cliente_id: clienteId, tenant_id: tenantId, etapa_nueva: etapa, origen: 'automatizacion',
-                })
-              } catch { /* non-critical */ }
-            }
-          }
-          return { tipo: 'continuar', siguiente_nodo_id: siguiente, contexto: { etapa_actual: etapa } }
-        }
-
-        case 'asignar_admin': {
-          if (!convId) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
-          if (data.tipo_asignacion === 'usuario_fijo' && data.asignar_a) {
-            await supabase.from('conversaciones').update({ assigned_to: String(data.asignar_a) }).eq('id', convId)
-            if (clienteId) await supabase.from('clientes').update({ assigned_to: String(data.asignar_a) }).eq('id', clienteId)
-          } else {
-            const { data: asesores } = await supabase
-              .from('usuarios').select('id').eq('tenant_id', tenantId).in('rol', ['admin', 'gerencia', 'asesor'])
-            if (asesores?.length) {
-              let menorCarga = Infinity; let seleccionado = asesores[0].id
-              for (const a of asesores) {
-                const { count } = await supabase.from('conversaciones')
-                  .select('id', { count: 'exact', head: true }).eq('assigned_to', a.id).eq('estado', 'abierta')
-                if ((count ?? 0) < menorCarga) { menorCarga = count ?? 0; seleccionado = a.id }
-              }
-              await supabase.from('conversaciones').update({ assigned_to: seleccionado }).eq('id', convId)
-              if (clienteId) await supabase.from('clientes').update({ assigned_to: seleccionado }).eq('id', clienteId)
-            }
+        // ── Notificar a administradores (push) ─────────────────────────────
+        case 'notificar_admin': {
+          const titulo = interpolarVariables(String(data.notif_titulo ?? 'Automatización'), contexto)
+          const mensaje = interpolarVariables(String(data.notif_mensaje ?? ''), contexto)
+          try {
+            const { sendPushToTenant } = await import('@/lib/mensajeria/push')
+            await sendPushToTenant(tenantId, titulo, mensaje || 'Un flujo necesita tu atención', 'flujo-accion')
+          } catch (e) {
+            console.error('[flow-executor] Error notificar_admin:', e)
           }
           return { tipo: 'continuar', siguiente_nodo_id: siguiente }
         }
 
+        // ── Establecer / limpiar campo personalizado (variable del flujo) ──
+        case 'campo_set': {
+          const nombreVar = String(data.variable_nombre ?? '').trim()
+          if (!nombreVar) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+          const valor = interpolarVariables(String(data.variable_valor ?? ''), contexto)
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente, contexto: { variables: { ...(contexto.variables ?? {}), [nombreVar]: valor } } }
+        }
+
+        case 'campo_clear': {
+          const nombreVar = String(data.variable_nombre ?? '').trim()
+          if (!nombreVar) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+          const nuevas = { ...(contexto.variables ?? {}) }
+          delete nuevas[nombreVar]
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente, contexto: { variables: nuevas } }
+        }
+
+        // ── Suscribir / dar de baja de secuencia de mensajes ───────────────
+        case 'secuencia_sub': {
+          const secuenciaId = String(data.secuencia_id ?? '').trim()
+          if (secuenciaId && clienteId) {
+            await supabase.from('secuencia_suscripciones').upsert(
+              { tenant_id: tenantId, secuencia_id: secuenciaId, cliente_id: clienteId, conversacion_id: convId, activa: true, paso_actual: 0, proxima_ejecucion_at: new Date().toISOString() },
+              { onConflict: 'secuencia_id,cliente_id' }
+            )
+          }
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+        }
+
+        case 'secuencia_unsub': {
+          const secuenciaId = String(data.secuencia_id ?? '').trim()
+          if (secuenciaId && clienteId) {
+            await supabase.from('secuencia_suscripciones').update({ activa: false })
+              .eq('secuencia_id', secuenciaId).eq('cliente_id', clienteId)
+          }
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+        }
+
+        // ── Registrar evento personalizado ──────────────────────────────────
+        case 'evento_log': {
+          const nombreEvento = String(data.variable_valor ?? '').trim() || 'evento'
+          let datos: unknown = null
+          try { datos = data.evento_datos ? JSON.parse(interpolarVariables(String(data.evento_datos), contexto)) : null } catch { datos = String(data.evento_datos ?? '') }
+          await supabase.from('eventos_personalizados').insert({
+            tenant_id: tenantId, cliente_id: clienteId, conversacion_id: convId, nombre_evento: nombreEvento, datos,
+          })
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+        }
+
+        // ── Suscribir / dar de baja de transmisiones (opt-in de mensajes masivos) ─
+        case 'transmision_sub':
+          if (clienteId) await supabase.from('clientes').update({ recibe_transmisiones: true }).eq('id', clienteId)
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+        case 'transmision_unsub':
+          if (clienteId) await supabase.from('clientes').update({ recibe_transmisiones: false }).eq('id', clienteId)
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
         case 'borrar_datos_usuario':
           // Borra solo las variables que el flujo capturó (no toca los datos reales del cliente en el CRM).
           return { tipo: 'continuar', siguiente_nodo_id: siguiente, contexto: { variables: {} } }
+
+        // ── Solicitud de API externa ─────────────────────────────────────────
+        case 'api_externa': {
+          const url = String(data.api_url ?? '').trim()
+          if (!url) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+          const metodo = String(data.api_metodo ?? 'GET')
+          const headers: Record<string, string> = {}
+          for (const linea of String(data.api_headers ?? '').split('\n')) {
+            const i = linea.indexOf(':')
+            if (i > 0) headers[linea.slice(0, i).trim()] = interpolarVariables(linea.slice(i + 1).trim(), contexto)
+          }
+          const variableRespuesta = String(data.api_variable_respuesta ?? '').trim()
+          try {
+            const controller = new AbortController()
+            const timeout = setTimeout(() => controller.abort(), 10_000)
+            const r = await fetch(url, {
+              method: metodo,
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: metodo !== 'GET' && data.api_body ? interpolarVariables(String(data.api_body), contexto) : undefined,
+              signal: controller.signal,
+            })
+            clearTimeout(timeout)
+            const texto = await r.text()
+            if (variableRespuesta) {
+              return { tipo: 'continuar', siguiente_nodo_id: siguiente, contexto: { variables: { ...(contexto.variables ?? {}), [variableRespuesta]: texto.slice(0, 4000) } } }
+            }
+            return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : 'Error desconocido'
+            console.error('[flow-executor] Error api_externa:', e)
+            return { tipo: 'continuar', siguiente_nodo_id: siguiente, advertencia: msg }
+          }
+        }
+
+        // ── Disparador: entrega la conversación a otro flujo y termina ──────
+        case 'disparador': {
+          const subflujoId = String(data.subflujo_id ?? '').trim()
+          if (subflujoId && convId) {
+            iniciarFlujoParaConversacion(tenantId, convId, clienteId, 'mensaje_nuevo', subflujoId)
+              .catch(e => console.error('[flow-executor] Error disparador:', e))
+          }
+          return { tipo: 'fin' }
+        }
 
         default:
           return { tipo: 'continuar', siguiente_nodo_id: siguiente }
@@ -1003,7 +1113,7 @@ function getSiguienteNodoConSalida(edges: Edge[], nodoId: string, salida: string
 }
 
 // ─── Enviar mensaje vía Meta API ──────────────────────────────────────────────
-async function enviarMensajeDirecto(
+export async function enviarMensajeDirecto(
   supabase: Supa,
   tenantId: string,
   convId: string,

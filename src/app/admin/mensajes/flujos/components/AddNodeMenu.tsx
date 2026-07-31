@@ -82,7 +82,7 @@ export default function AddNodeMenu({ onSelect, label = '+ Añadir' }: { onSelec
             <div className="p-1.5">
               {filtrado.length === 0
                 ? <p className="text-xs text-gray-400 text-center py-4">Sin resultados</p>
-                : filtrado.map((item, i) => <Fila key={`${item.tipo}-${item.subtipo ?? ''}-${i}`} item={item} />)}
+                : filtrado.map((item, i) => <Fila key={`${item.tipo}-${item.categoriaAccion ?? ''}-${i}`} item={item} />)}
             </div>
           ) : (
             <>
@@ -103,7 +103,7 @@ export default function AddNodeMenu({ onSelect, label = '+ Añadir' }: { onSelec
                       {grupo.titulo}
                       <span>{abierto ? '▾' : '▸'}</span>
                     </button>
-                    {abierto && items.map((item, i) => <Fila key={`${item.tipo}-${item.subtipo ?? ''}-${i}`} item={item} />)}
+                    {abierto && items.map((item, i) => <Fila key={`${item.tipo}-${item.categoriaAccion ?? ''}-${i}`} item={item} />)}
                   </div>
                 )
               })}

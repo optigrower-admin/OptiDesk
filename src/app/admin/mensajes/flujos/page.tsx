@@ -40,6 +40,7 @@ type Flujo = {
   trigger_tipo: string
   grupo: string
   nodos: { nodes: Node[]; edges: Edge[] } | null
+  variables_definidas: { nombre: string; tipo: string }[] | null
   activo: boolean
   created_at: string
   updated_at: string
@@ -151,12 +152,19 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
     if (!ctx.equipo.length && !ctx.plantillas.length && !ctx.agentes.length) return
     setNodes(ns => ns.map(n => {
       if (n.type === 'mensaje' || n.type === 'plantilla') return { ...n, data: { ...n.data, plantillas: ctx.plantillas } }
-      if (n.type === 'ia_generar_texto') return { ...n, data: { ...n.data, agentes: ctx.agentes, integracionesIA: ctx.integracionesIA } }
       if (n.type === 'subflujo') return { ...n, data: { ...n.data, flujos_disponibles: ctx.flujos } }
-      if (n.type === 'accion_conversacion') return { ...n, data: { ...n.data, equipo: ctx.equipo, etiquetas: ctx.etiquetas, flujos_disponibles: ctx.flujos } }
+      if (n.type === 'accion') return { ...n, data: { ...n.data, equipo: ctx.equipo, etiquetas: ctx.etiquetas, flujos_disponibles: ctx.flujos, agentes: ctx.agentes, integracionesIA: ctx.integracionesIA, secuencias: ctx.secuencias } }
       return n
     }))
   }, [ctx])
+
+  // Catálogo de variables tipadas del flujo (nombre + tipo, reutilizable en todos los nodos)
+  const [variablesDefinidas, setVariablesDefinidas] = useState<{ nombre: string; tipo: string }[]>(flujo?.variables_definidas ?? [])
+  const [showVariables, setShowVariables] = useState(false)
+  const crearVariable = useCallback((v: { nombre: string; tipo: string }) => {
+    setVariablesDefinidas(vs => vs.some(x => x.nombre === v.nombre) ? vs : [...vs, v])
+  }, [])
+  const eliminarVariable = (nombre: string) => setVariablesDefinidas(vs => vs.filter(v => v.nombre !== nombre))
 
   // Nodo seleccionado (panel lateral de edición)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -195,7 +203,7 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
   const agregarNodo = (item: CatalogItem) => {
     const y = nodes.length > 0 ? Math.max(...nodes.map(n => n.position.y)) + 160 : 220
     const id = `node-${Date.now()}`
-    setNodes(ns => [...ns, { id, type: item.tipo, position: { x: 200, y }, data: getDefaultData(item.tipo, ctx, item.subtipo) }])
+    setNodes(ns => [...ns, { id, type: item.tipo, position: { x: 200, y }, data: getDefaultData(item.tipo, ctx, item.categoriaAccion) }])
     setSelectedNodeId(id)
   }
 
@@ -209,6 +217,7 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
       if (flujo) {
         const { error } = await supabase.from('flujos_automatizacion').update({
           nombre, descripcion: descripcion || null, trigger_tipo: triggerTipo, nodos, activo,
+          variables_definidas: variablesDefinidas,
           updated_at: new Date().toISOString(),
         }).eq('id', flujo.id)
         if (error) throw error
@@ -216,6 +225,7 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
         const { error } = await supabase.from('flujos_automatizacion').insert({
           tenant_id: tenantId, nombre, descripcion: descripcion || null,
           trigger_tipo: triggerTipo, nodos, activo, grupo: grupoInicial,
+          variables_definidas: variablesDefinidas,
         })
         if (error) throw error
       }
@@ -324,6 +334,9 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
           </button>
         )}
         <AddNodeMenu onSelect={agregarNodo} />
+        <button onClick={() => setShowVariables(true)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50 transition-colors">
+          🔧 Variables{variablesDefinidas.length > 0 ? ` (${variablesDefinidas.length})` : ''}
+        </button>
         <button onClick={guardar} disabled={saving}
           className="px-4 py-1.5 bg-blue-700 text-white rounded-lg text-sm font-medium hover:bg-blue-800 disabled:opacity-50 transition-colors">
           {saving ? 'Guardando...' : 'Guardar flujo'}
@@ -358,6 +371,8 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
             node={selectedNode}
             ctx={ctx}
             allNodes={nodes}
+            variables={variablesDefinidas as { nombre: string; tipo: 'texto' | 'numero' | 'fecha' | 'booleano' | 'imagen' | 'audio' }[]}
+            onCrearVariable={crearVariable}
             onChange={actualizarNodoSeleccionado}
             onClose={() => setSelectedNodeId(null)}
             onPrev={() => navegarNodo('prev')}
@@ -365,6 +380,30 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
           />
         )}
       </div>
+
+      {/* Catálogo de variables del flujo */}
+      {showVariables && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowVariables(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h3 className="font-bold text-gray-900">🔧 Variables del flujo</h3>
+              <button onClick={() => setShowVariables(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+            <div className="p-4 space-y-2 max-h-96 overflow-y-auto">
+              {variablesDefinidas.length === 0 && <p className="text-xs text-gray-400 text-center py-4">Sin variables aún — se crean desde cualquier nodo que las use (ej. Acción → OpenAI, Capturar dato).</p>}
+              {variablesDefinidas.map(v => (
+                <div key={v.nombre} className="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2">
+                  <div>
+                    <p className="text-sm font-mono text-gray-800">{v.nombre}</p>
+                    <p className="text-[10px] text-gray-400 capitalize">{v.tipo}</p>
+                  </div>
+                  <button onClick={() => eliminarVariable(v.nombre)} className="text-xs text-red-500 hover:text-red-700">Eliminar</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Panel de ejecuciones */}
       {showEjec && (
@@ -494,7 +533,7 @@ export default function FlujoPage() {
   const supabase = createClient()
 
   const [flujos,   setFlujos]   = useState<Flujo[]>([])
-  const [ctx,      setCtx]      = useState<EditorCtx>({ equipo: [], plantillas: [], agentes: [], flujos: [], etiquetas: [], integracionesIA: [] })
+  const [ctx,      setCtx]      = useState<EditorCtx>({ equipo: [], plantillas: [], agentes: [], flujos: [], etiquetas: [], integracionesIA: [], secuencias: [] })
   const [loading,  setLoading]  = useState(true)
   const [editando, setEditando] = useState<Flujo | null | 'new'>(null)
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
@@ -523,7 +562,8 @@ export default function FlujoPage() {
       supabase.from('flujos_automatizacion').select('id, nombre').eq('tenant_id', profile.tenant_id),
       supabase.from('etiquetas_venta').select('id, nombre, color').eq('tenant_id', profile.tenant_id).order('nombre'),
       supabase.from('integraciones_ia').select('id, proveedor, activo, uso_asignado').eq('tenant_id', profile.tenant_id),
-    ]).then(([{ data: eq }, { data: pl }, { data: ag }, { data: fl }, { data: et }, { data: ia }]) => {
+      supabase.from('secuencias').select('id, nombre').eq('tenant_id', profile.tenant_id).eq('activa', true).order('nombre'),
+    ]).then(([{ data: eq }, { data: pl }, { data: ag }, { data: fl }, { data: et }, { data: ia }, { data: sec }]) => {
       setCtx({
         equipo:     (eq as Usuario[]) ?? [],
         plantillas: (pl as Plantilla[]) ?? [],
@@ -531,6 +571,7 @@ export default function FlujoPage() {
         flujos:     ((fl as { id: string; nombre: string }[]) ?? []),
         etiquetas:  ((et as Etiqueta[]) ?? []),
         integracionesIA: (ia as IntegracionIA[]) ?? [],
+        secuencias: ((sec as { id: string; nombre: string }[]) ?? []),
       })
     })
   }, [profile?.tenant_id])

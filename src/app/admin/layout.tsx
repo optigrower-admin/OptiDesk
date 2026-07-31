@@ -69,6 +69,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/mensajes/conexion',      label: 'Conexión Meta',    seccion: 'mensajes_conexion',      soloGerencia: true,  defaultOrden: 110 },
       { href: '/admin/mensajes/plantillas',    label: 'Plantillas',       seccion: 'mensajes_plantillas',    soloGerencia: false, defaultOrden: 120 },
       { href: '/admin/mensajes/flujos',        label: 'Flujos',           seccion: 'mensajes_flujos',        soloGerencia: false, defaultOrden: 130 },
+      { href: '/admin/mensajes/secuencias',    label: 'Secuencias',       seccion: 'mensajes_flujos',        soloGerencia: false, defaultOrden: 135 },
       { href: '/admin/mensajes/colaboradores', label: 'Bot Colaboradores', seccion: 'mensajes_flujos',       soloGerencia: true,  defaultOrden: 140 },
     ],
   },
