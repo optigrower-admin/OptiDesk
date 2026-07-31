@@ -9,8 +9,6 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   addEdge,
-  Handle,
-  Position,
   useReactFlow,
   ReactFlowProvider,
   BaseEdge,
@@ -18,7 +16,6 @@ import ReactFlow, {
   getSmoothStepPath,
   MarkerType,
   type EdgeProps,
-  type NodeProps,
   type Node,
   type Edge,
   type Connection,
@@ -29,7 +26,10 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { ETAPAS, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { TriggerNode, GenericNode, CondicionNode, DividirTraficoNode, MenuOpcionesNode } from './components/nodes/FlowNodeCard'
+import AddNodeMenu from './components/AddNodeMenu'
+import NodeInspector from './components/NodeInspector'
+import { getDefaultData, type CatalogCtx, type CatalogItem, type Usuario, type Plantilla, type AgenteIA, type Etiqueta, type IntegracionIA } from './nodeCatalog'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -46,57 +46,6 @@ type Flujo = {
 }
 
 type MensajePrueba = { id: string; direccion: 'entrante' | 'saliente'; contenido: string | null; tipo: string; created_at: string }
-
-type Usuario = { id: string; nombre: string }
-type Plantilla = { id: string; nombre: string; meta_status: string; meta_template_name: string | null }
-type AgenteIA = { id: string; nombre: string; proveedor: string }
-type Etiqueta = { id: string; nombre: string; color: string }
-type IntegracionIA = { id: string; proveedor: string; activo: boolean; uso_asignado: string[] }
-
-const ACCIONES_IA = [
-  { key: 'resumenes_conversacion', label: 'Generar resumen' },
-  { key: 'sugerencias_respuesta', label: 'Generar respuesta sugerida' },
-  { key: 'clasificacion_intencion', label: 'Clasificar intención del mensaje' },
-  { key: 'transcripcion_audio', label: 'Transcribir audio a texto' },
-  { key: 'generar_audio', label: 'Generar audio desde texto (ElevenLabs)' },
-  { key: 'generar_imagen', label: 'Generar imagen (OpenAI)' },
-] as const
-
-const ACCION_IA_AYUDA: Record<string, string> = {
-  resumenes_conversacion: 'Genera un resumen corto de la conversación. El resultado se guarda como texto.',
-  sugerencias_respuesta: 'Sugiere una respuesta para el cliente según el prompt. El resultado se guarda como texto.',
-  clasificacion_intencion: 'Clasifica la intención del mensaje (ej: interesado, reclamo, pregunta). El resultado se guarda como texto corto.',
-  transcripcion_audio: 'Convierte un audio en texto. El resultado se guarda como texto.',
-  generar_audio: 'Convierte el prompt en un audio de voz (ElevenLabs). El resultado se guarda como referencia del audio generado.',
-  generar_imagen: 'Genera una imagen a partir de la descripción del prompt (OpenAI). El resultado se guarda como URL de la imagen.',
-}
-
-const ACCION_IA_PLACEHOLDER: Record<string, string> = {
-  generar_imagen: 'Describe la imagen a generar — ej: "una moto deportiva roja de frente, fondo blanco"',
-}
-
-const MODELOS_POR_PROVEEDOR: Record<string, { modelo: string; label: string; ayuda: string }[]> = {
-  OPENAI: [
-    { modelo: 'gpt-4o-mini', label: 'GPT-4o mini', ayuda: 'Más económico y rápido — ideal para clasificar, respuestas cortas. No analiza a fondo.' },
-    { modelo: 'gpt-4o', label: 'GPT-4o', ayuda: 'Más capaz — mejor para resúmenes largos y análisis complejo. Más lento y más costoso.' },
-    { modelo: 'dall-e-3', label: 'DALL-E 3', ayuda: 'Genera imágenes a partir de texto. Solo aplica para la acción "Generar imagen".' },
-  ],
-  ANTHROPIC: [
-    { modelo: 'claude-haiku-4-5-20251001', label: 'Claude Haiku', ayuda: 'Más económico y rápido — ideal para clasificar, respuestas cortas.' },
-    { modelo: 'claude-sonnet-4-6', label: 'Claude Sonnet', ayuda: 'Más capaz — mejor para redacción y análisis complejo. Más costoso.' },
-  ],
-  GOOGLE: [
-    { modelo: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', ayuda: 'Más económico y rápido — ideal para tareas simples.' },
-    { modelo: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', ayuda: 'Más capaz — mejor para análisis complejo. Más costoso.' },
-  ],
-  GROK: [
-    { modelo: 'grok-2-latest', label: 'Grok 2', ayuda: 'Modelo general de xAI, balance entre costo y calidad.' },
-  ],
-  ELEVENLABS: [
-    { modelo: 'eleven_turbo_v2_5', label: 'Turbo v2.5', ayuda: 'Más rápido y económico — calidad de voz buena.' },
-    { modelo: 'eleven_multilingual_v2', label: 'Multilingual v2', ayuda: 'Mejor calidad de voz, más idiomas — más lento.' },
-  ],
-}
 
 // ─── Edge personalizado con botón de eliminar ─────────────────────────────────
 
@@ -131,1100 +80,27 @@ function DeletableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
 
 const EDGE_TYPES: EdgeTypes = { deletable: DeletableEdge }
 
-// ─── Componentes base de nodos ────────────────────────────────────────────────
-
-const nodeBaseClass = 'rounded-xl shadow-md border-2 min-w-52 text-sm font-sans bg-white'
-
-function NodeHeader({ color, icon, label, onDelete }: { color: string; icon: string; label: string; onDelete?: () => void }) {
-  return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-t-xl ${color}`}>
-      <span>{icon}</span>
-      <span className="font-semibold text-white text-xs uppercase tracking-wide flex-1">{label}</span>
-      {onDelete && (
-        <button
-          onMouseDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); onDelete() }}
-          className="nodrag ml-auto text-white/60 hover:text-white transition-colors text-lg leading-none w-5 h-5 flex items-center justify-center rounded"
-          title="Eliminar nodo"
-        >
-          ×
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ─── NODO: Trigger ────────────────────────────────────────────────────────────
-const TriggerNode = ({ id, data }: NodeProps) => {
-  const { setNodes } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-
-  return (
-    <div className={`${nodeBaseClass} border-blue-400`}>
-      <NodeHeader color="bg-blue-500" icon="⚡" label="Disparador" />
-      <div className="px-3 py-2.5 space-y-2">
-        <label className="block text-xs text-gray-500 font-medium">Cuándo activar</label>
-        <select defaultValue={data.trigger_tipo ?? 'mensaje_nuevo'} onChange={e => upd('trigger_tipo', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400">
-          <option value="mensaje_nuevo">Mensaje nuevo de un contacto</option>
-          <option value="lead_ad">Lead de anuncio (Facebook Ads)</option>
-          <option value="sin_respuesta_24h">Sin respuesta del asesor &gt;24h</option>
-          <option value="etapa_cambiada">Etapa de venta cambiada</option>
-          <option value="nuevo_cliente">Cliente nuevo creado</option>
-        </select>
-        {(data.trigger_tipo === 'etapa_cambiada') && (
-          <>
-            <select defaultValue={data.etapa_trigger ?? ''} onChange={e => upd('etapa_trigger', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400">
-              <option value="">Cualquier etapa</option>
-              {ETAPAS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
-            </select>
-            <p className="text-[10px] text-amber-600 leading-tight">
-              ⚠️ Este disparador todavía no se activa solo al mover una tarjeta en el Kanban — por ahora solo
-              corre si el flujo se inicia manualmente. Muy pronto quedará conectado automáticamente.
-            </p>
-          </>
-        )}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-blue-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Mensaje ────────────────────────────────────────────────────────────
-const MensajeNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string | boolean) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-  const plantillas: Plantilla[] = data.plantillas ?? []
-
-  return (
-    <div className={`${nodeBaseClass} border-green-400`}>
-      <Handle type="target" position={Position.Top} className="!bg-green-400 !w-3 !h-3" />
-      <NodeHeader color="bg-green-500" icon="💬" label="Enviar mensaje" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
-          <input type="checkbox" defaultChecked={data.usar_plantilla ?? false}
-            onChange={e => upd('usar_plantilla', e.target.checked)} className="rounded" />
-          Usar plantilla Meta aprobada
-        </label>
-        {data.usar_plantilla ? (
-          <select defaultValue={data.plantilla_id ?? ''} onChange={e => upd('plantilla_id', e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-400">
-            <option value="">Seleccionar plantilla...</option>
-            {plantillas.filter(p => p.meta_status === 'aprobada').map(p => (
-              <option key={p.id} value={p.id}>{p.nombre}</option>
-            ))}
-          </select>
-        ) : (
-          <textarea defaultValue={data.contenido ?? ''} onChange={e => upd('contenido', e.target.value)}
-            placeholder="Mensaje... usa {{nombre}} {{celular}} {{etapa}}"
-            rows={3}
-            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 resize-none font-mono" />
-        )}
-        <p className="text-[10px] text-gray-400">Variables: {'{{nombre}} {{celular}} {{etapa}} {{canal}} {{ultimo_mensaje}}'}, o una guardada: {'{mi_variable}'}</p>
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-green-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Asignar ────────────────────────────────────────────────────────────
-const AsignarNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-  const equipo: Usuario[] = data.equipo ?? []
-
-  return (
-    <div className={`${nodeBaseClass} border-purple-400`}>
-      <Handle type="target" position={Position.Top} className="!bg-purple-400 !w-3 !h-3" />
-      <NodeHeader color="bg-purple-500" icon="👤" label="Asignar asesor" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        <select defaultValue={data.tipo_asignacion ?? 'round_robin'} onChange={e => upd('tipo_asignacion', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400">
-          <option value="round_robin">Round Robin (automático)</option>
-          <option value="usuario_fijo">Usuario fijo</option>
-        </select>
-        {data.tipo_asignacion === 'usuario_fijo' && (
-          <select defaultValue={data.asignar_a ?? ''} onChange={e => upd('asignar_a', e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400">
-            <option value="">Seleccionar asesor...</option>
-            {equipo.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-          </select>
-        )}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-purple-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Esperar ────────────────────────────────────────────────────────────
-const EsperarNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-
-  const esRespuesta = String(data.modo_espera ?? 'tiempo') === 'respuesta'
-
-  return (
-    <div className={`${nodeBaseClass} border-orange-400`}>
-      <Handle type="target" position={Position.Top} className="!bg-orange-400 !w-3 !h-3" />
-      <NodeHeader color="bg-orange-500" icon="⏱️" label="Esperar" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        {/* Toggle modo */}
-        <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs">
-          <button
-            onMouseDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); upd('modo_espera', 'tiempo') }}
-            className={`nodrag flex-1 py-1 transition-colors ${!esRespuesta ? 'bg-orange-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
-          >Con tiempo</button>
-          <button
-            onMouseDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); upd('modo_espera', 'respuesta') }}
-            className={`nodrag flex-1 py-1 transition-colors ${esRespuesta ? 'bg-orange-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
-          >Esperar respuesta</button>
-        </div>
-
-        {!esRespuesta ? (
-          <div className="flex items-center gap-2">
-            <input type="number" defaultValue={data.horas ?? 24} min={0} max={720}
-              onChange={e => upd('horas', e.target.value)}
-              className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
-            <span className="text-xs text-gray-500">horas</span>
-            <input type="number" defaultValue={data.minutos ?? 0} min={0} max={59}
-              onChange={e => upd('minutos', e.target.value)}
-              className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
-            <span className="text-xs text-gray-500">min</span>
-          </div>
-        ) : (
-          <p className="text-[10px] text-gray-400 leading-tight">
-            El flujo pausa aquí hasta que el cliente escriba cualquier mensaje. Sin límite de tiempo.
-          </p>
-        )}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-orange-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Esperar días en la etapa actual ────────────────────────────────────
-const EsperaEtapaNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-
-  return (
-    <div className={`${nodeBaseClass} border-amber-400`}>
-      <Handle type="target" position={Position.Top} className="!bg-amber-400 !w-3 !h-3" />
-      <NodeHeader color="bg-amber-500" icon="⏳" label="Esperar días en etapa" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500 whitespace-nowrap">Días sin moverse:</span>
-          <input type="number" defaultValue={data.dias ?? 1} min={0} max={365}
-            onChange={e => upd('dias', e.target.value)}
-            className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400" />
-        </div>
-        <p className="text-[10px] text-gray-400 leading-tight">
-          Pausa el flujo hasta que el cliente lleve esta cantidad de días en su etapa actual (contados desde
-          el último cambio de etapa), y luego sigue al siguiente nodo.
-        </p>
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-amber-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Etapa ─────────────────────────────────────────────────────────────
-const EtapaNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-
-  return (
-    <div className={`${nodeBaseClass} border-cyan-400`}>
-      <Handle type="target" position={Position.Top} className="!bg-cyan-400 !w-3 !h-3" />
-      <NodeHeader color="bg-cyan-500" icon="📊" label="Cambiar etapa" onDelete={eliminar} />
-      <div className="px-3 py-2.5">
-        <select defaultValue={data.etapa ?? 'nuevo'} onChange={e => upd('etapa', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-400">
-          {ETAPAS.map(e => (
-            <option key={e.id} value={e.id}>{e.label}</option>
-          ))}
-        </select>
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-cyan-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Condición ─────────────────────────────────────────────────────────
-const CondicionNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-
-  const tipo   = (data.condicion_tipo ?? 'respuesta_contiene') as string
-  const agentes: AgenteIA[] = data.agentes ?? []
-
-  // grupos de tipos que necesitan campo de texto/valor
-  const needsTexto    = ['respuesta_contiene','palabras_clave','contiene_todas','es_exactamente','empieza_con','termina_con']
-  const needsLongitud = tipo === 'longitud_mayor'
-  const needsCanal    = tipo === 'canal'
-  const needsEtapa    = tipo === 'etapa' || tipo === 'etapa_o_posterior'
-  const needsIA       = tipo === 'ia_evalua'
-
-  const placeholderTexto: Record<string,string> = {
-    respuesta_contiene: 'ej: precio, cuánto, moto...',
-    palabras_clave:     'palabras separadas por coma: precio,cuánto,valor',
-    contiene_todas:     'todas deben estar: hola,precio',
-    es_exactamente:     'texto exacto que debe escribir',
-    empieza_con:        'ej: Hola, Buenas, Buenos...',
-    termina_con:        'ej: gracias, porfa, porfavor',
-  }
-
-  return (
-    <div className={`${nodeBaseClass} border-yellow-400`} style={{ width: 230 }}>
-      <Handle type="target" position={Position.Top} className="!bg-yellow-400 !w-3 !h-3" />
-      <NodeHeader color="bg-yellow-500" icon="🔀" label="Condición" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-
-        {/* Selector principal de tipo */}
-        <select value={tipo} onChange={e => upd('condicion_tipo', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400">
-          <optgroup label="── Texto del mensaje ──">
-            <option value="respuesta_contiene">Contiene alguna palabra</option>
-            <option value="palabras_clave">Contiene ALGUNA palabra clave</option>
-            <option value="contiene_todas">Contiene TODAS las palabras</option>
-            <option value="es_exactamente">Es exactamente este texto</option>
-            <option value="empieza_con">Empieza con...</option>
-            <option value="termina_con">Termina con...</option>
-            <option value="longitud_mayor">Longitud mayor a N caracteres</option>
-          </optgroup>
-          <optgroup label="── Intención detectada ──">
-            <option value="es_positivo">Respuesta positiva (sí/ok/claro...)</option>
-            <option value="es_negativo">Respuesta negativa (no/tampoco...)</option>
-            <option value="es_numero">Respuesta es un número</option>
-          </optgroup>
-          <optgroup label="── Contexto del cliente ──">
-            <option value="canal">Canal específico</option>
-            <option value="etapa">Etapa actual es</option>
-            <option value="tiene_celular">Tiene celular registrado</option>
-            <option value="es_nuevo">Es cliente nuevo</option>
-            <option value="horario_laboral">Está en horario laboral</option>
-          </optgroup>
-          <optgroup label="── Pipeline / Automatización ──">
-            <option value="etapa_o_posterior">Etapa: esta o más adelante</option>
-            <option value="aprobacion_pendiente">Aprobación de gerencia pendiente</option>
-          </optgroup>
-          <optgroup label="── Inteligencia Artificial ──">
-            <option value="ia_evalua">IA evalúa si se cumple condición</option>
-          </optgroup>
-        </select>
-
-        {/* Campo texto para condiciones de texto */}
-        {needsTexto.includes(tipo) && (
-          <input type="text" defaultValue={data.condicion_valor ?? ''} onChange={e => upd('condicion_valor', e.target.value)}
-            placeholder={placeholderTexto[tipo] ?? 'Valor...'}
-            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400" />
-        )}
-
-        {/* Campo longitud */}
-        {needsLongitud && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-gray-500 whitespace-nowrap">Mayor a</span>
-            <input type="number" min={1} defaultValue={data.condicion_valor ?? '10'} onChange={e => upd('condicion_valor', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400" />
-            <span className="text-xs text-gray-500 whitespace-nowrap">chars</span>
-          </div>
-        )}
-
-        {/* Campo canal */}
-        {needsCanal && (
-          <select defaultValue={data.condicion_valor ?? ''} onChange={e => upd('condicion_valor', e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400">
-            <option value="">Cualquier canal</option>
-            <option value="whatsapp">WhatsApp</option>
-            <option value="messenger">Messenger</option>
-            <option value="instagram">Instagram</option>
-          </select>
-        )}
-
-        {/* Campo etapa */}
-        {needsEtapa && (
-          <select defaultValue={data.condicion_valor ?? ''} onChange={e => upd('condicion_valor', e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400">
-            <option value="">Seleccionar etapa...</option>
-            {ETAPAS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
-          </select>
-        )}
-
-        {/* Campos IA: agente + pregunta */}
-        {needsIA && (
-          <div className="space-y-1.5">
-            <select defaultValue={data.agente_id ?? ''} onChange={e => upd('agente_id', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400">
-              <option value="">Agente IA a usar...</option>
-              {agentes.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-            </select>
-            <textarea
-              defaultValue={data.condicion_pregunta ?? ''}
-              onChange={e => upd('condicion_pregunta', e.target.value)}
-              rows={3}
-              placeholder={'¿El cliente está interesado en comprar una moto?\n¿Mencionó algún precio o modelo?\n(La IA responde SÍ/NO)'}
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400 resize-none"
-            />
-            <p className="text-[10px] text-gray-400 leading-tight">La IA lee el mensaje del cliente y responde SÍ o NO según tu pregunta.</p>
-          </div>
-        )}
-
-        {/* Etiquetas informativas para tipos sin campo extra */}
-        {['es_positivo','es_negativo','es_numero','tiene_celular','es_nuevo','horario_laboral'].includes(tipo) && (
-          <p className="text-[10px] text-gray-400 leading-tight italic">
-            {tipo === 'es_positivo' && 'Detecta: sí, si, claro, dale, ok, bueno, exacto, correcto, afirmativo…'}
-            {tipo === 'es_negativo' && 'Detecta: no, nop, nope, tampoco, negativo, para nada…'}
-            {tipo === 'es_numero'   && 'El cliente respondió solo un número (ej: "1", "2", "50000")'}
-            {tipo === 'tiene_celular' && 'Verifica si el cliente tiene celular registrado en el CRM'}
-            {tipo === 'es_nuevo'    && 'Cliente en etapa nuevo_mensaje o nuevo'}
-            {tipo === 'horario_laboral' && 'Lunes a sábado 7am–6pm (hora Colombia)'}
-          </p>
-        )}
-      </div>
-
-      <div className="flex justify-between px-3 pb-2 text-[10px] font-bold">
-        <span className="text-green-600">✅ SÍ (izq)</span>
-        <span className="text-red-500">❌ NO (der)</span>
-      </div>
-      <Handle id="true"  type="source" position={Position.Bottom} style={{ left: '25%' }}  className="!bg-green-400 !w-3 !h-3" />
-      <Handle id="false" type="source" position={Position.Bottom} style={{ left: '75%' }}  className="!bg-red-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Agente IA ──────────────────────────────────────────────────────────
-const AgenteIANode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string | boolean) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-  const agentes: AgenteIA[] = data.agentes ?? []
-
-  return (
-    <div className={`${nodeBaseClass} border-indigo-400`}>
-      <Handle type="target" position={Position.Top} className="!bg-indigo-400 !w-3 !h-3" />
-      <NodeHeader color="bg-indigo-600" icon="🤖" label="Agente IA" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        <label className="block text-xs text-gray-500 font-medium">Agente configurado</label>
-        <select defaultValue={data.agente_id ?? ''} onChange={e => upd('agente_id', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400">
-          <option value="">Seleccionar agente...</option>
-          {agentes.map(a => (
-            <option key={a.id} value={a.id}>{a.nombre} ({a.proveedor})</option>
-          ))}
-        </select>
-        <textarea defaultValue={data.prompt_contexto ?? ''} onChange={e => upd('prompt_contexto', e.target.value)}
-          placeholder="Contexto adicional para este nodo (opcional)..."
-          rows={2}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 resize-none" />
-        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
-          <input type="checkbox" defaultChecked={data.incluir_historial ?? true}
-            onChange={e => upd('incluir_historial', e.target.checked)} className="rounded" />
-          Incluir historial de la conversación
-        </label>
-        {!agentes.length && (
-          <p className="text-[10px] text-amber-600">⚠ Configura agentes IA en Config Ventas → APIs IA</p>
-        )}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-indigo-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Acción IA (integraciones_ia — Módulo C) ────────────────────────────
-const PROVEEDOR_ICONO: Record<string, string> = {
-  OPENAI: '🤖', ANTHROPIC: '🧠', GOOGLE: '✨', GROK: '⚡', ELEVENLABS: '🔊',
-}
-
-const AccionIANode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges, getNodes } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-  const [avanzadoAbierto, setAvanzadoAbierto] = useState(false)
-
-  const integraciones: IntegracionIA[] = (data.integracionesIA ?? []).filter((i: IntegracionIA) => i.activo)
-  const proveedoresDisponibles = Array.from(new Set(integraciones.map(i => i.proveedor)))
-  const proveedor: string = data.proveedor ?? ''
-  const integracionSel = integraciones.find(i => i.proveedor === proveedor)
-  const accion: string = data.accion ?? ''
-  const accionesDisponibles = integracionSel ? ACCIONES_IA.filter(a => integracionSel.uso_asignado.includes(a.key)) : []
-  const modelosDisponibles = MODELOS_POR_PROVEEDOR[proveedor] ?? []
-  const modeloSeleccionado = modelosDisponibles.find(m => m.modelo === data.modelo)
-
-  const cambiarProveedor = (nuevo: string) => {
-    upd('proveedor', nuevo); upd('accion', ''); upd('modelo', '')
-  }
-
-  const variableActual: string = data.variable_salida ?? ''
-  const variablesExistentes = Array.from(new Set(
-    getNodes()
-      .map(n => {
-        if (n.id === id) return null
-        if (n.type === 'capturar_dato' && n.data?.campo === 'variable') return n.data?.nombre_variable as string
-        if (n.type === 'accion_ia') return n.data?.variable_salida as string
-        return null
-      })
-      .filter((v): v is string => !!v),
-  ))
-  const [creandoVariable, setCreandoVariable] = useState(() => !!variableActual && !variablesExistentes.includes(variableActual))
-
-  return (
-    <div className={`${nodeBaseClass} border-fuchsia-400`} style={{ minWidth: 240 }}>
-      <Handle type="target" position={Position.Top} className="!bg-fuchsia-400 !w-3 !h-3" />
-      <NodeHeader color="bg-fuchsia-600" icon="✨" label="Acción IA" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-
-        {/* Paso 1 — siempre primero: qué IA usar */}
-        <label className="block text-xs text-gray-500 font-medium">¿Qué IA usar?</label>
-        <select value={proveedor} onChange={e => cambiarProveedor(e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400">
-          <option value="">Seleccionar IA conectada...</option>
-          {proveedoresDisponibles.map(p => <option key={p} value={p}>{PROVEEDOR_ICONO[p] ?? ''} {p}</option>)}
-        </select>
-        {!integraciones.length && (
-          <p className="text-[10px] text-amber-600">⚠ Sin integraciones IA activas. Conéctalas en Integraciones → Integraciones IA.</p>
-        )}
-
-        {!!proveedor && (
-          <>
-            <label className="block text-xs text-gray-500 font-medium">Acción</label>
-            <select value={accion} onChange={e => upd('accion', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400">
-              <option value="">Seleccionar acción...</option>
-              {accionesDisponibles.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
-            </select>
-            {accion && ACCION_IA_AYUDA[accion] && (
-              <p className="text-[10px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1.5">
-                {ACCION_IA_AYUDA[accion]}
-              </p>
-            )}
-            {!accionesDisponibles.length && (
-              <p className="text-[10px] text-amber-600">⚠ Esta IA no tiene acciones asignadas — configúralas en Integraciones → Integraciones IA.</p>
-            )}
-          </>
-        )}
-
-        {!!proveedor && !!accion && modelosDisponibles.length > 0 && (
-          <div>
-            <label className="block text-xs text-gray-500 font-medium mb-1">Modelo</label>
-            <select defaultValue={data.modelo ?? ''} onChange={e => upd('modelo', e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400">
-              <option value="">Por defecto de la integración</option>
-              {modelosDisponibles.map(m => <option key={m.modelo} value={m.modelo}>{m.label}</option>)}
-            </select>
-            {modeloSeleccionado && (
-              <p className="text-[10px] text-gray-500 mt-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1.5">
-                {modeloSeleccionado.ayuda}
-              </p>
-            )}
-          </div>
-        )}
-
-        {!!proveedor && !!accion && (
-          <>
-            <textarea defaultValue={data.prompt ?? ''} onChange={e => upd('prompt', e.target.value)}
-              placeholder={ACCION_IA_PLACEHOLDER[accion] ?? 'Prompt — usa {{ultimo_mensaje}}, {{nombre}}, o el nombre de una variable guardada: {mi_variable}...'}
-              rows={3}
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400 resize-none font-mono" />
-            <div>
-              <label className="block text-xs text-gray-500 font-medium mb-1">Guardar resultado en variable</label>
-              {!creandoVariable ? (
-                <select
-                  value={variablesExistentes.includes(variableActual) ? variableActual : ''}
-                  onChange={e => {
-                    if (e.target.value === '__nueva__') { setCreandoVariable(true); upd('variable_salida', '') }
-                    else upd('variable_salida', e.target.value)
-                  }}
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
-                >
-                  <option value="">No guardar</option>
-                  {variablesExistentes.map(v => <option key={v} value={v}>{v}</option>)}
-                  <option value="__nueva__">+ Nueva variable...</option>
-                </select>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <input autoFocus defaultValue={variableActual} onChange={e => upd('variable_salida', e.target.value)}
-                    placeholder="ej: resumen_ia"
-                    className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
-                  <button onClick={() => setCreandoVariable(false)} className="text-xs text-fuchsia-600 hover:text-fuchsia-800 flex-shrink-0" title="Listo">
-                    ✓
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Opciones avanzadas, colapsadas por defecto */}
-            <div className="border-t border-gray-100 pt-1.5">
-              <button
-                onMouseDown={e => e.stopPropagation()}
-                onClick={e => { e.stopPropagation(); setAvanzadoAbierto(v => !v) }}
-                className="nodrag text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1"
-              >
-                {avanzadoAbierto ? '▾' : '▸'} Opciones avanzadas
-              </button>
-              {avanzadoAbierto && (
-                <div className="space-y-2 mt-1.5">
-                  <div>
-                    <label className="text-[10px] text-gray-400">Temperatura ({data.temperatura ?? '0.7'})</label>
-                    <input type="range" min="0" max="1" step="0.1" defaultValue={data.temperatura ?? '0.7'}
-                      onChange={e => upd('temperatura', e.target.value)} className="w-full" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-400">Máximo de tokens de salida</label>
-                    <input type="number" min={50} max={4000} defaultValue={data.max_tokens ?? '800'}
-                      onChange={e => upd('max_tokens', e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-fuchsia-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Plantilla Meta ─────────────────────────────────────────────────────
-const PlantillaNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-  const plantillas: Plantilla[] = data.plantillas ?? []
-
-  return (
-    <div className={`${nodeBaseClass} border-teal-400`}>
-      <Handle type="target" position={Position.Top} className="!bg-teal-400 !w-3 !h-3" />
-      <NodeHeader color="bg-teal-600" icon="📋" label="Plantilla aprobada" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        <select defaultValue={data.plantilla_id ?? ''} onChange={e => upd('plantilla_id', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-teal-400">
-          <option value="">Seleccionar plantilla aprobada...</option>
-          {plantillas.filter(p => p.meta_status === 'aprobada').map(p => (
-            <option key={p.id} value={p.id}>{p.nombre}</option>
-          ))}
-        </select>
-        <p className="text-[10px] text-gray-400">Solo para WhatsApp fuera de la ventana de 24h</p>
-        {!plantillas.filter(p => p.meta_status === 'aprobada').length && (
-          <p className="text-[10px] text-amber-600">⚠ Sin plantillas aprobadas. Crea una en Mensajes → Plantillas</p>
-        )}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-teal-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Media ─────────────────────────────────────────────────────────────
-const MediaNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-
-  return (
-    <div className={`${nodeBaseClass} border-pink-400`}>
-      <Handle type="target" position={Position.Top} className="!bg-pink-400 !w-3 !h-3" />
-      <NodeHeader color="bg-pink-500" icon="📎" label="Enviar archivo" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        <select defaultValue={data.media_tipo ?? 'imagen'} onChange={e => upd('media_tipo', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-pink-400">
-          <option value="imagen">🖼 Imagen</option>
-          <option value="documento">📄 Documento / PDF</option>
-          <option value="audio">🎵 Audio</option>
-          <option value="video">🎬 Video</option>
-        </select>
-        <input type="url" defaultValue={data.media_url ?? ''} onChange={e => upd('media_url', e.target.value)}
-          placeholder="URL pública del archivo..."
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-pink-400" />
-        <input type="text" defaultValue={data.media_caption ?? ''} onChange={e => upd('media_caption', e.target.value)}
-          placeholder="Pie de foto (opcional)"
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-pink-400" />
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-pink-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Nota interna ───────────────────────────────────────────────────────
-const NotaInternaNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-
-  return (
-    <div className={`${nodeBaseClass} border-yellow-300`}>
-      <Handle type="target" position={Position.Top} className="!bg-yellow-400 !w-3 !h-3" />
-      <NodeHeader color="bg-yellow-400" icon="📝" label="Nota interna" onDelete={eliminar} />
-      <div className="px-3 py-2.5">
-        <textarea defaultValue={data.contenido ?? ''} onChange={e => upd('contenido', e.target.value)}
-          placeholder="Nota visible solo para el equipo..."
-          rows={2}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400 resize-none" />
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-yellow-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Subflujo ───────────────────────────────────────────────────────────
-const SubflujoNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-  const flujos: { id: string; nombre: string }[] = data.flujos_disponibles ?? []
-
-  return (
-    <div className={`${nodeBaseClass} border-slate-400`}>
-      <Handle type="target" position={Position.Top} className="!bg-slate-400 !w-3 !h-3" />
-      <NodeHeader color="bg-slate-600" icon="🔗" label="Subflujo" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        <label className="block text-xs text-gray-500">Flujo anidado a ejecutar</label>
-        <select defaultValue={data.subflujo_id ?? ''} onChange={e => upd('subflujo_id', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-400">
-          <option value="">Seleccionar flujo...</option>
-          {flujos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
-        </select>
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-slate-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Fin ───────────────────────────────────────────────────────────────
-// ─── NODO: Etiqueta ──────────────────────────────────────────────────────────
-const COLORES_ETIQUETA = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#6b7280']
-
-const EtiquetaNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const updMulti = (patch: Record<string, string>) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-
-  const etiquetas: Etiqueta[] = data.etiquetas ?? []
-  const etiquetaId = String(data.etiqueta_id ?? '')
-  const seleccionada = etiquetas.find(e => e.id === etiquetaId)
-  const modoNueva = String(data.modo_etiqueta ?? 'existente') === 'nueva'
-  const colorNueva = String(data.nueva_etiqueta_color ?? '#3b82f6')
-
-  return (
-    <div className={`${nodeBaseClass} border-rose-300`} style={{ width: 240 }}>
-      <Handle type="target" position={Position.Top} className="!bg-rose-400 !w-3 !h-3" />
-      <NodeHeader color="bg-rose-500" icon="🏷️" label="Etiquetar cliente" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        {/* Acción */}
-        <select defaultValue={data.accion ?? 'agregar'} onChange={e => upd('accion', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400">
-          <option value="agregar">➕ Agregar etiqueta</option>
-          <option value="quitar">➖ Quitar etiqueta</option>
-        </select>
-
-        {/* Toggle existente / nueva */}
-        <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs">
-          <button
-            onMouseDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); updMulti({ modo_etiqueta: 'existente', nueva_etiqueta_nombre: '', nueva_etiqueta_color: '' }) }}
-            className={`nodrag flex-1 py-1 transition-colors ${!modoNueva ? 'bg-rose-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
-          >Existente</button>
-          <button
-            onMouseDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); updMulti({ modo_etiqueta: 'nueva', etiqueta_id: '' }) }}
-            className={`nodrag flex-1 py-1 transition-colors ${modoNueva ? 'bg-rose-500 text-white font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
-          >+ Crear nueva</button>
-        </div>
-
-        {!modoNueva ? (
-          /* ── Seleccionar existente ─────────────── */
-          <div className="flex items-center gap-2">
-            {seleccionada && (
-              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: seleccionada.color }} />
-            )}
-            <select value={etiquetaId} onChange={e => upd('etiqueta_id', e.target.value)}
-              className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400">
-              <option value="">— Seleccionar etiqueta —</option>
-              {etiquetas.map(et => (
-                <option key={et.id} value={et.id}>{et.nombre}</option>
-              ))}
-            </select>
-          </div>
-        ) : (
-          /* ── Crear nueva etiqueta ──────────────── */
-          <div className="space-y-1.5">
-            <input
-              type="text"
-              defaultValue={data.nueva_etiqueta_nombre ?? ''}
-              onChange={e => upd('nueva_etiqueta_nombre', e.target.value)}
-              placeholder="Nombre de la etiqueta..."
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
-            />
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[10px] text-gray-500">Color:</span>
-              {COLORES_ETIQUETA.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onMouseDown={e => e.stopPropagation()}
-                  onClick={e => { e.stopPropagation(); upd('nueva_etiqueta_color', c) }}
-                  className={`nodrag w-4 h-4 rounded-full flex-shrink-0 transition-transform hover:scale-110 ${colorNueva === c ? 'ring-2 ring-offset-1 ring-gray-500 scale-110' : ''}`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-            {data.nueva_etiqueta_nombre && (
-              <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-white font-medium"
-                style={{ backgroundColor: colorNueva }}
-              >
-                🏷️ {String(data.nueva_etiqueta_nombre)}
-              </span>
-            )}
-            <p className="text-[10px] text-gray-400 leading-tight">Si ya existe una etiqueta con ese nombre la reutiliza.</p>
-          </div>
-        )}
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-rose-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Menú de opciones ───────────────────────────────────────────────────
-type MenuOpcion = { etiqueta?: string; tipo_match?: string; valor_match?: string }
-
-const MATCH_TIPOS = [
-  { value: 'numero',      label: '# Número'      },
-  { value: 'exacto',      label: '= Exacto'      },
-  { value: 'contiene',    label: '⊃ Contiene'    },
-  { value: 'no_contiene', label: '⊄ No contiene' },
-]
-
-const MenuOpcionesNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-
-  const cantidad = Number(data.cantidad ?? 3)
-
-  // Migrar legacy etiquetas[] → opciones[]
-  const rawOpciones = (data.opciones as MenuOpcion[] | undefined)
-    ?? (data.etiquetas as string[] | undefined)?.map((et: string) => ({ etiqueta: et, tipo_match: 'numero', valor_match: '' }))
-    ?? []
-  const opciones: MenuOpcion[] = Array.from(
-    { length: cantidad },
-    (_, i) => rawOpciones[i] ?? { etiqueta: '', tipo_match: 'numero', valor_match: '' }
-  )
-
-  const updOpcion = (i: number, field: keyof MenuOpcion, value: string) => {
-    const nuevas = opciones.map((op, idx) => idx === i ? { ...op, [field]: value } : op)
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, opciones: nuevas } } : n))
-  }
-
-  const updCantidad = (n: number) => {
-    const nuevas = Array.from({ length: n }, (_, i) => opciones[i] ?? { etiqueta: '', tipo_match: 'numero', valor_match: '' })
-    setNodes(ns => ns.map(node => node.id === id ? { ...node, data: { ...node.data, cantidad: n, opciones: nuevas } } : node))
-  }
-
-  const getLeft = (idx: number) => `${(100 / (cantidad + 2)) * (idx + 1)}%`
-  const nums = Array.from({ length: cantidad }, (_, i) => i + 1)
-
-  return (
-    <div className={`${nodeBaseClass} border-fuchsia-400`} style={{ width: 290 }}>
-      <Handle type="target" position={Position.Top} className="!bg-fuchsia-400 !w-3 !h-3" />
-      <NodeHeader color="bg-fuchsia-500" icon="📋" label="Menú de opciones" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-500 whitespace-nowrap">Opciones:</label>
-          <select value={cantidad} onChange={e => updCantidad(Number(e.target.value))}
-            className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400">
-            {[2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{n} opciones</option>)}
-          </select>
-        </div>
-
-        <div className="space-y-1.5">
-          {nums.map((n, i) => {
-            const op = opciones[i]
-            const tipo = op?.tipo_match ?? 'numero'
-            return (
-              <div key={n} className="border border-gray-100 rounded-lg p-1.5 space-y-1">
-                <div className="flex items-center gap-1">
-                  <span className="text-fuchsia-600 font-bold text-xs w-4 flex-shrink-0">{n}.</span>
-                  <input key={`${id}-lbl-${n}`} type="text" defaultValue={op?.etiqueta ?? ''}
-                    onChange={e => updOpcion(i, 'etiqueta', e.target.value)}
-                    placeholder={`Etiqueta opción ${n} (opcional)`}
-                    className="flex-1 border border-gray-200 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
-                </div>
-                <div className="flex items-center gap-1 ml-5">
-                  <select value={tipo} onChange={e => updOpcion(i, 'tipo_match', e.target.value)}
-                    className="border border-gray-200 rounded px-1 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-fuchsia-400 bg-gray-50">
-                    {MATCH_TIPOS.map(mt => <option key={mt.value} value={mt.value}>{mt.label}</option>)}
-                  </select>
-                  {tipo !== 'numero' ? (
-                    <input key={`${id}-val-${n}-${tipo}`} type="text" defaultValue={op?.valor_match ?? ''}
-                      onChange={e => updOpcion(i, 'valor_match', e.target.value)}
-                      placeholder="texto a comparar..."
-                      className="flex-1 border border-gray-200 rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
-                  ) : (
-                    <span className="text-[10px] text-gray-400">cliente escribe &quot;{n}&quot;</span>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        <p className="text-[10px] text-gray-400 leading-tight">
-          Se evalúan en orden — primera coincidencia gana. Sin coincidencia → <span className="text-amber-600 font-medium">?otro</span>.
-        </p>
-      </div>
-
-      {/* Etiquetas de handles */}
-      <div className="relative h-5 mx-3">
-        {nums.map(n => (
-          <span key={n} className="absolute text-[9px] text-fuchsia-600 font-bold"
-            style={{ left: getLeft(n - 1), transform: 'translateX(-50%)' }}>{n}</span>
-        ))}
-        <span className="absolute text-[9px] text-amber-500 font-bold"
-          style={{ left: getLeft(cantidad), transform: 'translateX(-50%)' }}>?</span>
-      </div>
-
-      {/* Handles numerados */}
-      {nums.map(n => (
-        <Handle key={n} id={String(n)} type="source" position={Position.Bottom}
-          style={{ left: getLeft(n - 1) }} className="!bg-fuchsia-400 !w-3 !h-3" />
-      ))}
-      <Handle id="otro" type="source" position={Position.Bottom}
-        style={{ left: getLeft(cantidad) }} className="!bg-amber-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Capturar dato ─────────────────────────────────────────────────────
-const CapturarDatoNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-
-  const campo = String(data.campo ?? 'nombre')
-  const esVariable = campo === 'variable'
-
-  const etiquetaCampo: Record<string, string> = {
-    nombre: 'nombre del cliente',
-    celular: 'celular',
-    email: 'correo electrónico',
-    cedula: 'número de cédula',
-  }
-
-  return (
-    <div className={`${nodeBaseClass} border-violet-400`} style={{ width: 230 }}>
-      <Handle type="target" position={Position.Top} className="!bg-violet-400 !w-3 !h-3" />
-      <NodeHeader color="bg-violet-500" icon="💾" label="Guardar respuesta" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        <label className="block text-xs text-gray-500 font-medium">Guardar último mensaje del cliente en:</label>
-        <select value={campo} onChange={e => upd('campo', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-400">
-          <optgroup label="── Perfil del cliente ──">
-            <option value="nombre">Nombre del cliente</option>
-            <option value="celular">Celular</option>
-            <option value="email">Correo electrónico</option>
-            <option value="cedula">Número de cédula</option>
-          </optgroup>
-          <optgroup label="── Variable del flujo ──">
-            <option value="variable">Variable personalizada</option>
-          </optgroup>
-        </select>
-        {esVariable ? (
-          <>
-            <input type="text" defaultValue={data.nombre_variable ?? ''} onChange={e => upd('nombre_variable', e.target.value)}
-              placeholder="Nombre de la variable (ej: moto_interes)"
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-400" />
-            <p className="text-[10px] text-violet-600 leading-tight">
-              Usa {'{{variables.'}{data.nombre_variable || 'nombre_variable'}{'}}' } en mensajes siguientes.
-            </p>
-          </>
-        ) : (
-          <p className="text-[10px] text-violet-600 leading-tight font-medium">
-            Actualiza el campo <strong>{etiquetaCampo[campo]}</strong> del cliente en el CRM.
-            También disponible como {'{{variables.'}{campo}{'}}' }.
-          </p>
-        )}
-        <p className="text-[10px] text-gray-400 leading-tight">
-          Pon un nodo Condición antes para validar el dato antes de guardarlo.
-        </p>
-      </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-violet-400 !w-3 !h-3" />
-    </div>
-  )
-}
-
-// ─── NODO: Ir a nodo (goto / loop-back) ──────────────────────────────────────
-const IrANodoNode = ({ id, data }: NodeProps) => {
-  const { setNodes, setEdges, getNodes } = useReactFlow()
-  const upd = (k: string, v: string) =>
-    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-
-  const otrosNodos = getNodes().filter(n => n.id !== id)
-
-  const iconTipo: Record<string, string> = {
-    trigger: '⚡', mensaje: '💬', esperar: '⏱️', condicion: '🔀',
-    menu_opciones: '📋', capturar_dato: '💾', asignar: '👤', etapa: '📊',
-    etiqueta: '🏷️', agente_ia: '🤖', plantilla: '📄', media: '📎',
-    nota_interna: '📝', subflujo: '🔗', fin: '🏁', espera_etapa: '⏳',
-  }
-
-  const labelNodo = (n: typeof otrosNodos[number]) => {
-    const icono = iconTipo[n.type ?? ''] ?? '◼'
-    const d = n.data as Record<string, unknown>
-    if (n.type === 'mensaje' && d.contenido)
-      return `${icono} Mensaje: "${String(d.contenido).slice(0, 22)}…"`
-    if (n.type === 'esperar')
-      return `${icono} Esperar ${d.horas ?? 24}h ${d.minutos ? `${d.minutos}m` : ''}`
-    if (n.type === 'menu_opciones')
-      return `${icono} Menú (${d.cantidad ?? 3} opciones)`
-    if (n.type === 'condicion')
-      return `${icono} Condición: ${d.condicion_tipo ?? ''}`
-    if (n.type === 'espera_etapa')
-      return `${icono} Esperar ${d.dias ?? 1} día${Number(d.dias ?? 1) !== 1 ? 's' : ''} en etapa`
-    const tipoNombre: Record<string, string> = {
-      trigger: 'Disparador', asignar: 'Asignar asesor', etapa: 'Cambiar etapa',
-      etiqueta: 'Etiquetar', capturar_dato: 'Guardar dato', agente_ia: 'Agente IA',
-      plantilla: 'Plantilla', media: 'Archivo', nota_interna: 'Nota interna',
-      subflujo: 'Subflujo', fin: 'Fin del flujo',
-    }
-    return `${icono} ${tipoNombre[n.type ?? ''] ?? n.type ?? 'Nodo'}`
-  }
-
-  return (
-    <div className={`${nodeBaseClass} border-sky-400`} style={{ width: 230 }}>
-      <Handle type="target" position={Position.Top} className="!bg-sky-400 !w-3 !h-3" />
-      <NodeHeader color="bg-sky-500" icon="↩" label="Ir a nodo" onDelete={eliminar} />
-      <div className="px-3 py-2.5 space-y-2">
-        <label className="block text-xs text-gray-500 font-medium">Saltar a:</label>
-        <select
-          value={data.nodo_destino_id ?? ''}
-          onChange={e => upd('nodo_destino_id', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-sky-400"
-        >
-          <option value="">— Seleccionar nodo —</option>
-          {otrosNodos.map(n => (
-            <option key={n.id} value={n.id}>{labelNodo(n)}</option>
-          ))}
-        </select>
-        <p className="text-[10px] text-gray-400 leading-tight">
-          Pausa el flujo y lo reanuda en ese nodo cuando el cliente escriba su próxima respuesta. Siempre espera un mensaje nuevo antes de continuar.
-        </p>
-      </div>
-      {/* Sin handle de salida — el destino se define en el selector */}
-    </div>
-  )
-}
-
-const FinNode = ({ id }: NodeProps) => {
-  const { setNodes, setEdges } = useReactFlow()
-  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
-  return (
-    <div className={`${nodeBaseClass} border-gray-300`}>
-      <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-3 !h-3" />
-      <NodeHeader color="bg-gray-500" icon="🏁" label="Fin del flujo" onDelete={eliminar} />
-    </div>
-  )
-}
-
-// ─── Registro de tipos de nodo ────────────────────────────────────────────────
+// ─── Registro de tipos de nodo (tarjetas resumen — la edición vive en el panel lateral) ─
 const NODE_TYPES: NodeTypes = {
-  trigger:       TriggerNode,
-  mensaje:       MensajeNode,
-  asignar:       AsignarNode,
-  esperar:       EsperarNode,
-  etapa:         EtapaNode,
-  condicion:     CondicionNode,
-  agente_ia:     AgenteIANode,
-  accion_ia:     AccionIANode,
-  plantilla:     PlantillaNode,
-  media:         MediaNode,
-  nota_interna:  NotaInternaNode,
-  etiqueta:      EtiquetaNode,
-  subflujo:      SubflujoNode,
-  capturar_dato:  CapturarDatoNode,
-  menu_opciones:  MenuOpcionesNode,
-  ir_a_nodo:      IrANodoNode,
-  fin:            FinNode,
-  espera_etapa:   EsperaEtapaNode,
-}
-
-// ─── Paleta de nodos ──────────────────────────────────────────────────────────
-const PALETTE_ITEMS = [
-  { type: 'mensaje',       icon: '💬', label: 'Enviar mensaje',    color: 'border-green-300 bg-green-50 hover:bg-green-100',    categoria: 'mensajeria' },
-  { type: 'agente_ia',    icon: '🤖', label: 'Agente IA',         color: 'border-indigo-300 bg-indigo-50 hover:bg-indigo-100',  categoria: 'mensajeria' },
-  { type: 'accion_ia',    icon: '✨', label: 'Acción IA',         color: 'border-fuchsia-300 bg-fuchsia-50 hover:bg-fuchsia-100', categoria: 'ambos' },
-  { type: 'plantilla',    icon: '📋', label: 'Plantilla Meta',    color: 'border-teal-300 bg-teal-50 hover:bg-teal-100',        categoria: 'mensajeria' },
-  { type: 'media',        icon: '📎', label: 'Archivo/Media',     color: 'border-pink-300 bg-pink-50 hover:bg-pink-100',        categoria: 'mensajeria' },
-  { type: 'condicion',    icon: '🔀', label: 'Condición',         color: 'border-yellow-300 bg-yellow-50 hover:bg-yellow-100',  categoria: 'mensajeria' },
-  { type: 'capturar_dato', icon: '💾', label: 'Guardar respuesta', color: 'border-violet-300 bg-violet-50 hover:bg-violet-100', categoria: 'mensajeria' },
-  { type: 'menu_opciones', icon: '📋', label: 'Menú de opciones', color: 'border-fuchsia-300 bg-fuchsia-50 hover:bg-fuchsia-100', categoria: 'mensajeria' },
-  { type: 'ir_a_nodo',    icon: '↩',  label: 'Ir a nodo',       color: 'border-sky-300 bg-sky-50 hover:bg-sky-100',            categoria: 'mensajeria' },
-  { type: 'asignar',      icon: '👤', label: 'Asignar asesor',    color: 'border-purple-300 bg-purple-50 hover:bg-purple-100', categoria: 'mensajeria' },
-  { type: 'esperar',      icon: '⏱️', label: 'Esperar / Delay',   color: 'border-orange-300 bg-orange-50 hover:bg-orange-100', categoria: 'mensajeria' },
-  { type: 'etiqueta',     icon: '🏷️', label: 'Etiquetar cliente', color: 'border-rose-300 bg-rose-50 hover:bg-rose-100',       categoria: 'mensajeria' },
-  { type: 'nota_interna', icon: '📝', label: 'Nota interna',      color: 'border-yellow-200 bg-yellow-50 hover:bg-yellow-100', categoria: 'mensajeria' },
-  { type: 'subflujo',     icon: '🔗', label: 'Subflujo',          color: 'border-slate-300 bg-slate-50 hover:bg-slate-100',    categoria: 'mensajeria' },
-  { type: 'etapa',        icon: '📊', label: 'Cambiar etapa',        color: 'border-cyan-300 bg-cyan-50 hover:bg-cyan-100',   categoria: 'pipeline' },
-  { type: 'espera_etapa', icon: '⏳', label: 'Esperar días en etapa', color: 'border-amber-300 bg-amber-50 hover:bg-amber-100', categoria: 'pipeline' },
-  { type: 'fin',          icon: '🏁', label: 'Fin del flujo',     color: 'border-gray-300 bg-gray-50 hover:bg-gray-100',       categoria: 'ambos' },
-]
-
-function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[]; etiquetas: Etiqueta[]; integracionesIA: IntegracionIA[] }): Record<string, unknown> {
-  switch (type) {
-    case 'trigger':       return { trigger_tipo: 'mensaje_nuevo' }
-    case 'mensaje':       return { contenido: '', usar_plantilla: false, plantillas: ctx.plantillas }
-    case 'asignar':       return { tipo_asignacion: 'round_robin', asignar_a: '', equipo: ctx.equipo }
-    case 'esperar':       return { horas: 24, minutos: 0 }
-    case 'etapa':         return { etapa: 'nuevo' }
-    case 'condicion':     return { condicion_tipo: 'respuesta_contiene', condicion_valor: '' }
-    case 'agente_ia':     return { agente_id: '', prompt_contexto: '', incluir_historial: true, agentes: ctx.agentes }
-    case 'accion_ia':     return { accion: '', proveedor: '', modelo: '', prompt: '', variable_salida: '', temperatura: '0.7', max_tokens: '800', integracionesIA: ctx.integracionesIA }
-    case 'plantilla':     return { plantilla_id: '', plantillas: ctx.plantillas }
-    case 'media':         return { media_tipo: 'imagen', media_url: '', media_caption: '' }
-    case 'nota_interna':  return { contenido: '' }
-    case 'etiqueta':      return { accion: 'agregar', etiqueta_id: '', etiquetas: ctx.etiquetas }
-    case 'subflujo':      return { subflujo_id: '', flujos_disponibles: ctx.flujos }
-    case 'capturar_dato':  return { campo: 'nombre', nombre_variable: '' }
-    case 'menu_opciones':  return { cantidad: 3, opciones: [
-      { etiqueta: '', tipo_match: 'numero', valor_match: '' },
-      { etiqueta: '', tipo_match: 'numero', valor_match: '' },
-      { etiqueta: '', tipo_match: 'numero', valor_match: '' },
-    ] }
-    case 'ir_a_nodo':      return { nodo_destino_id: '' }
-    case 'espera_etapa':   return { dias: 1 }
-    case 'fin':            return {}
-    default:              return {}
-  }
+  trigger:             TriggerNode,
+  mensaje:             GenericNode,
+  media:               GenericNode,
+  plantilla:           GenericNode,
+  ia_generar_texto:    GenericNode,
+  condicion:           CondicionNode,
+  dividir_trafico:     DividirTraficoNode,
+  esperar:             GenericNode,
+  ir_a_nodo:           GenericNode,
+  fin:                 GenericNode,
+  capturar_dato:       GenericNode,
+  menu_opciones:       MenuOpcionesNode,
+  accion_conversacion: GenericNode,
+  subflujo:            GenericNode,
 }
 
 // ─── Editor de flujo (canvas principal) ──────────────────────────────────────
 
-type EditorCtx = { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[]; etiquetas: Etiqueta[]; integracionesIA: IntegracionIA[] }
+type EditorCtx = CatalogCtx
 
 type EditorProps = {
   flujo: Flujo | null
@@ -1274,15 +150,36 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
   useEffect(() => {
     if (!ctx.equipo.length && !ctx.plantillas.length && !ctx.agentes.length) return
     setNodes(ns => ns.map(n => {
-      if (n.type === 'asignar')   return { ...n, data: { ...n.data, equipo: ctx.equipo } }
-      if (n.type === 'mensaje')   return { ...n, data: { ...n.data, plantillas: ctx.plantillas } }
-      if (n.type === 'plantilla') return { ...n, data: { ...n.data, plantillas: ctx.plantillas } }
-      if (n.type === 'agente_ia') return { ...n, data: { ...n.data, agentes: ctx.agentes } }
-      if (n.type === 'subflujo')  return { ...n, data: { ...n.data, flujos_disponibles: ctx.flujos } }
-      if (n.type === 'accion_ia') return { ...n, data: { ...n.data, integracionesIA: ctx.integracionesIA } }
+      if (n.type === 'mensaje' || n.type === 'plantilla') return { ...n, data: { ...n.data, plantillas: ctx.plantillas } }
+      if (n.type === 'ia_generar_texto') return { ...n, data: { ...n.data, agentes: ctx.agentes, integracionesIA: ctx.integracionesIA } }
+      if (n.type === 'subflujo') return { ...n, data: { ...n.data, flujos_disponibles: ctx.flujos } }
+      if (n.type === 'accion_conversacion') return { ...n, data: { ...n.data, equipo: ctx.equipo, etiquetas: ctx.etiquetas, flujos_disponibles: ctx.flujos } }
       return n
     }))
   }, [ctx])
+
+  // Nodo seleccionado (panel lateral de edición)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const selectedNode = nodes.find(n => n.id === selectedNodeId) ?? null
+
+  const onNodeClick = useCallback((_e: React.MouseEvent, node: Node) => {
+    setSelectedNodeId(node.id)
+  }, [])
+
+  const actualizarNodoSeleccionado = useCallback((patch: Record<string, unknown>) => {
+    if (!selectedNodeId) return
+    setNodes(ns => ns.map(n => n.id === selectedNodeId ? { ...n, data: { ...n.data, ...patch } } : n))
+  }, [selectedNodeId, setNodes])
+
+  const navegarNodo = useCallback((direccion: 'prev' | 'next') => {
+    if (!selectedNodeId) return
+    const ordenados = [...nodes].sort((a, b) => a.position.y - b.position.y)
+    const idx = ordenados.findIndex(n => n.id === selectedNodeId)
+    if (idx === -1) return
+    const siguienteIdx = direccion === 'next' ? idx + 1 : idx - 1
+    if (siguienteIdx < 0 || siguienteIdx >= ordenados.length) return
+    setSelectedNodeId(ordenados[siguienteIdx].id)
+  }, [selectedNodeId, nodes])
 
   const onConnect = useCallback(
     (c: Connection) => setEdges(es => addEdge({
@@ -1295,22 +192,11 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
     [setEdges]
   )
 
-  const onDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); e.dataTransfer.dropEffect = 'move'
-  }, [])
-
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    const type = e.dataTransfer.getData('application/reactflow')
-    if (!type || !rfInstance || !rfWrapper.current) return
-    const bounds   = rfWrapper.current.getBoundingClientRect()
-    const position = rfInstance.project({ x: e.clientX - bounds.left, y: e.clientY - bounds.top })
-    setNodes(ns => [...ns, { id: `node-${Date.now()}`, type, position, data: getDefaultData(type, ctx) }])
-  }, [rfInstance, setNodes, ctx])
-
-  const addNode = (type: string) => {
+  const agregarNodo = (item: CatalogItem) => {
     const y = nodes.length > 0 ? Math.max(...nodes.map(n => n.position.y)) + 160 : 220
-    setNodes(ns => [...ns, { id: `node-${Date.now()}`, type, position: { x: 200, y }, data: getDefaultData(type, ctx) }])
+    const id = `node-${Date.now()}`
+    setNodes(ns => [...ns, { id, type: item.tipo, position: { x: 200, y }, data: getDefaultData(item.tipo, ctx, item.subtipo) }])
+    setSelectedNodeId(id)
   }
 
   const guardar = async () => {
@@ -1437,6 +323,7 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
             💬 Probar flujo
           </button>
         )}
+        <AddNodeMenu onSelect={agregarNodo} />
         <button onClick={guardar} disabled={saving}
           className="px-4 py-1.5 bg-blue-700 text-white rounded-lg text-sm font-medium hover:bg-blue-800 disabled:opacity-50 transition-colors">
           {saving ? 'Guardando...' : 'Guardar flujo'}
@@ -1444,62 +331,13 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Paleta de nodos */}
-        <div className="w-48 bg-white border-r border-gray-200 p-3 flex-shrink-0 overflow-y-auto">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Mensajería</p>
-          <div className="space-y-1 mb-4">
-            {PALETTE_ITEMS.filter(item => item.categoria === 'mensajeria').map(item => (
-              <div key={item.type} draggable
-                onDragStart={e => { e.dataTransfer.setData('application/reactflow', item.type); e.dataTransfer.effectAllowed = 'move' }}
-                onClick={() => addNode(item.type)}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-grab active:cursor-grabbing transition-colors ${item.color}`}>
-                <span className="text-sm">{item.icon}</span>
-                <span className="text-xs font-medium text-gray-700">{item.label}</span>
-              </div>
-            ))}
-          </div>
-
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Pipeline / Automatización</p>
-          <div className="space-y-1 mb-4">
-            {PALETTE_ITEMS.filter(item => item.categoria === 'pipeline').map(item => (
-              <div key={item.type} draggable
-                onDragStart={e => { e.dataTransfer.setData('application/reactflow', item.type); e.dataTransfer.effectAllowed = 'move' }}
-                onClick={() => addNode(item.type)}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-grab active:cursor-grabbing transition-colors ${item.color}`}>
-                <span className="text-sm">{item.icon}</span>
-                <span className="text-xs font-medium text-gray-700">{item.label}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-1">
-            {PALETTE_ITEMS.filter(item => item.categoria === 'ambos').map(item => (
-              <div key={item.type} draggable
-                onDragStart={e => { e.dataTransfer.setData('application/reactflow', item.type); e.dataTransfer.effectAllowed = 'move' }}
-                onClick={() => addNode(item.type)}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-grab active:cursor-grabbing transition-colors ${item.color}`}>
-                <span className="text-sm">{item.icon}</span>
-                <span className="text-xs font-medium text-gray-700">{item.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-[10px] text-gray-400 leading-relaxed px-1">
-              Arrastra o haz clic para agregar.<br />
-              Conecta arrastrando entre los puntos azules.<br />
-              Pasa el cursor sobre una flecha y pulsa <strong>×</strong> para eliminarla.<br />
-              <kbd className="bg-gray-100 px-1 rounded text-[9px]">Del</kbd> o <kbd className="bg-gray-100 px-1 rounded text-[9px]">⌫</kbd> elimina lo seleccionado.
-            </p>
-          </div>
-        </div>
-
         {/* Canvas React Flow */}
         <div ref={rfWrapper} className="flex-1 bg-gray-50">
           <ReactFlow
             nodes={nodes} edges={edges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
             onConnect={onConnect} onInit={setRfInstance}
-            onDrop={onDrop} onDragOver={onDragOver}
+            onNodeClick={onNodeClick} onPaneClick={() => setSelectedNodeId(null)}
             nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} fitView
             deleteKeyCode={['Delete', 'Backspace']} snapToGrid snapGrid={[16, 16]}
             defaultEdgeOptions={{
@@ -1513,6 +351,19 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
             <MiniMap nodeStrokeWidth={3} pannable zoomable className="!bg-white !border-gray-200" />
           </ReactFlow>
         </div>
+
+        {/* Panel lateral de edición del nodo seleccionado */}
+        {selectedNode && (
+          <NodeInspector
+            node={selectedNode}
+            ctx={ctx}
+            allNodes={nodes}
+            onChange={actualizarNodoSeleccionado}
+            onClose={() => setSelectedNodeId(null)}
+            onPrev={() => navegarNodo('prev')}
+            onNext={() => navegarNodo('next')}
+          />
+        )}
       </div>
 
       {/* Panel de ejecuciones */}

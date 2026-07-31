@@ -1,5 +1,6 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // Tipos para el sistema de flujos de automatización de OptiDesk
+// Taxonomía v2 (estilo LucidBot) — ver plan en .claude/plans, "Decisión 3"
 // ══════════════════════════════════════════════════════════════════════════════
 
 import type { Node, Edge } from 'reactflow'
@@ -8,22 +9,21 @@ import type { Node, Edge } from 'reactflow'
 export type TipoNodo =
   | 'trigger'
   | 'mensaje'
-  | 'asignar'
-  | 'esperar'
-  | 'etapa'
-  | 'condicion'
-  | 'agente_ia'
-  | 'accion_ia'
-  | 'plantilla'
   | 'media'
-  | 'nota_interna'
-  | 'etiqueta'
-  | 'subflujo'
-  | 'capturar_dato'
-  | 'menu_opciones'
+  | 'plantilla'
+  | 'ia_generar_texto'
+  | 'condicion'
+  | 'dividir_trafico'
+  | 'esperar'
   | 'ir_a_nodo'
   | 'fin'
-  | 'espera_etapa'
+  | 'capturar_dato'
+  | 'menu_opciones'
+  | 'accion_conversacion'
+  | 'subflujo'
+
+export type CategoriaNodo =
+  | 'contenido' | 'ia' | 'logica' | 'captura' | 'conversacion' | 'estructura'
 
 // ─── Tipos de disparador ──────────────────────────────────────────────────────
 export type TriggerTipo =
@@ -40,46 +40,13 @@ export interface DatosTrigger {
   canal_trigger?: string   // filtrar por canal (whatsapp/messenger/instagram/todos)
 }
 
+export interface BotonMensaje { texto: string; valor: string }
+
 export interface DatosMensaje {
   contenido: string
   usar_plantilla?: boolean
   plantilla_id?: string
-}
-
-export interface DatosAsignar {
-  tipo_asignacion: 'round_robin' | 'usuario_fijo'
-  asignar_a?: string
-  equipo?: { id: string; nombre: string }[]
-}
-
-export interface DatosEsperar {
-  horas?: number
-  minutos?: number
-}
-
-export interface DatosEtapa {
-  etapa: string
-}
-
-export interface DatosCondicion {
-  condicion_tipo: 'etiqueta' | 'canal' | 'respuesta_contiene' | 'etapa' | 'tiene_celular' | 'es_nuevo' |
-    'etapa_o_posterior' | 'aprobacion_pendiente'
-  condicion_valor?: string
-}
-
-export interface DatosEsperaEtapa {
-  dias: number
-}
-
-export interface DatosAgenteIA {
-  agente_id: string
-  prompt_contexto?: string
-  incluir_historial?: boolean
-}
-
-export interface DatosPlantilla {
-  plantilla_id: string
-  variables?: Record<string, string>  // key: variable name, value: static value or {{var}}
+  botones?: BotonMensaje[]  // hasta 3
 }
 
 export interface DatosMedia {
@@ -89,18 +56,76 @@ export interface DatosMedia {
   media_filename?: string
 }
 
-export interface DatosNotaInterna {
-  contenido: string
+export interface DatosPlantilla {
+  plantilla_id: string
+  variables?: Record<string, string>
 }
 
-export interface DatosSubflujo {
-  subflujo_id: string
-  nombre_subflujo?: string
+export interface DatosIA {
+  modo: 'agente' | 'puntual'
+  // modo 'agente'
+  agente_id?: string
+  prompt_contexto?: string
+  incluir_historial?: boolean
+  // modo 'puntual'
+  proveedor?: string
+  modelo?: string
+  accion?: string  // uso: resumenes_conversacion | sugerencias_respuesta | ...
+  prompt?: string
+  temperatura?: number
+  max_tokens?: number
+  // comunes
+  variable_salida?: string
+  enviar_automaticamente?: boolean  // default true
+}
+
+// Todos los tipos de condición simple evaluables (se reutilizan igual en el motor)
+export type CondicionTipoSimple =
+  | 'respuesta_contiene' | 'palabras_clave' | 'contiene_todas' | 'es_exactamente'
+  | 'empieza_con' | 'termina_con' | 'longitud_mayor'
+  | 'es_positivo' | 'es_negativo' | 'es_numero'
+  | 'canal' | 'etapa' | 'tiene_celular' | 'es_nuevo' | 'horario_laboral'
+  | 'etapa_o_posterior' | 'aprobacion_pendiente'
+  | 'ia_evalua'
+
+export interface CondicionSimple {
+  id: string
+  tipo: CondicionTipoSimple
+  valor?: string
+  agente_id?: string        // solo ia_evalua
+  pregunta?: string         // solo ia_evalua
+}
+
+export interface RamaCondicion {
+  id: string
+  nombre?: string
+  modo: 'todas' | 'cualquiera'
+  condiciones: CondicionSimple[]
+}
+
+export interface DatosCondicion {
+  ramas: RamaCondicion[]  // se evalúan en orden; primera que matchea gana; si ninguna matchea sale por "default"
+}
+
+export interface VariacionTrafico { id: string; nombre: string; porcentaje: number }
+
+export interface DatosDividirTrafico {
+  variaciones: VariacionTrafico[]  // deben sumar 100
+}
+
+export interface DatosEsperar {
+  modo: 'duracion' | 'respuesta' | 'dias_en_etapa'
+  horas?: number       // modo duracion
+  minutos?: number     // modo duracion
+  dias?: number        // modo dias_en_etapa
 }
 
 export interface DatosCapturarDato {
   campo: 'nombre' | 'celular' | 'email' | 'cedula' | 'variable'
-  nombre_variable?: string  // solo cuando campo === 'variable'
+  nombre_variable?: string
+  prompt?: string                 // si viene, el nodo envía esta pregunta antes de esperar respuesta
+  formato_esperado?: 'texto' | 'email' | 'telefono' | 'numero' | 'fecha'
+  mensaje_reintento?: string
 }
 
 export interface DatosMenuOpcion {
@@ -111,28 +136,58 @@ export interface DatosMenuOpcion {
 
 export interface DatosMenuOpciones {
   cantidad: number
-  opciones?: DatosMenuOpcion[]  // nuevo — por opción
-  etiquetas?: string[]          // legacy — solo numérico
+  opciones?: DatosMenuOpcion[]
+}
+
+export type SubtipoAccionConversacion =
+  | 'transferir_humano' | 'transferir_bot'
+  | 'archivar' | 'desarchivar'
+  | 'marcar_seguimiento' | 'quitar_seguimiento'
+  | 'bloquear_usuario' | 'desbloquear_usuario'
+  | 'anadir_nota'
+  | 'anadir_etiqueta' | 'quitar_etiqueta'
+  | 'cambiar_etapa'
+  | 'asignar_admin'
+  | 'borrar_datos_usuario'
+
+export interface DatosAccionConversacion {
+  subtipo: SubtipoAccionConversacion
+  // anadir_nota
+  contenido?: string
+  // anadir_etiqueta / quitar_etiqueta
+  etiqueta_id?: string
+  nueva_etiqueta_nombre?: string
+  nueva_etiqueta_color?: string
+  // cambiar_etapa
+  etapa?: string
+  // asignar_admin
+  tipo_asignacion?: 'round_robin' | 'usuario_fijo'
+  asignar_a?: string
+  // transferir_bot
+  subflujo_id?: string
+}
+
+export interface DatosSubflujo {
+  subflujo_id: string
+  nombre_subflujo?: string
 }
 
 // ─── Estructura de nodo completa ──────────────────────────────────────────────
 export type DatosNodo =
   | (DatosTrigger & { tipo: 'trigger' })
   | (DatosMensaje & { tipo: 'mensaje' })
-  | (DatosAsignar & { tipo: 'asignar' })
-  | (DatosEsperar & { tipo: 'esperar' })
-  | (DatosEtapa & { tipo: 'etapa' })
-  | (DatosCondicion & { tipo: 'condicion' })
-  | (DatosAgenteIA & { tipo: 'agente_ia' })
-  | (DatosPlantilla & { tipo: 'plantilla' })
   | (DatosMedia & { tipo: 'media' })
-  | (DatosNotaInterna & { tipo: 'nota_interna' })
-  | (DatosSubflujo & { tipo: 'subflujo' })
-  | (DatosCapturarDato & { tipo: 'capturar_dato' })
-  | (DatosMenuOpciones & { tipo: 'menu_opciones' })
+  | (DatosPlantilla & { tipo: 'plantilla' })
+  | (DatosIA & { tipo: 'ia_generar_texto' })
+  | (DatosCondicion & { tipo: 'condicion' })
+  | (DatosDividirTrafico & { tipo: 'dividir_trafico' })
+  | (DatosEsperar & { tipo: 'esperar' })
   | ({ tipo: 'ir_a_nodo'; nodo_destino_id: string })
   | ({ tipo: 'fin' })
-  | (DatosEsperaEtapa & { tipo: 'espera_etapa' })
+  | (DatosCapturarDato & { tipo: 'capturar_dato' })
+  | (DatosMenuOpciones & { tipo: 'menu_opciones' })
+  | (DatosAccionConversacion & { tipo: 'accion_conversacion' })
+  | (DatosSubflujo & { tipo: 'subflujo' })
 
 // ─── Estructura del flujo guardado en DB (nodos JSONB) ────────────────────────
 export interface NodosGuardados {
@@ -180,7 +235,7 @@ export interface ContextoEjecucion {
   etapa_actual?: string
   assigned_to?: string
   variables?: Record<string, string>   // datos capturados por nodos capturar_dato + variables personalizadas
-  respuestas?: Record<string, string>  // respuestas de agentes IA o formularios
+  respuestas?: Record<string, string>  // respuestas de IA o formularios
 }
 
 // ─── Agente IA ────────────────────────────────────────────────────────────────

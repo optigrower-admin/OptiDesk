@@ -102,6 +102,14 @@ async function crearYArrancarEjecucion(
   flujo: { id: string; nodos: unknown },
   opciones: { marcarAutomatizado: boolean }
 ) {
+  if (clienteId) {
+    const { data: cliente } = await supabase.from('clientes').select('bot_bloqueado').eq('id', clienteId).maybeSingle()
+    if (cliente?.bot_bloqueado) {
+      console.log(`[flow-executor] cliente ${clienteId} tiene el bot bloqueado — no se arranca el flujo`)
+      return
+    }
+  }
+
   const nodos = flujo.nodos as { nodes: Node[]; edges: Edge[] } | null
   if (!nodos?.nodes?.length) {
     console.log(`[flow-executor] ✗ flujo ${flujo.id} sin nodos`)
@@ -364,394 +372,6 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
-    // ── Asignar asesor ────────────────────────────────────────────────────────
-    case 'asignar': {
-      if (!convId) return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
-
-      if (data.tipo_asignacion === 'usuario_fijo' && data.asignar_a) {
-        await supabase.from('conversaciones')
-          .update({ assigned_to: String(data.asignar_a) })
-          .eq('id', convId)
-        if (clienteId) {
-          await supabase.from('clientes')
-            .update({ assigned_to: String(data.asignar_a) })
-            .eq('id', clienteId)
-        }
-      } else {
-        // Round robin: asesor con menos conversaciones abiertas
-        const { data: asesores } = await supabase
-          .from('usuarios').select('id').eq('tenant_id', tenantId).in('rol', ['admin', 'gerencia', 'asesor'])
-        if (asesores?.length) {
-          let menorCarga = Infinity; let seleccionado = asesores[0].id
-          for (const a of asesores) {
-            const { count } = await supabase.from('conversaciones')
-              .select('id', { count: 'exact', head: true })
-              .eq('assigned_to', a.id).eq('estado', 'abierta')
-            if ((count ?? 0) < menorCarga) { menorCarga = count ?? 0; seleccionado = a.id }
-          }
-          await supabase.from('conversaciones').update({ assigned_to: seleccionado }).eq('id', convId)
-          if (clienteId) {
-            await supabase.from('clientes').update({ assigned_to: seleccionado }).eq('id', clienteId)
-          }
-        }
-      }
-      return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
-    }
-
-    // ── Esperar (delay o hasta respuesta) ────────────────────────────────────
-    case 'esperar': {
-      const siguienteId = getSiguienteNodo(edges, nodo.id)
-
-      // Si el siguiente nodo es menu_opciones, pre-marcar _menu_esperando para que
-      // la respuesta del cliente sea evaluada directamente sin una fase extra de pausa
-      const siguienteNodo = nodes.find(n => n.id === siguienteId)
-      const ctxExtra = siguienteNodo?.type === 'menu_opciones' ? { _menu_esperando: siguienteId } : {}
-
-      if (String(data.modo_espera ?? 'tiempo') === 'respuesta') {
-        const lejano = new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000).toISOString()
-        return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: siguienteId, contexto: ctxExtra }
-      }
-
-      const horas = Number(data.horas ?? 24)
-      const minutos = Number(data.minutos ?? 0)
-      const totalMs = (horas * 3600 + minutos * 60) * 1000
-      const proxima = new Date(Date.now() + totalMs).toISOString()
-      return { tipo: 'pausar', proxima_ejecucion_at: proxima, siguiente_nodo_id: siguienteId, contexto: ctxExtra }
-    }
-
-    // ── Cambiar etapa de venta ────────────────────────────────────────────────
-    case 'etapa': {
-      const etapa = String(data.etapa ?? '')
-      if (etapa && clienteId) {
-        // Importar pipeline solo cuando se necesita
-        const { ETAPA_MAP, ETAPAS } = await import('@/lib/ventas/pipeline')
-        const etapaInfo = ETAPA_MAP[etapa as keyof typeof ETAPA_MAP]
-        if (etapaInfo) {
-          const orden = ETAPAS.findIndex(e => e.id === etapa)
-          await supabase.from('clientes')
-            .update({
-              etapa_venta: etapa,
-              etapa_venta_orden: orden >= 0 ? orden : 0,
-              en_seguimiento_ventas: true,
-            })
-            .eq('id', clienteId)
-
-          // Registrar en historial (no crítico, ignorar errores)
-          try {
-            await supabase.from('historial_etapas_cliente').insert({
-              cliente_id: clienteId,
-              tenant_id: tenantId,
-              etapa_nueva: etapa,
-              origen: 'automatizacion',
-            })
-          } catch { /* non-critical */ }
-        }
-      }
-      return {
-        tipo: 'continuar',
-        siguiente_nodo_id: getSiguienteNodo(edges, nodo.id),
-        contexto: { etapa_actual: etapa },
-      }
-    }
-
-    // ── Esperar N días en la etapa actual del cliente ─────────────────────────
-    // Reutiliza el mismo mecanismo de pausa/reanudación que el nodo 'esperar'
-    // (proxima_ejecucion_at), en vez de un cron aparte. Usa historial_etapas_cliente
-    // (ya existente desde la v39) para saber con precisión desde cuándo el cliente
-    // está en su etapa actual.
-    case 'espera_etapa': {
-      const dias = Number(data.dias ?? 1)
-      const siguienteId = getSiguienteNodo(edges, nodo.id)
-      if (!clienteId) return { tipo: 'continuar', siguiente_nodo_id: siguienteId }
-
-      const { data: historial } = await supabase
-        .from('historial_etapas_cliente')
-        .select('created_at')
-        .eq('cliente_id', clienteId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      const desde = historial?.created_at ? new Date(historial.created_at).getTime() : Date.now()
-      const objetivo = desde + dias * 86_400_000
-
-      if (Date.now() >= objetivo) {
-        return { tipo: 'continuar', siguiente_nodo_id: siguienteId }
-      }
-      return { tipo: 'pausar', proxima_ejecucion_at: new Date(objetivo).toISOString(), siguiente_nodo_id: nodo.id }
-    }
-
-    // ── Condición (bifurcación) ───────────────────────────────────────────────
-    case 'condicion': {
-      const condicionTipo  = String(data.condicion_tipo  ?? '')
-      const condicionValor = String(data.condicion_valor ?? '').trim()
-      const ultimoMsg      = (contexto.ultimo_mensaje ?? '').trim()
-      const ultimoMsgLower = ultimoMsg.toLowerCase()
-      let resultado = false
-
-      console.log(`[condicion] tipo="${condicionTipo}" valor="${condicionValor}" ultimoMsg="${ultimoMsg}" ultimoMsgLower="${ultimoMsgLower}"`)
-
-      switch (condicionTipo) {
-
-        // ── Canal ────────────────────────────────────────────────────────────
-        case 'canal': {
-          const { data: conv } = await supabase
-            .from('conversaciones').select('canal').eq('id', convId ?? '').maybeSingle()
-          resultado = conv?.canal === condicionValor
-          break
-        }
-
-        // ── Etapa ────────────────────────────────────────────────────────────
-        case 'etapa':
-          resultado = (contexto.etapa_actual ?? '') === condicionValor
-          break
-
-        // ── Etapa (esta o más adelante en el pipeline) ───────────────────────
-        case 'etapa_o_posterior': {
-          const { ETAPAS } = await import('@/lib/ventas/pipeline')
-          const ordenActual   = ETAPAS.findIndex(e => e.id === contexto.etapa_actual)
-          const ordenObjetivo = ETAPAS.findIndex(e => e.id === condicionValor)
-          resultado = ordenActual >= 0 && ordenObjetivo >= 0 && ordenActual >= ordenObjetivo
-          break
-        }
-
-        // ── Aprobación de gerencia pendiente ─────────────────────────────────
-        case 'aprobacion_pendiente': {
-          if (clienteId) {
-            const { data: cl } = await supabase
-              .from('clientes').select('estado_aprobacion_matricula').eq('id', clienteId).maybeSingle()
-            resultado = cl?.estado_aprobacion_matricula !== 'aprobado'
-          }
-          break
-        }
-
-        // ── Tiene celular ────────────────────────────────────────────────────
-        case 'tiene_celular': {
-          if (clienteId) {
-            const { data: cl } = await supabase
-              .from('clientes').select('celular').eq('id', clienteId).maybeSingle()
-            resultado = !!(cl?.celular?.trim())
-          }
-          break
-        }
-
-        // ── Es nuevo ─────────────────────────────────────────────────────────
-        case 'es_nuevo':
-          resultado = contexto.etapa_actual === 'nuevo_mensaje' || contexto.etapa_actual === 'nuevo'
-          break
-
-        // ── Contiene alguna palabra (subcadena, sin dividir) ─────────────────
-        case 'respuesta_contiene':
-          resultado = ultimoMsgLower.includes(condicionValor.toLowerCase())
-          break
-
-        // ── Contiene ALGUNA de varias palabras clave (comparación por palabra completa)
-        case 'palabras_clave': {
-          const palabras  = condicionValor.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
-          const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
-          resultado = palabras.some(p => msgTokens.includes(p))
-          break
-        }
-
-        // ── Contiene TODAS las palabras clave (comparación por palabra completa)
-        case 'contiene_todas': {
-          const palabras  = condicionValor.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
-          const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
-          resultado = palabras.length > 0 && palabras.every(p => msgTokens.includes(p))
-          break
-        }
-
-        // ── Es exactamente este texto ─────────────────────────────────────────
-        case 'es_exactamente':
-          resultado = ultimoMsgLower === condicionValor.toLowerCase()
-          break
-
-        // ── Empieza con ──────────────────────────────────────────────────────
-        case 'empieza_con':
-          resultado = ultimoMsgLower.startsWith(condicionValor.toLowerCase())
-          break
-
-        // ── Termina con ──────────────────────────────────────────────────────
-        case 'termina_con':
-          resultado = ultimoMsgLower.endsWith(condicionValor.toLowerCase())
-          break
-
-        // ── Longitud mayor a N caracteres ────────────────────────────────────
-        case 'longitud_mayor': {
-          const n = parseInt(condicionValor) || 10
-          resultado = ultimoMsg.length > n
-          break
-        }
-
-        // ── Respuesta positiva ───────────────────────────────────────────────
-        case 'es_positivo': {
-          const positivos = ['sí','si','claro','dale','ok','bueno','bien','correcto','exacto',
-            'afirmativo','listo','perfecto','va','sip','seee','yep','yes','obvio']
-          const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
-          resultado = positivos.some(p => msgTokens.includes(p))
-          break
-        }
-
-        // ── Respuesta negativa ───────────────────────────────────────────────
-        case 'es_negativo': {
-          const negativos = ['no','nop','nope','tampoco','negativo','nel','nada','negado']
-          const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
-          resultado = negativos.some(p => msgTokens.includes(p))
-          break
-        }
-
-        // ── Respuesta es un número ───────────────────────────────────────────
-        case 'es_numero':
-          resultado = /^\s*\d+([.,]\d+)?\s*$/.test(ultimoMsg)
-          break
-
-        // ── Horario laboral (lun-sáb 7am–6pm Colombia UTC-5) ─────────────────
-        case 'horario_laboral': {
-          const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }))
-          const dia  = ahora.getDay()  // 0=dom, 6=sáb
-          const hora = ahora.getHours()
-          resultado = dia >= 1 && dia <= 6 && hora >= 7 && hora < 18
-          break
-        }
-
-        // ── IA evalúa la condición ───────────────────────────────────────────
-        case 'ia_evalua': {
-          const agenteId      = String(data.agente_id ?? '')
-          const pregunta      = String(data.condicion_pregunta ?? '').trim()
-          if (!agenteId || !pregunta || !ultimoMsg) { resultado = false; break }
-
-          // Cargar agente y claves API
-          const [{ data: agente }, { data: apiCfg }] = await Promise.all([
-            supabase.from('agentes_ia').select('proveedor,modelo').eq('id', agenteId).maybeSingle(),
-            supabase.from('config_apis_ia').select('openai_key_enc,anthropic_key_enc,openai_modelo_default,anthropic_modelo_default').eq('tenant_id', tenantId).maybeSingle(),
-          ])
-
-          if (!agente || !apiCfg) { resultado = false; break }
-
-          const systemPrompt = 'Eres un evaluador. Lee el mensaje del cliente y responde SOLO con "SÍ" o "NO". Sin explicaciones, sin puntuación extra, solo SÍ o NO.'
-          const userPrompt   = `Mensaje del cliente: "${ultimoMsg}"\n\nPregunta: ${pregunta}\n\nResponde SÍ o NO:`
-
-          let respuestaIA = ''
-
-          if (agente.proveedor === 'openai' && apiCfg.openai_key_enc) {
-            let key = apiCfg.openai_key_enc
-            try { key = (await import('@/lib/crypto')).decrypt(key) } catch { /* dev */ }
-            const modelo = agente.modelo || apiCfg.openai_modelo_default || 'gpt-4o-mini'
-            const r = await fetch('https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ model: modelo, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], max_tokens: 5, temperature: 0 }),
-            })
-            if (r.ok) {
-              const d = await r.json() as { choices?: [{ message?: { content?: string } }] }
-              respuestaIA = d.choices?.[0]?.message?.content?.trim() ?? ''
-            }
-          } else if (agente.proveedor === 'anthropic' && apiCfg.anthropic_key_enc) {
-            let key = apiCfg.anthropic_key_enc
-            try { key = (await import('@/lib/crypto')).decrypt(key) } catch { /* dev */ }
-            const modelo = agente.modelo || apiCfg.anthropic_modelo_default || 'claude-haiku-4-5-20251001'
-            const r = await fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-              body: JSON.stringify({ model: modelo, max_tokens: 5, system: systemPrompt, messages: [{ role: 'user', content: userPrompt }] }),
-            })
-            if (r.ok) {
-              const d = await r.json() as { content?: [{ text?: string }] }
-              respuestaIA = d.content?.[0]?.text?.trim() ?? ''
-            }
-          }
-
-          resultado = /^s[íi]/i.test(respuestaIA) || /^yes/i.test(respuestaIA)
-          console.log(`[condicion/ia_evalua] pregunta="${pregunta}" respuestaIA="${respuestaIA}" resultado=${resultado}`)
-          break
-        }
-
-        default:
-          resultado = false
-      }
-
-      const salida = resultado ? 'true' : 'false'
-      const siguiente = getSiguienteNodoConSalida(edges, nodo.id, salida)
-      const edgesDeNodo = edges.filter(e => e.source === nodo.id).map(e => `${e.sourceHandle}→${e.target}`)
-      console.log(`[condicion] resultado=${resultado} salida="${salida}" siguiente=${siguiente} edges=[${edgesDeNodo.join(', ')}]`)
-      return { tipo: 'continuar', siguiente_nodo_id: siguiente }
-    }
-
-    // ── Agente IA ─────────────────────────────────────────────────────────────
-    case 'agente_ia': {
-      const agenteId = String(data.agente_id ?? '')
-      const promptContexto = String(data.prompt_contexto ?? '')
-
-      if (!agenteId || !convId) {
-        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
-      }
-
-      try {
-        const respuesta = await llamarAgenteIA(supabase, tenantId, agenteId, contexto, promptContexto)
-        if (respuesta) {
-          await enviarMensajeDirecto(supabase, tenantId, convId, respuesta, 'texto')
-        }
-        return {
-          tipo: 'continuar',
-          siguiente_nodo_id: getSiguienteNodo(edges, nodo.id),
-          contexto: { respuestas: { ...contexto.respuestas, [agenteId]: respuesta ?? '' } },
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Error desconocido'
-        console.error('[flow-executor] Error agente IA:', e)
-        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), advertencia: msg }
-      }
-    }
-
-    // ── Acción IA (integraciones_ia — Módulo C) ───────────────────────────────
-    case 'accion_ia': {
-      const uso = String(data.accion ?? '')
-      const promptTemplate = String(data.prompt ?? '')
-      const variableSalida = String(data.variable_salida ?? '')
-
-      if (!uso || !promptTemplate) {
-        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
-      }
-
-      try {
-        const { llamarIA } = await import('@/lib/ia/llamarIA')
-        const promptFinal = interpolarVariables(promptTemplate, contexto)
-        const proveedor = data.proveedor ? String(data.proveedor) : undefined
-        const modelo = data.modelo ? String(data.modelo) : undefined
-        const temperatura = data.temperatura !== undefined ? parseFloat(String(data.temperatura)) : undefined
-        const maxTokens = data.max_tokens !== undefined ? parseInt(String(data.max_tokens), 10) : undefined
-        const resultado = await llamarIA(tenantId, uso, promptFinal, {
-          proveedor: proveedor as 'OPENAI' | 'ANTHROPIC' | 'GOOGLE' | 'GROK' | 'ELEVENLABS' | undefined,
-          modelo,
-          temperatura: isNaN(temperatura as number) ? undefined : temperatura,
-          maxTokens: isNaN(maxTokens as number) ? undefined : maxTokens,
-        })
-
-        if (!resultado.ok) {
-          console.error(`[flow-executor] accion_ia (${uso}) sin resultado: ${resultado.error}`)
-          return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), advertencia: resultado.error ?? 'Error desconocido' }
-        }
-
-        const salida = resultado.texto ?? resultado.imagenUrl ?? resultado.audioBase64 ?? ''
-        const nuevasVars = variableSalida
-          ? { ...(contexto.variables ?? {}), [variableSalida]: salida }
-          : contexto.variables
-
-        return {
-          tipo: 'continuar',
-          siguiente_nodo_id: getSiguienteNodo(edges, nodo.id),
-          contexto: {
-            variables: nuevasVars,
-            respuestas: { ...contexto.respuestas, [nodo.id]: salida },
-          },
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Error desconocido'
-        console.error('[flow-executor] Error accion_ia:', e)
-        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), advertencia: msg }
-      }
-    }
-
     // ── Enviar plantilla Meta aprobada ────────────────────────────────────────
     case 'plantilla': {
       const plantillaId = String(data.plantilla_id ?? '')
@@ -819,75 +439,212 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
-    // ── Nota interna ──────────────────────────────────────────────────────────
-    case 'nota_interna': {
-      const contenido = String(data.contenido ?? '')
-      if (contenido.trim() && convId) {
-        await supabase.from('mensajes').insert({
-          conversacion_id: convId,
-          tenant_id: tenantId,
-          direccion: 'saliente',
-          tipo: 'nota_interna',
-          contenido: interpolarVariables(contenido, contexto),
-          enviado_por: null,
-          estado_envio: 'enviado',
-          leido_por_asesor: false,
-        })
+    // ── IA: generar texto (fusiona los antiguos agente_ia + accion_ia) ────────
+    case 'ia_generar_texto': {
+      const modo = String(data.modo ?? 'puntual')
+      const variableSalida = String(data.variable_salida ?? '')
+      const enviarAuto = data.enviar_automaticamente !== false  // default true
+
+      let salida: string | null = null
+      let advertencia: string | undefined
+
+      if (modo === 'agente') {
+        const agenteId = String(data.agente_id ?? '')
+        const promptContexto = String(data.prompt_contexto ?? '')
+        if (!agenteId) return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+        try {
+          salida = await llamarAgenteIA(supabase, tenantId, agenteId, contexto, promptContexto)
+        } catch (e) {
+          advertencia = e instanceof Error ? e.message : 'Error desconocido'
+          console.error('[flow-executor] Error ia_generar_texto (agente):', e)
+        }
+      } else {
+        const uso = String(data.accion ?? '')
+        const promptTemplate = String(data.prompt ?? '')
+        if (!uso || !promptTemplate) return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+        try {
+          const { llamarIA } = await import('@/lib/ia/llamarIA')
+          const promptFinal = interpolarVariables(promptTemplate, contexto)
+          const proveedor = data.proveedor ? String(data.proveedor) : undefined
+          const modelo = data.modelo ? String(data.modelo) : undefined
+          const temperatura = data.temperatura !== undefined ? parseFloat(String(data.temperatura)) : undefined
+          const maxTokens = data.max_tokens !== undefined ? parseInt(String(data.max_tokens), 10) : undefined
+          const resultado = await llamarIA(tenantId, uso, promptFinal, {
+            proveedor: proveedor as 'OPENAI' | 'ANTHROPIC' | 'GOOGLE' | 'GROK' | 'ELEVENLABS' | undefined,
+            modelo,
+            temperatura: isNaN(temperatura as number) ? undefined : temperatura,
+            maxTokens: isNaN(maxTokens as number) ? undefined : maxTokens,
+          })
+          if (!resultado.ok) {
+            advertencia = resultado.error ?? 'Error desconocido'
+            console.error(`[flow-executor] ia_generar_texto (${uso}) sin resultado: ${advertencia}`)
+          } else {
+            salida = resultado.texto ?? resultado.imagenUrl ?? resultado.audioBase64 ?? ''
+          }
+        } catch (e) {
+          advertencia = e instanceof Error ? e.message : 'Error desconocido'
+          console.error('[flow-executor] Error ia_generar_texto (puntual):', e)
+        }
       }
-      return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+
+      const nuevasVars = variableSalida && salida != null
+        ? { ...(contexto.variables ?? {}), [variableSalida]: salida }
+        : contexto.variables
+
+      // Si enviar_automaticamente está activo (default), reutiliza el mismo envío
+      // que el nodo 'mensaje' — así el resultado no se queda "silencioso" en la
+      // variable sin que el usuario lo note (bug real detectado con este nodo).
+      if (enviarAuto && salida && convId) {
+        await enviarMensajeDirecto(supabase, tenantId, convId, salida, 'texto')
+      }
+
+      return {
+        tipo: 'continuar',
+        siguiente_nodo_id: getSiguienteNodo(edges, nodo.id),
+        contexto: { variables: nuevasVars, respuestas: { ...contexto.respuestas, [nodo.id]: salida ?? '' } },
+        advertencia,
+      }
     }
 
-    // ── Etiquetar cliente ────────────────────────────────────────────────────
-    case 'etiqueta': {
-      const accionEtiqueta = String(data.accion ?? 'agregar')
-      let etiquetaId = String(data.etiqueta_id ?? '').trim()
-      const nuevaNombre = String(data.nueva_etiqueta_nombre ?? '').trim()
-      const nuevaColor  = String(data.nueva_etiqueta_color  ?? '#3b82f6')
+    // ── Condición (bifurcación con ramas AND/OR + fallback) ───────────────────
+    case 'condicion': {
+      const ramas = (data.ramas ?? []) as { id: string; modo?: string; condiciones?: { tipo: string; valor?: string; agente_id?: string; pregunta?: string }[] }[]
 
-      // Modo "crear nueva": buscar o crear la etiqueta por nombre
-      if (!etiquetaId && nuevaNombre && clienteId) {
-        const { data: existente } = await supabase
-          .from('etiquetas')
-          .select('id')
-          .eq('tenant_id', tenantId)
-          .ilike('nombre', nuevaNombre)
+      for (const rama of ramas) {
+        const condiciones = rama.condiciones ?? []
+        if (condiciones.length === 0) continue
+        const modoAND = (rama.modo ?? 'todas') === 'todas'
+        const resultados = await Promise.all(
+          condiciones.map(c => evaluarCondicionSimple(supabase, tenantId, c.tipo, String(c.valor ?? ''), contexto, convId, clienteId, c.agente_id, c.pregunta))
+        )
+        const cumple = modoAND ? resultados.every(Boolean) : resultados.some(Boolean)
+        console.log(`[condicion] rama=${rama.id} modo=${rama.modo} resultados=[${resultados.join(',')}] cumple=${cumple}`)
+        if (cumple) {
+          const siguiente = getSiguienteNodoConSalida(edges, nodo.id, rama.id)
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+        }
+      }
+
+      // Ninguna rama coincide → salida "default" (fallback)
+      const siguienteDefault = getSiguienteNodoConSalida(edges, nodo.id, 'default')
+      return { tipo: 'continuar', siguiente_nodo_id: siguienteDefault }
+    }
+
+    // ── Dividir tráfico (reparto ponderado aleatorio entre variaciones) ──────
+    case 'dividir_trafico': {
+      const variaciones = (data.variaciones ?? []) as { id: string; nombre?: string; porcentaje?: number }[]
+      if (!variaciones.length) return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+
+      const total = variaciones.reduce((s, v) => s + (Number(v.porcentaje) || 0), 0) || 100
+      let r = Math.random() * total
+      let elegida = variaciones[0]
+      for (const v of variaciones) {
+        r -= (Number(v.porcentaje) || 0)
+        if (r <= 0) { elegida = v; break }
+      }
+
+      const siguiente = getSiguienteNodoConSalida(edges, nodo.id, elegida.id)
+      console.log(`[dividir_trafico] elegida=${elegida.nombre ?? elegida.id}`)
+      return {
+        tipo: 'continuar',
+        siguiente_nodo_id: siguiente,
+        contexto: { variables: { ...(contexto.variables ?? {}), [`${nodo.id}_variacion`]: elegida.nombre ?? elegida.id } },
+      }
+    }
+
+    // ── Esperar (duración fija, hasta respuesta, o días en la etapa actual) ───
+    case 'esperar': {
+      const modo = String(data.modo ?? 'duracion')
+      const siguienteId = getSiguienteNodo(edges, nodo.id)
+      const lejano = new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000).toISOString()
+
+      if (modo === 'dias_en_etapa') {
+        const dias = Number(data.dias ?? 1)
+        if (!clienteId) return { tipo: 'continuar', siguiente_nodo_id: siguienteId }
+
+        const { data: historial } = await supabase
+          .from('historial_etapas_cliente')
+          .select('created_at')
+          .eq('cliente_id', clienteId)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .maybeSingle()
 
-        if (existente) {
-          etiquetaId = existente.id
-        } else {
-          const { data: creada } = await supabase
-            .from('etiquetas')
-            .insert({ tenant_id: tenantId, nombre: nuevaNombre, color: nuevaColor })
-            .select('id')
-            .single()
-          if (creada) etiquetaId = creada.id
-        }
+        const desde = historial?.created_at ? new Date(historial.created_at).getTime() : Date.now()
+        const objetivo = desde + dias * 86_400_000
+        if (Date.now() >= objetivo) return { tipo: 'continuar', siguiente_nodo_id: siguienteId }
+        return { tipo: 'pausar', proxima_ejecucion_at: new Date(objetivo).toISOString(), siguiente_nodo_id: nodo.id }
       }
 
-      if (etiquetaId && clienteId) {
-        if (accionEtiqueta === 'agregar') {
-          await supabase.from('clientes_etiquetas').upsert(
-            { cliente_id: clienteId, etiqueta_id: etiquetaId, tenant_id: tenantId },
-            { onConflict: 'cliente_id,etiqueta_id' }
-          )
-        } else {
-          await supabase.from('clientes_etiquetas')
-            .delete()
-            .eq('cliente_id', clienteId)
-            .eq('etiqueta_id', etiquetaId)
-        }
+      // Si el siguiente nodo es menu_opciones/capturar_dato con prompt, pre-marcar
+      // para que la respuesta del cliente se evalúe directamente sin fase extra
+      const siguienteNodo = nodes.find(n => n.id === siguienteId)
+      const ctxExtra = siguienteNodo?.type === 'menu_opciones' ? { _menu_esperando: siguienteId }
+        : siguienteNodo?.type === 'capturar_dato' ? { _captura_esperando: siguienteId }
+        : {}
+
+      if (modo === 'respuesta') {
+        return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: siguienteId, contexto: ctxExtra }
       }
-      return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+
+      const horas = Number(data.horas ?? 24)
+      const minutos = Number(data.minutos ?? 0)
+      const totalMs = (horas * 3600 + minutos * 60) * 1000
+      const proxima = new Date(Date.now() + totalMs).toISOString()
+      return { tipo: 'pausar', proxima_ejecucion_at: proxima, siguiente_nodo_id: siguienteId, contexto: ctxExtra }
     }
 
-    // ── Subflujo (ejecutar otro flujo anidado) ────────────────────────────────
-    case 'subflujo': {
-      const subflujoId = String(data.subflujo_id ?? '').trim()
-      if (subflujoId && convId) {
-        iniciarFlujoParaConversacion(tenantId, convId, ejec.cliente_id as string | null, 'mensaje_nuevo', subflujoId)
-          .catch(e => console.error('[flow-executor] Error subflujo:', e))
+    // ── Saltar a otro nodo del flujo (goto / loop-back) ──────────────────────
+    case 'ir_a_nodo': {
+      const destinoId = String(data.nodo_destino_id ?? '').trim()
+      if (!destinoId) return { tipo: 'continuar', siguiente_nodo_id: null }
+      const existe = nodes.find(n => n.id === destinoId)
+      if (!existe) return { tipo: 'continuar', siguiente_nodo_id: null }
+      // Siempre pausa: reanuda en el nodo destino al recibir el próximo mensaje.
+      // Esto evita bucles infinitos dentro del mismo ciclo de ejecución.
+      const lejano = new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000).toISOString()
+      return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: destinoId }
+    }
+
+    // ── Capturar dato — opcionalmente pregunta, valida formato, reintenta ────
+    case 'capturar_dato': {
+      const campo = String(data.campo ?? 'nombre')
+      const nombreVar = campo === 'variable' ? String(data.nombre_variable ?? 'dato') : campo
+      const prompt = String(data.prompt ?? '').trim()
+      const formato = String(data.formato_esperado ?? '') as '' | 'texto' | 'email' | 'telefono' | 'numero' | 'fecha'
+      const mensajeReintento = String(data.mensaje_reintento ?? 'No entendí tu respuesta, ¿puedes intentar de nuevo?')
+      const ctx = contexto as Record<string, unknown>
+      const lejano = new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000).toISOString()
+
+      // FASE 1: si tiene prompt propio y aún no se envió/esperó, enviarlo y pausar
+      if (prompt && ctx._captura_esperando !== nodo.id) {
+        if (convId) await enviarMensajeDirecto(supabase, tenantId, convId, interpolarVariables(prompt, contexto), 'texto')
+        return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: nodo.id, contexto: { _captura_esperando: nodo.id } }
       }
+      delete ctx._captura_esperando
+
+      const valor = (contexto.ultimo_mensaje ?? '').trim()
+
+      if (valor && formato && !validarFormato(formato, valor)) {
+        if (convId) await enviarMensajeDirecto(supabase, tenantId, convId, mensajeReintento, 'texto')
+        return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: nodo.id, contexto: { _captura_esperando: nodo.id } }
+      }
+
+      if (valor) {
+        const nuevasVars = { ...(contexto.variables ?? {}), [nombreVar]: valor }
+        const camposDB: Record<string, string> = { nombre: 'nombre', celular: 'celular', email: 'email', cedula: 'cedula' }
+
+        if (clienteId && camposDB[campo]) {
+          await supabase.from('clientes').update({ [camposDB[campo]]: valor }).eq('id', clienteId)
+          const ctxUpdate: Partial<ContextoEjecucion> = { variables: nuevasVars }
+          if (campo === 'nombre') ctxUpdate.nombre_cliente = valor
+          if (campo === 'celular') ctxUpdate.celular_cliente = valor
+          return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), contexto: ctxUpdate }
+        }
+
+        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), contexto: { variables: nuevasVars } }
+      }
+
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
@@ -942,52 +699,150 @@ async function procesarNodo(
       return { tipo: 'continuar', siguiente_nodo_id: otraSalida }
     }
 
-    // ── Saltar a otro nodo del flujo (goto / loop-back) ──────────────────────
-    case 'ir_a_nodo': {
-      const destinoId = String(data.nodo_destino_id ?? '').trim()
-      if (!destinoId) return { tipo: 'continuar', siguiente_nodo_id: null }
-      const existe = nodes.find(n => n.id === destinoId)
-      if (!existe) return { tipo: 'continuar', siguiente_nodo_id: null }
-      // Siempre pausa: reanuda en el nodo destino al recibir el próximo mensaje.
-      // Esto evita bucles infinitos dentro del mismo ciclo de ejecución.
-      const lejano = new Date(Date.now() + 10 * 365 * 24 * 3600 * 1000).toISOString()
-      return { tipo: 'pausar', proxima_ejecucion_at: lejano, siguiente_nodo_id: destinoId }
+    // ── Acción de conversación (fusiona asignar/etapa/etiqueta/nota_interna + nuevos subtipos) ─
+    case 'accion_conversacion': {
+      const subtipo = String(data.subtipo ?? '')
+      const siguiente = getSiguienteNodo(edges, nodo.id)
+
+      switch (subtipo) {
+        case 'transferir_humano': {
+          // Termina la automatización — el cliente queda en manos de un asesor.
+          // La limpieza de clientes.automatizado la hace el manejo de 'fin' en continuarEjecucion.
+          return { tipo: 'fin' }
+        }
+
+        case 'transferir_bot': {
+          const subflujoId = String(data.subflujo_id ?? '').trim()
+          if (subflujoId && convId) {
+            iniciarFlujoParaConversacion(tenantId, convId, clienteId, 'mensaje_nuevo', subflujoId)
+              .catch(e => console.error('[flow-executor] Error transferir_bot:', e))
+          }
+          return { tipo: 'fin' }
+        }
+
+        case 'archivar':
+          if (convId) await supabase.from('conversaciones').update({ estado: 'archivada' }).eq('id', convId)
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+        case 'desarchivar':
+          if (convId) await supabase.from('conversaciones').update({ estado: 'abierta' }).eq('id', convId)
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+        case 'marcar_seguimiento':
+          if (convId) await supabase.from('conversaciones').update({ estado: 'pendiente' }).eq('id', convId)
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+        case 'quitar_seguimiento':
+          if (convId) await supabase.from('conversaciones').update({ estado: 'abierta' }).eq('id', convId)
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+        case 'bloquear_usuario':
+          if (clienteId) await supabase.from('clientes').update({ bot_bloqueado: true }).eq('id', clienteId)
+          return { tipo: 'fin' }
+
+        case 'desbloquear_usuario':
+          if (clienteId) await supabase.from('clientes').update({ bot_bloqueado: false }).eq('id', clienteId)
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+
+        case 'anadir_nota': {
+          const contenido = String(data.contenido ?? '')
+          if (contenido.trim() && convId) {
+            await supabase.from('mensajes').insert({
+              conversacion_id: convId, tenant_id: tenantId, direccion: 'saliente', tipo: 'nota_interna',
+              contenido: interpolarVariables(contenido, contexto), enviado_por: null, estado_envio: 'enviado', leido_por_asesor: false,
+            })
+          }
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+        }
+
+        case 'anadir_etiqueta':
+        case 'quitar_etiqueta': {
+          let etiquetaId = String(data.etiqueta_id ?? '').trim()
+          const nuevaNombre = String(data.nueva_etiqueta_nombre ?? '').trim()
+          const nuevaColor = String(data.nueva_etiqueta_color ?? '#3b82f6')
+
+          if (!etiquetaId && nuevaNombre && clienteId) {
+            const { data: existente } = await supabase.from('etiquetas').select('id')
+              .eq('tenant_id', tenantId).ilike('nombre', nuevaNombre).maybeSingle()
+            if (existente) etiquetaId = existente.id
+            else {
+              const { data: creada } = await supabase.from('etiquetas')
+                .insert({ tenant_id: tenantId, nombre: nuevaNombre, color: nuevaColor }).select('id').single()
+              if (creada) etiquetaId = creada.id
+            }
+          }
+
+          if (etiquetaId && clienteId) {
+            if (subtipo === 'anadir_etiqueta') {
+              await supabase.from('clientes_etiquetas').upsert(
+                { cliente_id: clienteId, etiqueta_id: etiquetaId, tenant_id: tenantId },
+                { onConflict: 'cliente_id,etiqueta_id' }
+              )
+            } else {
+              await supabase.from('clientes_etiquetas').delete().eq('cliente_id', clienteId).eq('etiqueta_id', etiquetaId)
+            }
+          }
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+        }
+
+        case 'cambiar_etapa': {
+          const etapa = String(data.etapa ?? '')
+          if (etapa && clienteId) {
+            const { ETAPA_MAP, ETAPAS } = await import('@/lib/ventas/pipeline')
+            const etapaInfo = ETAPA_MAP[etapa as keyof typeof ETAPA_MAP]
+            if (etapaInfo) {
+              const orden = ETAPAS.findIndex(e => e.id === etapa)
+              await supabase.from('clientes')
+                .update({ etapa_venta: etapa, etapa_venta_orden: orden >= 0 ? orden : 0, en_seguimiento_ventas: true })
+                .eq('id', clienteId)
+              try {
+                await supabase.from('historial_etapas_cliente').insert({
+                  cliente_id: clienteId, tenant_id: tenantId, etapa_nueva: etapa, origen: 'automatizacion',
+                })
+              } catch { /* non-critical */ }
+            }
+          }
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente, contexto: { etapa_actual: etapa } }
+        }
+
+        case 'asignar_admin': {
+          if (!convId) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+          if (data.tipo_asignacion === 'usuario_fijo' && data.asignar_a) {
+            await supabase.from('conversaciones').update({ assigned_to: String(data.asignar_a) }).eq('id', convId)
+            if (clienteId) await supabase.from('clientes').update({ assigned_to: String(data.asignar_a) }).eq('id', clienteId)
+          } else {
+            const { data: asesores } = await supabase
+              .from('usuarios').select('id').eq('tenant_id', tenantId).in('rol', ['admin', 'gerencia', 'asesor'])
+            if (asesores?.length) {
+              let menorCarga = Infinity; let seleccionado = asesores[0].id
+              for (const a of asesores) {
+                const { count } = await supabase.from('conversaciones')
+                  .select('id', { count: 'exact', head: true }).eq('assigned_to', a.id).eq('estado', 'abierta')
+                if ((count ?? 0) < menorCarga) { menorCarga = count ?? 0; seleccionado = a.id }
+              }
+              await supabase.from('conversaciones').update({ assigned_to: seleccionado }).eq('id', convId)
+              if (clienteId) await supabase.from('clientes').update({ assigned_to: seleccionado }).eq('id', clienteId)
+            }
+          }
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+        }
+
+        case 'borrar_datos_usuario':
+          // Borra solo las variables que el flujo capturó (no toca los datos reales del cliente en el CRM).
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente, contexto: { variables: {} } }
+
+        default:
+          return { tipo: 'continuar', siguiente_nodo_id: siguiente }
+      }
     }
 
-    // ── Guardar respuesta del cliente en campo del perfil ─────────────────────
-    case 'capturar_dato': {
-      const campo = String(data.campo ?? 'nombre')
-      const nombreVar = campo === 'variable' ? String(data.nombre_variable ?? 'dato') : campo
-      const valor = (contexto.ultimo_mensaje ?? '').trim()
-
-      if (valor) {
-        const nuevasVars = { ...(contexto.variables ?? {}), [nombreVar]: valor }
-
-        const camposDB: Record<string, string> = {
-          nombre: 'nombre', celular: 'celular', email: 'email', cedula: 'cedula',
-        }
-
-        if (clienteId && camposDB[campo]) {
-          await supabase.from('clientes')
-            .update({ [camposDB[campo]]: valor })
-            .eq('id', clienteId)
-
-          // Sincronizar contexto si es nombre o celular (se usan en interpolación)
-          const ctxUpdate: Partial<ContextoEjecucion> = { variables: nuevasVars }
-          if (campo === 'nombre') ctxUpdate.nombre_cliente = valor
-          if (campo === 'celular') ctxUpdate.celular_cliente = valor
-
-          console.log(`[flow-executor] capturar_dato: campo=${campo} valor="${valor}" cliente=${clienteId}`)
-          return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), contexto: ctxUpdate }
-        }
-
-        return {
-          tipo: 'continuar',
-          siguiente_nodo_id: getSiguienteNodo(edges, nodo.id),
-          contexto: { variables: nuevasVars },
-        }
+    // ── Subflujo (ejecutar otro flujo anidado y seguir) ───────────────────────
+    case 'subflujo': {
+      const subflujoId = String(data.subflujo_id ?? '').trim()
+      if (subflujoId && convId) {
+        iniciarFlujoParaConversacion(tenantId, convId, clienteId, 'mensaje_nuevo', subflujoId)
+          .catch(e => console.error('[flow-executor] Error subflujo:', e))
       }
-
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
     }
 
@@ -997,6 +852,141 @@ async function procesarNodo(
 
     default:
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+  }
+}
+
+// ─── Evalúa una condición simple (reutilizado dentro de ramas AND/OR) ────────
+async function evaluarCondicionSimple(
+  supabase: Supa, tenantId: string, tipo: string, valor: string,
+  contexto: ContextoEjecucion, convId: string | null, clienteId: string | null,
+  agenteId?: string, pregunta?: string,
+): Promise<boolean> {
+  const ultimoMsg = (contexto.ultimo_mensaje ?? '').trim()
+  const ultimoMsgLower = ultimoMsg.toLowerCase()
+  const condicionValor = valor.trim()
+
+  switch (tipo) {
+    case 'canal': {
+      const { data: conv } = await supabase.from('conversaciones').select('canal').eq('id', convId ?? '').maybeSingle()
+      return conv?.canal === condicionValor
+    }
+    case 'etapa':
+      return (contexto.etapa_actual ?? '') === condicionValor
+    case 'etapa_o_posterior': {
+      const { ETAPAS } = await import('@/lib/ventas/pipeline')
+      const ordenActual = ETAPAS.findIndex(e => e.id === contexto.etapa_actual)
+      const ordenObjetivo = ETAPAS.findIndex(e => e.id === condicionValor)
+      return ordenActual >= 0 && ordenObjetivo >= 0 && ordenActual >= ordenObjetivo
+    }
+    case 'aprobacion_pendiente': {
+      if (!clienteId) return false
+      const { data: cl } = await supabase.from('clientes').select('estado_aprobacion_matricula').eq('id', clienteId).maybeSingle()
+      return cl?.estado_aprobacion_matricula !== 'aprobado'
+    }
+    case 'tiene_celular': {
+      if (!clienteId) return false
+      const { data: cl } = await supabase.from('clientes').select('celular').eq('id', clienteId).maybeSingle()
+      return !!(cl?.celular?.trim())
+    }
+    case 'es_nuevo':
+      return contexto.etapa_actual === 'nuevo_mensaje' || contexto.etapa_actual === 'nuevo'
+    case 'respuesta_contiene':
+      return ultimoMsgLower.includes(condicionValor.toLowerCase())
+    case 'palabras_clave': {
+      const palabras = condicionValor.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
+      const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
+      return palabras.some(p => msgTokens.includes(p))
+    }
+    case 'contiene_todas': {
+      const palabras = condicionValor.split(',').map(p => p.trim().toLowerCase()).filter(Boolean)
+      const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
+      return palabras.length > 0 && palabras.every(p => msgTokens.includes(p))
+    }
+    case 'es_exactamente':
+      return ultimoMsgLower === condicionValor.toLowerCase()
+    case 'empieza_con':
+      return ultimoMsgLower.startsWith(condicionValor.toLowerCase())
+    case 'termina_con':
+      return ultimoMsgLower.endsWith(condicionValor.toLowerCase())
+    case 'longitud_mayor': {
+      const n = parseInt(condicionValor) || 10
+      return ultimoMsg.length > n
+    }
+    case 'es_positivo': {
+      const positivos = ['sí','si','claro','dale','ok','bueno','bien','correcto','exacto',
+        'afirmativo','listo','perfecto','va','sip','seee','yep','yes','obvio']
+      const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
+      return positivos.some(p => msgTokens.includes(p))
+    }
+    case 'es_negativo': {
+      const negativos = ['no','nop','nope','tampoco','negativo','nel','nada','negado']
+      const msgTokens = ultimoMsgLower.split(/[\s,;.!?¿¡\-_/\\|()[\]{}]+/).filter(Boolean)
+      return negativos.some(p => msgTokens.includes(p))
+    }
+    case 'es_numero':
+      return /^\s*\d+([.,]\d+)?\s*$/.test(ultimoMsg)
+    case 'horario_laboral': {
+      const ahora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' }))
+      const dia = ahora.getDay()
+      const hora = ahora.getHours()
+      return dia >= 1 && dia <= 6 && hora >= 7 && hora < 18
+    }
+    case 'ia_evalua': {
+      if (!agenteId || !pregunta || !ultimoMsg) return false
+
+      const [{ data: agente }, { data: apiCfg }] = await Promise.all([
+        supabase.from('agentes_ia').select('proveedor,modelo').eq('id', agenteId).maybeSingle(),
+        supabase.from('config_apis_ia').select('openai_key_enc,anthropic_key_enc,openai_modelo_default,anthropic_modelo_default').eq('tenant_id', tenantId).maybeSingle(),
+      ])
+      if (!agente || !apiCfg) return false
+
+      const systemPrompt = 'Eres un evaluador. Lee el mensaje del cliente y responde SOLO con "SÍ" o "NO". Sin explicaciones, sin puntuación extra, solo SÍ o NO.'
+      const userPrompt = `Mensaje del cliente: "${ultimoMsg}"\n\nPregunta: ${pregunta}\n\nResponde SÍ o NO:`
+      let respuestaIA = ''
+
+      if (agente.proveedor === 'openai' && apiCfg.openai_key_enc) {
+        let key = apiCfg.openai_key_enc
+        try { key = (await import('@/lib/crypto')).decrypt(key) } catch { /* dev */ }
+        const modelo = agente.modelo || apiCfg.openai_modelo_default || 'gpt-4o-mini'
+        const r = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: modelo, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], max_tokens: 5, temperature: 0 }),
+        })
+        if (r.ok) {
+          const d = await r.json() as { choices?: [{ message?: { content?: string } }] }
+          respuestaIA = d.choices?.[0]?.message?.content?.trim() ?? ''
+        }
+      } else if (agente.proveedor === 'anthropic' && apiCfg.anthropic_key_enc) {
+        let key = apiCfg.anthropic_key_enc
+        try { key = (await import('@/lib/crypto')).decrypt(key) } catch { /* dev */ }
+        const modelo = agente.modelo || apiCfg.anthropic_modelo_default || 'claude-haiku-4-5-20251001'
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: modelo, max_tokens: 5, system: systemPrompt, messages: [{ role: 'user', content: userPrompt }] }),
+        })
+        if (r.ok) {
+          const d = await r.json() as { content?: [{ text?: string }] }
+          respuestaIA = d.content?.[0]?.text?.trim() ?? ''
+        }
+      }
+      return /^s[íi]/i.test(respuestaIA) || /^yes/i.test(respuestaIA)
+    }
+    default:
+      return false
+  }
+}
+
+// ─── Valida el formato esperado de un dato capturado ─────────────────────────
+function validarFormato(formato: 'texto' | 'email' | 'telefono' | 'numero' | 'fecha', valor: string): boolean {
+  switch (formato) {
+    case 'email':    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor)
+    case 'telefono': return /^\+?\d[\d\s-]{6,}$/.test(valor)
+    case 'numero':   return /^\s*-?\d+([.,]\d+)?\s*$/.test(valor)
+    case 'fecha':    return /^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}$/.test(valor) || /^\d{4}-\d{2}-\d{2}$/.test(valor)
+    case 'texto':    return valor.trim().length > 0
+    default:         return true
   }
 }
 
