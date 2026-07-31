@@ -245,6 +245,8 @@ export async function continuarEjecucion(supabase: Supa, ejecucionId: string) {
 
     const resultado = await procesarNodo(supabase, nodo, ejec, contexto, tenantId, nodes, edges)
 
+    await registrarPaso(supabase, ejecucionId, tenantId, nodo.id, nodo.type ?? null, resultado)
+
     if (resultado.tipo === 'pausar') {
       if (resultado.contexto) contexto = { ...contexto, ...(resultado.contexto as Partial<ContextoEjecucion>) }
       await supabase.from('flujo_ejecuciones').update({
@@ -325,7 +327,7 @@ export async function procesarEjecucionesPendientes(tenantId?: string) {
 
 // ─── Procesador de nodos individuales ────────────────────────────────────────
 type ResultadoNodo =
-  | { tipo: 'continuar'; siguiente_nodo_id: string | null; contexto?: Partial<ContextoEjecucion> }
+  | { tipo: 'continuar'; siguiente_nodo_id: string | null; contexto?: Partial<ContextoEjecucion>; advertencia?: string }
   | { tipo: 'pausar'; proxima_ejecucion_at: string; siguiente_nodo_id: string | null; contexto?: Partial<Record<string, unknown>> }
   | { tipo: 'fin' }
   | { tipo: 'error'; error: string }
@@ -695,8 +697,9 @@ async function procesarNodo(
           contexto: { respuestas: { ...contexto.respuestas, [agenteId]: respuesta ?? '' } },
         }
       } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Error desconocido'
         console.error('[flow-executor] Error agente IA:', e)
-        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), advertencia: msg }
       }
     }
 
@@ -726,7 +729,7 @@ async function procesarNodo(
 
         if (!resultado.ok) {
           console.error(`[flow-executor] accion_ia (${uso}) sin resultado: ${resultado.error}`)
-          return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+          return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), advertencia: resultado.error ?? 'Error desconocido' }
         }
 
         const salida = resultado.texto ?? resultado.imagenUrl ?? resultado.audioBase64 ?? ''
@@ -743,8 +746,9 @@ async function procesarNodo(
           },
         }
       } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Error desconocido'
         console.error('[flow-executor] Error accion_ia:', e)
-        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), advertencia: msg }
       }
     }
 
@@ -778,7 +782,9 @@ async function procesarNodo(
           }
         }
       } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Error desconocido'
         console.error('[flow-executor] Error plantilla:', e)
+        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), advertencia: msg }
       }
 
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
@@ -805,7 +811,9 @@ async function procesarNodo(
             )
           }
         } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Error desconocido'
           console.error('[flow-executor] Error media:', e)
+          return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), advertencia: msg }
         }
       }
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
@@ -1344,6 +1352,28 @@ function interpolarVariables(texto: string, contexto: ContextoEjecucion): string
     .replace(/\{\{etapa\}\}/gi, contexto.etapa_actual ?? '')
     .replace(/\{\{ultimo_mensaje\}\}/gi, contexto.ultimo_mensaje ?? '')
     .replace(/\{\{variables\.(\w+)\}\}/gi, (_, k) => contexto.variables?.[k] ?? '')
+    // Sintaxis corta para variables guardadas por nodos (Acción IA, Guardar respuesta):
+    // {nombre_variable} — solo si esa variable existe, para no comerse llaves de otro texto.
+    .replace(/\{(\w+)\}/g, (match, k) => (contexto.variables && k in contexto.variables) ? contexto.variables[k] : match)
+}
+
+// ─── Registrar el paso de un nodo en el historial de la ejecución ─────────────
+async function registrarPaso(
+  supabase: Supa, ejecucionId: string, tenantId: string,
+  nodoId: string, nodoTipo: string | null, resultado: ResultadoNodo,
+) {
+  const resultadoLog = resultado.tipo === 'continuar'
+    ? (resultado.advertencia ? 'advertencia' : 'ok')
+    : resultado.tipo
+  const detalle = resultado.tipo === 'continuar' ? resultado.advertencia ?? null
+    : resultado.tipo === 'error' ? resultado.error
+    : null
+
+  await supabase.from('flujo_ejecucion_pasos').insert({
+    ejecucion_id: ejecucionId, tenant_id: tenantId,
+    nodo_id: nodoId, nodo_tipo: nodoTipo,
+    resultado: resultadoLog, detalle,
+  })
 }
 
 // ─── Marcar ejecución como error ──────────────────────────────────────────────

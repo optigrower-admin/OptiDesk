@@ -222,7 +222,7 @@ const MensajeNode = ({ id, data }: NodeProps) => {
             rows={3}
             className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-400 resize-none font-mono" />
         )}
-        <p className="text-[10px] text-gray-400">Variables: {'{{nombre}} {{celular}} {{etapa}} {{canal}} {{ultimo_mensaje}}'}</p>
+        <p className="text-[10px] text-gray-400">Variables: {'{{nombre}} {{celular}} {{etapa}} {{canal}} {{ultimo_mensaje}}'}, o una guardada: {'{mi_variable}'}</p>
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-green-400 !w-3 !h-3" />
     </div>
@@ -638,7 +638,7 @@ const AccionIANode = ({ id, data }: NodeProps) => {
         {!!proveedor && !!accion && (
           <>
             <textarea defaultValue={data.prompt ?? ''} onChange={e => upd('prompt', e.target.value)}
-              placeholder={ACCION_IA_PLACEHOLDER[accion] ?? 'Prompt — usa {{ultimo_mensaje}}, {{nombre}}, {{variables.x}}...'}
+              placeholder={ACCION_IA_PLACEHOLDER[accion] ?? 'Prompt — usa {{ultimo_mensaje}}, {{nombre}}, o el nombre de una variable guardada: {mi_variable}...'}
               rows={3}
               className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400 resize-none font-mono" />
             <div>

@@ -24,6 +24,26 @@ type Conversacion = {
   clientes: { id: string; nombre: string | null; automatizado?: boolean }[] | null
 }
 
+type EjecucionFlujo = {
+  id: string
+  estado: 'activo' | 'pausado' | 'completado' | 'error' | 'cancelado'
+  nodo_actual_id: string | null
+  pasos_ejecutados: number
+  ultimo_error: string | null
+  created_at: string
+  updated_at: string
+  flujos_automatizacion: { nombre: string } | null
+}
+
+type PasoFlujo = {
+  id: string
+  nodo_id: string
+  nodo_tipo: string | null
+  resultado: 'ok' | 'advertencia' | 'error' | 'pausar' | 'fin'
+  detalle: string | null
+  created_at: string
+}
+
 type Mensaje = {
   id: string
   conversacion_id: string
@@ -201,6 +221,13 @@ export default function BandejaPage() {
   const [flujoModalOpen, setFlujoModalOpen] = useState(false)
   const [flujos, setFlujos]                 = useState<{ id: string; nombre: string; trigger_tipo: string }[]>([])
   const [iniciandoFlujo, setIniciandoFlujo] = useState(false)
+
+  // Ver flujo ejecutado (historial de pasos)
+  const [flujoEjecutadoOpen, setFlujoEjecutadoOpen] = useState(false)
+  const [ejecucionesConv, setEjecucionesConv] = useState<EjecucionFlujo[]>([])
+  const [pasosPorEjecucion, setPasosPorEjecucion] = useState<Record<string, PasoFlujo[]>>({})
+  const [cargandoFlujoEjecutado, setCargandoFlujoEjecutado] = useState(false)
+  const [ejecucionExpandida, setEjecucionExpandida] = useState<string | null>(null)
 
   // Eliminar conversación
   const [confirmDeleteConv, setConfirmDeleteConv]   = useState(false)
@@ -659,6 +686,33 @@ export default function BandejaPage() {
       toast(e instanceof Error ? e.message : 'Error al iniciar flujo', false)
     } finally {
       setIniciandoFlujo(false)
+    }
+  }
+
+  const verFlujoEjecutado = async () => {
+    if (!selectedConv) return
+    setFlujoEjecutadoOpen(true)
+    setCargandoFlujoEjecutado(true)
+    const { data } = await supabase
+      .from('flujo_ejecuciones')
+      .select('id, estado, nodo_actual_id, pasos_ejecutados, ultimo_error, created_at, updated_at, flujos_automatizacion(nombre)')
+      .eq('conversacion_id', selectedConv.id)
+      .order('created_at', { ascending: false })
+      .limit(10)
+    setEjecucionesConv((data as unknown as EjecucionFlujo[]) ?? [])
+    setCargandoFlujoEjecutado(false)
+  }
+
+  const verPasosEjecucion = async (ejecucionId: string) => {
+    if (ejecucionExpandida === ejecucionId) { setEjecucionExpandida(null); return }
+    setEjecucionExpandida(ejecucionId)
+    if (!pasosPorEjecucion[ejecucionId]) {
+      const { data } = await supabase
+        .from('flujo_ejecucion_pasos')
+        .select('id, nodo_id, nodo_tipo, resultado, detalle, created_at')
+        .eq('ejecucion_id', ejecucionId)
+        .order('created_at', { ascending: true })
+      setPasosPorEjecucion(p => ({ ...p, [ejecucionId]: (data as PasoFlujo[]) ?? [] }))
     }
   }
 
@@ -1458,6 +1512,16 @@ export default function BandejaPage() {
                     + Agregar / Vincular a Seguimiento
                   </button>
                 </div>
+
+                {/* Ver flujo ejecutado */}
+                <div className="pt-3 border-t border-gray-100">
+                  <p className="text-xs text-gray-400 mb-2">Automatización</p>
+                  <button
+                    onClick={verFlujoEjecutado}
+                    className="w-full py-2 px-3 border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold transition-colors">
+                    🔍 Ver flujo ejecutado
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1506,6 +1570,80 @@ export default function BandejaPage() {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Modal ver flujo ejecutado */}
+          {flujoEjecutadoOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
+                  <h2 className="font-bold text-gray-900">🔍 Flujo ejecutado</h2>
+                  <button onClick={() => setFlujoEjecutadoOpen(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none">×</button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5">
+                  {cargandoFlujoEjecutado ? (
+                    <div className="flex justify-center py-8">
+                      <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : ejecucionesConv.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-8">Ningún flujo se ha ejecutado en esta conversación.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {ejecucionesConv.map(ej => {
+                        const estadoCls: Record<string, string> = {
+                          activo: 'bg-blue-100 text-blue-700', pausado: 'bg-amber-100 text-amber-700',
+                          completado: 'bg-green-100 text-green-700', error: 'bg-red-100 text-red-700',
+                          cancelado: 'bg-gray-200 text-gray-500',
+                        }
+                        const pasos = pasosPorEjecucion[ej.id]
+                        return (
+                          <div key={ej.id} className="border border-gray-200 rounded-xl p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-gray-800">{ej.flujos_automatizacion?.nombre ?? 'Flujo'}</p>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${estadoCls[ej.estado] ?? 'bg-gray-100 text-gray-500'}`}>{ej.estado}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-400 mt-1">
+                              {ej.pasos_ejecutados} paso{ej.pasos_ejecutados === 1 ? '' : 's'} · {new Date(ej.updated_at).toLocaleString('es-CO')}
+                            </p>
+                            {ej.ultimo_error && (
+                              <p className="text-xs text-red-600 mt-1.5 bg-red-50 border border-red-100 rounded-lg px-2 py-1.5">⚠ {ej.ultimo_error}</p>
+                            )}
+                            <button onClick={() => verPasosEjecucion(ej.id)} className="text-xs text-blue-700 font-semibold hover:text-blue-900 mt-2">
+                              {ejecucionExpandida === ej.id ? 'Ocultar pasos' : 'Ver pasos'}
+                            </button>
+                            {ejecucionExpandida === ej.id && (
+                              <div className="mt-2 space-y-1.5 border-t border-gray-100 pt-2">
+                                {!pasos ? (
+                                  <p className="text-xs text-gray-400">Cargando...</p>
+                                ) : pasos.length === 0 ? (
+                                  <p className="text-xs text-gray-400">Sin pasos registrados.</p>
+                                ) : (
+                                  pasos.map(p => {
+                                    const badgeCls: Record<string, string> = {
+                                      ok: 'bg-green-100 text-green-700', advertencia: 'bg-amber-100 text-amber-700',
+                                      error: 'bg-red-100 text-red-700', pausar: 'bg-blue-100 text-blue-700', fin: 'bg-gray-200 text-gray-600',
+                                    }
+                                    return (
+                                      <div key={p.id} className="flex items-start gap-2 text-xs">
+                                        <span className={`px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${badgeCls[p.resultado]}`}>{p.resultado}</span>
+                                        <div className="min-w-0">
+                                          <p className="text-gray-700 font-mono truncate">{p.nodo_tipo ?? p.nodo_id}</p>
+                                          {p.detalle && <p className="text-red-600">{p.detalle}</p>}
+                                        </div>
+                                      </div>
+                                    )
+                                  })
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
