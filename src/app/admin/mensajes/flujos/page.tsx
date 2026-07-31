@@ -45,6 +45,8 @@ type Flujo = {
   updated_at: string
 }
 
+type MensajePrueba = { id: string; direccion: 'entrante' | 'saliente'; contenido: string | null; tipo: string; created_at: string }
+
 type Usuario = { id: string; nombre: string }
 type Plantilla = { id: string; nombre: string; meta_status: string; meta_template_name: string | null }
 type AgenteIA = { id: string; nombre: string; proveedor: string }
@@ -1260,6 +1262,14 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
   const [showEjec,    setShowEjec]    = useState(false)
   const [ejecs,       setEjecs]       = useState<unknown[]>([])
 
+  // Chat de prueba
+  const [showChatPrueba, setShowChatPrueba] = useState(false)
+  const [mensajesPrueba, setMensajesPrueba] = useState<MensajePrueba[]>([])
+  const [inputPrueba, setInputPrueba]       = useState('')
+  const [enviandoPrueba, setEnviandoPrueba] = useState(false)
+  const [cargandoChatPrueba, setCargandoChatPrueba] = useState(false)
+  const [estadoEjecucionPrueba, setEstadoEjecucionPrueba] = useState<{ estado: string; ultimo_error: string | null; proxima_ejecucion_at: string | null } | null>(null)
+
   // Inyectar datos del contexto en los nodos cuando cambia ctx
   useEffect(() => {
     if (!ctx.equipo.length && !ctx.plantillas.length && !ctx.agentes.length) return
@@ -1343,6 +1353,63 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
     setEjecs(data ?? [])
   }
 
+  const abrirChatPrueba = async () => {
+    if (!flujo) return
+    setShowChatPrueba(true)
+    setCargandoChatPrueba(true)
+    try {
+      const r = await fetch('/api/admin/flujos/chat-prueba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flujo_id: flujo.id, accion: 'historial' }),
+      })
+      const result = await r.json()
+      setMensajesPrueba(result.mensajes ?? [])
+    } finally {
+      setCargandoChatPrueba(false)
+    }
+  }
+
+  const enviarMensajePrueba = async () => {
+    if (!flujo || !inputPrueba.trim() || enviandoPrueba) return
+    const texto = inputPrueba.trim()
+    setInputPrueba('')
+    setEnviandoPrueba(true)
+    setMensajesPrueba(p => [...p, { id: `tmp-${Date.now()}`, direccion: 'entrante', contenido: texto, tipo: 'texto', created_at: new Date().toISOString() }])
+    try {
+      const r = await fetch('/api/admin/flujos/chat-prueba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flujo_id: flujo.id, accion: 'mensaje', texto }),
+      })
+      const result = await r.json()
+      if (!r.ok) { alert(result.error ?? 'Error al probar el flujo'); return }
+      setMensajesPrueba(p => [...p, ...(result.respuestas ?? [])])
+      setEstadoEjecucionPrueba(result.estado_ejecucion ?? null)
+    } catch {
+      alert('No se pudo conectar para probar el flujo')
+    } finally {
+      setEnviandoPrueba(false)
+    }
+  }
+
+  const reiniciarChatPrueba = async () => {
+    if (!flujo) return
+    if (!confirm('¿Reiniciar la conversación de prueba desde cero?')) return
+    setCargandoChatPrueba(true)
+    try {
+      await fetch('/api/admin/flujos/chat-prueba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flujo_id: flujo.id, accion: 'reiniciar' }),
+      })
+      setMensajesPrueba([])
+      setEstadoEjecucionPrueba(null)
+    } finally {
+      setCargandoChatPrueba(false)
+    }
+  }
+
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 0px)' }}>
       {/* Toolbar */}
@@ -1363,6 +1430,11 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
         {flujo && (
           <button onClick={cargarEjecuciones} className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50 transition-colors">
             📊 Ejecuciones
+          </button>
+        )}
+        {flujo && (
+          <button onClick={abrirChatPrueba} className="px-3 py-1.5 border border-fuchsia-200 bg-fuchsia-50 rounded-lg text-xs text-fuchsia-700 hover:bg-fuchsia-100 transition-colors">
+            💬 Probar flujo
           </button>
         )}
         <button onClick={guardar} disabled={saving}
@@ -1474,6 +1546,72 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
                 )
               })}
               {ejecs.length === 0 && <p className="text-center text-gray-400 py-8">Sin ejecuciones aún</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showChatPrueba && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowChatPrueba(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm h-[600px] max-h-[85vh] flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm">💬 Chat de prueba</h3>
+                <p className="text-[10px] text-gray-400">Escribe como si fueras el cliente — no se envía nada real por WhatsApp.</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={reiniciarChatPrueba} title="Reiniciar desde cero" className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50">
+                  🗑
+                </button>
+                <button onClick={() => setShowChatPrueba(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">×</button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-gray-50">
+              {cargandoChatPrueba ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-5 h-5 border-2 border-fuchsia-600 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : mensajesPrueba.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-8">Escribe un mensaje abajo para empezar a probar el flujo.</p>
+              ) : (
+                mensajesPrueba.map(m => (
+                  <div key={m.id} className={`flex ${m.direccion === 'entrante' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] rounded-xl px-3 py-2 text-xs ${
+                      m.direccion === 'entrante' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-800'
+                    }`}>
+                      {m.tipo === 'nota_interna' && <p className="text-[9px] opacity-70 mb-0.5">📝 nota interna</p>}
+                      <p className="whitespace-pre-wrap">{m.contenido || '(sin contenido)'}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {estadoEjecucionPrueba?.proxima_ejecucion_at && (
+              <p className="text-[10px] text-amber-600 bg-amber-50 border-t border-amber-100 px-3 py-1.5">
+                ⏸ El flujo está en pausa (esperando tiempo o respuesta) hasta {new Date(estadoEjecucionPrueba.proxima_ejecucion_at).toLocaleString('es-CO')}.
+              </p>
+            )}
+            {estadoEjecucionPrueba?.ultimo_error && (
+              <p className="text-[10px] text-red-600 bg-red-50 border-t border-red-100 px-3 py-1.5">
+                ⚠ {estadoEjecucionPrueba.ultimo_error}
+              </p>
+            )}
+
+            <div className="p-3 border-t border-gray-100 flex-shrink-0 flex items-center gap-2">
+              <input
+                value={inputPrueba}
+                onChange={e => setInputPrueba(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') enviarMensajePrueba() }}
+                placeholder="Escribe como el cliente..."
+                disabled={enviandoPrueba}
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-400"
+              />
+              <button onClick={enviarMensajePrueba} disabled={!inputPrueba.trim() || enviandoPrueba}
+                className="px-3 py-2 bg-fuchsia-600 hover:bg-fuchsia-700 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors">
+                {enviandoPrueba ? '...' : 'Enviar'}
+              </button>
             </div>
           </div>
         </div>
