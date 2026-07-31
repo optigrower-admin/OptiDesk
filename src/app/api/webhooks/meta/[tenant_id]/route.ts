@@ -646,4 +646,9 @@ async function manejarStatusPlantilla(
     })
     .eq('tenant_id', tenantId)
     .eq('meta_template_name', templateName)
+
+  if (metaStatus === 'aprobada' || metaStatus === 'rechazada') {
+    const { dispararWebhook } = await import('@/lib/webhooks/disparar')
+    dispararWebhook(tenantId, `plantilla.${metaStatus}`, { meta_template_name: templateName, motivo }).catch(() => {})
+  }
 }

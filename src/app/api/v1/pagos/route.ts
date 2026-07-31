@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { conApiKey } from '@/lib/apiPublica/middleware'
+import { dispararWebhook } from '@/lib/webhooks/disparar'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    dispararWebhook(ctx.tenantId, 'pago.recibido', { id: data.id, cliente_id: data.cliente_id, monto: data.monto }).catch(() => {})
     return NextResponse.json({ data }, { status: 201 })
   })
 }

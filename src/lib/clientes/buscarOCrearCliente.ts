@@ -157,5 +157,9 @@ export async function buscarOCrearCliente(params: BuscarCrearParams) {
 
   if (error) throw new Error(error.message)
 
+  import('@/lib/webhooks/disparar').then(({ dispararWebhook }) =>
+    dispararWebhook(tenantId, 'lead.creado', { id: creado?.id, nombre: creado?.nombre, celular: creado?.celular, canal }),
+  ).catch(() => {})
+
   return { cliente: creado, creado: true }
 }

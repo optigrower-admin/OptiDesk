@@ -269,6 +269,11 @@ async function procesarMensajeIndividual(
     updated_at: now,
   }).eq('id', conv.id)
 
+  if (esNueva) {
+    const { dispararWebhook } = await import('@/lib/webhooks/disparar')
+    dispararWebhook(tenantId, 'conversacion.nueva', { id: conv.id, canal, cliente_id: resolvedClienteId }).catch(() => {})
+  }
+
   await verificarLimiteDiario(supabase, tenantId)
 
   // Iniciar/continuar flujo de automatización
@@ -556,4 +561,9 @@ async function manejarStatusPlantilla(
     meta_rechazo_motivo: metaStatus === 'rechazada' ? motivo : null,
     updated_at: new Date().toISOString(),
   }).eq('tenant_id', tenantId).eq('meta_template_name', templateName)
+
+  if (metaStatus === 'aprobada' || metaStatus === 'rechazada') {
+    const { dispararWebhook } = await import('@/lib/webhooks/disparar')
+    dispararWebhook(tenantId, `plantilla.${metaStatus}`, { meta_template_name: templateName, motivo }).catch(() => {})
+  }
 }
