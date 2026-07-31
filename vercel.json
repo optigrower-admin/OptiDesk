@@ -22,7 +22,7 @@
     },
     {
       "path": "/api/cron/webhooks-reintentar",
-      "schedule": "0 * * * *"
+      "schedule": "50 4 * * *"
     }
   ]
 }
