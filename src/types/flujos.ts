@@ -13,6 +13,7 @@ export type TipoNodo =
   | 'etapa'
   | 'condicion'
   | 'agente_ia'
+  | 'accion_ia'
   | 'plantilla'
   | 'media'
   | 'nota_interna'

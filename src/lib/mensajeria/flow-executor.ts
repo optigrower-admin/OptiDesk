@@ -700,6 +700,45 @@ async function procesarNodo(
       }
     }
 
+    // ── Acción IA (integraciones_ia — Módulo C) ───────────────────────────────
+    case 'accion_ia': {
+      const uso = String(data.accion ?? '')
+      const promptTemplate = String(data.prompt ?? '')
+      const variableSalida = String(data.variable_salida ?? '')
+
+      if (!uso || !promptTemplate) {
+        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+      }
+
+      try {
+        const { llamarIA } = await import('@/lib/ia/llamarIA')
+        const promptFinal = interpolarVariables(promptTemplate, contexto)
+        const resultado = await llamarIA(tenantId, uso, promptFinal)
+
+        if (!resultado.ok) {
+          console.error(`[flow-executor] accion_ia (${uso}) sin resultado: ${resultado.error}`)
+          return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+        }
+
+        const salida = resultado.texto ?? resultado.audioBase64 ?? ''
+        const nuevasVars = variableSalida
+          ? { ...(contexto.variables ?? {}), [variableSalida]: salida }
+          : contexto.variables
+
+        return {
+          tipo: 'continuar',
+          siguiente_nodo_id: getSiguienteNodo(edges, nodo.id),
+          contexto: {
+            variables: nuevasVars,
+            respuestas: { ...contexto.respuestas, [nodo.id]: salida },
+          },
+        }
+      } catch (e) {
+        console.error('[flow-executor] Error accion_ia:', e)
+        return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+      }
+    }
+
     // ── Enviar plantilla Meta aprobada ────────────────────────────────────────
     case 'plantilla': {
       const plantillaId = String(data.plantilla_id ?? '')

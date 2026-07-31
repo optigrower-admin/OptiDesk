@@ -49,6 +49,15 @@ type Usuario = { id: string; nombre: string }
 type Plantilla = { id: string; nombre: string; meta_status: string; meta_template_name: string | null }
 type AgenteIA = { id: string; nombre: string; proveedor: string }
 type Etiqueta = { id: string; nombre: string; color: string }
+type IntegracionIA = { id: string; proveedor: string; activo: boolean; uso_asignado: string[] }
+
+const ACCIONES_IA = [
+  { key: 'resumenes_conversacion', label: 'Generar resumen' },
+  { key: 'sugerencias_respuesta', label: 'Generar respuesta sugerida' },
+  { key: 'clasificacion_intencion', label: 'Clasificar intención del mensaje' },
+  { key: 'transcripcion_audio', label: 'Transcribir audio a texto' },
+  { key: 'generar_audio', label: 'Generar audio desde texto (ElevenLabs)' },
+] as const
 
 // ─── Edge personalizado con botón de eliminar ─────────────────────────────────
 
@@ -495,6 +504,50 @@ const AgenteIANode = ({ id, data }: NodeProps) => {
         )}
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-indigo-400 !w-3 !h-3" />
+    </div>
+  )
+}
+
+// ─── NODO: Acción IA (integraciones_ia — Módulo C) ────────────────────────────
+const AccionIANode = ({ id, data }: NodeProps) => {
+  const { setNodes, setEdges } = useReactFlow()
+  const upd = (k: string, v: string) =>
+    setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
+  const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
+  const integraciones: IntegracionIA[] = (data.integracionesIA ?? []).filter((i: IntegracionIA) => i.activo)
+  const accion = data.accion ?? ''
+  const integracionesParaAccion = integraciones.filter(i => i.uso_asignado.includes(accion))
+  const sinIntegracion = !!accion && integracionesParaAccion.length === 0
+
+  return (
+    <div className={`${nodeBaseClass} border-fuchsia-400`}>
+      <Handle type="target" position={Position.Top} className="!bg-fuchsia-400 !w-3 !h-3" />
+      <NodeHeader color="bg-fuchsia-600" icon="✨" label="Acción IA" onDelete={eliminar} />
+      <div className="px-3 py-2.5 space-y-2">
+        <label className="block text-xs text-gray-500 font-medium">Acción</label>
+        <select defaultValue={accion} onChange={e => upd('accion', e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400">
+          <option value="">Seleccionar acción...</option>
+          {ACCIONES_IA.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+        </select>
+        <textarea defaultValue={data.prompt ?? ''} onChange={e => upd('prompt', e.target.value)}
+          placeholder="Prompt — usa {{ultimo_mensaje}}, {{nombre}}, {{variables.x}}..."
+          rows={3}
+          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400 resize-none font-mono" />
+        <div>
+          <label className="block text-xs text-gray-500 font-medium mb-1">Guardar resultado en variable</label>
+          <input defaultValue={data.variable_salida ?? ''} onChange={e => upd('variable_salida', e.target.value)}
+            placeholder="ej: resumen_ia"
+            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
+        </div>
+        {sinIntegracion && (
+          <p className="text-[10px] text-amber-600">⚠ Integración no conectada para esta acción. Conéctala en Integraciones → Integraciones IA.</p>
+        )}
+        {!integraciones.length && (
+          <p className="text-[10px] text-amber-600">⚠ Sin integraciones IA activas en este tenant.</p>
+        )}
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!bg-fuchsia-400 !w-3 !h-3" />
     </div>
   )
 }
@@ -956,6 +1009,7 @@ const NODE_TYPES: NodeTypes = {
   etapa:         EtapaNode,
   condicion:     CondicionNode,
   agente_ia:     AgenteIANode,
+  accion_ia:     AccionIANode,
   plantilla:     PlantillaNode,
   media:         MediaNode,
   nota_interna:  NotaInternaNode,
@@ -972,6 +1026,7 @@ const NODE_TYPES: NodeTypes = {
 const PALETTE_ITEMS = [
   { type: 'mensaje',       icon: '💬', label: 'Enviar mensaje',    color: 'border-green-300 bg-green-50 hover:bg-green-100',    categoria: 'mensajeria' },
   { type: 'agente_ia',    icon: '🤖', label: 'Agente IA',         color: 'border-indigo-300 bg-indigo-50 hover:bg-indigo-100',  categoria: 'mensajeria' },
+  { type: 'accion_ia',    icon: '✨', label: 'Acción IA',         color: 'border-fuchsia-300 bg-fuchsia-50 hover:bg-fuchsia-100', categoria: 'ambos' },
   { type: 'plantilla',    icon: '📋', label: 'Plantilla Meta',    color: 'border-teal-300 bg-teal-50 hover:bg-teal-100',        categoria: 'mensajeria' },
   { type: 'media',        icon: '📎', label: 'Archivo/Media',     color: 'border-pink-300 bg-pink-50 hover:bg-pink-100',        categoria: 'mensajeria' },
   { type: 'condicion',    icon: '🔀', label: 'Condición',         color: 'border-yellow-300 bg-yellow-50 hover:bg-yellow-100',  categoria: 'mensajeria' },
@@ -988,7 +1043,7 @@ const PALETTE_ITEMS = [
   { type: 'fin',          icon: '🏁', label: 'Fin del flujo',     color: 'border-gray-300 bg-gray-50 hover:bg-gray-100',       categoria: 'ambos' },
 ]
 
-function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[]; etiquetas: Etiqueta[] }): Record<string, unknown> {
+function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[]; etiquetas: Etiqueta[]; integracionesIA: IntegracionIA[] }): Record<string, unknown> {
   switch (type) {
     case 'trigger':       return { trigger_tipo: 'mensaje_nuevo' }
     case 'mensaje':       return { contenido: '', usar_plantilla: false, plantillas: ctx.plantillas }
@@ -997,6 +1052,7 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
     case 'etapa':         return { etapa: 'nuevo' }
     case 'condicion':     return { condicion_tipo: 'respuesta_contiene', condicion_valor: '' }
     case 'agente_ia':     return { agente_id: '', prompt_contexto: '', incluir_historial: true, agentes: ctx.agentes }
+    case 'accion_ia':     return { accion: '', prompt: '', variable_salida: '', integracionesIA: ctx.integracionesIA }
     case 'plantilla':     return { plantilla_id: '', plantillas: ctx.plantillas }
     case 'media':         return { media_tipo: 'imagen', media_url: '', media_caption: '' }
     case 'nota_interna':  return { contenido: '' }
@@ -1017,7 +1073,7 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
 
 // ─── Editor de flujo (canvas principal) ──────────────────────────────────────
 
-type EditorCtx = { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[]; etiquetas: Etiqueta[] }
+type EditorCtx = { equipo: Usuario[]; plantillas: Plantilla[]; agentes: AgenteIA[]; flujos: { id: string; nombre: string }[]; etiquetas: Etiqueta[]; integracionesIA: IntegracionIA[] }
 
 type EditorProps = {
   flujo: Flujo | null
@@ -1064,6 +1120,7 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
       if (n.type === 'plantilla') return { ...n, data: { ...n.data, plantillas: ctx.plantillas } }
       if (n.type === 'agente_ia') return { ...n, data: { ...n.data, agentes: ctx.agentes } }
       if (n.type === 'subflujo')  return { ...n, data: { ...n.data, flujos_disponibles: ctx.flujos } }
+      if (n.type === 'accion_ia') return { ...n, data: { ...n.data, integracionesIA: ctx.integracionesIA } }
       return n
     }))
   }, [ctx])
@@ -1299,7 +1356,7 @@ export default function FlujoPage() {
   const supabase = createClient()
 
   const [flujos,   setFlujos]   = useState<Flujo[]>([])
-  const [ctx,      setCtx]      = useState<EditorCtx>({ equipo: [], plantillas: [], agentes: [], flujos: [], etiquetas: [] })
+  const [ctx,      setCtx]      = useState<EditorCtx>({ equipo: [], plantillas: [], agentes: [], flujos: [], etiquetas: [], integracionesIA: [] })
   const [loading,  setLoading]  = useState(true)
   const [editando, setEditando] = useState<Flujo | null | 'new'>(null)
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
@@ -1327,13 +1384,15 @@ export default function FlujoPage() {
       supabase.from('agentes_ia').select('id, nombre, proveedor').eq('tenant_id', profile.tenant_id).eq('activo', true),
       supabase.from('flujos_automatizacion').select('id, nombre').eq('tenant_id', profile.tenant_id),
       supabase.from('etiquetas_venta').select('id, nombre, color').eq('tenant_id', profile.tenant_id).order('nombre'),
-    ]).then(([{ data: eq }, { data: pl }, { data: ag }, { data: fl }, { data: et }]) => {
+      supabase.from('integraciones_ia').select('id, proveedor, activo, uso_asignado').eq('tenant_id', profile.tenant_id),
+    ]).then(([{ data: eq }, { data: pl }, { data: ag }, { data: fl }, { data: et }, { data: ia }]) => {
       setCtx({
         equipo:     (eq as Usuario[]) ?? [],
         plantillas: (pl as Plantilla[]) ?? [],
         agentes:    (ag as AgenteIA[]) ?? [],
         flujos:     ((fl as { id: string; nombre: string }[]) ?? []),
         etiquetas:  ((et as Etiqueta[]) ?? []),
+        integracionesIA: (ia as IntegracionIA[]) ?? [],
       })
     })
   }, [profile?.tenant_id])
