@@ -715,9 +715,13 @@ async function procesarNodo(
         const promptFinal = interpolarVariables(promptTemplate, contexto)
         const proveedor = data.proveedor ? String(data.proveedor) : undefined
         const modelo = data.modelo ? String(data.modelo) : undefined
+        const temperatura = data.temperatura !== undefined ? parseFloat(String(data.temperatura)) : undefined
+        const maxTokens = data.max_tokens !== undefined ? parseInt(String(data.max_tokens), 10) : undefined
         const resultado = await llamarIA(tenantId, uso, promptFinal, {
           proveedor: proveedor as 'OPENAI' | 'ANTHROPIC' | 'GOOGLE' | 'GROK' | 'ELEVENLABS' | undefined,
           modelo,
+          temperatura: isNaN(temperatura as number) ? undefined : temperatura,
+          maxTokens: isNaN(maxTokens as number) ? undefined : maxTokens,
         })
 
         if (!resultado.ok) {

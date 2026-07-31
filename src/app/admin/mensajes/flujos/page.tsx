@@ -546,18 +546,29 @@ const AgenteIANode = ({ id, data }: NodeProps) => {
 }
 
 // ─── NODO: Acción IA (integraciones_ia — Módulo C) ────────────────────────────
+const PROVEEDOR_ICONO: Record<string, string> = {
+  OPENAI: '🤖', ANTHROPIC: '🧠', GOOGLE: '✨', GROK: '⚡', ELEVENLABS: '🔊',
+}
+
 const AccionIANode = ({ id, data }: NodeProps) => {
   const { setNodes, setEdges, getNodes } = useReactFlow()
   const upd = (k: string, v: string) =>
     setNodes(ns => ns.map(n => n.id === id ? { ...n, data: { ...n.data, [k]: v } } : n))
   const eliminar = () => { setNodes(ns => ns.filter(n => n.id !== id)); setEdges(es => es.filter(e => e.source !== id && e.target !== id)) }
+  const [avanzadoAbierto, setAvanzadoAbierto] = useState(false)
+
   const integraciones: IntegracionIA[] = (data.integracionesIA ?? []).filter((i: IntegracionIA) => i.activo)
-  const accion = data.accion ?? ''
-  const integracionesParaAccion = integraciones.filter(i => i.uso_asignado.includes(accion))
-  const sinIntegracion = !!accion && integracionesParaAccion.length === 0
-  const proveedor = data.proveedor ?? integracionesParaAccion[0]?.proveedor ?? ''
+  const proveedoresDisponibles = Array.from(new Set(integraciones.map(i => i.proveedor)))
+  const proveedor: string = data.proveedor ?? ''
+  const integracionSel = integraciones.find(i => i.proveedor === proveedor)
+  const accion: string = data.accion ?? ''
+  const accionesDisponibles = integracionSel ? ACCIONES_IA.filter(a => integracionSel.uso_asignado.includes(a.key)) : []
   const modelosDisponibles = MODELOS_POR_PROVEEDOR[proveedor] ?? []
   const modeloSeleccionado = modelosDisponibles.find(m => m.modelo === data.modelo)
+
+  const cambiarProveedor = (nuevo: string) => {
+    upd('proveedor', nuevo); upd('accion', ''); upd('modelo', '')
+  }
 
   const variableActual: string = data.variable_salida ?? ''
   const variablesExistentes = Array.from(new Set(
@@ -573,33 +584,42 @@ const AccionIANode = ({ id, data }: NodeProps) => {
   const [creandoVariable, setCreandoVariable] = useState(() => !!variableActual && !variablesExistentes.includes(variableActual))
 
   return (
-    <div className={`${nodeBaseClass} border-fuchsia-400`}>
+    <div className={`${nodeBaseClass} border-fuchsia-400`} style={{ minWidth: 240 }}>
       <Handle type="target" position={Position.Top} className="!bg-fuchsia-400 !w-3 !h-3" />
       <NodeHeader color="bg-fuchsia-600" icon="✨" label="Acción IA" onDelete={eliminar} />
       <div className="px-3 py-2.5 space-y-2">
-        <label className="block text-xs text-gray-500 font-medium">Acción</label>
-        <select defaultValue={accion} onChange={e => upd('accion', e.target.value)}
+
+        {/* Paso 1 — siempre primero: qué IA usar */}
+        <label className="block text-xs text-gray-500 font-medium">¿Qué IA usar?</label>
+        <select value={proveedor} onChange={e => cambiarProveedor(e.target.value)}
           className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400">
-          <option value="">Seleccionar acción...</option>
-          {ACCIONES_IA.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+          <option value="">Seleccionar IA conectada...</option>
+          {proveedoresDisponibles.map(p => <option key={p} value={p}>{PROVEEDOR_ICONO[p] ?? ''} {p}</option>)}
         </select>
-        {accion && ACCION_IA_AYUDA[accion] && (
-          <p className="text-[10px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1.5">
-            {ACCION_IA_AYUDA[accion]}
-          </p>
+        {!integraciones.length && (
+          <p className="text-[10px] text-amber-600">⚠ Sin integraciones IA activas. Conéctalas en Integraciones → Integraciones IA.</p>
         )}
 
-        {integracionesParaAccion.length > 1 && (
-          <div>
-            <label className="block text-xs text-gray-500 font-medium mb-1">Proveedor</label>
-            <select value={proveedor} onChange={e => { upd('proveedor', e.target.value); upd('modelo', '') }}
+        {!!proveedor && (
+          <>
+            <label className="block text-xs text-gray-500 font-medium">Acción</label>
+            <select value={accion} onChange={e => upd('accion', e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400">
-              {integracionesParaAccion.map(i => <option key={i.id} value={i.proveedor}>{i.proveedor}</option>)}
+              <option value="">Seleccionar acción...</option>
+              {accionesDisponibles.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
             </select>
-          </div>
+            {accion && ACCION_IA_AYUDA[accion] && (
+              <p className="text-[10px] text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1.5">
+                {ACCION_IA_AYUDA[accion]}
+              </p>
+            )}
+            {!accionesDisponibles.length && (
+              <p className="text-[10px] text-amber-600">⚠ Esta IA no tiene acciones asignadas — configúralas en Integraciones → Integraciones IA.</p>
+            )}
+          </>
         )}
 
-        {!!proveedor && modelosDisponibles.length > 0 && (
+        {!!proveedor && !!accion && modelosDisponibles.length > 0 && (
           <div>
             <label className="block text-xs text-gray-500 font-medium mb-1">Modelo</label>
             <select defaultValue={data.modelo ?? ''} onChange={e => upd('modelo', e.target.value)}
@@ -615,41 +635,65 @@ const AccionIANode = ({ id, data }: NodeProps) => {
           </div>
         )}
 
-        <textarea defaultValue={data.prompt ?? ''} onChange={e => upd('prompt', e.target.value)}
-          placeholder={ACCION_IA_PLACEHOLDER[accion] ?? 'Prompt — usa {{ultimo_mensaje}}, {{nombre}}, {{variables.x}}...'}
-          rows={3}
-          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400 resize-none font-mono" />
-        <div>
-          <label className="block text-xs text-gray-500 font-medium mb-1">Guardar resultado en variable</label>
-          {!creandoVariable ? (
-            <select
-              value={variablesExistentes.includes(variableActual) ? variableActual : ''}
-              onChange={e => {
-                if (e.target.value === '__nueva__') { setCreandoVariable(true); upd('variable_salida', '') }
-                else upd('variable_salida', e.target.value)
-              }}
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
-            >
-              <option value="">No guardar</option>
-              {variablesExistentes.map(v => <option key={v} value={v}>{v}</option>)}
-              <option value="__nueva__">+ Nueva variable...</option>
-            </select>
-          ) : (
-            <div className="flex items-center gap-1">
-              <input autoFocus defaultValue={variableActual} onChange={e => upd('variable_salida', e.target.value)}
-                placeholder="ej: resumen_ia"
-                className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
-              <button onClick={() => setCreandoVariable(false)} className="text-xs text-fuchsia-600 hover:text-fuchsia-800 flex-shrink-0" title="Listo">
-                ✓
-              </button>
+        {!!proveedor && !!accion && (
+          <>
+            <textarea defaultValue={data.prompt ?? ''} onChange={e => upd('prompt', e.target.value)}
+              placeholder={ACCION_IA_PLACEHOLDER[accion] ?? 'Prompt — usa {{ultimo_mensaje}}, {{nombre}}, {{variables.x}}...'}
+              rows={3}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400 resize-none font-mono" />
+            <div>
+              <label className="block text-xs text-gray-500 font-medium mb-1">Guardar resultado en variable</label>
+              {!creandoVariable ? (
+                <select
+                  value={variablesExistentes.includes(variableActual) ? variableActual : ''}
+                  onChange={e => {
+                    if (e.target.value === '__nueva__') { setCreandoVariable(true); upd('variable_salida', '') }
+                    else upd('variable_salida', e.target.value)
+                  }}
+                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400"
+                >
+                  <option value="">No guardar</option>
+                  {variablesExistentes.map(v => <option key={v} value={v}>{v}</option>)}
+                  <option value="__nueva__">+ Nueva variable...</option>
+                </select>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <input autoFocus defaultValue={variableActual} onChange={e => upd('variable_salida', e.target.value)}
+                    placeholder="ej: resumen_ia"
+                    className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
+                  <button onClick={() => setCreandoVariable(false)} className="text-xs text-fuchsia-600 hover:text-fuchsia-800 flex-shrink-0" title="Listo">
+                    ✓
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        {sinIntegracion && (
-          <p className="text-[10px] text-amber-600">⚠ Integración no conectada para esta acción. Conéctala en Integraciones → Integraciones IA.</p>
-        )}
-        {!integraciones.length && (
-          <p className="text-[10px] text-amber-600">⚠ Sin integraciones IA activas en este tenant.</p>
+
+            {/* Opciones avanzadas, colapsadas por defecto */}
+            <div className="border-t border-gray-100 pt-1.5">
+              <button
+                onMouseDown={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); setAvanzadoAbierto(v => !v) }}
+                className="nodrag text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1"
+              >
+                {avanzadoAbierto ? '▾' : '▸'} Opciones avanzadas
+              </button>
+              {avanzadoAbierto && (
+                <div className="space-y-2 mt-1.5">
+                  <div>
+                    <label className="text-[10px] text-gray-400">Temperatura ({data.temperatura ?? '0.7'})</label>
+                    <input type="range" min="0" max="1" step="0.1" defaultValue={data.temperatura ?? '0.7'}
+                      onChange={e => upd('temperatura', e.target.value)} className="w-full" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-400">Máximo de tokens de salida</label>
+                    <input type="number" min={50} max={4000} defaultValue={data.max_tokens ?? '800'}
+                      onChange={e => upd('max_tokens', e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-fuchsia-400" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-fuchsia-400 !w-3 !h-3" />
@@ -1157,7 +1201,7 @@ function getDefaultData(type: string, ctx: { equipo: Usuario[]; plantillas: Plan
     case 'etapa':         return { etapa: 'nuevo' }
     case 'condicion':     return { condicion_tipo: 'respuesta_contiene', condicion_valor: '' }
     case 'agente_ia':     return { agente_id: '', prompt_contexto: '', incluir_historial: true, agentes: ctx.agentes }
-    case 'accion_ia':     return { accion: '', proveedor: '', modelo: '', prompt: '', variable_salida: '', integracionesIA: ctx.integracionesIA }
+    case 'accion_ia':     return { accion: '', proveedor: '', modelo: '', prompt: '', variable_salida: '', temperatura: '0.7', max_tokens: '800', integracionesIA: ctx.integracionesIA }
     case 'plantilla':     return { plantilla_id: '', plantillas: ctx.plantillas }
     case 'media':         return { media_tipo: 'imagen', media_url: '', media_caption: '' }
     case 'nota_interna':  return { contenido: '' }
