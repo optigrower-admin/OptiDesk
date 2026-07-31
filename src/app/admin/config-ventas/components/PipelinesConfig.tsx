@@ -14,12 +14,13 @@ type Etapa = {
   es_etapa_inicial: boolean
   es_ganado: boolean
   es_perdido: boolean
+  es_auxiliar: boolean
 }
 
 type Grupo = { id: string; clave: string; nombre: string; color: string; orden: number; etapas: Etapa[] }
 type Pipeline = { id: string; clave: string; nombre: string; orden: number; grupos: Grupo[]; roles_ocultos: string[] | null }
 
-type FlagKey = 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido'
+type FlagKey = 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido' | 'es_auxiliar'
 
 const FLAGS: { key: FlagKey; label: string; hint: string }[] = [
   { key: 'es_activa',                   label: 'Activa',                     hint: 'Cuenta como lead en gestión (vistas Hoy/Bandeja/Resumen)' },
@@ -27,13 +28,14 @@ const FLAGS: { key: FlagKey; label: string; hint: string }[] = [
   { key: 'es_etapa_inicial',            label: 'Etapa inicial',              hint: 'Acá caen los clientes cuando escriben por primera vez' },
   { key: 'es_ganado',                   label: 'Marca venta ganada',         hint: 'Registra la fecha de cierre' },
   { key: 'es_perdido',                  label: 'Marca venta perdida',        hint: 'Registra la fecha de cierre' },
+  { key: 'es_auxiliar',                 label: 'Estado auxiliar',            hint: 'Fuera del orden normal del pipeline (ej. Cliente Perdido) — no hereda reglas en cascada como "Aprobación de gerencia" por tener un número de orden alto' },
 ]
 
-type EtapaDraft = Pick<Etapa, 'label' | 'color' | 'bg' | 'border' | 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido'>
+type EtapaDraft = Pick<Etapa, 'label' | 'color' | 'bg' | 'border' | 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido' | 'es_auxiliar'>
 
 const DRAFT_VACIO: EtapaDraft = {
   label: '', color: '#2563EB', bg: 'bg-blue-50', border: 'border-blue-500',
-  es_activa: true, es_lead: false, es_etapa_inicial: false, es_ganado: false, es_perdido: false,
+  es_activa: true, es_lead: false, es_etapa_inicial: false, es_ganado: false, es_perdido: false, es_auxiliar: false,
 }
 
 async function llamar(body: Record<string, unknown>) {
@@ -435,6 +437,9 @@ export default function PipelinesConfig() {
   const moverEtapa = (id: string, direccion: 'arriba' | 'abajo') =>
     accionar(() => llamar({ accion: 'mover_etapa', etapa_id: id, direccion }))
 
+  const moverEtapaGrupo = (id: string, grupoId: string) =>
+    accionar(() => llamar({ accion: 'editar_etapa', etapa_id: id, grupo_id: grupoId }))
+
   if (loading) return <div className="p-5 text-sm text-gray-400">Cargando pipelines…</div>
 
   return (
@@ -527,6 +532,17 @@ export default function PipelinesConfig() {
                       {editEtapa?.id === e.id ? (
                         <div className="space-y-1.5">
                           <EtapaForm draft={editEtapa.draft} onChange={d => setEditEtapa({ id: e.id, draft: d })} />
+                          {p.grupos.length > 1 && (
+                            <label className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                              Mover a otra división:
+                              <select
+                                defaultValue={g.id}
+                                onChange={ev => moverEtapaGrupo(e.id, ev.target.value)}
+                                className="border border-gray-200 rounded-lg px-1.5 py-1 text-[11px]">
+                                {p.grupos.map(gr => <option key={gr.id} value={gr.id}>{gr.nombre}</option>)}
+                              </select>
+                            </label>
+                          )}
                           <div className="flex gap-1.5">
                             <button onClick={guardarEtapa} className="flex-1 py-1.5 bg-blue-700 text-white rounded-lg text-xs font-semibold">Guardar</button>
                             <button onClick={() => setEditEtapa(null)} className="flex-1 py-1.5 bg-gray-200 rounded-lg text-xs">Cancelar</button>
@@ -548,13 +564,14 @@ export default function PipelinesConfig() {
                             {e.es_etapa_inicial && <span className="text-[9px] bg-sky-100 text-sky-700 px-1.5 rounded-full">inicial</span>}
                             {e.es_ganado && <span className="text-[9px] bg-green-100 text-green-700 px-1.5 rounded-full">ganado</span>}
                             {e.es_perdido && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 rounded-full">perdido</span>}
+                            {e.es_auxiliar && <span className="text-[9px] bg-gray-200 text-gray-600 px-1.5 rounded-full">auxiliar</span>}
                           </div>
                           <button onClick={() => setEditEtapa({
                             id: e.id,
                             draft: {
                               label: e.label, color: e.color, bg: e.bg, border: e.border,
                               es_activa: e.es_activa, es_lead: e.es_lead, es_etapa_inicial: e.es_etapa_inicial,
-                              es_ganado: e.es_ganado, es_perdido: e.es_perdido,
+                              es_ganado: e.es_ganado, es_perdido: e.es_perdido, es_auxiliar: e.es_auxiliar,
                             },
                           })} className="text-[11px] text-blue-600 hover:underline flex-shrink-0">Editar</button>
                           <button onClick={() => eliminarEtapa(e.id, e.label)} className="text-[11px] text-red-500 hover:underline flex-shrink-0">Eliminar</button>

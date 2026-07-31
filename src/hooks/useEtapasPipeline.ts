@@ -36,6 +36,7 @@ export interface EtapaDinamica {
   es_etapa_inicial: boolean
   es_ganado: boolean
   es_perdido: boolean
+  es_auxiliar: boolean
   requiere_celular: boolean
   requiere_placa: boolean
   requiere_fecha_entrega: boolean
@@ -69,6 +70,7 @@ interface RowEtapa {
   id: string; pipeline_id: string; grupo_id: string | null; clave: string; label: string
   color: string; bg: string; border: string; orden: number
   es_activa: boolean; es_lead: boolean; es_etapa_inicial: boolean; es_ganado: boolean; es_perdido: boolean
+  es_auxiliar: boolean
   requiere_celular: boolean; requiere_placa: boolean; requiere_fecha_entrega: boolean
   requiere_carta_negociacion: boolean; requiere_factura: boolean; requiere_aprobacion_gerencia: boolean
 }
@@ -111,7 +113,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
           grupoId: g?.id ?? '', grupoLabel: g?.nombre ?? '', grupoColor: g?.color ?? '#6b7280',
           pipelineId: p?.id ?? e.pipeline_id, pipelineNombre: p?.nombre ?? '', pipelineClave: p?.clave ?? '',
           es_activa: e.es_activa, es_lead: e.es_lead, es_etapa_inicial: e.es_etapa_inicial,
-          es_ganado: e.es_ganado, es_perdido: e.es_perdido,
+          es_ganado: e.es_ganado, es_perdido: e.es_perdido, es_auxiliar: e.es_auxiliar,
           requiere_celular: e.requiere_celular, requiere_placa: e.requiere_placa,
           requiere_fecha_entrega: e.requiere_fecha_entrega,
           requiere_carta_negociacion: e.requiere_carta_negociacion,
@@ -129,8 +131,13 @@ export function useEtapasPipeline(tenantId: string | undefined) {
       // hasta que se apruebe, sin importar cuántas etapas haya después ni si se
       // reordenan. Para cualquier otro campo de regla (celular, placa, factura,
       // etc.) el comportamiento sigue siendo exclusivo de su propia etapa.
+      // Las etapas "auxiliares" (fuera de la secuencia normal, ej. "Cliente
+      // Perdido" — es_perdido, o cualquier otra marcada es_auxiliar) nunca
+      // participan de esta cascada: ni heredan la regla por tener un orden
+      // numérico alto, ni pueden ser la etapa ancla.
       const etapasPorPipeline = new Map<string, EtapaDinamica[]>()
       for (const e of etapasOut) {
+        if (e.es_perdido || e.es_auxiliar) continue
         if (!etapasPorPipeline.has(e.pipelineId)) etapasPorPipeline.set(e.pipelineId, [])
         etapasPorPipeline.get(e.pipelineId)!.push(e)
       }
