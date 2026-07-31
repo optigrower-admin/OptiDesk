@@ -206,6 +206,7 @@ export default function PlantillasPage() {
   const [previewVars, setPreviewVars] = useState<Record<string, string>>({})
   const [saving, setSaving]           = useState(false)
   const [enviando, setEnviando]       = useState(false)
+  const [subiendoMedia, setSubiendoMedia] = useState(false)
   const [errorMeta, setErrorMeta]     = useState<string | null>(null)
   const [toastMsg, setToastMsg]       = useState<{ text: string; ok: boolean } | null>(null)
   const [search, setSearch]           = useState('')
@@ -405,6 +406,28 @@ export default function PlantillasPage() {
       toast('No se pudo conectar con Meta', false)
     } finally {
       setEnviando(false)
+    }
+  }
+
+  const subirMedia = async (file: File) => {
+    setSubiendoMedia(true)
+    setErrorMeta(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const r = await fetch('/api/admin/mensajes/plantillas/subir-media', { method: 'POST', body: fd })
+      const result = await r.json()
+      if (!r.ok) {
+        setErrorMeta(result.error ?? 'No se pudo subir el archivo a Meta')
+        toast(result.error ?? 'No se pudo subir el archivo a Meta', false)
+        return
+      }
+      setF('header_contenido')(result.handle)
+      toast('Archivo subido a Meta')
+    } catch {
+      toast('No se pudo conectar con Meta', false)
+    } finally {
+      setSubiendoMedia(false)
     }
   }
 
@@ -798,16 +821,33 @@ export default function PlantillasPage() {
               {(form.tipo_header === 'imagen' || form.tipo_header === 'video' || form.tipo_header === 'documento') && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Handle del media de Meta ({form.tipo_header})
-                    <span className="ml-1 text-xs text-gray-400 font-normal">— sube el archivo por la Graph API y pega aquí el "handle" que te devuelve</span>
+                    Archivo de ejemplo del header ({form.tipo_header})
                   </label>
+                  {puedeEditarContenido && (
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <label className={`px-3 py-1.5 text-xs rounded-lg border cursor-pointer transition-colors ${
+                        subiendoMedia ? 'opacity-50 pointer-events-none' : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                      }`}>
+                        {subiendoMedia ? 'Subiendo...' : '📎 Subir archivo'}
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept={form.tipo_header === 'imagen' ? 'image/*' : form.tipo_header === 'video' ? 'video/*' : undefined}
+                          disabled={subiendoMedia}
+                          onChange={e => { const f = e.target.files?.[0]; if (f) subirMedia(f); e.target.value = '' }}
+                        />
+                      </label>
+                      {form.header_contenido && <span className="text-xs text-green-600">✓ Archivo listo</span>}
+                    </div>
+                  )}
                   <input
                     value={form.header_contenido}
                     onChange={e => setF('header_contenido')(e.target.value)}
                     disabled={!puedeEditarContenido}
-                    placeholder="ej: 4::aW1hZ2Uv..."
+                    placeholder="Se completa solo al subir el archivo (o pega un handle manualmente)"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono disabled:bg-gray-50"
                   />
+                  <p className="text-xs text-gray-400 mt-1">Máximo 4 MB aquí. Para archivos más grandes, súbelo en Meta Business Manager y pega el handle a mano.</p>
                 </div>
               )}
 
