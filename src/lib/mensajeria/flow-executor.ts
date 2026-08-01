@@ -750,7 +750,8 @@ async function procesarNodo(
             const promptContexto = String(data.prompt_contexto ?? '')
             if (!agenteId) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
             try {
-              salida = await llamarAgenteIA(supabase, tenantId, agenteId, contexto, promptContexto)
+              const historial = convId ? await obtenerHistorialConversacion(supabase, convId) : ''
+              salida = await llamarAgenteIA(supabase, tenantId, agenteId, contexto, promptContexto, historial)
             } catch (e) {
               advertencia = e instanceof Error ? e.message : 'Error desconocido'
               console.error('[flow-executor] Error accion/openai (agente):', e)
@@ -761,7 +762,11 @@ async function procesarNodo(
             if (!uso || !promptTemplate) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
             try {
               const { llamarIA } = await import('@/lib/ia/llamarIA')
-              const promptFinal = interpolarVariables(promptTemplate, contexto)
+              const necesitaResumen = /\{\{?\s*resumen_conversacion\s*\}?\}/i.test(promptTemplate)
+              const contextoConResumen = necesitaResumen && convId
+                ? { ...contexto, resumen_conversacion: await obtenerHistorialConversacion(supabase, convId) }
+                : contexto
+              const promptFinal = interpolarVariables(promptTemplate, contextoConResumen)
               const proveedor = data.proveedor ? String(data.proveedor) : undefined
               const modelo = data.modelo ? String(data.modelo) : undefined
               const temperatura = data.temperatura !== undefined ? parseFloat(String(data.temperatura)) : undefined
@@ -963,6 +968,23 @@ async function procesarNodo(
     default:
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
   }
+}
+
+// ─── Trae los últimos mensajes de la conversación como texto plano ───────────
+// (contexto crudo para la IA, sin resumir con una llamada extra — más barato)
+async function obtenerHistorialConversacion(supabase: Supa, convId: string, limite = 20): Promise<string> {
+  const { data: mensajes } = await supabase
+    .from('mensajes')
+    .select('direccion, contenido, created_at')
+    .eq('conversacion_id', convId)
+    .order('created_at', { ascending: false })
+    .limit(limite)
+  if (!mensajes?.length) return ''
+  return mensajes
+    .slice()
+    .reverse()
+    .map((m: { direccion: string; contenido: string | null }) => `${m.direccion === 'entrante' ? 'Cliente' : 'Bot'}: ${m.contenido ?? ''}`)
+    .join('\n')
 }
 
 // ─── Evalúa una condición simple (reutilizado dentro de ramas AND/OR) ────────
@@ -1314,7 +1336,8 @@ async function llamarAgenteIA(
   tenantId: string,
   agenteId: string,
   contexto: ContextoEjecucion,
-  promptContexto: string
+  promptContexto: string,
+  historialConversacion?: string
 ): Promise<string | null> {
   const { data: agente } = await supabase
     .from('agentes_ia')
@@ -1341,6 +1364,7 @@ async function llamarAgenteIA(
     `- Canal: ${contexto.canal ?? 'desconocido'}`,
     `- Etapa: ${contexto.etapa_actual ?? 'sin etapa'}`,
     contexto.ultimo_mensaje ? `- Último mensaje del cliente: "${contexto.ultimo_mensaje}"` : '',
+    historialConversacion ? `\nHistorial reciente de la conversación:\n${historialConversacion}` : '',
   ].filter(Boolean).join('\n')
 
   const userMessage = contexto.ultimo_mensaje ?? 'Inicia la conversación con el cliente.'
@@ -1451,6 +1475,7 @@ function interpolarVariables(texto: string, contexto: ContextoEjecucion): string
     .replace(/\{\{canal\}\}/gi, contexto.canal ?? '')
     .replace(/\{\{etapa\}\}/gi, contexto.etapa_actual ?? '')
     .replace(/\{\{ultimo_mensaje\}\}/gi, contexto.ultimo_mensaje ?? '')
+    .replace(/\{\{resumen_conversacion\}\}/gi, contexto.resumen_conversacion ?? '')
     .replace(/\{\{variables\.(\w+)\}\}/gi, (_, k) => contexto.variables?.[k] ?? '')
     // Sintaxis corta para variables guardadas por nodos (Acción IA, Guardar respuesta):
     // {nombre_variable} — solo si esa variable existe, para no comerse llaves de otro texto.

@@ -50,7 +50,7 @@ export default function AddNodeMenu({ onSelect, label = '+ Añadir' }: { onSelec
       >
         <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${info.bg} ${info.text}`}>{item.icono}</span>
         <div className="min-w-0">
-          <p className="text-xs font-medium text-gray-800 truncate">{item.label}</p>
+          <p className="text-xs font-medium text-gray-800 truncate">{item.categoriaAccion ? `Acción: ${item.label}` : item.label}</p>
           <p className="text-[10px] text-gray-400 truncate">{item.descripcionCorta}</p>
         </div>
       </button>

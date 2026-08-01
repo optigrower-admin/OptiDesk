@@ -52,7 +52,7 @@ function resumenNodo(tipo: string, data: Record<string, unknown>): string {
       }
       if (categoria === 'openai') {
         const modo = data.modo === 'agente' ? 'Agente configurado' : String(data.accion_ia ?? 'Sin acción')
-        return `${modo} → {${data.variable_nombre || 'variable'}}`
+        return `OpenAI: ${modo} → {${data.variable_nombre || 'variable'}}`
       }
       const item = catalogItem('accion', categoria)
       return item?.label ?? 'Sin categoría'
@@ -67,7 +67,7 @@ function resumenNodo(tipo: string, data: Record<string, unknown>): string {
 }
 
 function tituloNodo(tipo: string, data: Record<string, unknown>): string {
-  if (tipo === 'accion') return catalogItem('accion', String(data.categoria ?? ''))?.label ?? 'Acción'
+  if (tipo === 'accion') return 'Acción'
   return catalogItem(tipo)?.label ?? tipo
 }
 

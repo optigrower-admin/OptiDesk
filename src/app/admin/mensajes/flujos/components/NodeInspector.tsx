@@ -164,7 +164,8 @@ export default function NodeInspector({ node, ctx, allNodes, variables, onCrearV
   const item = tipo === 'accion' ? catalogItem('accion', String(data.categoria ?? '')) : catalogItem(tipo)
   const categoria = item?.categoria ?? 'logica'
   const info = CATEGORIA_INFO[categoria]
-  const titulo = tipo === 'trigger' ? 'Disparador' : (item?.label ?? tipo)
+  const titulo = tipo === 'trigger' ? 'Disparador' : tipo === 'accion' ? 'Acción' : (item?.label ?? tipo)
+  const subtitulo = tipo === 'accion' ? (item?.label ?? '') : info.label
 
   return (
     <div className="w-80 bg-white border-l border-gray-200 flex flex-col h-full flex-shrink-0">
@@ -172,7 +173,7 @@ export default function NodeInspector({ node, ctx, allNodes, variables, onCrearV
         <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0 bg-white ${info.text}`}>{item?.icono ?? '⚡'}</span>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-bold text-gray-800 truncate">{titulo}</p>
-          <p className="text-[10px] text-gray-400">{info.label}</p>
+          <p className="text-[10px] text-gray-400">{subtitulo}</p>
         </div>
         <button onClick={onPrev} title="Nodo anterior" className="text-gray-400 hover:text-gray-700 text-sm px-1">↑</button>
         <button onClick={onNext} title="Nodo siguiente" className="text-gray-400 hover:text-gray-700 text-sm px-1">↓</button>
@@ -773,6 +774,7 @@ function OpenAIFields({ data, upd, ctx, variables, onCrearVariable }: {
           </div>
           <textarea value={String(data.prompt_contexto ?? '')} onChange={e => upd({ prompt_contexto: e.target.value })} rows={2}
             placeholder="Contexto adicional para este nodo (opcional)..." className={`${inputCls} resize-none`} />
+          <p className="text-[10px] text-gray-400">El agente ya recibe automáticamente el último mensaje del cliente y el historial reciente de la conversación.</p>
           {!ctx.agentes.length && <p className="text-[10px] text-amber-600">⚠ Configura agentes IA en Config Ventas → APIs IA</p>}
         </>
       ) : (
@@ -805,8 +807,11 @@ function OpenAIFields({ data, upd, ctx, variables, onCrearVariable }: {
             </div>
           )}
           {!!proveedor && !!accionIA && (
-            <textarea value={String(data.prompt ?? '')} onChange={e => upd({ prompt: e.target.value })} rows={4}
-              placeholder="Prompt — usa {{ultimo_mensaje}}, {{nombre}}, o {mi_variable}..." className={`${inputCls} font-mono resize-none`} />
+            <>
+              <textarea value={String(data.prompt ?? '')} onChange={e => upd({ prompt: e.target.value })} rows={4}
+                placeholder="Prompt — usa {{ultimo_mensaje}}, {{resumen_conversacion}}, {{nombre}}, o {mi_variable}..." className={`${inputCls} font-mono resize-none`} />
+              <p className="text-[10px] text-gray-400">{'{{ultimo_mensaje}}'} = última respuesta del cliente · {'{{resumen_conversacion}}'} = últimos mensajes de la conversación</p>
+            </>
           )}
         </>
       )}

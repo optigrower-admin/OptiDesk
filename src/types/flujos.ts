@@ -266,6 +266,7 @@ export interface ContextoEjecucion {
   celular_cliente?: string
   canal?: string
   ultimo_mensaje?: string
+  resumen_conversacion?: string
   etapa_actual?: string
   assigned_to?: string
   variables?: Record<string, string>   // datos capturados por nodos capturar_dato + variables personalizadas
