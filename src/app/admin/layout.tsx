@@ -739,6 +739,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </>
   )
 
+  // Vista móvil simplificada (2 botones) — sin sidebar/nav de escritorio.
+  if (pathname.startsWith('/admin/movil')) {
+    return <>{children}</>
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {profile?.isStaging && (

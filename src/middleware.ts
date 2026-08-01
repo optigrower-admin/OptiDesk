@@ -29,6 +29,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
+  const isMobile = /Mobile|Android|iPhone|iPod/i.test(request.headers.get('user-agent') ?? '')
 
   // Rutas que se autentican con su propio esquema (CRON_SECRET / API key /
   // firma de webhook), no con sesión de usuario — el middleware no debe
@@ -47,7 +48,7 @@ export async function middleware(request: NextRequest) {
         .single()
 
       if (usuario) {
-        return NextResponse.redirect(new URL(getRolRoute(usuario.rol), request.url))
+        return NextResponse.redirect(new URL(getRolRoute(usuario.rol, isMobile), request.url))
       }
     }
     return supabaseResponse
@@ -71,25 +72,25 @@ export async function middleware(request: NextRequest) {
 
   // Verificar acceso por rol
   if (pathname.startsWith('/control_total') && usuario.rol !== 'control_total') {
-    return NextResponse.redirect(new URL(getRolRoute(usuario.rol), request.url))
+    return NextResponse.redirect(new URL(getRolRoute(usuario.rol, isMobile), request.url))
   }
 
   if (pathname.startsWith('/admin') && !['admin', 'gerencia', 'control_total', 'dueno', 'freelancer'].includes(usuario.rol)) {
-    return NextResponse.redirect(new URL(getRolRoute(usuario.rol), request.url))
+    return NextResponse.redirect(new URL(getRolRoute(usuario.rol, isMobile), request.url))
   }
 
   if (pathname.startsWith('/mecanico') && !['mecanico', 'admin', 'gerencia', 'control_total'].includes(usuario.rol)) {
-    return NextResponse.redirect(new URL(getRolRoute(usuario.rol), request.url))
+    return NextResponse.redirect(new URL(getRolRoute(usuario.rol, isMobile), request.url))
   }
 
   return supabaseResponse
 }
 
-function getRolRoute(rol: string): string {
+function getRolRoute(rol: string, isMobile: boolean): string {
   switch (rol) {
     case 'control_total': return '/control_total/tenants'
     case 'gerencia': return '/admin/ordenes'
-    case 'admin': return '/admin/ordenes'
+    case 'admin': return isMobile ? '/admin/movil' : '/admin/ordenes'
     case 'dueno': return '/admin/dashboard/servicio-tecnico'
     case 'freelancer': return '/admin/ventas'
     case 'mecanico': return '/mecanico'
