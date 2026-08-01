@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { usePermisos } from '@/hooks/usePermisos'
+import { usePresenciaHeartbeat } from '@/hooks/usePresenciaHeartbeat'
 import { cn } from '@/lib/utils'
 import ManualButton from '@/components/ManualButton'
 import GlobalLoadingOverlay from '@/components/GlobalLoadingOverlay'
@@ -104,6 +105,7 @@ const STANDALONE_NAV: NavItem[] = [
   { href: '/admin/reportes',    label: 'Reportes',          seccion: 'reportes',   soloGerencia: false, defaultOrden: 60  },
   { href: '/admin/auditoria',   label: 'Auditoría',         seccion: 'auditoria',  soloGerencia: false, defaultOrden: 70  },
   { href: '/admin/equipo',      label: 'Mi equipo',         seccion: 'mi_equipo',  soloGerencia: true,  defaultOrden: 80  },
+  { href: '/admin/uso',         label: '📈 Mi Uso',         seccion: 'mi_uso',     soloGerencia: false, defaultOrden: 81  },
   { href: '/admin/documentos',   label: 'Documentos Internos', seccion: null,       soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 85 },
   { href: '/admin/contactos-internos', label: 'Contactos Internos', seccion: null,  soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 85.5 },
   { href: '/admin/credenciales',   label: 'Credenciales',   seccion: null, soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 86  },
@@ -209,6 +211,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { profile } = useAuth()
   const { tienePermiso, getOrden, loading: permisosLoading } = usePermisos()
   const supabase = createClient()
+  usePresenciaHeartbeat(!!profile?.id)
 
   const [logoUrl, setLogoUrl]           = useState<string | null>(null)
   const [nombreNegocio, setNombreNegocio] = useState<string | null>(null)

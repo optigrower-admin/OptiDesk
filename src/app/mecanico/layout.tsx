@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { usePermisos } from '@/hooks/usePermisos'
 import { useAuth } from '@/hooks/useAuth'
+import { usePresenciaHeartbeat } from '@/hooks/usePresenciaHeartbeat'
 import { cn } from '@/lib/utils'
 
 const ALL_NAV = [
@@ -40,6 +41,17 @@ const ALL_NAV = [
       </svg>
     ),
   },
+  {
+    href: '/mecanico/uso',
+    label: 'Mi Uso',
+    exact: false,
+    seccion: null,
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l7 4v9M9 19H4v-9l5-3m0 12h7m-7-9v9" />
+      </svg>
+    ),
+  },
 ]
 
 export default function MecanicoLayout({ children }: { children: React.ReactNode }) {
@@ -48,6 +60,7 @@ export default function MecanicoLayout({ children }: { children: React.ReactNode
   const supabase = createClient()
   const { tienePermiso } = usePermisos()
   const { profile } = useAuth()
+  usePresenciaHeartbeat(!!profile?.id)
 
   const navItems = ALL_NAV.filter((item) => item.seccion === null || tienePermiso(item.seccion))
 

@@ -7,8 +7,9 @@ import { clearPermisosCache } from '@/hooks/usePermisos'
 import { registrarAuditoria } from '@/lib/audit'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import UsoEquipoTab from './components/UsoEquipoTab'
 
-type Tab = 'integrantes' | 'secciones'
+type Tab = 'integrantes' | 'secciones' | 'uso'
 type Rol = 'gerencia' | 'admin' | 'mecanico' | 'dueno' | 'freelancer'
 
 interface UsuarioEquipo {
@@ -508,6 +509,7 @@ export default function EquipoPage() {
         {([
           { value: 'integrantes', label: 'Integrantes' },
           { value: 'secciones',   label: 'Secciones por rol' },
+          { value: 'uso',         label: 'Uso' },
         ] as { value: Tab; label: string }[]).map((t) => (
           <button
             key={t.value}
@@ -520,6 +522,9 @@ export default function EquipoPage() {
           </button>
         ))}
       </div>
+
+      {/* ── TAB: USO ── */}
+      {tab === 'uso' && <UsoEquipoTab />}
 
       {/* ── TAB: INTEGRANTES ── */}
       {tab === 'integrantes' && (
