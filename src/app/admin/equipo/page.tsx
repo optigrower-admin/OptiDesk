@@ -66,6 +66,7 @@ const GRUPOS_ADMIN: GrupoDef[] = [
       { key: 'caja',             label: 'Caja',               defaultOrden: 35 },
       { key: 'clientes',         label: 'Clientes',          defaultOrden: 40 },
       { key: 'motos',            label: 'Motos',             defaultOrden: 50 },
+      { key: 'cotizaciones_servtec', label: 'Cotizaciones S.T.', defaultOrden: 55 },
       { key: 'config_servicio',  label: 'Config Serv. Téc.', defaultOrden: 85, soloGerencia: true },
     ],
   },
@@ -73,9 +74,10 @@ const GRUPOS_ADMIN: GrupoDef[] = [
     key: 'ventas',
     label: 'Ventas',
     secciones: [
-      { key: 'ventas',        label: 'Seguimiento Ventas', defaultOrden: 55 },
-      { key: 'lista_motos',   label: 'Lista de Motos',     defaultOrden: 57 },
-      { key: 'config_ventas', label: 'Config Ventas',      defaultOrden: 56, soloGerencia: true },
+      { key: 'ventas',              label: 'Seguimiento Ventas',    defaultOrden: 55 },
+      { key: 'lista_motos',         label: 'Lista de Motos',        defaultOrden: 57 },
+      { key: 'config_ventas',       label: 'Config Ventas',         defaultOrden: 56, soloGerencia: true },
+      { key: 'comisiones_freelance', label: 'Comisiones Freelance', defaultOrden: 59 },
     ],
   },
   {
@@ -85,7 +87,7 @@ const GRUPOS_ADMIN: GrupoDef[] = [
       { key: 'mensajes_bandeja',    label: 'Bandeja',         defaultOrden: 100 },
       { key: 'mensajes_conexion',   label: 'Conexión Meta',   defaultOrden: 110, soloGerencia: true },
       { key: 'mensajes_plantillas', label: 'Plantillas',      defaultOrden: 120 },
-      { key: 'mensajes_flujos',     label: 'Flujos',          defaultOrden: 130 },
+      { key: 'mensajes_flujos',     label: 'Flujos / Secuencias / Bot Colaboradores', defaultOrden: 130 },
     ],
   },
   {
@@ -95,12 +97,29 @@ const GRUPOS_ADMIN: GrupoDef[] = [
       { key: 'comentarios', label: 'Publicaciones', defaultOrden: 200 },
     ],
   },
+  {
+    key: 'integraciones',
+    label: 'Integraciones',
+    secciones: [
+      { key: 'integraciones_api',      label: 'API Keys',         defaultOrden: 300, soloGerencia: true },
+      { key: 'integraciones_webhooks', label: 'Webhooks',         defaultOrden: 310, soloGerencia: true },
+      { key: 'integraciones_ia',       label: 'Integraciones IA', defaultOrden: 320, soloGerencia: true },
+    ],
+  },
+  {
+    key: 'consultas-sql',
+    label: 'Consultas SQL',
+    secciones: [
+      { key: 'consultas_sql', label: 'Editor SQL / Permisos', defaultOrden: 330 },
+    ],
+  },
 ]
 
 const STANDALONE_ADMIN: SeccionDef[] = [
   { key: 'reportes',  label: 'Reportes',  defaultOrden: 60 },
   { key: 'auditoria', label: 'Auditoría', defaultOrden: 70 },
   { key: 'mi_equipo', label: 'Mi equipo', defaultOrden: 80, soloGerencia: true },
+  { key: 'mi_uso',    label: 'Mi Uso',    defaultOrden: 81 },
 ]
 
 const SECCIONES_ADMIN: SeccionDef[] = [
@@ -121,6 +140,8 @@ const SECCIONES_FREELANCER: SeccionDef[] = [
   { key: 'ventas',                      label: 'Seguimiento Ventas',         defaultOrden: 55 },
   { key: 'dashboard_ventas_vehiculos',  label: 'Dashboard Ventas Vehículos', defaultOrden: 7  },
   { key: 'lista_motos',                 label: 'Lista de Motos',             defaultOrden: 57 },
+  { key: 'comisiones_freelance',        label: 'Comisiones Freelance',       defaultOrden: 59 },
+  { key: 'mi_uso',                      label: 'Mi Uso',                     defaultOrden: 81 },
 ]
 
 const SECCIONES_POR_ROL: Record<Rol, SeccionDef[]> = {
