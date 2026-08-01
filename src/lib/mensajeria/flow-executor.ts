@@ -1164,11 +1164,11 @@ export async function enviarMensajeDirecto(
     .eq('tenant_id', tenantId)
     .maybeSingle()
 
-  if (!cfg) return
-
   let metaMessageId: string | null = null
 
-  if (conv.canal === 'whatsapp' && cfg.wa_access_token_enc && cfg.wa_phone_number_id) {
+  // Sin config_meta (o canal 'manual' del Chat de prueba) — no hay a quién mandarle
+  // por Meta, pero el mensaje igual se registra en la conversación más abajo.
+  if (cfg && conv.canal === 'whatsapp' && cfg.wa_access_token_enc && cfg.wa_phone_number_id) {
     let token = cfg.wa_access_token_enc
     try { token = decrypt(token) } catch { /* dev */ }
 
@@ -1187,7 +1187,7 @@ export async function enviarMensajeDirecto(
       const d = await r.json() as { messages?: [{ id: string }] }
       metaMessageId = d.messages?.[0]?.id ?? null
     }
-  } else if (conv.canal === 'messenger' && cfg.messenger_access_token_enc) {
+  } else if (cfg && conv.canal === 'messenger' && cfg.messenger_access_token_enc) {
     let token = cfg.messenger_access_token_enc
     try { token = decrypt(token) } catch { /* dev */ }
 
