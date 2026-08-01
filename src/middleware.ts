@@ -83,6 +83,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(getRolRoute(usuario.rol, isMobile), request.url))
   }
 
+  // Rol 'admin' en celular: siempre a la vista móvil de 2 botones, sin
+  // importar qué URL de /admin/* haya pedido (sesión ya iniciada, bookmark,
+  // PWA reabriendo la última ruta, etc.) — no solo en el redirect de login.
+  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/movil') && usuario.rol === 'admin' && isMobile) {
+    return NextResponse.redirect(new URL('/admin/movil', request.url))
+  }
+
   return supabaseResponse
 }
 
