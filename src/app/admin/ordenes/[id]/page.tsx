@@ -157,6 +157,7 @@ interface OrdenDetalle {
   moto_id: string | null
   motos: { id: string; marca: string | null; modelo: string | null; año: number | null; color: string | null; kilometraje: number | null } | null
   gestiona_pago_proveedor: boolean
+  kilometraje_ingreso: number | null
 }
 
 interface ItemOrden {
@@ -266,9 +267,10 @@ export default function AdminOrdenDetallePage() {
 
   // Edición de datos del ingreso
   const [categorias, setCategorias] = useState<Categoria[]>([])
-  const [editingOrden, setEditingOrden] = useState<'cliente' | 'descripcion' | 'categoria' | 'placa' | null>(null)
+  const [editingOrden, setEditingOrden] = useState<'cliente' | 'descripcion' | 'categoria' | 'placa' | 'kilometraje' | null>(null)
   const [editCliente, setEditCliente] = useState('')
   const [editPlaca, setEditPlaca] = useState('')
+  const [editKilometraje, setEditKilometraje] = useState('')
   const [editDescripcion, setEditDescripcion] = useState('')
   const [editManifiestaCliente, setEditManifiestaCliente] = useState('')
   const [editDiagnostico, setEditDiagnostico] = useState('')
@@ -358,7 +360,7 @@ export default function AdminOrdenDetallePage() {
     if (!profile?.tenant_id) return
     const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }, { data: lmCfg }, { data: lmOrd }, { data: pprov }, { data: coments }] = await Promise.all([
       supabase.from('ordenes')
-        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, nota_finalizado_incompleto, moto_id, cliente_id, gestiona_pago_proveedor,
+        .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, nota_finalizado_incompleto, moto_id, cliente_id, gestiona_pago_proveedor, kilometraje_ingreso,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
         .eq('id', ordenId).single(),
       supabase.from('items_orden').select('id, descripcion, origen, cantidad, costo, precio_venta, estado_repuesto, metodo_pago_id, created_at').eq('orden_id', ordenId),
@@ -611,7 +613,7 @@ export default function AdminOrdenDetallePage() {
     return ids.some((id) => allSubs.find((s) => s.id === id)?.nombre.toLowerCase().includes('garant'))
   })()
 
-  const guardarCampoOrden = async (campo: 'cliente' | 'descripcion' | 'categoria' | 'placa') => {
+  const guardarCampoOrden = async (campo: 'cliente' | 'descripcion' | 'categoria' | 'placa' | 'kilometraje') => {
     if (!orden) return
     if (campo === 'categoria' && orden.tipo_orden !== 'venta_repuestos' && !editTipoServicio) {
       alert('Selecciona el tipo de ingreso: UMA o Terceros.')
@@ -627,6 +629,10 @@ export default function AdminOrdenDetallePage() {
     if (campo === 'placa') {
       anterior.placa = orden.placa
       update.placa = editPlaca.trim().toUpperCase() || null
+    }
+    if (campo === 'kilometraje') {
+      anterior.kilometraje_ingreso = orden.kilometraje_ingreso
+      update.kilometraje_ingreso = editKilometraje ? parseInt(editKilometraje.replace(/\./g, ''), 10) : null
     }
     if (campo === 'descripcion') {
       if (esGarantia) {
@@ -669,6 +675,12 @@ export default function AdminOrdenDetallePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orden_id: ordenId }),
       }).catch(() => {})
+    }
+    if (campo === 'kilometraje' && orden.motos?.id && update.kilometraje_ingreso != null) {
+      await supabase.rpc('actualizar_kilometraje_moto', {
+        p_moto_id: orden.motos.id,
+        p_kilometraje: update.kilometraje_ingreso,
+      })
     }
     setEditingOrden(null)
     setSavingOrden(false)
@@ -2342,6 +2354,50 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </Link>
               </div>
             )}
+
+            {/* Kilometraje */}
+            <div className="px-5 py-3">
+              {editingOrden === 'kilometraje' ? (
+                <div className="space-y-2">
+                  <label className="text-xs text-gray-500 font-medium">Kilometraje actual</label>
+                  <input autoFocus inputMode="numeric" value={editKilometraje}
+                    onChange={(e) => setEditKilometraje(e.target.value.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.'))}
+                    placeholder="ej: 12.500"
+                    className="w-full px-3 py-2 border border-blue-400 rounded-lg text-sm focus:outline-none" />
+                  <div className="flex gap-2">
+                    <button onClick={() => guardarCampoOrden('kilometraje')} disabled={savingOrden}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+                      {savingOrden ? '...' : 'Guardar'}
+                    </button>
+                    <button onClick={() => { setEditingOrden(null); setEditKilometraje(orden.kilometraje_ingreso ? orden.kilometraje_ingreso.toLocaleString('es-CO').replace(/,/g, '.') : '') }}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancelar</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-400">Kilometraje</p>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {orden.kilometraje_ingreso != null
+                        ? `${orden.kilometraje_ingreso.toLocaleString('es-CO')} km`
+                        : orden.motos?.kilometraje != null
+                          ? `${orden.motos.kilometraje.toLocaleString('es-CO')} km`
+                          : '—'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setEditKilometraje(orden.kilometraje_ingreso ? orden.kilometraje_ingreso.toLocaleString('es-CO').replace(/,/g, '.') : '')
+                      setEditingOrden('kilometraje')
+                    }}
+                    className="text-gray-400 hover:text-blue-600 p-1">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Cliente */}
             <div className="px-5 py-3">
