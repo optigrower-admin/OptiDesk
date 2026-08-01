@@ -55,7 +55,45 @@ function resumenNodo(tipo: string, data: Record<string, unknown>): string {
         return `OpenAI: ${modo} → {${data.variable_nombre || 'variable'}}`
       }
       const item = catalogItem('accion', categoria)
-      return item?.label ?? 'Sin categoría'
+      const label = item?.label ?? 'Sin categoría'
+
+      if (categoria === 'anadir_etiqueta' || categoria === 'quitar_etiqueta') {
+        const etiquetas = (data.etiquetas as { id: string; nombre: string }[] | undefined) ?? []
+        const nombre = String(data.nueva_etiqueta_nombre ?? '') || etiquetas.find(e => e.id === data.etiqueta_id)?.nombre
+        return nombre ? `${label}: "${nombre}"` : `${label}: sin elegir aún`
+      }
+      if (categoria === 'notificar_admin') {
+        const titulo = String(data.notif_titulo ?? '').trim()
+        return titulo ? `Notificar: "${titulo}"` : 'Notificar: sin título aún'
+      }
+      if (categoria === 'campo_set') {
+        const v = String(data.variable_nombre ?? '')
+        const val = String(data.variable_valor ?? '')
+        return v ? `{${v}} = "${val.slice(0, 30)}${val.length > 30 ? '…' : ''}"` : 'Sin variable aún'
+      }
+      if (categoria === 'campo_clear') {
+        const v = String(data.variable_nombre ?? '')
+        return v ? `Limpia {${v}}` : 'Sin variable aún'
+      }
+      if (categoria === 'secuencia_sub' || categoria === 'secuencia_unsub') {
+        const secuencias = (data.secuencias as { id: string; nombre: string }[] | undefined) ?? []
+        const nombre = secuencias.find(s => s.id === data.secuencia_id)?.nombre
+        return nombre ? `${label}: "${nombre}"` : `${label}: sin elegir aún`
+      }
+      if (categoria === 'evento_log') {
+        const nombre = String(data.variable_valor ?? '').trim()
+        return nombre ? `Evento: "${nombre}"` : 'Sin nombre de evento aún'
+      }
+      if (categoria === 'api_externa') {
+        const url = String(data.api_url ?? '').trim()
+        return url ? `${data.api_metodo ?? 'GET'} ${url.slice(0, 35)}${url.length > 35 ? '…' : ''}` : 'Sin URL aún'
+      }
+      if (categoria === 'disparador') {
+        const flujos = (data.flujos_disponibles as { id: string; nombre: string }[] | undefined) ?? []
+        const nombre = flujos.find(f => f.id === data.subflujo_id)?.nombre
+        return nombre ? `Dispara: "${nombre}"` : 'Sin flujo elegido aún'
+      }
+      return label
     }
     case 'subflujo':
       return data.subflujo_id ? 'Flujo seleccionado' : 'Sin flujo aún'
