@@ -95,6 +95,7 @@ const NODE_TYPES: NodeTypes = {
   fin:                 GenericNode,
   capturar_dato:       GenericNode,
   menu_opciones:       MenuOpcionesNode,
+  accion:              GenericNode,
   accion_conversacion: GenericNode,
   subflujo:            GenericNode,
 }
