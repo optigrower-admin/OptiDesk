@@ -114,6 +114,7 @@ export function getDefaultData(tipo: string, ctx: CatalogCtx, categoriaAccion?: 
       tipo_asignacion: 'round_robin', asignar_a: '', subflujo_id: '',
       modo: 'puntual', agente_id: '', prompt_contexto: '',
       proveedor: '', modelo: '', accion_ia: '', prompt: '', temperatura: '0.7', max_tokens: '800',
+      incluir_ultimo_mensaje: true, incluir_resumen_conversacion: false,
       etiqueta_id: '', nueva_etiqueta_nombre: '', nueva_etiqueta_color: '#3b82f6',
       notif_titulo: '', notif_mensaje: '',
       variable_nombre: '', variable_valor: '', evento_datos: '',

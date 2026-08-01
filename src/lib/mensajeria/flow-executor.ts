@@ -762,11 +762,19 @@ async function procesarNodo(
             if (!uso || !promptTemplate) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
             try {
               const { llamarIA } = await import('@/lib/ia/llamarIA')
-              const necesitaResumen = /\{\{?\s*resumen_conversacion\s*\}?\}/i.test(promptTemplate)
-              const contextoConResumen = necesitaResumen && convId
+              const quiereResumen = !!data.incluir_resumen_conversacion
+              const contextoConResumen = quiereResumen && convId
                 ? { ...contexto, resumen_conversacion: await obtenerHistorialConversacion(supabase, convId) }
                 : contexto
-              const promptFinal = interpolarVariables(promptTemplate, contextoConResumen)
+              const instrucciones = interpolarVariables(promptTemplate, contextoConResumen)
+              const bloquesContexto: string[] = []
+              if (data.incluir_ultimo_mensaje !== false && contexto.ultimo_mensaje) {
+                bloquesContexto.push(`Último mensaje del cliente: "${contexto.ultimo_mensaje}"`)
+              }
+              if (quiereResumen && contextoConResumen.resumen_conversacion) {
+                bloquesContexto.push(`Historial reciente de la conversación:\n${contextoConResumen.resumen_conversacion}`)
+              }
+              const promptFinal = bloquesContexto.length ? `${instrucciones}\n\n${bloquesContexto.join('\n\n')}` : instrucciones
               const proveedor = data.proveedor ? String(data.proveedor) : undefined
               const modelo = data.modelo ? String(data.modelo) : undefined
               const temperatura = data.temperatura !== undefined ? parseFloat(String(data.temperatura)) : undefined

@@ -808,9 +808,27 @@ function OpenAIFields({ data, upd, ctx, variables, onCrearVariable }: {
           )}
           {!!proveedor && !!accionIA && (
             <>
-              <textarea value={String(data.prompt ?? '')} onChange={e => upd({ prompt: e.target.value })} rows={4}
-                placeholder="Prompt — usa {{ultimo_mensaje}}, {{resumen_conversacion}}, {{nombre}}, o {mi_variable}..." className={`${inputCls} font-mono resize-none`} />
-              <p className="text-[10px] text-gray-400">{'{{ultimo_mensaje}}'} = última respuesta del cliente · {'{{resumen_conversacion}}'} = últimos mensajes de la conversación</p>
+              <div>
+                <label className={labelCls}>Indicación para la IA (prompt)</label>
+                <textarea value={String(data.prompt ?? '')} onChange={e => upd({ prompt: e.target.value })} rows={4}
+                  placeholder="Ej: Responde de forma breve y amable, ofreciendo agendar una cita si el cliente pregunta por precios..."
+                  className={`${inputCls} resize-none`} />
+                <p className="text-[10px] text-gray-400 mt-1">Aquí solo escribes las instrucciones — qué quieres que haga la IA. También puedes usar {'{{nombre}}'} o {'{mi_variable}'} si necesitas datos puntuales.</p>
+              </div>
+
+              <div className="border border-gray-200 rounded-lg p-2.5 space-y-2 bg-gray-50">
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Información que recibe la IA</p>
+                <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
+                  <input type="checkbox" className="mt-0.5" checked={data.incluir_ultimo_mensaje !== false}
+                    onChange={e => upd({ incluir_ultimo_mensaje: e.target.checked })} />
+                  <span>Último mensaje del cliente <span className="block text-[10px] text-gray-400">Lo que el cliente acaba de escribir</span></span>
+                </label>
+                <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer">
+                  <input type="checkbox" className="mt-0.5" checked={!!data.incluir_resumen_conversacion}
+                    onChange={e => upd({ incluir_resumen_conversacion: e.target.checked })} />
+                  <span>Resumen de la conversación <span className="block text-[10px] text-gray-400">Los últimos mensajes entre el cliente y el bot, para que tenga más contexto</span></span>
+                </label>
+              </div>
             </>
           )}
         </>

@@ -115,6 +115,8 @@ export interface DatosAccion {
   prompt?: string
   temperatura?: number
   max_tokens?: number
+  incluir_ultimo_mensaje?: boolean    // modo puntual — agrega el último mensaje del cliente al prompt
+  incluir_resumen_conversacion?: boolean  // modo puntual — agrega el historial reciente al prompt
 
   // anadir_etiqueta / quitar_etiqueta
   etiqueta_id?: string
