@@ -1486,8 +1486,13 @@ function interpolarVariables(texto: string, contexto: ContextoEjecucion): string
     .replace(/\{\{resumen_conversacion\}\}/gi, contexto.resumen_conversacion ?? '')
     .replace(/\{\{variables\.(\w+)\}\}/gi, (_, k) => contexto.variables?.[k] ?? '')
     // Sintaxis corta para variables guardadas por nodos (Acción IA, Guardar respuesta):
-    // {nombre_variable} — solo si esa variable existe, para no comerse llaves de otro texto.
-    .replace(/\{(\w+)\}/g, (match, k) => (contexto.variables && k in contexto.variables) ? contexto.variables[k] : match)
+    // {nombre variable} — admite espacios porque el usuario puede nombrar la
+    // variable como quiera ("Respuesta IA"). Solo reemplaza si esa variable
+    // existe, para no comerse llaves de otro texto que no sea una variable.
+    .replace(/\{([^{}]+)\}/g, (match, k) => {
+      const nombre = k.trim()
+      return (contexto.variables && nombre in contexto.variables) ? contexto.variables[nombre] : match
+    })
 }
 
 // ─── Registrar el paso de un nodo en el historial de la ejecución ─────────────
