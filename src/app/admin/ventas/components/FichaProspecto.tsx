@@ -275,6 +275,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const reglaFechaEntrega    = etapasPipeline.etapaMap[etapa]?.reglas?.find(r => r.campo === 'fecha_entrega')
   const reglaCarta           = etapasPipeline.etapaMap[etapa]?.reglas?.find(r => r.campo === 'numero_carta_negociacion')
   const reglaAprobacion      = etapasPipeline.etapaMap[etapa]?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
+  const reglaDocsActual      = etapasPipeline.etapaMap[lead.etapa_venta]?.reglas?.find(r => r.campo === 'documento_requerido')
 
   const sinCelular          = !!reglaCelular && !celularActual
   const enEtapaConPlaca     = !!reglaPlaca
@@ -312,6 +313,23 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   useEffect(() => { cargar() }, [cargar])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [mensajes])
+
+  // Aviso NO bloqueante de documentos faltantes — se revisa una vez al abrir
+  // la ficha (según los documentos que la etapa actual del cliente pida,
+  // en cascada — ver useEtapasPipeline). Ya no impide mover de etapa.
+  const [avisoDocsFaltantes, setAvisoDocsFaltantes] = useState<string[] | null>(null)
+  useEffect(() => {
+    if (!reglaDocsActual?.documentos_requeridos?.length) return
+    let cancelado = false
+    supabase.from('archivos_cliente').select('tipo_documento').eq('cliente_id', lead.id).then(({ data }) => {
+      if (cancelado) return
+      const subidos = new Set((data ?? []).map(a => a.tipo_documento).filter(Boolean))
+      const faltantes = (reglaDocsActual.documentos_requeridos ?? []).filter(d => !subidos.has(d))
+      if (faltantes.length) setAvisoDocsFaltantes(faltantes)
+    })
+    return () => { cancelado = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id, reglaDocsActual?.id])
 
   const enviar = async () => {
     const texto = input.trim()
@@ -1739,6 +1757,26 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
             <p className="text-sm text-gray-600 mb-5">{bloqueoMsg}</p>
             <button onClick={() => setBloqueoMsg(null)}
               className="w-full py-2.5 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-700 transition-colors">
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso no bloqueante: documentos faltantes para la etapa actual */}
+      {avisoDocsFaltantes && avisoDocsFaltantes.length > 0 && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-3xl">⚠️</span>
+              <h2 className="font-bold text-gray-900 text-base">Documentos faltantes</h2>
+            </div>
+            <p className="text-sm text-gray-600 mb-5">
+              Para esta etapa ({etapasPipeline.etapaMap[lead.etapa_venta]?.label ?? lead.etapa_venta}) faltan: <span className="font-semibold">{avisoDocsFaltantes.join(', ')}</span>.
+              Súbelos en la pestaña Archivos cuando puedas — esto no impide seguir moviendo al cliente.
+            </p>
+            <button onClick={() => setAvisoDocsFaltantes(null)}
+              className="w-full py-2.5 bg-amber-600 text-white rounded-xl text-sm font-semibold hover:bg-amber-700 transition-colors">
               Entendido
             </button>
           </div>

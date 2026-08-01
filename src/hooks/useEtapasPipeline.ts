@@ -161,6 +161,29 @@ export function useEtapasPipeline(tenantId: string | undefined) {
         }
       }
 
+      // "Documento requerido" también es una regla en cascada, pero con
+      // VARIAS anclas (ej. una lista corta en "Vendida/Carta Aprobación",
+      // una más larga en "Aprobados para Matricular", otra aún más larga en
+      // "En matrícula"): cada etapa sin regla propia hereda la lista de la
+      // ancla configurada más cercana hacia atrás (mayor orden que sea <= el
+      // suyo). Nunca bloquea el cambio de etapa — solo avisa (ver
+      // FichaProspecto, que muestra un aviso no bloqueante al abrir el cliente).
+      for (const etapasDelPipeline of etapasPorPipeline.values()) {
+        const anclasDocs = etapasDelPipeline
+          .map(e => ({ etapa: e, regla: e.reglas.find(r => r.campo === 'documento_requerido') }))
+          .filter((x): x is { etapa: EtapaDinamica; regla: ReglaEtapa } => !!x.regla)
+          .sort((a, b) => a.etapa.orden - b.etapa.orden)
+        if (anclasDocs.length === 0) continue
+        for (const e of etapasDelPipeline) {
+          if (e.reglas.some(r => r.campo === 'documento_requerido')) {
+            e.reglas = e.reglas.map(r => r.campo === 'documento_requerido' ? { ...r, bloquea_cambio_etapa: false } : r)
+            continue
+          }
+          const aplicable = anclasDocs.filter(a => a.etapa.orden <= e.orden).sort((a, b) => b.etapa.orden - a.etapa.orden)[0]
+          if (aplicable) e.reglas = [...e.reglas, { ...aplicable.regla, bloquea_cambio_etapa: false }]
+        }
+      }
+
       const pipelinesOut: PipelineDinamico[] = pipelinesRaw.map(p => ({
         id: p.id, clave: p.clave, nombre: p.nombre, orden: p.orden,
         rolesOcultos: p.roles_ocultos ?? [],
