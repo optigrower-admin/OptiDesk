@@ -774,8 +774,8 @@ function OpenAIFields({ data, upd, ctx, variables, onCrearVariable }: {
           </div>
           <textarea value={String(data.prompt_contexto ?? '')} onChange={e => upd({ prompt_contexto: e.target.value })} rows={2}
             placeholder="Contexto adicional para este nodo (opcional)..." className={`${inputCls} resize-none`} />
-          <p className="text-[10px] text-gray-400">El agente ya recibe automáticamente el último mensaje del cliente y el historial reciente de la conversación.</p>
-          {!ctx.agentes.length && <p className="text-[10px] text-amber-600">⚠ Configura agentes IA en Config Ventas → APIs IA</p>}
+          <p className="text-[10px] text-gray-400">El agente ya recibe automáticamente el último mensaje del cliente, el historial reciente y lo que tenga habilitado (herramientas para agendar seguimientos, mover el pipeline, escalar a humano, etc.).</p>
+          {!ctx.agentes.length && <p className="text-[10px] text-amber-600">⚠ Crea un agente en Mensajes → Agentes IA</p>}
         </>
       ) : (
         <>

@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { decrypt } from '@/lib/crypto'
 import type { Node, Edge } from 'reactflow'
 import type { ContextoEjecucion, TriggerTipo } from '@/types/flujos'
+import { obtenerHistorialConversacion } from './historial'
 
 type Supa = ReturnType<typeof createAdminClient>
 
@@ -750,8 +751,15 @@ async function procesarNodo(
             const promptContexto = String(data.prompt_contexto ?? '')
             if (!agenteId) return { tipo: 'continuar', siguiente_nodo_id: siguiente }
             try {
-              const historial = convId ? await obtenerHistorialConversacion(supabase, convId) : ''
-              salida = await llamarAgenteIA(supabase, tenantId, agenteId, contexto, promptContexto, historial)
+              const { llamarAgente } = await import('@/lib/ia/llamarAgente')
+              const resultado = await llamarAgente({
+                tenantId, agenteId, conversacionId: convId, clienteId,
+                mensajeCliente: contexto.ultimo_mensaje ?? 'Inicia la conversación con el cliente.',
+                promptContextoExtra: promptContexto,
+                contextoCliente: { nombre: contexto.nombre_cliente, canal: contexto.canal, etapa: contexto.etapa_actual },
+              })
+              if (!resultado.ok) advertencia = resultado.error ?? 'Error desconocido'
+              salida = resultado.texto
             } catch (e) {
               advertencia = e instanceof Error ? e.message : 'Error desconocido'
               console.error('[flow-executor] Error accion/openai (agente):', e)
@@ -978,22 +986,6 @@ async function procesarNodo(
   }
 }
 
-// ─── Trae los últimos mensajes de la conversación como texto plano ───────────
-// (contexto crudo para la IA, sin resumir con una llamada extra — más barato)
-async function obtenerHistorialConversacion(supabase: Supa, convId: string, limite = 20): Promise<string> {
-  const { data: mensajes } = await supabase
-    .from('mensajes')
-    .select('direccion, contenido, created_at')
-    .eq('conversacion_id', convId)
-    .order('created_at', { ascending: false })
-    .limit(limite)
-  if (!mensajes?.length) return ''
-  return mensajes
-    .slice()
-    .reverse()
-    .map((m: { direccion: string; contenido: string | null }) => `${m.direccion === 'entrante' ? 'Cliente' : 'Bot'}: ${m.contenido ?? ''}`)
-    .join('\n')
-}
 
 // ─── Evalúa una condición simple (reutilizado dentro de ramas AND/OR) ────────
 async function evaluarCondicionSimple(
@@ -1336,97 +1328,6 @@ async function enviarMediaWhatsApp(
       leido_por_asesor: true,
     })
   }
-}
-
-// ─── Llamar agente IA (OpenAI / Anthropic) ────────────────────────────────────
-async function llamarAgenteIA(
-  supabase: Supa,
-  tenantId: string,
-  agenteId: string,
-  contexto: ContextoEjecucion,
-  promptContexto: string,
-  historialConversacion?: string
-): Promise<string | null> {
-  const { data: agente } = await supabase
-    .from('agentes_ia')
-    .select('*')
-    .eq('id', agenteId)
-    .maybeSingle()
-
-  if (!agente || !agente.activo) return null
-
-  const { data: configApis } = await supabase
-    .from('config_apis_ia')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .maybeSingle()
-
-  if (!configApis) return null
-
-  const systemPrompt = [
-    agente.prompt_sistema ?? '',
-    agente.instrucciones ?? '',
-    promptContexto,
-    '\nContexto del cliente:',
-    `- Nombre: ${contexto.nombre_cliente ?? 'desconocido'}`,
-    `- Canal: ${contexto.canal ?? 'desconocido'}`,
-    `- Etapa: ${contexto.etapa_actual ?? 'sin etapa'}`,
-    contexto.ultimo_mensaje ? `- Último mensaje del cliente: "${contexto.ultimo_mensaje}"` : '',
-    historialConversacion ? `\nHistorial reciente de la conversación:\n${historialConversacion}` : '',
-  ].filter(Boolean).join('\n')
-
-  const userMessage = contexto.ultimo_mensaje ?? 'Inicia la conversación con el cliente.'
-
-  if (agente.proveedor === 'openai' && configApis.openai_key_enc) {
-    let key = configApis.openai_key_enc
-    try { key = decrypt(key) } catch { /* dev */ }
-
-    const modelo = agente.modelo ?? configApis.openai_modelo_default ?? 'gpt-4o-mini'
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: modelo,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        max_tokens: agente.max_tokens ?? 800,
-        temperature: agente.temperatura ?? 0.7,
-      }),
-    })
-    if (r.ok) {
-      const d = await r.json() as { choices?: [{ message?: { content?: string } }] }
-      return d.choices?.[0]?.message?.content ?? null
-    }
-  }
-
-  if (agente.proveedor === 'anthropic' && configApis.anthropic_key_enc) {
-    let key = configApis.anthropic_key_enc
-    try { key = decrypt(key) } catch { /* dev */ }
-
-    const modelo = agente.modelo ?? configApis.anthropic_modelo_default ?? 'claude-haiku-4-5-20251001'
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: modelo,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
-        max_tokens: agente.max_tokens ?? 800,
-      }),
-    })
-    if (r.ok) {
-      const d = await r.json() as { content?: [{ type: string; text?: string }] }
-      return d.content?.[0]?.text ?? null
-    }
-  }
-
-  return null
 }
 
 // ─── Construir contexto inicial desde DB ──────────────────────────────────────

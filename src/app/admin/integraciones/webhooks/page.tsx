@@ -12,6 +12,7 @@ const EVENTOS = [
   { key: 'plantilla.aprobada', label: 'Plantilla aprobada' },
   { key: 'plantilla.rechazada', label: 'Plantilla rechazada' },
   { key: 'ia.resumen_generado', label: 'Resumen IA generado' },
+  { key: 'ia.estudio_credito_solicitado', label: 'Agente IA: estudio de crédito solicitado' },
 ] as const
 
 type Suscripcion = {
