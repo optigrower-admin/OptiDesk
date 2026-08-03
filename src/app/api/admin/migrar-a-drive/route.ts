@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
         drive_url: webViewLink,
         nombre_archivo: nombreArchivo,
         tamano_bytes: buffer.length,
-      }).eq('id', medio.id)
+      }, { count: 'exact' }).eq('id', medio.id)
 
       if (updateErr) throw new Error(`DB update: ${updateErr.message}`)
       if ((updateCount ?? 0) === 0) throw new Error('DB update: no se actualizó ningún registro (posible problema de permisos)')
