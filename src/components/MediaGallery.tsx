@@ -1,6 +1,7 @@
 'use client'
 import { useState, useRef } from 'react'
 import { Badge } from '@/components/ui/Badge'
+import { createClient } from '@/lib/supabase/client'
 
 function ProcesandoThumb() {
   return (
@@ -100,31 +101,59 @@ export function MediaGallery({ medios, onDelete, puedeSubirDrive, onMigrado }: {
   const [migrando, setMigrando] = useState<Set<string>>(new Set())
   const [errorMigrar, setErrorMigrar] = useState<string | null>(null)
 
+  // Verifica el estado REAL en la base de datos en vez de confiar solo en la
+  // respuesta del POST — el servidor puede tardar más que la conexión del
+  // navegador (típico con videos grandes) y terminar la subida bien después
+  // de que el fetch ya se cayó. Mientras no se confirme, el botón se queda
+  // en "Cargando..." (nunca vuelve solo a mostrar la advertencia).
+  const confirmarCargaDrive = async (medioId: string, intentos = 40): Promise<boolean> => {
+    const supabase = createClient()
+    for (let i = 0; i < intentos; i++) {
+      await new Promise(res => setTimeout(res, 3000))
+      const { data } = await supabase.from('medios').select('storage_location, drive_url, url').eq('id', medioId).maybeSingle()
+      if (data?.storage_location === 'drive') {
+        onMigrado?.(medioId, { storage_location: 'drive', drive_url: data.drive_url, url: data.url })
+        return true
+      }
+    }
+    return false
+  }
+
   const cargarADrive = async (medio: Medio) => {
     setMigrando(prev => new Set(prev).add(medio.id))
     setErrorMigrar(null)
+    let confirmado = false
+
+    const verificacion = confirmarCargaDrive(medio.id).then(ok => { confirmado = ok; return ok })
+
     try {
       const r = await fetch('/api/admin/migrar-a-drive', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ medio_id: medio.id }),
       })
       const result = await r.json().catch(() => null)
-      if (!result) {
-        const msg = `Error de conexión al cargar a Drive (código ${r.status}) — probablemente se demoró demasiado subiendo el video. Intenta de nuevo.`
-        setErrorMigrar(msg); alert(msg)
-      } else if (!r.ok || result.errores?.length) {
+      if (result?.procesados === 1) {
+        confirmado = true
+        onMigrado?.(medio.id, { storage_location: 'drive' })
+      } else if (!confirmado && (result?.errores?.length || (result && !r.ok))) {
+        // Error explícito del servidor (no un simple timeout de conexión) —
+        // no tiene sentido seguir esperando, se avisa de una vez.
         const msg = result.errores?.[0]?.error ?? result.error ?? 'No se pudo cargar a Drive'
         setErrorMigrar(msg); alert(`No se pudo cargar a Drive: ${msg}`)
-      } else if (result.procesados === 1) {
-        onMigrado?.(medio.id, { storage_location: 'drive' })
-      } else {
-        const msg = 'No se pudo cargar a Drive — intenta de nuevo'
-        setErrorMigrar(msg); alert(msg)
+        setMigrando(prev => { const next = new Set(prev); next.delete(medio.id); return next })
+        return
       }
+      // Si no hay `result` (timeout/desconexión) dejamos que la verificación
+      // en segundo plano confirme cuando el servidor termine.
     } catch {
-      const msg = 'Error de conexión al cargar a Drive — probablemente se demoró demasiado subiendo el video. Intenta de nuevo.'
+      // El fetch se cayó (probable timeout) — se sigue esperando la
+      // confirmación real contra la base de datos, no se asume que falló.
+    }
+
+    const ok = await verificacion
+    setMigrando(prev => { const next = new Set(prev); next.delete(medio.id); return next })
+    if (!ok && !confirmado) {
+      const msg = 'No se pudo confirmar la carga a Drive después de esperar varios minutos. Puede seguir procesándose en segundo plano — revisa de nuevo en un rato o vuelve a intentar.'
       setErrorMigrar(msg); alert(msg)
-    } finally {
-      setMigrando(prev => { const next = new Set(prev); next.delete(medio.id); return next })
     }
   }
 

@@ -82,15 +82,20 @@ export async function POST(req: NextRequest) {
       let nombreArchivo = medio.nombre_archivo ?? medio.url.split('/').pop() ?? 'archivo'
       const mimeType = medio.tipo === 'video' ? 'video/mp4' : 'image/jpeg'
 
-      // Videos: comprimir a < 10 MB y convertir a mp4
+      // Videos: comprimir a < 10 MB y convertir a mp4 — pero si ya es un mp4
+      // liviano no hace falta re-codificarlo (ahorra tiempo y baja el riesgo
+      // de que la función se quede sin tiempo antes de subir a Drive).
       if (medio.tipo === 'video') {
         const extOriginal = (medio.url.split('.').pop() ?? 'mp4').toLowerCase()
-        try {
-          buffer = await convertirAMp4(buffer, extOriginal)
-          nombreArchivo = nombreArchivo.replace(/\.[^./]+$/, '.mp4')
-        } catch (convErr) {
-          console.error(`[migrar-drive] No se pudo comprimir ${medio.id}:`, convErr)
-          // Se sube el original si la conversión falla
+        const yaEsMp4Liviano = ['mp4', 'm4v'].includes(extOriginal) && buffer.length <= 10 * 1024 * 1024
+        if (!yaEsMp4Liviano) {
+          try {
+            buffer = await convertirAMp4(buffer, extOriginal)
+            nombreArchivo = nombreArchivo.replace(/\.[^./]+$/, '.mp4')
+          } catch (convErr) {
+            console.error(`[migrar-drive] No se pudo comprimir ${medio.id}:`, convErr)
+            // Se sube el original si la conversión falla
+          }
         }
       }
 
