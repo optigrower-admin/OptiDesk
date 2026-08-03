@@ -352,6 +352,19 @@ export default function AdminOrdenDetallePage() {
   const [savingLavadoFecha, setSavingLavadoFecha] = useState(false)
   const esGerencia = profile?.rol === 'gerencia'
   const soloLectura = orden?.estado === 'finalizado_incompleto' && !esGerencia
+
+  // Fecha de corte de repuestos (config en /admin/repuestos) — items añadidos
+  // hasta esa fecha quedan bloqueados para editar/eliminar, salvo gerencia.
+  const [fechaCorteRepuestos, setFechaCorteRepuestos] = useState<string | null>(null)
+  useEffect(() => {
+    fetch('/api/admin/repuestos/fecha-corte').then(r => r.ok ? r.json() : null).then(result => {
+      if (result) setFechaCorteRepuestos(result.fechaCorte ?? null)
+    })
+  }, [])
+  const itemBloqueadoPorFecha = useCallback((item: { created_at: string }) => {
+    if (esGerencia || !fechaCorteRepuestos) return false
+    return new Date(item.created_at).getTime() <= new Date(fechaCorteRepuestos + 'T23:59:59').getTime()
+  }, [esGerencia, fechaCorteRepuestos])
   const [showNotaIncompletoModal, setShowNotaIncompletoModal] = useState(false)
   const [notaIncompletoInput, setNotaIncompletoInput] = useState('')
   const [savingFinalizadoIncompleto, setSavingFinalizadoIncompleto] = useState(false)
@@ -700,6 +713,10 @@ export default function AdminOrdenDetallePage() {
   }
 
   const handleDeleteItem = async (item: ItemOrden) => {
+    if (itemBloqueadoPorFecha(item)) {
+      alert(`Este repuesto quedó bloqueado por la fecha de corte establecida en Repuestos (${fechaCorteRepuestos}). Solo gerencia puede editarlo o eliminarlo.`)
+      return
+    }
     if (!confirm(`¿Eliminar "${item.descripcion}"?`)) return
     await supabase.from('items_orden').delete().eq('id', item.id)
     await recalcularValorTotal()
@@ -1002,6 +1019,10 @@ export default function AdminOrdenDetallePage() {
   }
 
   const iniciarEditarItem = async (item: ItemOrden) => {
+    if (itemBloqueadoPorFecha(item)) {
+      alert(`Este repuesto quedó bloqueado por la fecha de corte establecida en Repuestos (${fechaCorteRepuestos}). Solo gerencia puede editarlo o eliminarlo.`)
+      return
+    }
     const sepIdx = item.descripcion.indexOf(' - ')
     const codigoPrefix = item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(0, sepIdx) : ''
     const descripcion = item.origen === 'uma' && sepIdx > 0 ? item.descripcion.slice(sepIdx + 3) : item.descripcion
@@ -1283,7 +1304,19 @@ export default function AdminOrdenDetallePage() {
 
   // Fecha (si se pasa) + acciones editar/eliminar, agrupadas en una sola columna para que
   // siempre queden visibles juntas, sin depender de hover ni de que la tabla no haga scroll.
-  const accionesRepuesto = (onEditar: () => void, onEliminar: () => void, fechaNode?: React.ReactNode) => {
+  const accionesRepuesto = (onEditar: () => void, onEliminar: () => void, fechaNode?: React.ReactNode, bloqueado?: boolean) => {
+    if (bloqueado) {
+      return (
+        <div className="flex flex-col items-end gap-0.5">
+          {fechaNode && <div className="flex-shrink-0">{fechaNode}</div>}
+          <span title="Bloqueado por fecha de corte — solo gerencia puede editarlo" className="text-gray-300 p-1.5">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </span>
+        </div>
+      )
+    }
     return (
       <div className="flex flex-col items-end gap-0.5">
         {fechaNode && <div className="flex-shrink-0">{fechaNode}</div>}
@@ -3016,7 +3049,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <td className="py-1.5 px-2 text-gray-500 text-xs hidden sm:table-cell">{item.origen === 'externo' ? (metodosPago.find((m) => m.id === item.metodo_pago_id)?.nombre ?? '—') : '—'}</td>
                         <td className="py-1.5 px-2 text-right text-gray-500 whitespace-nowrap hidden sm:table-cell">{item.origen === 'externo' ? formatCOP(item.costo) : '—'}</td>
                         <td className="py-1.5 px-2 text-right font-semibold whitespace-nowrap">{formatCOP(item.precio_venta)}</td>
-                        <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
+                        <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item), itemBloqueadoPorFecha(item))}</td>
                       </tr>
                     )
                   })}
@@ -3166,7 +3199,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                         <tr key={item.id} className="border-b hover:bg-gray-50">
                           <td className="py-3 px-4 text-gray-800 truncate" title={item.descripcion}>{item.descripcion}</td>
                           <td className="py-3 px-4 text-right font-semibold">{formatCOP(item.precio_venta)}</td>
-                          <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item))}</td>
+                          <td className="py-1.5 px-2">{accionesRepuesto(() => iniciarEditarItem(item), () => handleDeleteItem(item), celdaFecha(item), itemBloqueadoPorFecha(item))}</td>
                         </tr>
                       )
                     ))}

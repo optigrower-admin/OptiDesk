@@ -101,6 +101,34 @@ export default function AdminRepuestosPage() {
   const [fechaHasta, setFechaHasta] = useState('')
   const [loadingCSV, setLoadingCSV] = useState(false)
 
+  // Bloqueo de edición/eliminación por fecha de corte (solo gerencia lo cambia)
+  const [fechaCorte, setFechaCorte] = useState<string | null>(null)
+  const [puedeEditarBloqueo, setPuedeEditarBloqueo] = useState(false)
+  const [editandoBloqueo, setEditandoBloqueo] = useState(false)
+  const [fechaCorteInput, setFechaCorteInput] = useState('')
+  const [guardandoBloqueo, setGuardandoBloqueo] = useState(false)
+
+  const cargarFechaCorte = useCallback(async () => {
+    const r = await fetch('/api/admin/repuestos/fecha-corte')
+    if (!r.ok) return
+    const result = await r.json()
+    setFechaCorte(result.fechaCorte ?? null)
+    setPuedeEditarBloqueo(!!result.puedeEditar)
+  }, [])
+
+  useEffect(() => { cargarFechaCorte() }, [cargarFechaCorte])
+
+  const guardarFechaCorte = async (fecha: string | null) => {
+    setGuardandoBloqueo(true)
+    const r = await fetch('/api/admin/repuestos/fecha-corte', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fecha }),
+    })
+    setGuardandoBloqueo(false)
+    if (!r.ok) { const result = await r.json(); alert(result.error ?? 'Error al guardar'); return }
+    setEditandoBloqueo(false)
+    cargarFechaCorte()
+  }
+
   useEffect(() => {
     if (!profile?.tenant_id) return
     supabase.from('tenants').select('nombre').eq('id', profile.tenant_id).single().then(({ data }) => {
@@ -514,6 +542,43 @@ export default function AdminRepuestosPage() {
               <span className="text-xs text-gray-500 ml-auto">
                 {totalItems} ítems · {formatCOP(totalVentas)} total vendido
               </span>
+            )}
+          </div>
+
+          {/* Bloqueo por fecha de corte */}
+          <div className={`rounded-xl border px-4 py-3 flex flex-wrap items-center gap-3 ${fechaCorte ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+            <span className="text-lg">{fechaCorte ? '🔒' : '🔓'}</span>
+            <div className="flex-1 min-w-0">
+              {fechaCorte ? (
+                <p className="text-xs text-amber-800">
+                  <span className="font-semibold">Bloqueado</span> — nadie excepto gerencia puede editar o eliminar repuestos añadidos hasta el <span className="font-semibold">{new Date(fechaCorte + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}</span>. Se pueden seguir agregando repuestos nuevos sin problema.
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500">Sin bloqueo activo — cualquiera con permiso puede editar o eliminar repuestos de cualquier fecha.</p>
+              )}
+            </div>
+            {puedeEditarBloqueo && !editandoBloqueo && (
+              <button onClick={() => { setEditandoBloqueo(true); setFechaCorteInput(fechaCorte ?? '') }}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-colors flex-shrink-0">
+                {fechaCorte ? 'Cambiar fecha' : 'Bloquear hasta una fecha'}
+              </button>
+            )}
+            {puedeEditarBloqueo && fechaCorte && !editandoBloqueo && (
+              <button onClick={() => guardarFechaCorte(null)} disabled={guardandoBloqueo}
+                className="px-3 py-1.5 border border-amber-300 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors disabled:opacity-50 flex-shrink-0">
+                Desbloquear todo
+              </button>
+            )}
+            {editandoBloqueo && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <input type="date" value={fechaCorteInput} onChange={e => setFechaCorteInput(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                <button onClick={() => guardarFechaCorte(fechaCorteInput || null)} disabled={!fechaCorteInput || guardandoBloqueo}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold disabled:opacity-40">
+                  {guardandoBloqueo ? '...' : 'Confirmar'}
+                </button>
+                <button onClick={() => setEditandoBloqueo(false)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancelar</button>
+              </div>
             )}
           </div>
 

@@ -113,17 +113,19 @@ export async function POST(req: NextRequest) {
   fechaFinNext.setUTCHours(4, 59, 59, 999)
   const hastaISO = fechaFinNext.toISOString()
 
-  // Filtrar por items_orden.created_at: fecha en que se ingresó cada repuesto UMA
+  // Filtrar por items_orden.created_at: fecha en que se ingresó cada repuesto UMA.
+  // No se filtra por estado_pago: un repuesto UMA ya salió del inventario físico
+  // en cuanto se agrega a la orden, sin importar si el cliente pagó completo,
+  // abonó, o todavía no ha pagado nada — WorldOffice debe reflejar ese
+  // movimiento de inventario siempre.
   const [{ data: itemsServicio, error: e1 }, { data: itemsVenta, error: e2 }] = await Promise.all([
     supabase.from('items_orden')
       .select('id, descripcion, precio_venta, cantidad, created_at, repuestos_uma:repuesto_uma_id(codigo,precio_publico_iva), ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
       .eq('origen', 'uma').eq('ordenes.tenant_id', tenantId).eq('ordenes.tipo_orden', 'servicio')
-      .neq('ordenes.estado_pago', 'pendiente')
       .gte('created_at', desdeISO).lte('created_at', hastaISO).order('created_at'),
     supabase.from('items_orden')
       .select('id, descripcion, precio_venta, cantidad, created_at, repuestos_uma:repuesto_uma_id(codigo,precio_publico_iva), ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
       .eq('origen', 'uma').eq('ordenes.tenant_id', tenantId).eq('ordenes.tipo_orden', 'venta_repuestos')
-      .neq('ordenes.estado_pago', 'pendiente')
       .gte('created_at', desdeISO).lte('created_at', hastaISO).order('created_at'),
   ])
 
