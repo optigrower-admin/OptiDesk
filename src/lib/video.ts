@@ -97,7 +97,7 @@ function convertirConBitrate(input: string, output: string, videoBitrateKbps: nu
     ffmpeg(input)
       .outputOptions([
         '-c:v', 'libx264',
-        '-preset', 'fast',
+        '-preset', 'ultrafast',
         '-b:v', `${videoBitrateKbps}k`,
         '-maxrate', `${Math.floor(videoBitrateKbps * 1.5)}k`,
         '-bufsize', `${videoBitrateKbps * 2}k`,

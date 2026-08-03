@@ -107,16 +107,22 @@ export function MediaGallery({ medios, onDelete, puedeSubirDrive, onMigrado }: {
       const r = await fetch('/api/admin/migrar-a-drive', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ medio_id: medio.id }),
       })
-      const result = await r.json()
-      if (!r.ok || result.errores?.length) {
-        setErrorMigrar(result.errores?.[0]?.error ?? result.error ?? 'No se pudo cargar a Drive')
+      const result = await r.json().catch(() => null)
+      if (!result) {
+        const msg = `Error de conexión al cargar a Drive (código ${r.status}) — probablemente se demoró demasiado subiendo el video. Intenta de nuevo.`
+        setErrorMigrar(msg); alert(msg)
+      } else if (!r.ok || result.errores?.length) {
+        const msg = result.errores?.[0]?.error ?? result.error ?? 'No se pudo cargar a Drive'
+        setErrorMigrar(msg); alert(`No se pudo cargar a Drive: ${msg}`)
       } else if (result.procesados === 1) {
         onMigrado?.(medio.id, { storage_location: 'drive' })
       } else {
-        setErrorMigrar('No se pudo cargar a Drive — intenta de nuevo')
+        const msg = 'No se pudo cargar a Drive — intenta de nuevo'
+        setErrorMigrar(msg); alert(msg)
       }
     } catch {
-      setErrorMigrar('Error de conexión al cargar a Drive')
+      const msg = 'Error de conexión al cargar a Drive — probablemente se demoró demasiado subiendo el video. Intenta de nuevo.'
+      setErrorMigrar(msg); alert(msg)
     } finally {
       setMigrando(prev => { const next = new Set(prev); next.delete(medio.id); return next })
     }
