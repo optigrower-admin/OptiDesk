@@ -34,7 +34,7 @@ export async function middleware(request: NextRequest) {
   // Rutas que se autentican con su propio esquema (CRON_SECRET / API key /
   // firma de webhook), no con sesión de usuario — el middleware no debe
   // interceptarlas ni redirigirlas a /login.
-  if (pathname.startsWith('/api/cron/') || pathname.startsWith('/api/v1/') || pathname.startsWith('/api/webhooks/') || pathname.startsWith('/api/admin/drivevideooptimizetemp')) {
+  if (pathname.startsWith('/api/cron/') || pathname.startsWith('/api/v1/') || pathname.startsWith('/api/webhooks/')) {
     return supabaseResponse
   }
 
