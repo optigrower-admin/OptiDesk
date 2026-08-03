@@ -15,7 +15,7 @@ type NavItem = {
   label: string
   seccion: string | null
   soloGerencia: boolean
-  rolesPermitidos?: ('gerencia' | 'dueno' | 'freelancer')[]
+  rolesPermitidos?: ('gerencia' | 'dueno' | 'freelancer' | 'admin' | 'control_total')[]
   defaultOrden: number
   external?: boolean
   exactMatch?: boolean
@@ -73,7 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/mensajes/flujos',        label: 'Flujos',           seccion: 'mensajes_flujos',        soloGerencia: false, defaultOrden: 130 },
       { href: '/admin/mensajes/secuencias',    label: 'Secuencias',       seccion: 'mensajes_flujos',        soloGerencia: false, defaultOrden: 135 },
       { href: '/admin/mensajes/colaboradores', label: 'Bot Colaboradores', seccion: 'mensajes_flujos',       soloGerencia: true,  defaultOrden: 140 },
-      { href: '/admin/mensajes/agentes',       label: 'Agentes IA',       seccion: 'mensajes_flujos',       soloGerencia: true,  defaultOrden: 145 },
+      { href: '/admin/mensajes/agentes',       label: 'Agentes IA',       seccion: 'mensajes_flujos',       soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno', 'control_total', 'admin'], defaultOrden: 145 },
     ],
   },
   {
@@ -532,7 +532,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     items
       .filter(i => {
         if (i.soloGerencia && !['gerencia', 'dueno', 'control_total'].includes(profile?.rol ?? '')) return false
-        if (i.rolesPermitidos && !i.rolesPermitidos.includes(profile?.rol as 'gerencia' | 'dueno' | 'freelancer')) return false
+        if (i.rolesPermitidos && !i.rolesPermitidos.includes(profile?.rol as 'gerencia' | 'dueno' | 'freelancer' | 'admin' | 'control_total')) return false
         return i.seccion === null || tienePermiso(i.seccion)
       })
       .sort((a, b) => {

@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CATALOGO_HERRAMIENTAS } from '@/lib/ia/herramientasAgente'
 
-const ROLES_EDITA = ['gerencia', 'dueno', 'control_total']
+const ROLES_EDITA = ['admin', 'gerencia', 'dueno', 'control_total']
 
 async function getPerfil(supabase: ReturnType<typeof createClient>) {
   const { data: { user } } = await supabase.auth.getUser()
