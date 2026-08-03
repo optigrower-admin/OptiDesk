@@ -90,6 +90,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/integraciones/api-keys',  label: 'API Keys',          seccion: 'integraciones_api',      soloGerencia: true, defaultOrden: 300 },
       { href: '/admin/integraciones/webhooks',  label: 'Webhooks',          seccion: 'integraciones_webhooks', soloGerencia: true, defaultOrden: 310 },
       { href: '/admin/integraciones/ia',        label: 'Integraciones IA',  seccion: 'integraciones_ia',       soloGerencia: true, defaultOrden: 320 },
+      { href: '/admin/integraciones/progreser', label: 'Progreser',         seccion: 'integraciones_progreser', soloGerencia: true, defaultOrden: 325 },
     ],
   },
   {
