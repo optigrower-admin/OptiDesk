@@ -88,12 +88,39 @@ interface Medio {
   procesando?: boolean
 }
 
-export function MediaGallery({ medios, onDelete }: {
+export function MediaGallery({ medios, onDelete, puedeSubirDrive, onMigrado }: {
   medios: Medio[]
   onDelete?: (id: string) => void
+  /** Si es true, los archivos que no están en Drive muestran un botón "Cargar a Drive". */
+  puedeSubirDrive?: boolean
+  onMigrado?: (id: string, patch: Partial<Medio>) => void
 }) {
   const [viewing, setViewing] = useState<Medio | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Medio | null>(null)
+  const [migrando, setMigrando] = useState<Set<string>>(new Set())
+  const [errorMigrar, setErrorMigrar] = useState<string | null>(null)
+
+  const cargarADrive = async (medio: Medio) => {
+    setMigrando(prev => new Set(prev).add(medio.id))
+    setErrorMigrar(null)
+    try {
+      const r = await fetch('/api/admin/migrar-a-drive', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ medio_id: medio.id }),
+      })
+      const result = await r.json()
+      if (!r.ok || result.errores?.length) {
+        setErrorMigrar(result.errores?.[0]?.error ?? result.error ?? 'No se pudo cargar a Drive')
+      } else if (result.procesados === 1) {
+        onMigrado?.(medio.id, { storage_location: 'drive' })
+      } else {
+        setErrorMigrar('No se pudo cargar a Drive — intenta de nuevo')
+      }
+    } catch {
+      setErrorMigrar('Error de conexión al cargar a Drive')
+    } finally {
+      setMigrando(prev => { const next = new Set(prev); next.delete(medio.id); return next })
+    }
+  }
 
   // Para Drive, `medio.url` guarda el File ID de Google.
   // Las imágenes usan el CDN directo de Google (funciona como <img src>).
@@ -121,6 +148,9 @@ export function MediaGallery({ medios, onDelete }: {
 
   return (
     <>
+      {errorMigrar && (
+        <p className="text-xs text-red-600 mb-2">⚠ {errorMigrar}</p>
+      )}
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {medios.map((medio) => (
           <div key={medio.id} className="relative group aspect-square">
@@ -157,11 +187,30 @@ export function MediaGallery({ medios, onDelete }: {
               )}
             </button>
 
-            {medio.storage_location === 'drive' && (
+            {medio.storage_location === 'drive' ? (
               <div className="absolute top-1 left-1">
                 <Badge variant="purple">Drive</Badge>
               </div>
-            )}
+            ) : puedeSubirDrive && !medio.procesando ? (
+              <div className="absolute top-1 left-1">
+                <button
+                  onClick={(e) => { e.stopPropagation(); cargarADrive(medio) }}
+                  disabled={migrando.has(medio.id)}
+                  className="flex items-center gap-1 bg-amber-100 text-amber-700 border border-amber-300 rounded-full px-2 py-0.5 text-[10px] font-semibold hover:bg-amber-200 transition-colors disabled:opacity-60"
+                  title="Este archivo todavía no está respaldado en Google Drive"
+                >
+                  {migrando.has(medio.id) ? (
+                    <>
+                      <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Cargando...
+                    </>
+                  ) : '⚠ Cargar a Drive'}
+                </button>
+              </div>
+            ) : null}
 
             {/* Botones acción (aparecen al hover) */}
             <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">

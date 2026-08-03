@@ -2769,7 +2769,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     <button onClick={() => setUploadError('')} className="ml-auto text-red-400 hover:text-red-600 text-xs">✕</button>
                   </div>
                 )}
-                <MediaGallery medios={medios} onDelete={handleDeleteMedio} />
+                <MediaGallery medios={medios} onDelete={handleDeleteMedio}
+                  puedeSubirDrive={['admin', 'gerencia', 'dueno'].includes((profile?.rol ?? '').toLowerCase())}
+                  onMigrado={(id, patch) => setMedios(prev => prev.map(m => m.id === id ? { ...m, ...patch } : m))}
+                />
               </>
             )}
           </div>

@@ -54,13 +54,20 @@ export async function POST(req: NextRequest) {
     ? (tenant.drive_folder_id.split('/folders/')[1]?.split('?')[0] ?? tenant.drive_folder_id)
     : tenant.drive_folder_id
 
-  // Tomar un lote de medios aún en R2
-  const { data: candidatos } = await supabase
+  // Si viene medio_id en el body, migra SOLO ese archivo puntual (botón
+  // "Cargar a Drive" de un ítem individual en la galería). Si no, migra el
+  // lote de pendientes del tenant como siempre.
+  const body = await req.json().catch(() => null) as { medio_id?: string } | null
+  const medioId = body?.medio_id
+
+  let query = supabase
     .from('medios')
     .select('id, url, nombre_archivo, tipo, tamano_bytes, orden_id, ordenes(placa, numero, drive_folder_id)')
     .eq('tenant_id', tenantId)
     .eq('storage_location', 'r2')
-    .limit(LOTE)
+
+  query = medioId ? query.eq('id', medioId) : query.limit(LOTE)
+  const { data: candidatos } = await query
 
   const procesados: string[] = []
   const errores: { id: string; nombre: string; error: string }[] = []
