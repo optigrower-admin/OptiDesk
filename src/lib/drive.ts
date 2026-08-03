@@ -110,6 +110,20 @@ export async function renameDriveFolder(
   })
 }
 
+export async function listDriveFolderFiles(
+  folderId: string,
+  oauthRefreshToken?: string | null,
+): Promise<{ id: string; name: string; size?: string; mimeType?: string; createdTime?: string }[]> {
+  const auth = getAuthClient(oauthRefreshToken)
+  const drive = google.drive({ version: 'v3', auth })
+  const res = await drive.files.list({
+    q: `'${folderId}' in parents and trashed=false`,
+    fields: 'files(id, name, size, mimeType, createdTime)',
+    pageSize: 200,
+  })
+  return (res.data.files ?? []) as { id: string; name: string; size?: string; mimeType?: string; createdTime?: string }[]
+}
+
 export async function deleteFromDrive(
   fileId: string,
   oauthRefreshToken?: string | null,
