@@ -75,7 +75,7 @@ export default function SecuenciasPage() {
     cargar()
   }
 
-  const esGerencia = profile?.rol === 'gerencia' || profile?.rol === 'control_total'
+  const esGerencia = ['gerencia', 'dueno', 'control_total'].includes(profile?.rol ?? '')
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">

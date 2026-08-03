@@ -90,7 +90,7 @@ export function catalogItem(tipo: string, categoriaAccion?: string): CatalogItem
 
 export function getDefaultData(tipo: string, ctx: CatalogCtx, categoriaAccion?: string): Record<string, unknown> {
   switch (tipo) {
-    case 'trigger':       return { trigger_tipo: 'mensaje_nuevo' }
+    case 'trigger':       return { trigger_tipo: 'mensaje_nuevo', canal_trigger: 'todos' }
     case 'mensaje':       return { contenido: '', usar_plantilla: false, plantillas: ctx.plantillas, botones: [] }
     case 'media':         return { media_tipo: 'imagen', media_url: '', media_caption: '' }
     case 'plantilla':     return { plantilla_id: '', plantillas: ctx.plantillas }

@@ -164,8 +164,12 @@ export default function NodeInspector({ node, ctx, allNodes, variables, onCrearV
   const item = tipo === 'accion' ? catalogItem('accion', String(data.categoria ?? '')) : catalogItem(tipo)
   const categoria = item?.categoria ?? 'logica'
   const info = CATEGORIA_INFO[categoria]
-  const titulo = tipo === 'trigger' ? 'Disparador' : tipo === 'accion' ? 'Acción' : (item?.label ?? tipo)
-  const subtitulo = tipo === 'accion' ? (item?.label ?? '') : info.label
+  const TITULOS_LEGACY: Record<string, string> = {
+    nota_interna: 'Nota interna (antiguo)', etapa: 'Cambiar etapa (antiguo)', espera_etapa: 'Esperar días en etapa (antiguo)',
+  }
+  const esLegacy = tipo in TITULOS_LEGACY
+  const titulo = tipo === 'trigger' ? 'Disparador' : tipo === 'accion' ? 'Acción' : esLegacy ? TITULOS_LEGACY[tipo] : (item?.label ?? tipo)
+  const subtitulo = tipo === 'accion' ? (item?.label ?? '') : esLegacy ? 'Nodo de una versión anterior' : info.label
 
   return (
     <div className="w-80 bg-white border-l border-gray-200 flex flex-col h-full flex-shrink-0">
@@ -194,6 +198,19 @@ export default function NodeInspector({ node, ctx, allNodes, variables, onCrearV
         {tipo === 'accion' && <AccionForm data={data} upd={upd} ctx={ctx} variables={variables} onCrearVariable={onCrearVariable} />}
         {tipo === 'subflujo' && <SubflujoForm data={data} upd={upd} ctx={ctx} />}
         {tipo === 'fin' && <p className="text-xs text-gray-400">Este nodo termina la ejecución del flujo. No tiene opciones.</p>}
+        {esLegacy && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+            <p className="text-xs text-amber-800">
+              Este nodo es de un flujo creado antes del rediseño del constructor — sigue funcionando, pero ya no se puede editar desde aquí.
+            </p>
+            <p className="text-xs text-gray-500">
+              {tipo === 'nota_interna' && <>Equivale hoy a: <b>Acción → Bandeja de Entrada → Añadir nota</b>.</>}
+              {tipo === 'etapa' && <>Equivale hoy a: <b>Acción → Bandeja de Entrada → Cambiar etapa</b>.</>}
+              {tipo === 'espera_etapa' && <>Equivale hoy a: <b>Esperar → &quot;Días en la etapa&quot;</b>.</>}
+              {' '}Si quieres editarlo, bórralo y agrégalo de nuevo con el nodo actual.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -213,6 +230,18 @@ function TriggerForm({ data, upd }: { data: Record<string, unknown>; upd: (p: Re
           <option value="nuevo_cliente">Cliente nuevo creado</option>
         </select>
       </div>
+      {data.trigger_tipo === 'mensaje_nuevo' && (
+        <div>
+          <label className={labelCls}>Canal</label>
+          <select value={String(data.canal_trigger ?? 'todos')} onChange={e => upd({ canal_trigger: e.target.value })} className={inputCls}>
+            <option value="todos">Todos los canales</option>
+            <option value="whatsapp">Solo WhatsApp</option>
+            <option value="messenger">Solo Messenger</option>
+            <option value="instagram">Solo Instagram</option>
+          </select>
+          <p className="text-[10px] text-gray-400 mt-1">Si el mensaje llega por otro canal distinto al elegido, este flujo no se activa.</p>
+        </div>
+      )}
       {data.trigger_tipo === 'etapa_cambiada' && (
         <div>
           <label className={labelCls}>Etapa</label>

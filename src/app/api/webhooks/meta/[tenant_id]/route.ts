@@ -473,7 +473,7 @@ async function procesarMensajeIndividual(
     : 'mensaje_nuevo'
   console.log(`[webhook] iniciando flujo para conv=${conv.id} cliente=${resolvedClienteId ?? 'null'} trigger=${JSON.stringify(triggerTipos)}`)
   try {
-    await iniciarFlujoParaConversacion(tenantId, conv.id, resolvedClienteId, triggerTipos)
+    await iniciarFlujoParaConversacion(tenantId, conv.id, resolvedClienteId, triggerTipos, undefined, canal)
     console.log(`[webhook] ✓ flujo iniciado/continuado`)
   } catch (e) {
     console.error('[webhook] ✗ error iniciando flujo:', e)

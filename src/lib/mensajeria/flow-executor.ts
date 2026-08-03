@@ -20,7 +20,8 @@ export async function iniciarFlujoParaConversacion(
   conversacionId: string,
   clienteId: string | null,
   triggerTipo: TriggerTipo | TriggerTipo[],
-  flujoId?: string  // opcional: saltarse el lookup por trigger y usar este flujo específico
+  flujoId?: string,  // opcional: saltarse el lookup por trigger y usar este flujo específico
+  canal?: string,    // canal real del mensaje entrante ('whatsapp'|'messenger'|'instagram'|'manual') — filtra por canal_trigger
 ) {
   const supabase = createAdminClient()
   console.log(`[flow-executor] iniciarFlujo conv=${conversacionId} cliente=${clienteId ?? 'null'} trigger=${JSON.stringify(triggerTipo)}`)
@@ -74,14 +75,18 @@ export async function iniciarFlujoParaConversacion(
     for (const tipo of tipos) {
       const { data: flujos } = await supabase
         .from('flujos_automatizacion')
-        .select('id, nodos, trigger_tipo')
+        .select('id, nodos, trigger_tipo, canal_trigger')
         .eq('tenant_id', tenantId)
         .eq('activo', true)
         .eq('trigger_tipo', tipo)
-      if (flujos?.[0]) {
-        flujo = flujos[0]
-        break
-      }
+      if (!flujos?.length) continue
+      // Si se conoce el canal real del mensaje, preferir un flujo cuyo
+      // disparador esté fijado a ese canal exacto; si no hay ninguno así,
+      // usar uno con canal "todos" (o sin configurar, mismo comportamiento).
+      const candidato = canal
+        ? flujos.find(f => f.canal_trigger === canal) ?? flujos.find(f => !f.canal_trigger || f.canal_trigger === 'todos')
+        : flujos[0]
+      if (candidato) { flujo = candidato; break }
     }
   }
 
@@ -980,6 +985,56 @@ async function procesarNodo(
     // ── Fin del flujo ─────────────────────────────────────────────────────────
     case 'fin':
       return { tipo: 'fin' }
+
+    // ── Tipos heredados de flujos creados antes del rediseño — se mantienen
+    // funcionando (antes caían al 'default' y no hacían nada, sin avisar). ──
+    case 'nota_interna': {
+      const contenido = String(data.contenido ?? '')
+      if (contenido.trim() && convId) {
+        await supabase.from('mensajes').insert({
+          conversacion_id: convId, tenant_id: tenantId, direccion: 'saliente', tipo: 'nota_interna',
+          contenido: interpolarVariables(contenido, contexto), enviado_por: null, estado_envio: 'enviado', leido_por_asesor: false,
+        })
+      }
+      return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+    }
+
+    case 'etapa': {
+      const etapa = String(data.etapa ?? '')
+      if (etapa && clienteId) {
+        const { ETAPA_MAP, ETAPAS } = await import('@/lib/ventas/pipeline')
+        const etapaInfo = ETAPA_MAP[etapa as keyof typeof ETAPA_MAP]
+        if (etapaInfo) {
+          const orden = ETAPAS.findIndex(e => e.id === etapa)
+          await supabase.from('clientes')
+            .update({ etapa_venta: etapa, etapa_venta_orden: orden >= 0 ? orden : 0, en_seguimiento_ventas: true })
+            .eq('id', clienteId)
+          try {
+            await supabase.from('historial_etapas_cliente').insert({
+              cliente_id: clienteId, tenant_id: tenantId, etapa_nueva: etapa, origen: 'automatizacion',
+            })
+          } catch { /* non-critical */ }
+        }
+      }
+      return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id), contexto: { etapa_actual: etapa } }
+    }
+
+    case 'espera_etapa': {
+      const siguienteId = getSiguienteNodo(edges, nodo.id)
+      const dias = Number(data.dias ?? 1)
+      if (!clienteId) return { tipo: 'continuar', siguiente_nodo_id: siguienteId }
+      const { data: historial } = await supabase
+        .from('historial_etapas_cliente')
+        .select('created_at')
+        .eq('cliente_id', clienteId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const desde = historial?.created_at ? new Date(historial.created_at).getTime() : Date.now()
+      const objetivo = desde + dias * 86_400_000
+      if (Date.now() >= objetivo) return { tipo: 'continuar', siguiente_nodo_id: siguienteId }
+      return { tipo: 'pausar', proxima_ejecucion_at: new Date(objetivo).toISOString(), siguiente_nodo_id: nodo.id }
+    }
 
     default:
       return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }

@@ -283,7 +283,7 @@ async function procesarMensajeIndividual(
     : 'mensaje_nuevo'
   try {
     const { iniciarFlujoParaConversacion } = await import('./flow-executor')
-    await iniciarFlujoParaConversacion(tenantId, conv.id, resolvedClienteId, triggerTipos)
+    await iniciarFlujoParaConversacion(tenantId, conv.id, resolvedClienteId, triggerTipos, undefined, canal)
   } catch (e) {
     console.error('[flujo] error iniciando flujo:', e)
   }

@@ -531,7 +531,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const filterAndSort = (items: NavItem[]) =>
     items
       .filter(i => {
-        if (i.soloGerencia && profile?.rol !== 'gerencia') return false
+        if (i.soloGerencia && !['gerencia', 'dueno', 'control_total'].includes(profile?.rol ?? '')) return false
         if (i.rolesPermitidos && !i.rolesPermitidos.includes(profile?.rol as 'gerencia' | 'dueno' | 'freelancer')) return false
         return i.seccion === null || tienePermiso(i.seccion)
       })

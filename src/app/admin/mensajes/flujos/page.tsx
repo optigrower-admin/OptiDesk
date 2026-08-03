@@ -98,6 +98,13 @@ const NODE_TYPES: NodeTypes = {
   accion:              GenericNode,
   accion_conversacion: GenericNode,
   subflujo:            GenericNode,
+  // Tipos heredados de flujos creados antes del rediseño estilo LucidBot —
+  // se siguen mostrando y funcionando, pero ya no aparecen en "+ Añadir"
+  // (usa el nodo Acción actual para lo mismo: nota interna, cambiar etapa,
+  // esperar días en la etapa).
+  nota_interna:        GenericNode,
+  etapa:               GenericNode,
+  espera_etapa:        GenericNode,
 }
 
 // ─── Editor de flujo (canvas principal) ──────────────────────────────────────
@@ -167,6 +174,23 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
   }, [])
   const eliminarVariable = (nombre: string) => setVariablesDefinidas(vs => vs.filter(v => v.nombre !== nombre))
 
+  // Dónde se usa cada variable — para que el panel de Variables no sea solo
+  // una lista de nombres, sino que muestre en qué nodos se guarda y en
+  // cuáles se lee, en el orden en que aparecen conectadas en el flujo.
+  const CAMPOS_ESCRITURA = ['variable_nombre', 'nombre_variable', 'api_variable_respuesta']
+  const usosVariable = (nombreVar: string) => {
+    const escribeEn: string[] = []
+    const leeEn: string[] = []
+    for (const n of nodes) {
+      const d = (n.data ?? {}) as Record<string, unknown>
+      const titulo = n.type === 'accion' ? `Acción (${String(d.categoria ?? '')})` : String(n.type ?? n.id)
+      if (CAMPOS_ESCRITURA.some(campo => d[campo] === nombreVar)) escribeEn.push(titulo)
+      const texto = JSON.stringify(d)
+      if (texto.includes(`{${nombreVar}}`) || texto.includes(`{{variables.${nombreVar}}}`)) leeEn.push(titulo)
+    }
+    return { escribeEn, leeEn }
+  }
+
   // Nodo seleccionado (panel lateral de edición)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const selectedNode = nodes.find(n => n.id === selectedNodeId) ?? null
@@ -213,11 +237,13 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
     if (!tenantId) { alert('Error: sin empresa asignada. Recarga la página.'); return }
     setSaving(true)
     const nodos = { nodes, edges }
-    const triggerTipo = nodes.find(n => n.type === 'trigger')?.data?.trigger_tipo ?? 'mensaje_nuevo'
+    const triggerNode = nodes.find(n => n.type === 'trigger')
+    const triggerTipo = triggerNode?.data?.trigger_tipo ?? 'mensaje_nuevo'
+    const canalTrigger = triggerNode?.data?.canal_trigger ?? 'todos'
     try {
       if (flujo) {
         const { error } = await supabase.from('flujos_automatizacion').update({
-          nombre, descripcion: descripcion || null, trigger_tipo: triggerTipo, nodos, activo,
+          nombre, descripcion: descripcion || null, trigger_tipo: triggerTipo, canal_trigger: canalTrigger, nodos, activo,
           variables_definidas: variablesDefinidas,
           updated_at: new Date().toISOString(),
         }).eq('id', flujo.id)
@@ -225,7 +251,7 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
       } else {
         const { error } = await supabase.from('flujos_automatizacion').insert({
           tenant_id: tenantId, nombre, descripcion: descripcion || null,
-          trigger_tipo: triggerTipo, nodos, activo, grupo: grupoInicial,
+          trigger_tipo: triggerTipo, canal_trigger: canalTrigger, nodos, activo, grupo: grupoInicial,
           variables_definidas: variablesDefinidas,
         })
         if (error) throw error
@@ -385,22 +411,38 @@ function FlowEditorCanvas({ flujo, ctx, onClose, onSaved, tenantId, grupoInicial
       {/* Catálogo de variables del flujo */}
       {showVariables && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowVariables(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h3 className="font-bold text-gray-900">🔧 Variables del flujo</h3>
+              <div>
+                <h3 className="font-bold text-gray-900">🔧 Variables del flujo</h3>
+                <p className="text-[10px] text-gray-400 mt-0.5">El orden en que se llenan lo define el orden de los nodos conectados, no una lista aparte.</p>
+              </div>
               <button onClick={() => setShowVariables(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
             </div>
             <div className="p-4 space-y-2 max-h-96 overflow-y-auto">
               {variablesDefinidas.length === 0 && <p className="text-xs text-gray-400 text-center py-4">Sin variables aún — se crean desde cualquier nodo que las use (ej. Acción → OpenAI, Capturar dato).</p>}
-              {variablesDefinidas.map(v => (
-                <div key={v.nombre} className="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2">
-                  <div>
-                    <p className="text-sm font-mono text-gray-800">{v.nombre}</p>
-                    <p className="text-[10px] text-gray-400 capitalize">{v.tipo}</p>
+              {variablesDefinidas.map(v => {
+                const { escribeEn, leeEn } = usosVariable(v.nombre)
+                return (
+                  <div key={v.nombre} className="border border-gray-200 rounded-lg px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-mono text-gray-800">{'{'}{v.nombre}{'}'}</p>
+                        <p className="text-[10px] text-gray-400 capitalize">{v.tipo}</p>
+                      </div>
+                      <button onClick={() => eliminarVariable(v.nombre)} className="text-xs text-red-500 hover:text-red-700">Eliminar</button>
+                    </div>
+                    <div className="mt-1.5 space-y-0.5">
+                      <p className="text-[10px] text-gray-500">
+                        <span className="font-semibold">Se guarda en:</span> {escribeEn.length ? escribeEn.join(', ') : 'ningún nodo todavía'}
+                      </p>
+                      <p className="text-[10px] text-gray-500">
+                        <span className="font-semibold">Se usa en:</span> {leeEn.length ? leeEn.join(', ') : 'ningún nodo todavía'}
+                      </p>
+                    </div>
                   </div>
-                  <button onClick={() => eliminarVariable(v.nombre)} className="text-xs text-red-500 hover:text-red-700">Eliminar</button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>

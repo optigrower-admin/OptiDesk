@@ -99,13 +99,29 @@ function resumenNodo(tipo: string, data: Record<string, unknown>): string {
       return data.subflujo_id ? 'Flujo seleccionado' : 'Sin flujo aún'
     case 'fin':
       return 'Termina la ejecución'
+    // ── Tipos heredados (flujos creados antes del rediseño) ──────────────────
+    case 'nota_interna': {
+      const c = String(data.contenido ?? '')
+      return c ? `"${c.slice(0, 40)}${c.length > 40 ? '…' : ''}"` : 'Sin texto aún'
+    }
+    case 'etapa':
+      return data.etapa ? `Cambia a: ${data.etapa}` : 'Sin etapa aún'
+    case 'espera_etapa':
+      return `${data.dias ?? 1} día(s) en la etapa actual`
     default:
       return ''
   }
 }
 
+const TITULOS_LEGACY: Record<string, string> = {
+  nota_interna: 'Nota interna (antiguo)',
+  etapa:        'Cambiar etapa (antiguo)',
+  espera_etapa: 'Esperar días en etapa (antiguo)',
+}
+
 function tituloNodo(tipo: string, data: Record<string, unknown>): string {
   if (tipo === 'accion') return 'Acción'
+  if (TITULOS_LEGACY[tipo]) return TITULOS_LEGACY[tipo]
   return catalogItem(tipo)?.label ?? tipo
 }
 
