@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { downloadFromR2 } from '@/lib/r2'
 import { uploadToDrive, getOrCreateDriveSubfolder } from '@/lib/drive'
 import { convertirAMp4 } from '@/lib/video'
+import { comprimirImagen } from '@/lib/comprimirImagen'
 
 export const maxDuration = 300
 export const runtime = 'nodejs'
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
     try {
       let buffer = await downloadFromR2(medio.url)
       let nombreArchivo = medio.nombre_archivo ?? medio.url.split('/').pop() ?? 'archivo'
-      const mimeType = medio.tipo === 'video' ? 'video/mp4' : 'image/jpeg'
+      let mimeType = medio.tipo === 'video' ? 'video/mp4' : 'image/jpeg'
 
       // Videos: comprimir a < 10 MB y convertir a mp4 — pero si ya es un mp4
       // liviano no hace falta re-codificarlo (ahorra tiempo y baja el riesgo
@@ -97,6 +98,15 @@ export async function POST(req: NextRequest) {
             // Se sube el original si la conversión falla
           }
         }
+      }
+
+      // Imágenes: siempre se optimizan (resize + compresión JPEG) antes de
+      // subir a Drive — igual que ya se hace para los archivos de Ventas.
+      if (medio.tipo === 'imagen') {
+        const comprimida = await comprimirImagen(buffer, mimeType, nombreArchivo)
+        buffer = comprimida.buffer
+        mimeType = comprimida.mimeType
+        nombreArchivo = comprimida.nombre
       }
 
       // Reusar la subcarpeta ya asociada a la orden si existe, para no

@@ -3,8 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { uploadToDrive, getOrCreateDriveSubfolder } from '@/lib/drive'
 import { uploadToR2 } from '@/lib/r2'
-import sharp from 'sharp'
 import { PDFDocument } from 'pdf-lib'
+import { comprimirImagen } from '@/lib/comprimirImagen'
 
 export const maxDuration = 60
 
@@ -16,16 +16,7 @@ export const maxDuration = 60
 async function comprimirArchivo(buffer: Buffer, mimeType: string, nombre: string): Promise<{ buffer: Buffer; mimeType: string; nombre: string }> {
   try {
     if (mimeType.startsWith('image/') && mimeType !== 'image/svg+xml') {
-      const comprimido = await sharp(buffer)
-        .rotate() // respeta la orientación EXIF antes de perderla al recomprimir
-        .resize({ width: 1920, height: 1920, fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 74, mozjpeg: true })
-        .toBuffer()
-      if (comprimido.length < buffer.length) {
-        const nuevoNombre = nombre.replace(/\.[^.]+$/, '') + '.jpg'
-        return { buffer: comprimido, mimeType: 'image/jpeg', nombre: nuevoNombre }
-      }
-      return { buffer, mimeType, nombre }
+      return await comprimirImagen(buffer, mimeType, nombre)
     }
     if (mimeType === 'application/pdf') {
       const doc = await PDFDocument.load(buffer, { ignoreEncryption: true })
