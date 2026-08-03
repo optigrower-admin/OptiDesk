@@ -29,8 +29,11 @@ function getDuracionSeg(inputPath: string): Promise<number> {
 export async function convertirAMp4(buffer: Buffer, extOriginal: string): Promise<Buffer> {
   const tmpDir = os.tmpdir()
   const id = crypto.randomUUID()
-  const inputPath  = path.join(tmpDir, `${id}.${extOriginal || 'bin'}`)
-  const outputPath = path.join(tmpDir, `${id}.mp4`)
+  // Sufijos distintos en input/output — si extOriginal ya es "mp4" (video que
+  // se está RE-comprimiendo), usar el mismo nombre para ambos hace que ffmpeg
+  // intente escribir sobre el archivo que está leyendo y falla.
+  const inputPath  = path.join(tmpDir, `${id}_in.${extOriginal || 'bin'}`)
+  const outputPath = path.join(tmpDir, `${id}_out.mp4`)
 
   await fs.writeFile(inputPath, buffer)
   console.log(`[video] Convirtiendo ${inputPath} (${buffer.length} bytes) → mp4 <${MAX_VIDEO_MB}MB`)
