@@ -70,6 +70,36 @@ export async function uploadToDrive(
   }
 }
 
+export async function downloadFromDrive(
+  fileId: string,
+  oauthRefreshToken?: string | null,
+): Promise<Buffer> {
+  const auth = getAuthClient(oauthRefreshToken)
+  const drive = google.drive({ version: 'v3', auth })
+  const res = await drive.files.get(
+    { fileId, alt: 'media' },
+    { responseType: 'arraybuffer' },
+  )
+  return Buffer.from(res.data as ArrayBuffer)
+}
+
+/** Reemplaza el contenido de un archivo de Drive ya existente, manteniendo el
+ * mismo fileId (y por lo tanto el mismo webViewLink) — para reoptimizar
+ * archivos sin romper ninguna referencia ya guardada. */
+export async function replaceDriveFileContent(
+  fileId: string,
+  mimeType: string,
+  buffer: Buffer,
+  oauthRefreshToken?: string | null,
+): Promise<void> {
+  const auth = getAuthClient(oauthRefreshToken)
+  const drive = google.drive({ version: 'v3', auth })
+  await drive.files.update({
+    fileId,
+    media: { mimeType, body: Readable.from(buffer) },
+  })
+}
+
 export async function getOrCreateDriveSubfolder(
   parentId: string,
   folderName: string,
