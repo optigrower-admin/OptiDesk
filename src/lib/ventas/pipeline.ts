@@ -107,6 +107,11 @@ export const ETAPA_ORDEN: Record<EtapaVenta, number> = {
   proceso_finalizado: 18,
 }
 
+// Vendido o en cualquier etapa posterior (matrícula, alistamiento, entrega,
+// revisiones...) — excluye leads en pipeline (aún no vendidos) y perdidos
+// (orden -2, siempre por debajo de 'ganado').
+export const esVenta = (e: EtapaVenta): boolean => (ETAPA_ORDEN[e] ?? -99) >= ETAPA_ORDEN['ganado']
+
 export function formatCOP(value: number | null | undefined): string {
   if (!value) return '—'
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(value)

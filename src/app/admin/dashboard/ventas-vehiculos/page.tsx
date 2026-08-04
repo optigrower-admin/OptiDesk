@@ -15,7 +15,7 @@ import {
   calcularRango, calcularRangoAnterior, calcularVariacion, ymdLocal, PERIODO_LABEL,
   type PeriodoPreset,
 } from '@/lib/dashboard/periodos'
-import { ETAPAS, ETAPA_ORDEN, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS, ETAPA_ORDEN, esVenta, type EtapaVenta } from '@/lib/ventas/pipeline'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
@@ -36,9 +36,7 @@ interface EntidadRow { id: string; nombre: string }
 interface Usuario { id: string; nombre: string }
 type ChartUnidad = 'dias' | 'semanas' | 'meses'
 
-const ETAPA_MIN_VENTA       = ETAPA_ORDEN['ganado']
 const ETAPA_MIN_MATRICULADO = ETAPA_ORDEN['alistamiento']
-const esVenta       = (e: EtapaVenta) => (ETAPA_ORDEN[e] ?? -99) >= ETAPA_MIN_VENTA
 const esMatriculado = (e: EtapaVenta) => (ETAPA_ORDEN[e] ?? -99) >= ETAPA_MIN_MATRICULADO
 
 const ASESOR_COLORS = ['#2563eb', '#0d9488', '#d97706', '#dc2626', '#7c3aed', '#db2777', '#16a34a', '#0891b2', '#ca8a04', '#9333ea']

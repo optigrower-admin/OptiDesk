@@ -1,6 +1,6 @@
 'use client'
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { ETAPAS, ETAPA_MAP, formatCOP, estadoSeguimiento, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS, ETAPA_MAP, formatCOP, estadoSeguimiento, esVenta, type EtapaVenta } from '@/lib/ventas/pipeline'
 import type { LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
 import { useEtapasPipeline } from '@/hooks/useEtapasPipeline'
@@ -146,9 +146,9 @@ export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove 
 
       {/* Resumen */}
       <p className="text-xs text-gray-400 mb-2 px-1">
-        {filtrados.length} prospecto{filtrados.length !== 1 ? 's' : ''} · Total estimado:{' '}
+        {filtrados.length} prospecto{filtrados.length !== 1 ? 's' : ''} · Total vendido:{' '}
         <span className="font-semibold text-emerald-700">
-          {formatCOP(filtrados.reduce((s, l) => s + (l.valor_estimado_venta ?? 0), 0))}
+          {formatCOP(filtrados.filter(l => esVenta(l.etapa_venta)).reduce((s, l) => s + (l.valor_estimado_venta ?? 0), 0))}
         </span>
       </p>
 
