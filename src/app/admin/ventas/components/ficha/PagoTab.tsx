@@ -489,7 +489,8 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
               )
             }
             return (
-              <div key={c.id} className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 space-y-1.5">
+              <div key={c.id} className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 space-y-1.5"
+                onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setCreditoAbiertoId(null) }}>
                 <div className="flex items-center gap-2">
                   <select value={c.entidad_id ?? ''} onChange={e => actualizarCredito(c.id, 'entidad_id', e.target.value || null)}
                     className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -562,7 +563,8 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
             const aplicado = bonosAplicados.find(x => x.bono_id === b.id)
             const abierto = aplicado && bonoAbiertoId === b.id
             return (
-              <div key={b.id} className="flex items-center gap-2">
+              <div key={b.id} className="flex items-center gap-2"
+                onBlur={e => { if (abierto && !e.currentTarget.contains(e.relatedTarget as Node)) setBonoAbiertoId(null) }}>
                 <button onClick={() => toggleBono(b.id, !aplicado)}
                   className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
                     aplicado ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
