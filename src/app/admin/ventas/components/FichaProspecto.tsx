@@ -1582,7 +1582,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     clienteId={lead.id}
                     tenantId={tenantId}
                     usuarioId={profile?.id ?? ''}
-                    esGerencia={esGerencia}
                     onProximaAccionChange={(proxAccion, proxFecha) => onLeadUpdate?.(lead.id, { proxima_accion: proxAccion, proxima_accion_fecha: proxFecha })}
                     onCreditoChange={(aprobada, rechazadas) => onLeadUpdate?.(lead.id, { creditoAprobadoEntidad: aprobada, creditoRechazadoEntidades: rechazadas })}
                   />

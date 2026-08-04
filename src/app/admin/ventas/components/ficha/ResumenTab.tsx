@@ -8,7 +8,6 @@ interface Props {
   clienteId: string
   tenantId: string
   usuarioId: string
-  esGerencia?: boolean
   onProximaAccionChange?: (proxAccion: string | null, proxFecha: string | null) => void
   onCreditoChange?: (aprobada: string | null, rechazadas: string[]) => void
 }
@@ -157,7 +156,7 @@ function RecordatorioItem({ r, onToggle, onDuplicar, confirmId, onConfirm, onCan
   )
 }
 
-export default function ResumenTab({ clienteId, tenantId, usuarioId, esGerencia, onProximaAccionChange, onCreditoChange }: Props) {
+export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAccionChange, onCreditoChange }: Props) {
   const supabase = createClient()
   const [seleccion, setSeleccion] = useState<Seleccion[]>([])
   const [recargo, setRecargo]     = useState(5)
@@ -347,7 +346,7 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, esGerencia,
 
       {/* Pago */}
       <div className="border-t pt-3">
-        <PagoTab clienteId={clienteId} tenantId={tenantId} usuarioId={usuarioId} esGerencia={esGerencia} onCreditoChange={onCreditoChange} />
+        <PagoTab clienteId={clienteId} tenantId={tenantId} usuarioId={usuarioId} onCreditoChange={onCreditoChange} />
       </div>
 
       {/* Próximas Acciones (unificado: pasos legados + recordatorios) */}

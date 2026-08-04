@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCOP, calcularPrecioMoto } from '@/lib/ventas/pipeline'
 import MoneyInput from '@/components/ui/MoneyInput'
+import { registrarAuditoria } from '@/lib/audit'
 
 const METODOS_PAGO_FIJOS = ['Transferencia', 'Efectivo', 'Financiera']
 
@@ -10,7 +11,6 @@ interface Props {
   clienteId: string
   tenantId: string
   usuarioId: string
-  esGerencia?: boolean
   onCreditoChange?: (aprobada: string | null, rechazadas: string[]) => void
 }
 
@@ -50,7 +50,7 @@ const FORMA_OPCIONES: { value: FormaPago; label: string }[] = [
   { value: 'credito_ci', label: 'Crédito & C. Inicial' },
 ]
 
-export default function PagoTab({ clienteId, tenantId, usuarioId, esGerencia = false, onCreditoChange }: Props) {
+export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChange }: Props) {
   const supabase = createClient()
 
   /* ── Estado forma de pago ── */
@@ -156,33 +156,48 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, esGerencia = f
     }).eq('id', clienteId)
   }
 
-  /* ── Bonos (solo gerencia puede aplicar/editar/quitar) ── */
+  /* ── Bonos (cualquier rol puede aplicar/editar/quitar — queda en el historial) ── */
   async function toggleBono(bonoId: string, activo: boolean) {
-    if (!esGerencia) return
+    const nombreBono = bonosCatalogo.find(b => b.id === bonoId)?.nombre ?? bonoId
     if (activo) {
       const { data } = await supabase.from('clientes_bonos')
         .insert({ cliente_id: clienteId, tenant_id: tenantId, bono_id: bonoId, monto: 0 })
         .select('id, bono_id, monto').single()
-      if (data) setBonosAplicados(p => [...p, data as BonoAplicado])
+      if (data) {
+        setBonosAplicados(p => [...p, data as BonoAplicado])
+        await registrarAuditoria(supabase, {
+          tenant_id: tenantId, tabla: 'clientes_bonos', registro_id: clienteId, tipo: 'edicion',
+          valor_nuevo: { bono: nombreBono }, descripcion: `Aplicó el bono "${nombreBono}" al cliente`, usuario_id: usuarioId,
+        })
+      }
     } else {
       const existente = bonosAplicados.find(b => b.bono_id === bonoId)
       if (!existente) return
       await supabase.from('clientes_bonos').delete().eq('id', existente.id)
       setBonosAplicados(p => p.filter(b => b.id !== existente.id))
+      await registrarAuditoria(supabase, {
+        tenant_id: tenantId, tabla: 'clientes_bonos', registro_id: clienteId, tipo: 'eliminacion',
+        valor_anterior: { bono: nombreBono, monto: existente.monto }, descripcion: `Quitó el bono "${nombreBono}" del cliente`, usuario_id: usuarioId,
+      })
     }
   }
 
   async function setMontoBono(bonoId: string, monto: string) {
-    if (!esGerencia) return
     const existente = bonosAplicados.find(b => b.bono_id === bonoId)
     if (!existente) return
+    const nombreBono = bonosCatalogo.find(b => b.id === bonoId)?.nombre ?? bonoId
     const val = monto ? parseFloat(monto) : 0
+    if (val === existente.monto) return
     await supabase.from('clientes_bonos').update({ monto: val }).eq('id', existente.id)
     setBonosAplicados(p => p.map(b => b.id === existente.id ? { ...b, monto: val } : b))
+    await registrarAuditoria(supabase, {
+      tenant_id: tenantId, tabla: 'clientes_bonos', registro_id: clienteId, tipo: 'edicion',
+      valor_anterior: { monto: existente.monto }, valor_nuevo: { monto: val },
+      descripcion: `Cambió el valor del bono "${nombreBono}"`, usuario_id: usuarioId,
+    })
   }
 
   async function crearYAplicarBono() {
-    if (!esGerencia) return
     const nombre = nuevoBonoInput.trim()
     if (!nombre) return
     setCreandoBono(true)
@@ -196,7 +211,13 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, esGerencia = f
         .insert({ cliente_id: clienteId, tenant_id: tenantId, bono_id: bono.id, monto: 0 })
         .select('id, bono_id, monto').single()
       if (errAp) { alert(`El bono se creó pero no se pudo aplicar: ${errAp.message}`); return }
-      if (aplicado) setBonosAplicados(p => [...p, aplicado as BonoAplicado])
+      if (aplicado) {
+        setBonosAplicados(p => [...p, aplicado as BonoAplicado])
+        await registrarAuditoria(supabase, {
+          tenant_id: tenantId, tabla: 'clientes_bonos', registro_id: clienteId, tipo: 'edicion',
+          valor_nuevo: { bono: nombre }, descripcion: `Creó y aplicó el bono "${nombre}" al cliente`, usuario_id: usuarioId,
+        })
+      }
       setNuevoBonoInput('')
     } finally {
       setCreandoBono(false)
@@ -481,34 +502,29 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, esGerencia = f
         </div>
       </div>
 
-      {/* ── BONOS (solo gerencia puede aplicar/editar/quitar) ── */}
+      {/* ── BONOS ── */}
       <div className="border-t border-gray-100 pt-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Bonos
-          {!esGerencia && <span className="ml-1.5 normal-case font-normal text-gray-400">(solo lectura — solo gerencia puede editarlos)</span>}
-        </p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Bonos</p>
         {bonosCatalogo.length === 0 && (
-          <p className="text-xs text-gray-400 mb-2">Sin bonos creados todavía.{esGerencia && ' Agrega uno abajo (ej: Financiera, UMA, Motospace38) o desde Config Ventas → Bonos.'}</p>
+          <p className="text-xs text-gray-400 mb-2">Sin bonos creados todavía. Agrega uno abajo (ej: Financiera, UMA, Motospace38) o desde Config Ventas → Bonos.</p>
         )}
         <div className="space-y-2">
           {bonosCatalogo.map(b => {
             const aplicado = bonosAplicados.find(x => x.bono_id === b.id)
             return (
               <div key={b.id} className="flex items-center gap-2">
-                <button onClick={() => esGerencia && toggleBono(b.id, !aplicado)}
-                  disabled={!esGerencia}
+                <button onClick={() => toggleBono(b.id, !aplicado)}
                   className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
-                    aplicado ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500'
-                  } ${esGerencia ? 'hover:bg-gray-200' : 'cursor-default'}`}>
+                    aplicado ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}>
                   {b.nombre}
                 </button>
                 {aplicado && (
                   <MoneyInput value={aplicado.monto ? String(aplicado.monto) : ''}
-                    onChange={raw => esGerencia && setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
+                    onChange={raw => setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
                     onCommit={raw => setMontoBono(b.id, raw)}
                     placeholder="Valor del bono"
-                    disabled={!esGerencia}
-                    className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500" />
+                    className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 )}
               </div>
             )
@@ -516,18 +532,16 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, esGerencia = f
           {bonosCatalogo.length > 0 && bonosAplicados.length === 0 && (
             <p className="text-[11px] text-gray-400">Sin bono aplicado</p>
           )}
-          {esGerencia && (
-            <div className="flex items-center gap-2 pt-1">
-              <input value={nuevoBonoInput} onChange={e => setNuevoBonoInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') crearYAplicarBono() }}
-                placeholder="Nuevo bono..."
-                className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <button onClick={crearYAplicarBono} disabled={!nuevoBonoInput.trim() || creandoBono}
-                className="text-xs px-2.5 py-1 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg font-semibold whitespace-nowrap">
-                {creandoBono ? '...' : '+ Agregar'}
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-2 pt-1">
+            <input value={nuevoBonoInput} onChange={e => setNuevoBonoInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') crearYAplicarBono() }}
+              placeholder="Nuevo bono..."
+              className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={crearYAplicarBono} disabled={!nuevoBonoInput.trim() || creandoBono}
+              className="text-xs px-2.5 py-1 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg font-semibold whitespace-nowrap">
+              {creandoBono ? '...' : '+ Agregar'}
+            </button>
+          </div>
         </div>
       </div>
 
