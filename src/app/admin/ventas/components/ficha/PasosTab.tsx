@@ -7,6 +7,7 @@ interface Props {
   tenantId:  string
   usuarioId: string
   clienteEmail?: string | null
+  refreshSignal?: number
 }
 
 type PasoItem = { source: 'paso'; id: string; texto: string; completado: boolean; fecha: null }
@@ -19,7 +20,7 @@ function fmt(d: string) {
   })
 }
 
-export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail }: Props) {
+export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail, refreshSignal }: Props) {
   const supabase = createClient()
   const [items, setItems]   = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
@@ -60,7 +61,10 @@ export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail 
     setLoading(false)
   }, [clienteId])
 
-  useEffect(() => { cargar() }, [cargar])
+  // refreshSignal cambia cuando se agenda algo desde el panel lateral de la
+  // ficha (fuera de esta pestaña) — si esta pestaña ya está montada, recarga
+  // sin necesitar refrescar la página.
+  useEffect(() => { cargar() }, [cargar, refreshSignal])
 
   async function syncProxima() {
     const { data: prox } = await supabase.from('recordatorios')

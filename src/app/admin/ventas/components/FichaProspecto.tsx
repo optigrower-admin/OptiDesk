@@ -675,6 +675,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   const panelToast = useCallback(() => { setSavedPanel(true); setTimeout(() => setSavedPanel(false), 2000) }, [])
 
+  // Se incrementa cada vez que se agenda algo desde el panel lateral, para que
+  // la pestaña Agenda (si ya está montada) recargue su lista sin necesitar
+  // refrescar la página.
+  const [agendaVersion, setAgendaVersion] = useState(0)
+
   // Agenda una acción nueva (misma tabla `recordatorios` que usa la pestaña
   // ✅ Agenda) y luego sincroniza el resumen "Próxima acción" con la más
   // próxima pendiente — así agregar desde aquí o desde la pestaña Agenda es
@@ -703,6 +708,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     await sincronizarProximaAccionCliente()
     setProximaAccion(''); setProximaFecha('')
     setSavingPanel(false); panelToast()
+    setAgendaVersion(v => v + 1)
   }
 
   const etapaActual = etapasPipeline.etapaMap[etapa]
@@ -1648,7 +1654,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               {tabDer === 'motos'      && <MotosInteresTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'cotizacion' && <CotizacionTab clienteId={lead.id} tenantId={tenantId} clienteNombre={lead.cliente?.nombre ?? ''} clienteCelular={lead.cliente?.celular ?? ''} />}
               {tabDer === 'archivos'   && <ArchivosTab clienteId={lead.id} />}
-              {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={lead.cliente_email} />}
+              {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={lead.cliente_email} refreshSignal={agendaVersion} />}
               {tabDer === 'historial'  && <HistorialTab clienteId={lead.id} />}
               {tabDer === 'visibilidad' && esGerencia && <VisibilidadTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
 
