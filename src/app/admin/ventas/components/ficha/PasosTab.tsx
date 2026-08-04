@@ -189,7 +189,7 @@ export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail 
 
   return (
     <div className="space-y-4">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Acciones</p>
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Agenda</p>
 
       {/* Formulario nueva acción — fecha y hora obligatorias */}
       <div className="bg-gray-50 rounded-xl p-3 space-y-2">

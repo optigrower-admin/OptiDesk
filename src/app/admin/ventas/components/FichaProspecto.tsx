@@ -95,7 +95,7 @@ type TabDerecha = 'gestion' | 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizac
 const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'resumen',    label: 'Resumen',    icon: '📋' },
   { id: 'datos',      label: 'Datos',      icon: '🪪' },
-  { id: 'pasos',      label: 'Acciones',   icon: '✅' },
+  { id: 'pasos',      label: 'Agenda',     icon: '✅' },
   { id: 'chats',      label: 'Chats',      icon: '📱' },
   { id: 'motos',      label: 'Vehículos',  icon: '🏍️' },
   { id: 'cotizacion', label: 'Cotización', icon: '📄' },
@@ -675,13 +675,33 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
   const panelToast = useCallback(() => { setSavedPanel(true); setTimeout(() => setSavedPanel(false), 2000) }, [])
 
+  // Agenda una acción nueva (misma tabla `recordatorios` que usa la pestaña
+  // ✅ Agenda) y luego sincroniza el resumen "Próxima acción" con la más
+  // próxima pendiente — así agregar desde aquí o desde la pestaña Agenda es
+  // exactamente lo mismo.
+  const sincronizarProximaAccionCliente = useCallback(async () => {
+    const { data: prox } = await supabase.from('recordatorios')
+      .select('nota, fecha_recordatorio')
+      .eq('cliente_id', lead.id).eq('completado', false)
+      .order('fecha_recordatorio', { ascending: true }).limit(1).maybeSingle()
+    const nuevaAccion = prox?.nota ?? null
+    const nuevaFecha  = prox?.fecha_recordatorio ?? null
+    await supabase.from('clientes').update({ proxima_accion: nuevaAccion, proxima_accion_fecha: nuevaFecha }).eq('id', lead.id)
+    onLeadUpdate?.(lead.id, { proxima_accion: nuevaAccion, proxima_accion_fecha: nuevaFecha })
+  }, [lead.id, supabase, onLeadUpdate])
+
   const guardarProximaAccionPanel = async () => {
     if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     if (!proximaFecha) return
     const fecha = new Date(proximaFecha).toISOString()
     setSavingPanel(true)
-    await supabase.from('clientes').update({ proxima_accion: proximaAccion || null, proxima_accion_fecha: fecha }).eq('id', lead.id)
-    onLeadUpdate?.(lead.id, { proxima_accion: proximaAccion || null, proxima_accion_fecha: fecha })
+    await supabase.from('recordatorios').insert({
+      cliente_id: lead.id, tenant_id: tenantId, asignado_a: profile?.id ?? null,
+      nota: proximaAccion || null, fecha_recordatorio: fecha,
+      completado: false, tipo: 'manual', enviar_email: false,
+    })
+    await sincronizarProximaAccionCliente()
+    setProximaAccion(''); setProximaFecha('')
     setSavingPanel(false); panelToast()
   }
 
@@ -948,7 +968,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               <div>
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Próxima acción</label>
                 <input value={proximaAccion} onChange={e => setProximaAccion(e.target.value)}
-                  placeholder="Acción a seguir..."
+                  placeholder="Acción a Agendar..."
                   className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1" />
                 <input type="datetime-local" value={proximaFecha} onChange={e => setProximaFecha(e.target.value)}
                   className="w-full text-[10px] bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400 mb-1" />
@@ -1709,7 +1729,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Próxima acción</label>
                     <input value={proximaAccion} onChange={e => setProximaAccion(e.target.value)}
-                      placeholder="Acción a seguir..."
+                      placeholder="Acción a Agendar..."
                       className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
                     <input type="datetime-local" value={proximaFecha} onChange={e => setProximaFecha(e.target.value)}
                       className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
