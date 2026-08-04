@@ -74,6 +74,10 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   /* ── Estado créditos / desembolsos ── */
   const [creditos, setCreditos]             = useState<CreditoDesembolso[]>([])
   const [agregandoCredito, setAgregandoCredito] = useState(false)
+  const [creditoAbiertoId, setCreditoAbiertoId] = useState<string | null>(null)
+
+  /* ── Estado bonos (fila expandida al editar) ── */
+  const [bonoAbiertoId, setBonoAbiertoId] = useState<string | null>(null)
 
   /* ── Estado pagos registrados ── */
   const [pagos, setPagos]                   = useState<PagoRegistrado[]>([])
@@ -165,6 +169,7 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
         .select('id, bono_id, monto').single()
       if (data) {
         setBonosAplicados(p => [...p, data as BonoAplicado])
+        setBonoAbiertoId(bonoId)
         await registrarAuditoria(supabase, {
           tenant_id: tenantId, tabla: 'clientes_bonos', registro_id: clienteId, tipo: 'edicion',
           valor_nuevo: { bono: nombreBono }, descripcion: `Aplicó el bono "${nombreBono}" al cliente`, usuario_id: usuarioId,
@@ -213,6 +218,7 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
       if (errAp) { alert(`El bono se creó pero no se pudo aplicar: ${errAp.message}`); return }
       if (aplicado) {
         setBonosAplicados(p => [...p, aplicado as BonoAplicado])
+        setBonoAbiertoId(bono.id)
         await registrarAuditoria(supabase, {
           tenant_id: tenantId, tabla: 'clientes_bonos', registro_id: clienteId, tipo: 'edicion',
           valor_nuevo: { bono: nombre }, descripcion: `Creó y aplicó el bono "${nombre}" al cliente`, usuario_id: usuarioId,
@@ -267,6 +273,7 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
         .select('id, entidad_id, credito_cliente, desembolso, plazo_meses, desembolsado').single()
       if (error || !data) { alert(`No se pudo agregar el crédito: ${error?.message ?? 'error desconocido'}`); return }
       setCreditos(p => [...p, data as CreditoDesembolso])
+      setCreditoAbiertoId(data.id)
     } finally {
       setAgregandoCredito(false)
     }
@@ -457,64 +464,90 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
         )}
 
         <div className="space-y-2">
-          {creditos.map(c => (
-            <div key={c.id} className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <select value={c.entidad_id ?? ''} onChange={e => actualizarCredito(c.id, 'entidad_id', e.target.value || null)}
-                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Sin entidad</option>
-                  {entidades.map(ent => <option key={ent.id} value={ent.id}>{ent.nombre}</option>)}
-                </select>
-                <button onClick={() => eliminarCredito(c.id)}
-                  className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                  </svg>
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] text-gray-500">Crédito cliente</label>
-                  <MoneyInput value={c.credito_cliente != null ? String(c.credito_cliente) : ''}
-                    onChange={raw => setCreditos(p => p.map(x => x.id === c.id ? { ...x, credito_cliente: raw ? parseFloat(raw) : null } : x))}
-                    onCommit={raw => actualizarCredito(c.id, 'credito_cliente', raw ? parseFloat(raw) : null)}
-                    placeholder="$0"
-                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="text-[10px] text-gray-500">Desembolso</label>
-                  <MoneyInput value={c.desembolso != null ? String(c.desembolso) : ''}
-                    onChange={raw => setCreditos(p => p.map(x => x.id === c.id ? { ...x, desembolso: raw ? parseFloat(raw) : null } : x))}
-                    onCommit={raw => actualizarCredito(c.id, 'desembolso', raw ? parseFloat(raw) : null)}
-                    placeholder="$0"
-                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <label className="text-[10px] text-gray-500">Plazo (meses)</label>
-                  <input type="number" value={c.plazo_meses ?? ''}
-                    onChange={e => setCreditos(p => p.map(x => x.id === c.id ? { ...x, plazo_meses: e.target.value ? parseInt(e.target.value, 10) : null } : x))}
-                    onBlur={() => actualizarCredito(c.id, 'plazo_meses', c.plazo_meses)}
-                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="flex gap-1">
-                  <button onClick={() => actualizarCredito(c.id, 'desembolsado', true)}
-                    className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
-                      c.desembolsado ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
-                    }`}>
-                    Desembolsado
-                  </button>
-                  <button onClick={() => actualizarCredito(c.id, 'desembolsado', false)}
-                    className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
-                      !c.desembolsado ? 'bg-amber-500 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
-                    }`}>
-                    Pendiente
+          {creditos.map(c => {
+            const abierto = creditoAbiertoId === c.id
+            const nombreEntidad = entidades.find(ent => ent.id === c.entidad_id)?.nombre ?? 'Sin entidad'
+            if (!abierto) {
+              return (
+                <div key={c.id} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-2.5 py-2">
+                  <div className="flex-1 min-w-0 text-xs text-gray-700">
+                    <span className="font-semibold">{nombreEntidad}</span>
+                    {c.credito_cliente ? <span className="text-gray-400"> · Crédito {formatCOP(c.credito_cliente)}</span> : null}
+                    {c.desembolso ? <span className="text-gray-400"> · Desembolso {formatCOP(c.desembolso)}</span> : null}
+                    {c.plazo_meses ? <span className="text-gray-400"> · {c.plazo_meses} meses</span> : null}
+                    <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${c.desembolsado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {c.desembolsado ? 'Desembolsado' : 'Pendiente'}
+                    </span>
+                  </div>
+                  <button onClick={() => setCreditoAbiertoId(c.id)} className="flex-shrink-0 text-xs text-blue-600 hover:text-blue-800 font-semibold">Editar</button>
+                  <button onClick={() => eliminarCredito(c.id)} className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
                   </button>
                 </div>
+              )
+            }
+            return (
+              <div key={c.id} className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <select value={c.entidad_id ?? ''} onChange={e => actualizarCredito(c.id, 'entidad_id', e.target.value || null)}
+                    className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Sin entidad</option>
+                    {entidades.map(ent => <option key={ent.id} value={ent.id}>{ent.nombre}</option>)}
+                  </select>
+                  <button onClick={() => setCreditoAbiertoId(null)} className="flex-shrink-0 text-xs text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap">✓ Listo</button>
+                  <button onClick={() => eliminarCredito(c.id)}
+                    className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-gray-500">Crédito cliente</label>
+                    <MoneyInput value={c.credito_cliente != null ? String(c.credito_cliente) : ''}
+                      onChange={raw => setCreditos(p => p.map(x => x.id === c.id ? { ...x, credito_cliente: raw ? parseFloat(raw) : null } : x))}
+                      onCommit={raw => actualizarCredito(c.id, 'credito_cliente', raw ? parseFloat(raw) : null)}
+                      placeholder="$0"
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500">Desembolso</label>
+                    <MoneyInput value={c.desembolso != null ? String(c.desembolso) : ''}
+                      onChange={raw => setCreditos(p => p.map(x => x.id === c.id ? { ...x, desembolso: raw ? parseFloat(raw) : null } : x))}
+                      onCommit={raw => actualizarCredito(c.id, 'desembolso', raw ? parseFloat(raw) : null)}
+                      placeholder="$0"
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <label className="text-[10px] text-gray-500">Plazo (meses)</label>
+                    <input type="number" value={c.plazo_meses ?? ''}
+                      onChange={e => setCreditos(p => p.map(x => x.id === c.id ? { ...x, plazo_meses: e.target.value ? parseInt(e.target.value, 10) : null } : x))}
+                      onBlur={() => actualizarCredito(c.id, 'plazo_meses', c.plazo_meses)}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => actualizarCredito(c.id, 'desembolsado', true)}
+                      className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
+                        c.desembolsado ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}>
+                      Desembolsado
+                    </button>
+                    <button onClick={() => actualizarCredito(c.id, 'desembolsado', false)}
+                      className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
+                        !c.desembolsado ? 'bg-amber-500 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}>
+                      Pendiente
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
@@ -527,6 +560,7 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
         <div className="space-y-2">
           {bonosCatalogo.map(b => {
             const aplicado = bonosAplicados.find(x => x.bono_id === b.id)
+            const abierto = aplicado && bonoAbiertoId === b.id
             return (
               <div key={b.id} className="flex items-center gap-2">
                 <button onClick={() => toggleBono(b.id, !aplicado)}
@@ -535,12 +569,21 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
                   }`}>
                   {b.nombre}
                 </button>
-                {aplicado && (
-                  <MoneyInput value={aplicado.monto ? String(aplicado.monto) : ''}
-                    onChange={raw => setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
-                    onCommit={raw => setMontoBono(b.id, raw)}
-                    placeholder="Valor del bono"
-                    className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                {aplicado && abierto && (
+                  <>
+                    <MoneyInput value={aplicado.monto ? String(aplicado.monto) : ''}
+                      onChange={raw => setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
+                      onCommit={raw => setMontoBono(b.id, raw)}
+                      placeholder="Valor del bono"
+                      className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <button onClick={() => setBonoAbiertoId(null)} className="flex-shrink-0 text-xs text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap">✓ Listo</button>
+                  </>
+                )}
+                {aplicado && !abierto && (
+                  <>
+                    <span className="flex-1 text-xs text-gray-500">{aplicado.monto ? formatCOP(aplicado.monto) : 'Sin valor'}</span>
+                    <button onClick={() => setBonoAbiertoId(b.id)} className="flex-shrink-0 text-xs text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap">Editar</button>
+                  </>
                 )}
                 <button onClick={() => eliminarBonoCatalogo(b.id)} title="Eliminar este bono del catálogo (para todos los clientes)"
                   className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors">
