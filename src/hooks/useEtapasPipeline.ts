@@ -166,8 +166,11 @@ export function useEtapasPipeline(tenantId: string | undefined) {
       // una más larga en "Aprobados para Matricular", otra aún más larga en
       // "En matrícula"): cada etapa sin regla propia hereda la lista de la
       // ancla configurada más cercana hacia atrás (mayor orden que sea <= el
-      // suyo). Nunca bloquea el cambio de etapa — solo avisa (ver
-      // FichaProspecto, que muestra un aviso no bloqueante al abrir el cliente).
+      // suyo). Una etapa heredada NUNCA bloquea el cambio (solo avisa, ver
+      // FichaProspecto) — pero si la etapa tiene su PROPIA regla configurada
+      // directamente, se respeta el bloquea_cambio_etapa que el admin haya
+      // puesto ahí (ej. exigir la Consulta RUNT antes de "Aprobados para
+      // Matricular").
       for (const etapasDelPipeline of etapasPorPipeline.values()) {
         const anclasDocs = etapasDelPipeline
           .map(e => ({ etapa: e, regla: e.reglas.find(r => r.campo === 'documento_requerido') }))
@@ -175,10 +178,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
           .sort((a, b) => a.etapa.orden - b.etapa.orden)
         if (anclasDocs.length === 0) continue
         for (const e of etapasDelPipeline) {
-          if (e.reglas.some(r => r.campo === 'documento_requerido')) {
-            e.reglas = e.reglas.map(r => r.campo === 'documento_requerido' ? { ...r, bloquea_cambio_etapa: false } : r)
-            continue
-          }
+          if (e.reglas.some(r => r.campo === 'documento_requerido')) continue // regla propia — se respeta tal cual
           const aplicable = anclasDocs.filter(a => a.etapa.orden <= e.orden).sort((a, b) => b.etapa.orden - a.etapa.orden)[0]
           if (aplicable) e.reglas = [...e.reglas, { ...aplicable.regla, bloquea_cambio_etapa: false }]
         }
