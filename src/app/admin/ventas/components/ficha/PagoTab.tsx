@@ -141,7 +141,8 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
 
   const totalPagado = useMemo(() => pagos.reduce((s, p) => s + (p.monto ?? 0), 0), [pagos])
   const totalDesembolsado = useMemo(() => creditos.filter(c => c.desembolsado).reduce((s, c) => s + (c.desembolso ?? 0), 0), [creditos])
-  const totalRecibido = totalPagado + totalDesembolsado
+  const totalBonos = useMemo(() => bonosAplicados.reduce((s, b) => s + (b.monto ?? 0), 0), [bonosAplicados])
+  const totalRecibido = totalPagado + totalDesembolsado + totalBonos
 
   /* ── Auto-guardar forma de pago ── */
   async function guardarFormaPago(nueva: FormaPago) {
@@ -704,8 +705,8 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
           </div>
         )}
 
-        {/* Suma total: pagos + créditos ya desembolsados, contra el valor de las motos */}
-        {totalMotos > 0 && (pagos.length > 0 || creditos.some(c => c.desembolsado)) && (
+        {/* Suma total: pagos + créditos ya desembolsados + bonos, contra el valor de las motos */}
+        {totalMotos > 0 && (pagos.length > 0 || creditos.some(c => c.desembolsado) || totalBonos > 0) && (
           <div className="space-y-1 mt-2">
             <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
               <p className="text-xs text-emerald-700 font-semibold uppercase tracking-wide">Total pagado</p>
@@ -715,6 +716,12 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
               <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
                 <p className="text-xs text-emerald-700 font-semibold uppercase tracking-wide">Total desembolsado (créditos)</p>
                 <p className="text-sm font-bold text-emerald-800">{formatCOP(totalDesembolsado)}</p>
+              </div>
+            )}
+            {totalBonos > 0 && (
+              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
+                <p className="text-xs text-emerald-700 font-semibold uppercase tracking-wide">Total bonos</p>
+                <p className="text-sm font-bold text-emerald-800">{formatCOP(totalBonos)}</p>
               </div>
             )}
             {totalRecibido < totalMotos ? (
