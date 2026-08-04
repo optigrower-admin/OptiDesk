@@ -14,7 +14,7 @@ interface Props {
 }
 
 type Entidad       = { id: string; nombre: string }
-type Estudio       = { id: string; entidad_id: string; estado: 'sin_iniciar' | 'en_estudio' | 'aprobado' | 'rechazado'; monto_aprobado: number | null; bono: boolean }
+type Estudio       = { id: string; entidad_id: string; estado: 'sin_iniciar' | 'en_estudio' | 'aprobado' | 'rechazado' }
 type Bono          = { id: string; nombre: string }
 type BonoAplicado  = { id: string; bono_id: string; monto: number }
 type PagoRegistrado = {
@@ -23,6 +23,14 @@ type PagoRegistrado = {
   monto: number
   metodo_pago: string | null
   created_at: string
+}
+type CreditoDesembolso = {
+  id: string
+  entidad_id: string | null
+  credito_cliente: number | null
+  desembolso: number | null
+  plazo_meses: number | null
+  desembolsado: boolean
 }
 
 type FormaPago = 'contado' | 'credito' | 'credito_ci' | ''
@@ -62,6 +70,10 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   const [creandoBono, setCreandoBono]       = useState(false)
   const [editandoPago, setEditandoPago]     = useState(false)
 
+  /* ── Estado créditos / desembolsos ── */
+  const [creditos, setCreditos]             = useState<CreditoDesembolso[]>([])
+  const [agregandoCredito, setAgregandoCredito] = useState(false)
+
   /* ── Estado pagos registrados ── */
   const [pagos, setPagos]                   = useState<PagoRegistrado[]>([])
   const [showFormPago, setShowFormPago]     = useState(false)
@@ -74,13 +86,13 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   const [loading, setLoading] = useState(true)
 
   const cargar = useCallback(async () => {
-    const [{ data: cliente }, { data: ent }, { data: est }, { data: motos }, { data: pagosList }, { data: tenant }, { data: bns }, { data: bnsAp }] =
+    const [{ data: cliente }, { data: ent }, { data: est }, { data: motos }, { data: pagosList }, { data: tenant }, { data: bns }, { data: bnsAp }, { data: creds }] =
       await Promise.all([
         supabase.from('clientes')
           .select('forma_pago, credito_tiene_cuota_inicial, cuota_inicial, cuota_deseada, plazo_meses')
           .eq('id', clienteId).single(),
         supabase.from('entidades_financieras').select('id, nombre').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
-        supabase.from('clientes_credito_estudio').select('id, entidad_id, estado, monto_aprobado, bono').eq('cliente_id', clienteId),
+        supabase.from('clientes_credito_estudio').select('id, entidad_id, estado').eq('cliente_id', clienteId),
         supabase.from('clientes_motos_interes')
           .select('disponibilidad, con_papeles, con_tarjeta, pignorada, motos_catalogo(precio, costo_documentos, costo_prenda)')
           .eq('cliente_id', clienteId),
@@ -88,6 +100,9 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
         supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tenantId).single(),
         supabase.from('bonos').select('id, nombre').eq('tenant_id', tenantId).eq('activa', true).order('orden'),
         supabase.from('clientes_bonos').select('id, bono_id, monto').eq('cliente_id', clienteId),
+        supabase.from('clientes_creditos_desembolso')
+          .select('id, entidad_id, credito_cliente, desembolso, plazo_meses, desembolsado')
+          .eq('cliente_id', clienteId).order('created_at'),
       ])
 
     if (cliente) {
@@ -102,6 +117,7 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
     setPagos((pagosList ?? []) as PagoRegistrado[])
     setBonosCatalogo((bns ?? []) as Bono[])
     setBonosAplicados((bnsAp ?? []) as BonoAplicado[])
+    setCreditos((creds ?? []) as CreditoDesembolso[])
 
     const recargoTarjeta = Number(tenant?.recargo_tarjeta_porcentaje ?? 5)
     const total = (motos ?? []).reduce((s, m) => {
@@ -116,6 +132,8 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   useEffect(() => { cargar() }, [cargar])
 
   const totalPagado = useMemo(() => pagos.reduce((s, p) => s + (p.monto ?? 0), 0), [pagos])
+  const totalDesembolsado = useMemo(() => creditos.filter(c => c.desembolsado).reduce((s, c) => s + (c.desembolso ?? 0), 0), [creditos])
+  const totalRecibido = totalPagado + totalDesembolsado
 
   /* ── Auto-guardar forma de pago ── */
   async function guardarFormaPago(nueva: FormaPago) {
@@ -192,25 +210,36 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
     cargar()
     if (onCreditoChange) {
       const updatedEstudios = estudios.map(e => e.entidad_id === entidadId ? { ...e, estado } : e)
-      if (!existente) updatedEstudios.push({ id: '', entidad_id: entidadId, estado, monto_aprobado: null, bono: false })
+      if (!existente) updatedEstudios.push({ id: '', entidad_id: entidadId, estado })
       const aprobada = entidades.find(e => updatedEstudios.some(es => es.entidad_id === e.id && es.estado === 'aprobado'))?.nombre ?? null
       const rechazadas = entidades.filter(e => updatedEstudios.some(es => es.entidad_id === e.id && es.estado === 'rechazado')).map(e => e.nombre)
       onCreditoChange(aprobada, rechazadas)
     }
   }
 
-  async function setMonto(entidadId: string, monto: string) {
-    const existente = estudios.find(e => e.entidad_id === entidadId)
-    if (!existente) return
-    await supabase.from('clientes_credito_estudio').update({ monto_aprobado: monto ? parseFloat(monto) : null }).eq('id', existente.id)
-    setEstudios(p => p.map(e => e.id === existente.id ? { ...e, monto_aprobado: monto ? parseFloat(monto) : null } : e))
+  /* ── Créditos / desembolsos ── */
+  async function agregarCredito() {
+    setAgregandoCredito(true)
+    try {
+      const { data, error } = await supabase.from('clientes_creditos_desembolso')
+        .insert({ cliente_id: clienteId, tenant_id: tenantId, entidad_id: entidades[0]?.id ?? null })
+        .select('id, entidad_id, credito_cliente, desembolso, plazo_meses, desembolsado').single()
+      if (error || !data) { alert(`No se pudo agregar el crédito: ${error?.message ?? 'error desconocido'}`); return }
+      setCreditos(p => [...p, data as CreditoDesembolso])
+    } finally {
+      setAgregandoCredito(false)
+    }
   }
 
-  async function setBonoEstudio(entidadId: string, bono: boolean) {
-    const existente = estudios.find(e => e.entidad_id === entidadId)
-    if (!existente) return
-    await supabase.from('clientes_credito_estudio').update({ bono }).eq('id', existente.id)
-    setEstudios(p => p.map(e => e.id === existente.id ? { ...e, bono } : e))
+  async function actualizarCredito<K extends keyof CreditoDesembolso>(id: string, campo: K, valor: CreditoDesembolso[K]) {
+    setCreditos(p => p.map(c => c.id === id ? { ...c, [campo]: valor } : c))
+    await supabase.from('clientes_creditos_desembolso').update({ [campo]: valor }).eq('id', id)
+  }
+
+  async function eliminarCredito(id: string) {
+    if (!confirm('¿Eliminar este crédito?')) return
+    await supabase.from('clientes_creditos_desembolso').delete().eq('id', id)
+    setCreditos(p => p.filter(c => c.id !== id))
   }
 
   /* ── Pagos registrados ── */
@@ -247,9 +276,6 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
 
   const esCredito = formaPago === 'credito' || formaPago === 'credito_ci'
   const modoEdicionPago = editandoPago || !formaPago
-  const bonosResumen = bonosAplicados.length === 0
-    ? 'Sin bono'
-    : bonosAplicados.map(ba => `${bonosCatalogo.find(b => b.id === ba.bono_id)?.nombre ?? 'Bono'} (${formatCOP(ba.monto)})`).join(', ')
 
   return (
     <div className="space-y-4">
@@ -272,49 +298,6 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
                   {opt.label}
                 </button>
               ))}
-            </div>
-          </div>
-
-          {/* ── BONOS ── */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Bonos</p>
-            {bonosCatalogo.length === 0 && (
-              <p className="text-xs text-gray-400 mb-2">Sin bonos creados todavía. Agrega uno abajo (ej: Financiera, UMA, Motospace38) o desde Config Ventas → Bonos.</p>
-            )}
-            <div className="space-y-2">
-              {bonosCatalogo.map(b => {
-                const aplicado = bonosAplicados.find(x => x.bono_id === b.id)
-                return (
-                  <div key={b.id} className="flex items-center gap-2">
-                    <button onClick={() => toggleBono(b.id, !aplicado)}
-                      className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
-                        aplicado ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                      }`}>
-                      {b.nombre}
-                    </button>
-                    {aplicado && (
-                      <MoneyInput value={aplicado.monto ? String(aplicado.monto) : ''}
-                        onChange={raw => setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
-                        onCommit={raw => setMontoBono(b.id, raw)}
-                        placeholder="Valor del bono"
-                        className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    )}
-                  </div>
-                )
-              })}
-              {bonosCatalogo.length > 0 && bonosAplicados.length === 0 && (
-                <p className="text-[11px] text-gray-400">Sin bono aplicado (predeterminado)</p>
-              )}
-              <div className="flex items-center gap-2 pt-1">
-                <input value={nuevoBonoInput} onChange={e => setNuevoBonoInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') crearYAplicarBono() }}
-                  placeholder="Nuevo bono..."
-                  className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <button onClick={crearYAplicarBono} disabled={!nuevoBonoInput.trim() || creandoBono}
-                  className="text-xs px-2.5 py-1 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg font-semibold whitespace-nowrap">
-                  {creandoBono ? '...' : '+ Agregar'}
-                </button>
-              </div>
             </div>
           </div>
 
@@ -380,13 +363,162 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
               )}
             </>
           )}
-          <span className="text-gray-400 truncate">Bonos: {bonosResumen}</span>
           <button onClick={() => setEditandoPago(true)}
             className="ml-auto text-xs text-blue-700 font-semibold hover:text-blue-900 flex items-center gap-1 flex-shrink-0">
             ✎ Editar
           </button>
         </div>
       )}
+
+      {/* ── ESTUDIO DE CRÉDITO POR ENTIDAD ── */}
+      <div className="border-t border-gray-100 pt-4 border border-gray-200 rounded-xl p-3 space-y-2">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Estudio de crédito por entidad</p>
+        {entidades.length === 0 && <p className="text-xs text-gray-400">No hay entidades configuradas (Config Ventas → Entidades financieras).</p>}
+        {entidades.map(ent => {
+          const est = estudios.find(e => e.entidad_id === ent.id)
+          const estado = est?.estado ?? 'sin_iniciar'
+          return (
+            <div key={ent.id} className="bg-gray-50 rounded-lg p-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-gray-800">{ent.nombre}</p>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTADO_COLOR[estado]}`}>{ESTADO_LABEL[estado]}</span>
+              </div>
+              <div className="flex gap-1 mt-1.5 flex-wrap">
+                {(['sin_iniciar', 'en_estudio', 'aprobado', 'rechazado'] as const).map(opt => (
+                  <button key={opt} onClick={() => cambiarEstado(ent.id, opt)}
+                    className={`text-xs px-2 py-0.5 rounded-full transition-colors ${
+                      estado === opt ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}>
+                    {ESTADO_LABEL[opt]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── AÑADIR MONTO CRÉDITO ── */}
+      <div className="border-t border-gray-100 pt-4">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Añadir monto crédito
+            {creditos.length > 0 && <span className="ml-1.5 bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full font-medium normal-case">{creditos.length}</span>}
+          </p>
+          <button onClick={agregarCredito} disabled={agregandoCredito}
+            className="text-xs text-blue-700 font-semibold hover:text-blue-900 disabled:opacity-40 flex items-center gap-1">
+            + Agregar crédito
+          </button>
+        </div>
+
+        {creditos.length === 0 && (
+          <p className="text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-xl">Sin créditos agregados</p>
+        )}
+
+        <div className="space-y-2">
+          {creditos.map(c => (
+            <div key={c.id} className="bg-gray-50 border border-gray-100 rounded-xl p-2.5 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <select value={c.entidad_id ?? ''} onChange={e => actualizarCredito(c.id, 'entidad_id', e.target.value || null)}
+                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Sin entidad</option>
+                  {entidades.map(ent => <option key={ent.id} value={ent.id}>{ent.nombre}</option>)}
+                </select>
+                <button onClick={() => eliminarCredito(c.id)}
+                  className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-gray-500">Crédito cliente</label>
+                  <MoneyInput value={c.credito_cliente != null ? String(c.credito_cliente) : ''}
+                    onChange={raw => setCreditos(p => p.map(x => x.id === c.id ? { ...x, credito_cliente: raw ? parseFloat(raw) : null } : x))}
+                    onCommit={raw => actualizarCredito(c.id, 'credito_cliente', raw ? parseFloat(raw) : null)}
+                    placeholder="$0"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-500">Desembolso</label>
+                  <MoneyInput value={c.desembolso != null ? String(c.desembolso) : ''}
+                    onChange={raw => setCreditos(p => p.map(x => x.id === c.id ? { ...x, desembolso: raw ? parseFloat(raw) : null } : x))}
+                    onCommit={raw => actualizarCredito(c.id, 'desembolso', raw ? parseFloat(raw) : null)}
+                    placeholder="$0"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] text-gray-500">Plazo (meses)</label>
+                  <input type="number" value={c.plazo_meses ?? ''}
+                    onChange={e => setCreditos(p => p.map(x => x.id === c.id ? { ...x, plazo_meses: e.target.value ? parseInt(e.target.value, 10) : null } : x))}
+                    onBlur={() => actualizarCredito(c.id, 'plazo_meses', c.plazo_meses)}
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => actualizarCredito(c.id, 'desembolsado', true)}
+                    className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
+                      c.desembolsado ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}>
+                    Desembolsado
+                  </button>
+                  <button onClick={() => actualizarCredito(c.id, 'desembolsado', false)}
+                    className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
+                      !c.desembolsado ? 'bg-amber-500 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}>
+                    Pendiente
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── BONOS ── */}
+      <div className="border-t border-gray-100 pt-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Bonos</p>
+        {bonosCatalogo.length === 0 && (
+          <p className="text-xs text-gray-400 mb-2">Sin bonos creados todavía. Agrega uno abajo (ej: Financiera, UMA, Motospace38) o desde Config Ventas → Bonos.</p>
+        )}
+        <div className="space-y-2">
+          {bonosCatalogo.map(b => {
+            const aplicado = bonosAplicados.find(x => x.bono_id === b.id)
+            return (
+              <div key={b.id} className="flex items-center gap-2">
+                <button onClick={() => toggleBono(b.id, !aplicado)}
+                  className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${
+                    aplicado ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}>
+                  {b.nombre}
+                </button>
+                {aplicado && (
+                  <MoneyInput value={aplicado.monto ? String(aplicado.monto) : ''}
+                    onChange={raw => setBonosAplicados(p => p.map(x => x.id === aplicado.id ? { ...x, monto: raw ? parseFloat(raw) : 0 } : x))}
+                    onCommit={raw => setMontoBono(b.id, raw)}
+                    placeholder="Valor del bono"
+                    className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                )}
+              </div>
+            )
+          })}
+          {bonosCatalogo.length > 0 && bonosAplicados.length === 0 && (
+            <p className="text-[11px] text-gray-400">Sin bono aplicado (predeterminado)</p>
+          )}
+          <div className="flex items-center gap-2 pt-1">
+            <input value={nuevoBonoInput} onChange={e => setNuevoBonoInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') crearYAplicarBono() }}
+              placeholder="Nuevo bono..."
+              className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={crearYAplicarBono} disabled={!nuevoBonoInput.trim() || creandoBono}
+              className="text-xs px-2.5 py-1 bg-blue-700 hover:bg-blue-800 disabled:opacity-40 text-white rounded-lg font-semibold whitespace-nowrap">
+              {creandoBono ? '...' : '+ Agregar'}
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* ── PAGOS REGISTRADOS ── */}
       <div className="border-t border-gray-100 pt-4">
@@ -460,68 +592,34 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
                 </div>
               )
             })}
+          </div>
+        )}
 
-            {/* Total pagado */}
-            <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 mt-1">
+        {/* Suma total: pagos + créditos ya desembolsados, contra el valor de las motos */}
+        {totalMotos > 0 && (pagos.length > 0 || creditos.some(c => c.desembolsado)) && (
+          <div className="space-y-1 mt-2">
+            <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
               <p className="text-xs text-emerald-700 font-semibold uppercase tracking-wide">Total pagado</p>
               <p className="text-sm font-bold text-emerald-800">{formatCOP(totalPagado)}</p>
             </div>
-            {totalMotos > 0 && totalPagado < totalMotos && (
-              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-0.5">
+            {totalDesembolsado > 0 && (
+              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
+                <p className="text-xs text-emerald-700 font-semibold uppercase tracking-wide">Total desembolsado (créditos)</p>
+                <p className="text-sm font-bold text-emerald-800">{formatCOP(totalDesembolsado)}</p>
+              </div>
+            )}
+            {totalRecibido < totalMotos ? (
+              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
                 <p className="text-xs text-amber-700 font-semibold">Saldo pendiente</p>
-                <p className="text-sm font-bold text-amber-800">{formatCOP(totalMotos - totalPagado)}</p>
+                <p className="text-sm font-bold text-amber-800">{formatCOP(totalMotos - totalRecibido)}</p>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+                <p className="text-xs text-blue-700 font-semibold">✓ Cubierto en su totalidad</p>
               </div>
             )}
           </div>
         )}
-      </div>
-
-      {/* ── ESTUDIO DE CRÉDITO POR ENTIDAD (siempre visible) ── */}
-      <div className="border-t border-gray-100 pt-4 border border-gray-200 rounded-xl p-3 space-y-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Estudio de crédito por entidad</p>
-        {entidades.length === 0 && <p className="text-xs text-gray-400">No hay entidades configuradas (Config Ventas → Entidades financieras).</p>}
-        {entidades.map(ent => {
-          const est = estudios.find(e => e.entidad_id === ent.id)
-          const estado = est?.estado ?? 'sin_iniciar'
-          return (
-            <div key={ent.id} className="bg-gray-50 rounded-lg p-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-gray-800">{ent.nombre}</p>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTADO_COLOR[estado]}`}>{ESTADO_LABEL[estado]}</span>
-              </div>
-              <div className="flex gap-1 mt-1.5 flex-wrap">
-                {(['sin_iniciar', 'en_estudio', 'aprobado', 'rechazado'] as const).map(opt => (
-                  <button key={opt} onClick={() => cambiarEstado(ent.id, opt)}
-                    className={`text-xs px-2 py-0.5 rounded-full transition-colors ${
-                      estado === opt ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
-                    }`}>
-                    {ESTADO_LABEL[opt]}
-                  </button>
-                ))}
-              </div>
-              {estado === 'aprobado' && (
-                <div className="mt-1.5 space-y-1.5">
-                  <MoneyInput value={est?.monto_aprobado != null ? String(est.monto_aprobado) : ''}
-                    onChange={raw => setEstudios(p => p.map(e => e.entidad_id === ent.id ? { ...e, monto_aprobado: raw ? parseFloat(raw) : null } : e))}
-                    onCommit={raw => setMonto(ent.id, raw)}
-                    placeholder="Monto aprobado"
-                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-500">Bono:</span>
-                    <button onClick={() => setBonoEstudio(ent.id, true)}
-                      className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
-                        est?.bono ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}>Sí</button>
-                    <button onClick={() => setBonoEstudio(ent.id, false)}
-                      className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
-                        !est?.bono ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}>No</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
       </div>
     </div>
   )
