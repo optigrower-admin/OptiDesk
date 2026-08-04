@@ -177,9 +177,26 @@ export async function enviarClienteAProgreser(
       }
     }
 
+    // ── 4. Avanzar al siguiente paso (para que Progreser guarde lo llenado) ──
+    // Sin este clic, muchos formularios por pasos no persisten nada — el
+    // asesor entraría después y encontraría todo en blanco otra vez.
+    const avanzo = await page.evaluate(() => {
+      const normalizar = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+      const botones = Array.from(document.querySelectorAll('button'))
+      const boton = botones.find(b => /siguiente|continuar|guardar/.test(normalizar(b.textContent ?? '')) && !(b as HTMLButtonElement).disabled)
+      if (boton) { (boton as HTMLButtonElement).click(); return true }
+      return false
+    })
+    if (avanzo) {
+      await new Promise(res => setTimeout(res, 2500))
+    }
+    await screenshot(page, '6-despues-de-avanzar', screenshots)
+
     return {
       ok: true,
-      mensaje: 'Datos básicos llenados en Progreser. Falta completar el resto de los pasos del formulario (Datos Demográficos, Condiciones de Cupo, etc.) manualmente — esa información no vive en OptiDesk.',
+      mensaje: avanzo
+        ? 'Datos básicos llenados y guardados en Progreser (se avanzó al siguiente paso). Entra a Progreser con tu usuario para completar el resto del formulario (Datos Demográficos, Condiciones de Cupo, etc.) — esa información no vive en OptiDesk.'
+        : 'Datos básicos llenados, pero no se encontró el botón para avanzar/guardar — revisa la última captura y dale clic ahí mismo en Progreser antes de que se pierda lo llenado.',
       screenshots,
     }
   } catch (e) {
