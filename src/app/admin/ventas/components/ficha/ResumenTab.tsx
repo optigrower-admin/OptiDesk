@@ -167,11 +167,9 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
   const [confirmUncheckRecId, setConfirmUncheckRecId] = useState<string | null>(null)
   const [reprogramarId, setReprogramarId] = useState<string | null>(null)
   const [reprogramarFecha, setReprogramarFecha] = useState('')
-  const [descuentos, setDescuentos] = useState('')
-  const [lugarMatricula, setLugarMatricula] = useState('')
 
   const cargar = useCallback(async () => {
-    const [{ data: sel }, { data: recs }, { data: pasosData }, { data: tenant }, { data: cliente }] = await Promise.all([
+    const [{ data: sel }, { data: recs }, { data: pasosData }, { data: tenant }] = await Promise.all([
       supabase.from('clientes_motos_interes')
         .select('id, disponibilidad, con_papeles, con_tarjeta, pignorada, motos_catalogo(id, referencia, precio, costo_documentos, costo_prenda)')
         .eq('cliente_id', clienteId),
@@ -184,7 +182,6 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
         .eq('cliente_id', clienteId)
         .order('orden'),
       supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tenantId).single(),
-      supabase.from('clientes').select('descuentos, lugar_matricula').eq('id', clienteId).single(),
     ])
     setSeleccion((sel ?? []).map(s => ({
       ...s,
@@ -193,8 +190,6 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
     setRecargo(Number(tenant?.recargo_tarjeta_porcentaje ?? 5))
     setRecordatorios((recs ?? []) as Recordatorio[])
     setPasos((pasosData ?? []) as Paso[])
-    setDescuentos(cliente?.descuentos ?? '')
-    setLugarMatricula(cliente?.lugar_matricula ?? '')
     setLoading(false)
   }, [clienteId, tenantId])
 
@@ -332,17 +327,6 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
         })}
 
       </div>
-
-      {/* Descuento y matrícula */}
-      {(descuentos || lugarMatricula) && (
-        <div className="border-t pt-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Descuento y matrícula</p>
-          <div className="bg-gray-50 rounded-xl p-2.5 space-y-1">
-            {descuentos && <p className="text-sm text-gray-800"><span className="text-gray-500">Descuento:</span> {descuentos}</p>}
-            {lugarMatricula && <p className="text-sm text-gray-800"><span className="text-gray-500">Matrícula en:</span> {lugarMatricula}</p>}
-          </div>
-        </div>
-      )}
 
       {/* Pago */}
       <div className="border-t pt-3">

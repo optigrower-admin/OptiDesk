@@ -76,6 +76,9 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
   const [agregandoCredito, setAgregandoCredito] = useState(false)
   const [creditoAbiertoId, setCreditoAbiertoId] = useState<string | null>(null)
 
+  /* ── Estado estudio de crédito por entidad (fila expandida al editar) ── */
+  const [entidadAbiertaId, setEntidadAbiertaId] = useState<string | null>(null)
+
   /* ── Estado bonos (fila expandida al editar) ── */
   const [bonoAbiertoId, setBonoAbiertoId] = useState<string | null>(null)
 
@@ -425,15 +428,29 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
         {entidades.map(ent => {
           const est = estudios.find(e => e.entidad_id === ent.id)
           const estado = est?.estado ?? 'sin_iniciar'
+          const abierto = entidadAbiertaId === ent.id
+
+          if (!abierto) {
+            return (
+              <div key={ent.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                <p className="text-sm font-medium text-gray-800">{ent.nombre}</p>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTADO_COLOR[estado]}`}>{ESTADO_LABEL[estado]}</span>
+                  <button onClick={() => setEntidadAbiertaId(ent.id)} className="text-xs text-blue-600 hover:text-blue-800 font-semibold">Editar</button>
+                </div>
+              </div>
+            )
+          }
           return (
-            <div key={ent.id} className="bg-gray-50 rounded-lg p-2">
+            <div key={ent.id} className="bg-gray-50 rounded-lg p-2"
+              onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setEntidadAbiertaId(null) }}>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium text-gray-800">{ent.nombre}</p>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ESTADO_COLOR[estado]}`}>{ESTADO_LABEL[estado]}</span>
               </div>
               <div className="flex gap-1 mt-1.5 flex-wrap">
                 {(['sin_iniciar', 'en_estudio', 'aprobado', 'rechazado'] as const).map(opt => (
-                  <button key={opt} onClick={() => cambiarEstado(ent.id, opt)}
+                  <button key={opt} onClick={() => { cambiarEstado(ent.id, opt); setEntidadAbiertaId(null) }}
                     className={`text-xs px-2 py-0.5 rounded-full transition-colors ${
                       estado === opt ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
                     }`}>
