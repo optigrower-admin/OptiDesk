@@ -23,24 +23,3 @@ export function decrypt(text: string): string {
   const decipher = crypto.createDecipheriv(ALGORITHM, getKey(), iv)
   return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8')
 }
-
-/** Firma un objeto en un token portable por URL (base64url payload + firma
- * HMAC), para autorizar una petición de un origen externo (ej. un userscript
- * corriendo en otro sitio) sin exponer ninguna credencial. */
-export function signPayload(payload: Record<string, unknown>): string {
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url')
-  const firma = crypto.createHmac('sha256', getKey()).update(payloadB64).digest('base64url')
-  return `${payloadB64}.${firma}`
-}
-
-export function verifyPayload<T = Record<string, unknown>>(token: string): T | null {
-  const [payloadB64, firma] = token.split('.')
-  if (!payloadB64 || !firma) return null
-  const esperada = crypto.createHmac('sha256', getKey()).update(payloadB64).digest('base64url')
-  if (esperada.length !== firma.length || !crypto.timingSafeEqual(Buffer.from(esperada), Buffer.from(firma))) return null
-  try {
-    return JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as T
-  } catch {
-    return null
-  }
-}

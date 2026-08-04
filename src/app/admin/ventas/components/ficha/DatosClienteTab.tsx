@@ -58,10 +58,28 @@ const VACIO: Campos = {
   ocupacion: '', tipo_contrato: '', ingresos_mensuales: '', gastos_mensuales: '',
 }
 
-function Field({ label, value, onChange, onBlur }: { label: string; value: string; onChange: (v: string) => void; onBlur?: () => void }) {
+function CopyButton({ value }: { value: string }) {
+  const [copiado, setCopiado] = useState(false)
+  if (!value) return null
+  return (
+    <button
+      type="button"
+      title="Copiar"
+      onClick={() => { navigator.clipboard.writeText(value); setCopiado(true); setTimeout(() => setCopiado(false), 1500) }}
+      className="text-[10px] text-gray-400 hover:text-blue-600 transition-colors px-1"
+    >
+      {copiado ? '✓ Copiado' : '📋 Copiar'}
+    </button>
+  )
+}
+
+function Field({ label, value, onChange, onBlur, copyValue }: { label: string; value: string; onChange: (v: string) => void; onBlur?: () => void; copyValue?: string }) {
   return (
     <div>
-      <label className="text-xs text-gray-500">{label}</label>
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-gray-500">{label}</label>
+        <CopyButton value={copyValue !== undefined ? copyValue : value} />
+      </div>
       <input value={value} onChange={e => onChange(e.target.value)}
         onBlur={onBlur}
         className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
@@ -180,7 +198,10 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
           </select>
         </div>
         <div>
-          <label className="text-xs text-gray-500">Número de documento</label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs text-gray-500">Número de documento</label>
+            <CopyButton value={campos.cedula} />
+          </div>
           <input
             value={campos.cedula.replace(/\D/g, '') ? Number(campos.cedula.replace(/\D/g, '')).toLocaleString('es-CO') : campos.cedula}
             onChange={e => set('cedula', e.target.value.replace(/\D/g, ''))}
@@ -190,7 +211,10 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
         </div>
       </div>
       <div>
-        <label className="text-xs text-gray-500">Fecha de nacimiento</label>
+        <div className="flex items-center justify-between">
+          <label className="text-xs text-gray-500">Fecha de nacimiento</label>
+          <CopyButton value={campos.fecha_nacimiento} />
+        </div>
         <input type="date" value={campos.fecha_nacimiento} onChange={e => set('fecha_nacimiento', e.target.value)} onBlur={guardar}
           className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
       </div>
@@ -217,7 +241,10 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs text-gray-500">Ingresos mensuales ($)</label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs text-gray-500">Ingresos mensuales ($)</label>
+            <CopyButton value={campos.ingresos_mensuales} />
+          </div>
           <input
             value={campos.ingresos_mensuales ? Number(campos.ingresos_mensuales).toLocaleString('es-CO') : ''}
             onChange={e => set('ingresos_mensuales', e.target.value.replace(/\D/g, ''))}
@@ -227,7 +254,10 @@ export default function DatosClienteTab({ clienteId, tenantId, usuarioId, onClie
             className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mt-0.5" />
         </div>
         <div>
-          <label className="text-xs text-gray-500">Gastos mensuales ($)</label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs text-gray-500">Gastos mensuales ($)</label>
+            <CopyButton value={campos.gastos_mensuales} />
+          </div>
           <input
             value={campos.gastos_mensuales ? Number(campos.gastos_mensuales).toLocaleString('es-CO') : ''}
             onChange={e => set('gastos_mensuales', e.target.value.replace(/\D/g, ''))}

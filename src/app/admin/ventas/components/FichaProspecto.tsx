@@ -120,14 +120,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [mensajes, setMensajes]         = useState<Mensaje[]>([])
   const [ordenes, setOrdenes]           = useState<Orden[]>([])
   const [usuarios, setUsuarios]         = useState<{ id: string; nombre: string }[]>([])
-  const [clienteEmail, setClienteEmail] = useState<string | null>(null)
-  const [cedula, setCedula] = useState('')
-  const [tipoDocumento, setTipoDocumento] = useState('CC')
-  const [fechaNacimiento, setFechaNacimiento] = useState('')
-  const [editandoCredito, setEditandoCredito] = useState(false)
-  const [savingCredito, setSavingCredito] = useState(false)
-  const [abriendoProgreser, setAbriendoProgreser] = useState(false)
-  const [errorProgreser, setErrorProgreser] = useState<string | null>(null)
   const [input, setInput]               = useState('')
   const [tipoMsg, setTipoMsg]           = useState<'mensaje' | 'nota'>('mensaje')
   const [sending, setSending]           = useState(false)
@@ -302,7 +294,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       supabase.from('ordenes').select('id,created_at,estado,descripcion_problema')
         .eq('cliente_id', lead.id).order('created_at', { ascending: false }).limit(5),
       supabase.from('usuarios').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).eq('es_asesor', true),
-      supabase.from('clientes').select('email, assigned_to, created_at, cedula, tipo_documento, fecha_nacimiento').eq('id', lead.id).single(),
+      supabase.from('clientes').select('assigned_to, created_at').eq('id', lead.id).single(),
       supabase.from('historial_etapas_cliente')
         .select('etapa_anterior, etapa_nueva, created_at')
         .eq('cliente_id', lead.id)
@@ -312,12 +304,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setMensajes((msgs ?? []) as unknown as Mensaje[])
     setOrdenes((ords ?? []) as Orden[])
     setUsuarios((us ?? []) as { id: string; nombre: string }[])
-    setClienteEmail(cliente?.email ?? null)
     setAssignedTo(cliente?.assigned_to ?? '')
     setClienteRegistradoEn(cliente?.created_at ?? null)
-    setCedula(cliente?.cedula ?? '')
-    setTipoDocumento(cliente?.tipo_documento ?? 'CC')
-    setFechaNacimiento(cliente?.fecha_nacimiento ?? '')
     setHistorialEtapas((etapasHist ?? []) as EtapaMovimiento[])
   }, [lead.id, convActivaId, tenantId])
 
@@ -508,37 +496,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     }
     setSavingCelular(false)
     hideGlobalLoading()
-  }
-
-  const guardarDatosCredito = async () => {
-    setSavingCredito(true)
-    const { error } = await supabase.from('clientes').update({
-      cedula: cedula.trim() || null,
-      tipo_documento: tipoDocumento,
-      fecha_nacimiento: fechaNacimiento || null,
-    }).eq('id', lead.id).eq('tenant_id', tenantId)
-    setSavingCredito(false)
-    if (error) { alert(`No se pudo guardar: ${error.message}`); return }
-    setEditandoCredito(false)
-    mostrarGuardado()
-  }
-
-  const datosCreditoCompletos = !!lead.cliente?.nombre && !!cedula && !!fechaNacimiento && !!celularActual && !!clienteEmail
-  const abrirEnProgreser = async () => {
-    setAbriendoProgreser(true)
-    setErrorProgreser(null)
-    try {
-      const r = await fetch('/api/admin/ventas/progreser/token', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cliente_id: lead.id }),
-      })
-      const result = await r.json()
-      if (!r.ok) { setErrorProgreser(result.error ?? 'Error desconocido'); return }
-      window.open(result.url, '_blank')
-    } catch {
-      setErrorProgreser('Error de conexión al generar el enlace a Progreser.')
-    } finally {
-      setAbriendoProgreser(false)
-    }
   }
 
   const guardarCarta = async () => {
@@ -983,60 +940,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   <p>✉️ {lead.cliente_email || <span className="text-slate-500">Sin correo</span>}</p>
                   <p>🪪 {lead.cliente_documento || <span className="text-slate-500">Sin cédula</span>}</p>
                 </div>
-              </div>
-
-              <div className="border-t border-[#2a3550]" />
-
-              {/* Estudio de crédito — datos + botón a Progreser */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">🏦 Estudio de crédito</label>
-                  {!editandoCredito && (
-                    <button onClick={() => setEditandoCredito(true)} className="text-[9px] text-blue-400 hover:text-blue-300">Editar</button>
-                  )}
-                </div>
-                {editandoCredito ? (
-                  <div className="space-y-1.5">
-                    <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}
-                      className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400">
-                      <option value="CC">Cédula de ciudadanía</option>
-                      <option value="CE">Cédula de extranjería</option>
-                      <option value="TI">Tarjeta de identidad</option>
-                      <option value="PASAPORTE">Pasaporte</option>
-                    </select>
-                    <input value={cedula} onChange={e => setCedula(e.target.value.replace(/\D/g, ''))} placeholder="Número de documento"
-                      className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                    <input type="date" value={fechaNacimiento} onChange={e => setFechaNacimiento(e.target.value)}
-                      className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                    <div className="flex gap-1.5">
-                      <button onClick={guardarDatosCredito} disabled={savingCredito}
-                        className="flex-1 py-1 text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50">
-                        {savingCredito ? '...' : 'Guardar'}
-                      </button>
-                      <button onClick={() => setEditandoCredito(false)} className="flex-1 py-1 text-[10px] font-bold bg-[#232f47] text-slate-300 rounded-lg">Cancelar</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-0.5 text-xs text-slate-300">
-                    <p>🪪 {cedula || <span className="text-slate-500">Sin número de documento</span>}</p>
-                    <p>🎂 {fechaNacimiento || <span className="text-slate-500">Sin fecha de nacimiento</span>}</p>
-                  </div>
-                )}
-
-                <button onClick={abrirEnProgreser} disabled={!datosCreditoCompletos || abriendoProgreser}
-                  title={!datosCreditoCompletos ? 'Faltan datos: nombre, cédula, fecha de nacimiento, celular o correo' : 'Abre Progreser en una pestaña nueva — ya debes haber iniciado sesión ahí. Aparecerá un botón "⚡ Llenar con OptiDesk" para llenar los Datos Básicos.'}
-                  className="w-full mt-2 py-1.5 text-[10px] font-bold bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                  {abriendoProgreser ? 'Generando enlace...' : '🔗 Abrir en Progreser'}
-                </button>
-                <a href="/progreser-autollenado.user.js" target="_blank" rel="noreferrer"
-                  className="block text-center mt-1 text-[9px] text-blue-400 hover:text-blue-300 underline">
-                  📥 Instalar script de autollenado (una sola vez, requiere la extensión Tampermonkey)
-                </a>
-                {errorProgreser && (
-                  <div className="mt-1.5 rounded-lg px-2 py-1.5 text-[10px] bg-red-900/40 text-red-300">
-                    <p>{errorProgreser}</p>
-                  </div>
-                )}
               </div>
 
               <div className="border-t border-[#2a3550]" />
