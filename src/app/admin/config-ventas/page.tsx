@@ -8,7 +8,7 @@ import PipelinesConfig from './components/PipelinesConfig'
 import ReglasPipelineConfig from './components/ReglasPipelineConfig'
 
 /* ─── Tipos ─────────────────────────────────────────── */
-interface Entidad       { id: string; nombre: string; activa: boolean }
+interface Entidad       { id: string; nombre: string; activa: boolean; orden: number }
 interface CategoriaPago { id: string; nombre: string; activa: boolean; orden: number }
 interface Bono          { id: string; nombre: string; activa: boolean; orden: number }
 
@@ -615,7 +615,7 @@ export default function ConfigVentasPage() {
     cargandoRef.current = true
 
     const [{ data: ent }, { data: tip }, { data: plant }] = await Promise.all([
-      supabase.from('entidades_financieras').select('id, nombre, activa').eq('tenant_id', profile.tenant_id).order('orden'),
+      supabase.from('entidades_financieras').select('id, nombre, activa, orden').eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('tipos_recordatorio_automatico').select('id, tipo, activo, dias_umbral').eq('tenant_id', profile.tenant_id),
       supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, activa').eq('tenant_id', profile.tenant_id),
     ])
@@ -879,6 +879,16 @@ export default function ConfigVentasPage() {
     await supabase.from('entidades_financieras').update({ nombre: editandoEntidadNombre.trim() }).eq('id', editandoEntidadId)
     setEntidades(p => p.map(e => e.id === editandoEntidadId ? { ...e, nombre: editandoEntidadNombre.trim() } : e))
     setEditandoEntidadId(null); setEditandoEntidadNombre('')
+  }
+  async function moverEntidad(id: string, dir: -1 | 1) {
+    const idx = entidades.findIndex(e => e.id === id)
+    const destino = idx + dir
+    if (idx < 0 || destino < 0 || destino >= entidades.length) return
+    const reordenadas = [...entidades]
+    ;[reordenadas[idx], reordenadas[destino]] = [reordenadas[destino], reordenadas[idx]]
+    const conOrden = reordenadas.map((e, i) => ({ ...e, orden: i }))
+    setEntidades(conOrden)
+    await Promise.all(conOrden.map(e => supabase.from('entidades_financieras').update({ orden: e.orden }).eq('id', e.id)))
   }
 
   /* ── Bonos ── */
@@ -1437,7 +1447,7 @@ export default function ConfigVentasPage() {
       <SeccionColapsable titulo="Entidades financieras" icono="🏦" badge={entidades.filter(e => e.activa).length} defaultOpen={false}>
         <div className="p-5">
           <div className="space-y-2 mb-3">
-            {entidades.map(e => (
+            {entidades.map((e, i) => (
               <div key={e.id} className={`rounded-lg border px-3 py-2 ${!e.activa ? 'opacity-60 border-gray-200' : 'border-gray-200'}`}>
                 {editandoEntidadId === e.id ? (
                   <div className="flex items-center gap-2">
@@ -1453,6 +1463,12 @@ export default function ConfigVentasPage() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
+                    <div className="flex flex-col -my-1">
+                      <button onClick={() => moverEntidad(e.id, -1)} disabled={i === 0}
+                        className="text-gray-300 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed leading-none" title="Subir">▲</button>
+                      <button onClick={() => moverEntidad(e.id, 1)} disabled={i === entidades.length - 1}
+                        className="text-gray-300 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed leading-none" title="Bajar">▼</button>
+                    </div>
                     <span className="flex-1 text-sm font-medium text-gray-800">{e.nombre}</span>
                     <button onClick={() => { setEditandoEntidadId(e.id); setEditandoEntidadNombre(e.nombre) }} className="text-xs text-blue-500 hover:text-blue-700">Editar</button>
                     <ToggleSwitch activo={e.activa} onChange={() => toggleEntidad(e.id, e.activa)} />
