@@ -107,17 +107,57 @@ export async function enviarClienteAProgreser(
 
     // ── 1. Login ──────────────────────────────────────────────────────────
     await page.goto(LOGIN_URL, { waitUntil: 'networkidle2' })
+    await new Promise(res => setTimeout(res, 1500)) // margen para que Angular termine de montar el formulario
     await screenshot(page, '1-login-cargado', screenshots)
 
-    const userInput = await page.waitForSelector('input[type="text"], input[type="email"], input[name*="user" i]', { timeout: 15_000 }).catch(() => null)
-    const passInput = await page.$('input[type="password"]')
-    if (!userInput || !passInput) {
+    // Aviso de cookies al pie de página — se cierra si aparece, por si intercepta clics.
+    await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button, a'))
+      const cerrar = btns.find(b => /aceptar|entendido|cerrar/i.test(b.textContent ?? ''))
+      cerrar?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    }).catch(() => {})
+
+    // Progreser (SIPRESplus) no usa type="text"/"email" en sus inputs — se
+    // identifican por el texto del placeholder, que es más estable.
+    const [userInput, passInput] = await page.evaluate(() => {
+      const inputs = Array.from(document.querySelectorAll('input'))
+      const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      const idx = (arr: HTMLInputElement[], re: RegExp) => arr.findIndex(i => re.test(norm(i.placeholder || i.name || i.id || '')))
+      const u = idx(inputs, /usuario|user|correo|email/)
+      const p = idx(inputs, /contrase|password|clave/)
+      return [u, p]
+    })
+
+    const inputHandles = await page.$$('input')
+    const userEl = userInput >= 0 ? inputHandles[userInput] : null
+    const passEl = passInput >= 0 ? inputHandles[passInput] : null
+
+    if (!userEl || !passEl) {
+      const inputsVistos = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('input')).map(i => ({ type: i.type, placeholder: i.placeholder, name: i.name, id: i.id }))
+      )
       await screenshot(page, '1-login-sin-campos', screenshots)
-      return { ok: false, mensaje: 'No se encontraron los campos de usuario/contraseña en la página de login de Progreser — puede que hayan cambiado el diseño del sitio.', screenshots }
+      return {
+        ok: false,
+        mensaje: `No se encontraron los campos de usuario/contraseña en la página de login de Progreser. Inputs detectados en la página: ${JSON.stringify(inputsVistos)}`,
+        screenshots,
+      }
     }
-    await userInput.type(usuario, { delay: 20 })
-    await passInput.type(password, { delay: 20 })
+    await userEl.type(usuario, { delay: 20 })
+    await passEl.type(password, { delay: 20 })
     await screenshot(page, '2-login-lleno', screenshots)
+
+    // Intento best-effort de marcar el checkbox de reCAPTCHA — si es un
+    // iframe cross-origin (lo usual), esto no podrá completarlo; en ese caso
+    // el login probablemente quede bloqueado y hay que avisarle al usuario.
+    const hayRecaptcha = await page.evaluate(() => !!document.querySelector('iframe[src*="recaptcha"], .g-recaptcha, [class*="recaptcha" i]'))
+    if (hayRecaptcha) {
+      const frame = page.frames().find(f => f.url().includes('recaptcha'))
+      const casilla = await frame?.$('#recaptcha-anchor, .recaptcha-checkbox-border').catch(() => null)
+      await casilla?.click().catch(() => {})
+      await new Promise(res => setTimeout(res, 1500))
+    }
+    await screenshot(page, '2b-antes-de-ingresar', screenshots)
 
     const boton = await page.$('button[type="submit"]') ?? await page.evaluateHandle(() => {
       const btns = Array.from(document.querySelectorAll('button'))
@@ -132,7 +172,10 @@ export async function enviarClienteAProgreser(
     await screenshot(page, '3-post-login', screenshots)
 
     if (page.url().includes('/login')) {
-      return { ok: false, mensaje: 'El login a Progreser no avanzó — revisa que el usuario/contraseña guardados sean correctos.', screenshots }
+      const mensajeError = hayRecaptcha
+        ? 'El login a Progreser no avanzó. La página tiene un reCAPTCHA ("no soy un robot") que el navegador automático probablemente no pudo resolver — esto puede bloquear el login por completo. Revisa la captura "3-post-login" para confirmar.'
+        : 'El login a Progreser no avanzó — revisa que el usuario/contraseña guardados sean correctos.'
+      return { ok: false, mensaje: mensajeError, screenshots }
     }
 
     // ── 2. Ir al formulario de aprobación de cupo — motocicleta ──────────────
