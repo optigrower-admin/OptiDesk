@@ -347,6 +347,9 @@ export default function AdminOrdenDetallePage() {
   const [editandoItemFechaId, setEditandoItemFechaId] = useState<string | null>(null)
   const [itemFechaInputValue, setItemFechaInputValue] = useState('')
   const [savingItemFecha, setSavingItemFecha] = useState(false)
+  const [editandoPagoProvFechaId, setEditandoPagoProvFechaId] = useState<string | null>(null)
+  const [pagoProvFechaInputValue, setPagoProvFechaInputValue] = useState('')
+  const [savingPagoProvFecha, setSavingPagoProvFecha] = useState(false)
   const [editandoLavadoFechaId, setEditandoLavadoFechaId] = useState<string | null>(null)
   const [lavadoFechaInputValue, setLavadoFechaInputValue] = useState('')
   const [savingLavadoFecha, setSavingLavadoFecha] = useState(false)
@@ -1515,6 +1518,36 @@ export default function AdminOrdenDetallePage() {
       await cargar()
     } finally {
       setSavingPagoFecha(false)
+    }
+  }
+
+  // ── Edición de fecha de un pago a proveedor (exclusivo gerencia) ─────────────
+  const abrirEditarFechaPagoProv = (pago: PagoProveedor) => {
+    setPagoProvFechaInputValue(isoToDatetimeLocal(pago.fecha))
+    setEditandoPagoProvFechaId(pago.id)
+  }
+
+  const handleGuardarFechaPagoProv = async () => {
+    if (!orden || !editandoPagoProvFechaId || !pagoProvFechaInputValue) return
+    setSavingPagoProvFecha(true)
+    try {
+      const pago = pagosProveedor.find((p) => p.id === editandoPagoProvFechaId)
+      const nuevaFechaISO = new Date(pagoProvFechaInputValue).toISOString()
+      await supabase.from('pagos_proveedor').update({ fecha: nuevaFechaISO }).eq('id', editandoPagoProvFechaId)
+      await registrarAuditoria(supabase, {
+        tenant_id: orden.tenant_id,
+        tabla: 'pagos_proveedor',
+        registro_id: editandoPagoProvFechaId,
+        tipo: 'edicion',
+        valor_anterior: { fecha: pago?.fecha },
+        valor_nuevo: { fecha: nuevaFechaISO },
+        descripcion: `Gerencia editó la fecha de un pago a proveedor | orden #${orden.numero}`,
+        usuario_id: profile?.id,
+      })
+      setEditandoPagoProvFechaId(null)
+      await cargar()
+    } finally {
+      setSavingPagoProvFecha(false)
     }
   }
 
@@ -3600,10 +3633,35 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {new Date(p.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          {' · '}{new Date(p.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                        </p>
+                        {editandoPagoProvFechaId === p.id ? (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <input
+                              type="datetime-local"
+                              value={pagoProvFechaInputValue}
+                              onChange={(e) => setPagoProvFechaInputValue(e.target.value)}
+                              className="text-xs border border-gray-200 rounded-lg px-1.5 py-1 w-[148px]"
+                              autoFocus
+                            />
+                            <button onClick={handleGuardarFechaPagoProv} disabled={savingPagoProvFecha} className="text-green-600 hover:text-green-800 p-0.5" title="Guardar">
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            </button>
+                            <button onClick={() => setEditandoPagoProvFechaId(null)} disabled={savingPagoProvFecha} className="text-gray-400 hover:text-red-500 p-0.5" title="Cancelar">
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                            {new Date(p.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {' · '}{new Date(p.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                            {esGerencia && (
+                              <button onClick={() => abrirEditarFechaPagoProv(p)} className="text-gray-300 hover:text-purple-600 p-0.5" title="Editar fecha (gerencia)">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            )}
+                          </p>
+                        )}
                         {p.notas && <p className="text-xs italic text-gray-500 mt-0.5">{p.notas}</p>}
                       </div>
                       <button
