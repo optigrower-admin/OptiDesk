@@ -224,6 +224,22 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
     }
   }
 
+  // Borra el bono del catálogo del tenant por completo (no solo lo desaplica
+  // de este cliente) — para poder corregir bonos mal creados sin tener que
+  // ir a Config Ventas → Bonos.
+  async function eliminarBonoCatalogo(bonoId: string) {
+    const nombreBono = bonosCatalogo.find(b => b.id === bonoId)?.nombre ?? bonoId
+    if (!confirm(`¿Eliminar el bono "${nombreBono}" del catálogo? Se quitará de todos los clientes que lo tengan aplicado.`)) return
+    const { error } = await supabase.from('bonos').delete().eq('id', bonoId)
+    if (error) { alert(`No se pudo eliminar: ${error.message}`); return }
+    setBonosCatalogo(p => p.filter(b => b.id !== bonoId))
+    setBonosAplicados(p => p.filter(b => b.bono_id !== bonoId))
+    await registrarAuditoria(supabase, {
+      tenant_id: tenantId, tabla: 'bonos', registro_id: bonoId, tipo: 'eliminacion',
+      valor_anterior: { bono: nombreBono }, descripcion: `Eliminó el bono "${nombreBono}" del catálogo`, usuario_id: usuarioId,
+    })
+  }
+
   /* ── Estudios de crédito ── */
   async function cambiarEstado(entidadId: string, estado: Estudio['estado']) {
     const existente = estudios.find(e => e.entidad_id === entidadId)
@@ -526,6 +542,12 @@ export default function PagoTab({ clienteId, tenantId, usuarioId, onCreditoChang
                     placeholder="Valor del bono"
                     className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 )}
+                <button onClick={() => eliminarBonoCatalogo(b.id)} title="Eliminar este bono del catálogo (para todos los clientes)"
+                  className="flex-shrink-0 text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
               </div>
             )
           })}
