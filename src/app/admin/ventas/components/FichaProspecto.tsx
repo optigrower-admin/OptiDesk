@@ -126,8 +126,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [fechaNacimiento, setFechaNacimiento] = useState('')
   const [editandoCredito, setEditandoCredito] = useState(false)
   const [savingCredito, setSavingCredito] = useState(false)
-  const [enviandoProgreser, setEnviandoProgreser] = useState(false)
-  const [resultadoProgreser, setResultadoProgreser] = useState<{ ok: boolean; mensaje: string; screenshots: { paso: string; url: string }[] } | null>(null)
+  const [abriendoProgreser, setAbriendoProgreser] = useState(false)
+  const [errorProgreser, setErrorProgreser] = useState<string | null>(null)
   const [input, setInput]               = useState('')
   const [tipoMsg, setTipoMsg]           = useState<'mensaje' | 'nota'>('mensaje')
   const [sending, setSending]           = useState(false)
@@ -524,20 +524,20 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   const datosCreditoCompletos = !!lead.cliente?.nombre && !!cedula && !!fechaNacimiento && !!celularActual && !!clienteEmail
-  const enviarAProgreser = async () => {
-    setEnviandoProgreser(true)
-    setResultadoProgreser(null)
+  const abrirEnProgreser = async () => {
+    setAbriendoProgreser(true)
+    setErrorProgreser(null)
     try {
-      const r = await fetch('/api/admin/ventas/progreser/enviar', {
+      const r = await fetch('/api/admin/ventas/progreser/token', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cliente_id: lead.id }),
       })
       const result = await r.json()
-      if (!r.ok) { setResultadoProgreser({ ok: false, mensaje: result.error ?? 'Error desconocido', screenshots: [] }); return }
-      setResultadoProgreser(result)
+      if (!r.ok) { setErrorProgreser(result.error ?? 'Error desconocido'); return }
+      window.open(result.url, '_blank')
     } catch {
-      setResultadoProgreser({ ok: false, mensaje: 'Error de conexión al intentar enviar a Progreser.', screenshots: [] })
+      setErrorProgreser('Error de conexión al generar el enlace a Progreser.')
     } finally {
-      setEnviandoProgreser(false)
+      setAbriendoProgreser(false)
     }
   }
 
@@ -1023,21 +1023,18 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   </div>
                 )}
 
-                <button onClick={enviarAProgreser} disabled={!datosCreditoCompletos || enviandoProgreser}
-                  title={!datosCreditoCompletos ? 'Faltan datos: nombre, cédula, fecha de nacimiento, celular o correo' : undefined}
+                <button onClick={abrirEnProgreser} disabled={!datosCreditoCompletos || abriendoProgreser}
+                  title={!datosCreditoCompletos ? 'Faltan datos: nombre, cédula, fecha de nacimiento, celular o correo' : 'Abre Progreser en una pestaña nueva — ya debes haber iniciado sesión ahí. Aparecerá un botón "⚡ Llenar con OptiDesk" para llenar los Datos Básicos.'}
                   className="w-full mt-2 py-1.5 text-[10px] font-bold bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                  {enviandoProgreser ? 'Enviando a Progreser...' : '📤 Enviar a Progreser'}
+                  {abriendoProgreser ? 'Generando enlace...' : '🔗 Abrir en Progreser'}
                 </button>
-                {resultadoProgreser && (
-                  <div className={`mt-1.5 rounded-lg px-2 py-1.5 text-[10px] ${resultadoProgreser.ok ? 'bg-emerald-900/40 text-emerald-300' : 'bg-red-900/40 text-red-300'}`}>
-                    <p>{resultadoProgreser.mensaje}</p>
-                    {resultadoProgreser.screenshots.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {resultadoProgreser.screenshots.map(s => (
-                          <a key={s.paso} href={s.url} target="_blank" rel="noreferrer" className="underline">{s.paso}</a>
-                        ))}
-                      </div>
-                    )}
+                <a href="/progreser-autollenado.user.js" target="_blank" rel="noreferrer"
+                  className="block text-center mt-1 text-[9px] text-blue-400 hover:text-blue-300 underline">
+                  📥 Instalar script de autollenado (una sola vez, requiere la extensión Tampermonkey)
+                </a>
+                {errorProgreser && (
+                  <div className="mt-1.5 rounded-lg px-2 py-1.5 text-[10px] bg-red-900/40 text-red-300">
+                    <p>{errorProgreser}</p>
                   </div>
                 )}
               </div>
