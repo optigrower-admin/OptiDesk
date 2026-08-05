@@ -1,0 +1,21 @@
+name: Reportes programados (cron cada 15 min)
+
+# El plan Hobby de Vercel solo permite cron jobs diarios — este workflow
+# reemplaza ese cron para poder disparar los envíos programados (pipeline y
+# Servicio Técnico) con la hora exacta que cada persona configuró.
+# Requiere el secret CRON_SECRET en Settings → Secrets and variables →
+# Actions, con el mismo valor que la variable de entorno CRON_SECRET en Vercel.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  disparar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar al endpoint de reportes programados
+        run: |
+          curl -sf -X GET "https://opti-desk.vercel.app/api/cron/reportes-programados" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

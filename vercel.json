@@ -27,10 +27,6 @@
     {
       "path": "/api/cron/secuencias",
       "schedule": "0 10 * * *"
-    },
-    {
-      "path": "/api/cron/reportes-programados",
-      "schedule": "*/15 * * * *"
     }
   ]
 }
