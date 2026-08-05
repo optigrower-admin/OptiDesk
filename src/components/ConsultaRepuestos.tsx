@@ -127,6 +127,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   const [masivoPaste, setMasivoPaste] = useState('')
   const [masivoRows, setMasivoRows] = useState<MasivoRow[]>([])
   const [masivoMetodoPago, setMasivoMetodoPago] = useState('')
+  const [masivoError, setMasivoError] = useState('')
 
   function parseMasivoText(text: string): MasivoRow[] {
     return text.split('\n')
@@ -150,6 +151,8 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
   }
 
   function confirmarMasivo() {
+    if (!masivoMetodoPago) { setMasivoError('Selecciona con qué método se paga al proveedor'); return }
+    setMasivoError('')
     const validas = masivoRows.filter(r => r.valida)
     validas.forEach(r => onAdd({
       descripcion: r.desc,
@@ -157,7 +160,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       cantidad: 1,
       costo: r.costo,
       precio_venta: r.precio,
-      metodo_pago_id: masivoMetodoPago || null,
+      metodo_pago_id: masivoMetodoPago,
     }))
     setMasivoPaste(''); setMasivoRows([]); setMasivoMetodoPago('')
     onClose()
@@ -174,7 +177,7 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
       setPortaPlacasValor('25000')
       setUmaSimpleDesc(''); setUmaSimpleValor('')
       setExternoModo('individual')
-      setMasivoPaste(''); setMasivoRows([]); setMasivoMetodoPago('')
+      setMasivoPaste(''); setMasivoRows([]); setMasivoMetodoPago(''); setMasivoError('')
     }
   }, [open])
 
@@ -710,13 +713,14 @@ export function ConsultaRepuestos({ open, onClose, tenantId, onAdd, permitirInsu
               {/* Método de pago global */}
               <div>
                 <label className="text-xs font-medium text-blue-800 block mb-1">
-                  Método de pago al proveedor <span className="text-blue-400">(aplica a todos)</span>
+                  Método de pago al proveedor <span className="text-red-500">*</span> <span className="text-blue-400">(aplica a todos)</span>
                 </label>
-                <select value={masivoMetodoPago} onChange={e => setMasivoMetodoPago(e.target.value)}
+                <select value={masivoMetodoPago} onChange={e => { setMasivoMetodoPago(e.target.value); setMasivoError('') }}
                   className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
-                  <option value="">Sin método (opcional)</option>
+                  <option value="">Selecciona un método...</option>
                   {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
                 </select>
+                {masivoError && <p className="text-xs text-red-600 mt-1">{masivoError}</p>}
               </div>
 
               <div className="flex gap-2 justify-end">

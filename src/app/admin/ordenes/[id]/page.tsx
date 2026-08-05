@@ -952,6 +952,7 @@ export default function AdminOrdenDetallePage() {
         cantidad: item.cantidad,
         costo: item.costo,
         precio_venta: item.precio_venta,
+        metodo_pago_id: origen === 'externo' ? (item.metodo_pago_id ?? null) : null,
       })
     }
   }
@@ -998,6 +999,14 @@ export default function AdminOrdenDetallePage() {
     // Validar precio mínimo para ítems UMA
     if (itemActual?.origen === 'uma' && editingItem.precioMin !== null && precio < (editingItem.precioMin ?? 0)) {
       setEditingItem(prev => prev ? { ...prev, errMsg: `Mínimo: ${formatCOP(editingItem.precioMin!)}` } : prev)
+      return
+    }
+
+    // Un repuesto externo siempre debe quedar con el método de pago con el que
+    // se le pagó al proveedor — si no, Caja lo deja sin poder ubicarlo en
+    // ninguna cuenta ("Sin método especificado").
+    if (itemActual?.origen === 'externo' && !editingItem.metodo_pago_id) {
+      setEditingItem(prev => prev ? { ...prev, errMsg: 'Selecciona con qué método se le pagó al proveedor' } : prev)
       return
     }
 
@@ -3122,6 +3131,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
             open={showImportarCot}
             onClose={() => setShowImportarCot(false)}
             onImport={handleImportarCotizacion}
+            metodosPago={metodosPago}
           />
 
           {/* ── MANO DE OBRA — no aplica a venta directa de repuestos ── */}

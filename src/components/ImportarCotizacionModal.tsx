@@ -28,12 +28,14 @@ export type ItemToImport = {
   cantidad: number
   costo: number
   precio_venta: number
+  metodo_pago_id?: string | null
 }
 
 interface Props {
   open: boolean
   onClose: () => void
   onImport: (items: ItemToImport[]) => Promise<void>
+  metodosPago: { id: string; nombre: string }[]
 }
 
 function pad(n: number) { return String(n).padStart(4, '0') }
@@ -49,7 +51,7 @@ const TIPO_COLOR: Record<string, string> = {
   mano_obra: 'bg-purple-100 text-purple-700',
 }
 
-export function ImportarCotizacionModal({ open, onClose, onImport }: Props) {
+export function ImportarCotizacionModal({ open, onClose, onImport, metodosPago }: Props) {
   const [lista, setLista] = useState<CotListItem[]>([])
   const [loading, setLoading] = useState(false)
   const [cotId, setCotId] = useState<string | null>(null)
@@ -57,12 +59,16 @@ export function ImportarCotizacionModal({ open, onClose, onImport }: Props) {
   const [loadingItems, setLoadingItems] = useState(false)
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
   const [importando, setImportando] = useState(false)
+  const [metodoPagoExterno, setMetodoPagoExterno] = useState('')
+  const [errorMetodo, setErrorMetodo] = useState('')
 
   useEffect(() => {
     if (!open) {
       setCotId(null)
       setItems([])
       setSeleccionados(new Set())
+      setMetodoPagoExterno('')
+      setErrorMetodo('')
       return
     }
     setLoading(true)
@@ -100,9 +106,16 @@ export function ImportarCotizacionModal({ open, onClose, onImport }: Props) {
     )
   }
 
+  const seleccionadosItems = items.filter(i => seleccionados.has(i.id))
+  const tieneExterno = seleccionadosItems.some(i => i.tipo === 'repuesto_externo')
+
   async function importar() {
-    const toImport: ItemToImport[] = items
-      .filter(i => seleccionados.has(i.id))
+    if (tieneExterno && !metodoPagoExterno) {
+      setErrorMetodo('Selecciona con qué método se les pagó a los proveedores de los ítems externos')
+      return
+    }
+    setErrorMetodo('')
+    const toImport: ItemToImport[] = seleccionadosItems
       .map(i => ({
         tipo: i.tipo,
         uma_id: i.uma_id,
@@ -110,6 +123,7 @@ export function ImportarCotizacionModal({ open, onClose, onImport }: Props) {
         cantidad: i.cantidad,
         costo: i.precio_proveedor ?? 0,
         precio_venta: i.precio_venta,
+        metodo_pago_id: i.tipo === 'repuesto_externo' ? metodoPagoExterno : null,
       }))
     if (!toImport.length) return
     setImportando(true)
@@ -232,7 +246,20 @@ export function ImportarCotizacionModal({ open, onClose, onImport }: Props) {
 
         {/* Footer */}
         {cotId && items.length > 0 && seleccionados.size > 0 && (
-          <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex-shrink-0">
+          <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex-shrink-0 space-y-2">
+            {tieneExterno && (
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">
+                  Método de pago a proveedores (ítems Externos) <span className="text-red-500">*</span>
+                </label>
+                <select value={metodoPagoExterno} onChange={e => { setMetodoPagoExterno(e.target.value); setErrorMetodo('') }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+                  <option value="">Selecciona un método...</option>
+                  {metodosPago.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                </select>
+                {errorMetodo && <p className="text-xs text-red-600 mt-1">{errorMetodo}</p>}
+              </div>
+            )}
             <button
               onClick={importar}
               disabled={importando}
