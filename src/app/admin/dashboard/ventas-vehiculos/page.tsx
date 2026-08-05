@@ -272,6 +272,18 @@ export default function DashboardVentasVehiculosPage() {
     const ticketPromedioActual = ventasActual.length ? totalFacturadoActual / ventasActual.length : 0
     const ticketPromedioAnterior = ventasAnterior.length ? totalFacturadoAnterior / ventasAnterior.length : 0
 
+    // Lista de las ventas que se están contando en el período actual, según
+    // el campo de fecha elegido en "Ver ventas según" — para poder revisar
+    // exactamente cuáles clientes componen el Total facturado.
+    const listaVentas = [...ventasActual]
+      .sort((a, b) => (fechaVentaDe(b) ?? '').localeCompare(fechaVentaDe(a) ?? ''))
+      .map(c => ({
+        id: c.id, nombre: c.nombre ?? 'Sin nombre',
+        etapaLabel: ETAPA_MAP[c.etapa_venta]?.label ?? c.etapa_venta,
+        valor: valorPorCliente.get(c.id) ?? 0,
+        fecha: fechaVentaDe(c),
+      }))
+
     // Snapshot (no depende del período)
     const clientesVenta = clientes.filter(c => esVenta(c.etapa_venta))
     const totalMatriculado = clientes.filter(c => esMatriculado(c.etapa_venta)).length
@@ -397,7 +409,7 @@ export default function DashboardVentasVehiculosPage() {
         totalMatriculado, ticketPromedioActual, ticketPromedioAnterior,
         cuentasPorCobrar, tasaConversion, tasaAprobacionActual, tasaAprobacionAnterior,
       },
-      usoCreditoRanking, rankingAsesores, distribucionEtapa, asesoresIds, pendientesGestion,
+      usoCreditoRanking, rankingAsesores, distribucionEtapa, asesoresIds, pendientesGestion, listaVentas,
       serieVentasFacturacion, serieVentasCantidad, weekdayVentasFacturacion, weekdayVentasCantidad,
       serieNuevosValor, serieNuevosCantidad, weekdayNuevosValor, weekdayNuevosCantidad,
     }
@@ -543,6 +555,31 @@ export default function DashboardVentasVehiculosPage() {
                   <KpiCard label="Tasa de conversión" valor={m.kpis.tasaConversion.toFixed(1)} sufijo="%" sub="Vendidos / total en pipeline" />
                   <KpiCard label="Tasa aprobación créditos" valor={m.kpis.tasaAprobacionActual.toFixed(1)} sufijo="%" variacion={v(m.kpis.tasaAprobacionActual, m.kpis.tasaAprobacionAnterior)} comparativoLabel={comparativoLabel} />
                 </div>
+              </div>
+
+              {/* Ventas del período — lista de qué clientes componen el Total facturado */}
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <h2 className="text-sm font-semibold text-gray-700 mb-1">Ventas de este período</h2>
+                <p className="text-xs text-gray-400 mb-3">
+                  Según {CAMPO_FECHA_VENTA_LABEL[campoFechaVenta].toLowerCase()} — estos {m.listaVentas.length} clientes componen el Total facturado y el Ticket promedio de arriba
+                </p>
+                {m.listaVentas.length === 0 ? (
+                  <div className="h-20 flex items-center justify-center text-sm text-gray-400">Sin ventas en este período</div>
+                ) : (
+                  <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                    {m.listaVentas.map(v => (
+                      <div key={v.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-gray-50">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">{v.nombre}</p>
+                          <p className="text-xs text-gray-400">
+                            {v.etapaLabel}{v.fecha ? ` · ${new Date(v.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold text-emerald-700 flex-shrink-0">{formatCOP(v.valor)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Tendencia de Ventas */}
