@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { calcularInventarioMotos } from '@/lib/ventas/inventario'
+import { registrarAuditoria } from '@/lib/audit'
 
 async function getPerfil(supabase: ReturnType<typeof createClient>) {
   const { data: { user } } = await supabase.auth.getUser()
@@ -10,7 +11,7 @@ async function getPerfil(supabase: ReturnType<typeof createClient>) {
   if (!perfil) return null
   const rolNorm = (perfil.rol ?? '').toLowerCase().replace('ñ', 'n')
   const esGerencia = rolNorm === 'gerencia' || rolNorm === 'control_total' || rolNorm === 'dueno'
-  return { tenantId: perfil.tenant_id as string, esGerencia }
+  return { userId: user.id, tenantId: perfil.tenant_id as string, esGerencia }
 }
 
 export async function GET() {
@@ -31,13 +32,55 @@ export async function POST(req: NextRequest) {
   const supabase = createClient()
   const perfil = await getPerfil(supabase)
   if (!perfil) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-  if (!perfil.esGerencia) return NextResponse.json({ error: 'Solo gerencia puede editar el inventario' }, { status: 403 })
 
   const admin = createAdminClient()
   const body = await req.json().catch(() => null) as {
-    accion?: string; id?: string; moto_catalogo_id?: string; color_id?: string | null; cantidad_total?: number
+    accion?: string; id?: string; moto_catalogo_id?: string; color_id?: string | null
+    cantidad_total?: number; cantidad_entrada?: number
   } | null
   const { accion } = body ?? {}
+
+  // Registrar entrada de unidades (ej. "hoy llegaron 3 motos") — abierto a
+  // cualquier rol: solo SUMA a lo que ya había (o crea el renglón si es la
+  // primera vez), nunca sobreescribe ni borra. Ajustar/corregir el total
+  // exacto o eliminar sigue siendo solo de gerencia (acciones de abajo).
+  if (accion === 'entrada') {
+    if (!body?.moto_catalogo_id) return NextResponse.json({ error: 'Falta la moto' }, { status: 400 })
+    const cantidadEntrada = Math.floor(Number(body.cantidad_entrada ?? 0))
+    if (!cantidadEntrada || cantidadEntrada <= 0) return NextResponse.json({ error: 'Ingresa una cantidad válida' }, { status: 400 })
+    const colorId = body.color_id || null
+
+    let q = admin.from('inventario_motos').select('id, cantidad_total')
+      .eq('tenant_id', perfil.tenantId).eq('moto_catalogo_id', body.moto_catalogo_id)
+    q = colorId ? q.eq('color_id', colorId) : q.is('color_id', null)
+    const { data: existente } = await q.maybeSingle()
+
+    let registroId: string
+    if (existente) {
+      const nuevaCantidad = (existente.cantidad_total ?? 0) + cantidadEntrada
+      const { error } = await admin.from('inventario_motos')
+        .update({ cantidad_total: nuevaCantidad, updated_at: new Date().toISOString() }).eq('id', existente.id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      registroId = existente.id
+    } else {
+      const { data: creado, error } = await admin.from('inventario_motos').insert({
+        tenant_id: perfil.tenantId, moto_catalogo_id: body.moto_catalogo_id, color_id: colorId, cantidad_total: cantidadEntrada,
+      }).select('id').single()
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      registroId = creado.id
+    }
+
+    await registrarAuditoria(admin, {
+      tenant_id: perfil.tenantId, tabla: 'inventario_motos', registro_id: registroId, tipo: 'movimiento',
+      descripcion: `Registró entrada de ${cantidadEntrada} unidad${cantidadEntrada !== 1 ? 'es' : ''} a inventario de motos`,
+      usuario_id: perfil.userId,
+    })
+    return NextResponse.json({ ok: true })
+  }
+
+  // El resto de acciones (crear con cantidad exacta, editar, eliminar) sí
+  // requieren gerencia — pueden sobreescribir o borrar lo que ya hay.
+  if (!perfil.esGerencia) return NextResponse.json({ error: 'Solo gerencia puede editar o eliminar del inventario' }, { status: 403 })
 
   if (accion === 'crear') {
     if (!body?.moto_catalogo_id) return NextResponse.json({ error: 'Falta la moto' }, { status: 400 })

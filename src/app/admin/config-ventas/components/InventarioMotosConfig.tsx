@@ -27,6 +27,18 @@ export default function InventarioMotosConfig() {
   const [editandoValor, setEditandoValor] = useState('')
   const [colorExtraPorMoto, setColorExtraPorMoto] = useState<Record<string, { colorId: string; cantidad: string }>>({})
 
+  const postAccion = async (body: Record<string, unknown>): Promise<boolean> => {
+    const r = await fetch('/api/admin/ventas/inventario', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}))
+      alert(d.error ?? 'No se pudo guardar')
+      return false
+    }
+    return true
+  }
+
   const cargar = () => {
     setLoading(true)
     fetch('/api/admin/ventas/inventario')
@@ -56,43 +68,36 @@ export default function InventarioMotosConfig() {
     if (!motoNuevaId) return
     if (coloresMotoNueva.length > 0 && !colorNuevoId) return
     setGuardando(true)
-    await fetch('/api/admin/ventas/inventario', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        accion: 'crear', moto_catalogo_id: motoNuevaId, color_id: colorNuevoId || null,
-        cantidad_total: Number(cantidadNueva) || 0,
-      }),
+    const ok = await postAccion({
+      accion: 'crear', moto_catalogo_id: motoNuevaId, color_id: colorNuevoId || null,
+      cantidad_total: Number(cantidadNueva) || 0,
     })
-    setMotoNuevaId(''); setColorNuevoId(''); setCantidadNueva(''); setGuardando(false)
+    setGuardando(false)
+    if (!ok) return
+    setMotoNuevaId(''); setColorNuevoId(''); setCantidadNueva('')
     cargar()
   }
 
   const agregarColorExtra = async (motoId: string) => {
     const extra = colorExtraPorMoto[motoId]
     if (!extra?.colorId) return
-    await fetch('/api/admin/ventas/inventario', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accion: 'crear', moto_catalogo_id: motoId, color_id: extra.colorId, cantidad_total: Number(extra.cantidad) || 0 }),
-    })
+    const ok = await postAccion({ accion: 'crear', moto_catalogo_id: motoId, color_id: extra.colorId, cantidad_total: Number(extra.cantidad) || 0 })
+    if (!ok) return
     setColorExtraPorMoto(prev => ({ ...prev, [motoId]: { colorId: '', cantidad: '' } }))
     cargar()
   }
 
   const guardarEdicion = async (id: string) => {
-    await fetch('/api/admin/ventas/inventario', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accion: 'editar', id, cantidad_total: Number(editandoValor) || 0 }),
-    })
+    const ok = await postAccion({ accion: 'editar', id, cantidad_total: Number(editandoValor) || 0 })
+    if (!ok) return
     setEditandoId(null)
     cargar()
   }
 
   const eliminar = async (id: string) => {
     if (!confirm('¿Quitar este renglón del inventario?')) return
-    await fetch('/api/admin/ventas/inventario', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accion: 'eliminar', id }),
-    })
+    const ok = await postAccion({ accion: 'eliminar', id })
+    if (!ok) return
     cargar()
   }
 
