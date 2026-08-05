@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   if (typeof campos.etapa_venta === 'string') {
     const { data: etapaRow } = await admin
       .from('etapas_pipeline')
-      .select('orden, es_ganado, es_perdido')
+      .select('orden, es_ganado, es_perdido, pipeline_id')
       .eq('tenant_id', perfil.tenant_id)
       .eq('clave', campos.etapa_venta)
       .maybeSingle()
@@ -62,9 +62,25 @@ export async function POST(req: NextRequest) {
     campos.etapa_venta_orden = etapaRow.orden
     // fecha_cierre marca cuándo se vendió/perdió el cliente — la usan los
     // dashboards para filtrar por período. Se dispara una sola vez, al
-    // entrar a la etapa ganada/perdida (nunca se sobreescribe después).
-    if ((etapaRow.es_ganado || etapaRow.es_perdido) && !clienteActual.fecha_cierre) {
-      campos.fecha_cierre = new Date().toISOString()
+    // entrar a la etapa ganada/perdida (nunca se sobreescribe al seguir
+    // avanzando después, ej. de "Vendida" a "En matrícula").
+    if (etapaRow.es_ganado || etapaRow.es_perdido) {
+      if (!clienteActual.fecha_cierre) campos.fecha_cierre = new Date().toISOString()
+    } else if (clienteActual.fecha_cierre) {
+      // Si lo devuelven por debajo del punto "vendida" del pipeline (una
+      // corrección real, no solo seguir avanzando más allá de vendida), se
+      // limpia la fecha — como si nunca se hubiera marcado vendido, para
+      // que no quede una fecha vieja confundiendo si se vuelve a vender.
+      const { data: etapaGanado } = await admin
+        .from('etapas_pipeline')
+        .select('orden')
+        .eq('tenant_id', perfil.tenant_id)
+        .eq('pipeline_id', etapaRow.pipeline_id)
+        .eq('es_ganado', true)
+        .maybeSingle()
+      if (etapaGanado && etapaRow.orden < etapaGanado.orden) {
+        campos.fecha_cierre = null
+      }
     }
   }
 

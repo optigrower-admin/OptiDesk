@@ -152,6 +152,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setAprobadoMatriculaPor(lead.aprobadoMatriculaPor ?? null)
   }, [lead.id])
 
+  // Fecha de venta (fecha_cierre) — visible/editable solo gerencia
+  const [fechaVenta, setFechaVenta]             = useState<string | null>(null)
+  const [editandoFechaVenta, setEditandoFechaVenta] = useState(false)
+  const [fechaVentaInput, setFechaVentaInput]   = useState('')
+  const [savingFechaVenta, setSavingFechaVenta] = useState(false)
+
   // Panel lateral izquierdo
   const [proximaAccion,   setProximaAccion]   = useState(lead.proxima_accion ?? '')
   const [proximaFecha,    setProximaFecha]     = useState(
@@ -294,7 +300,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       supabase.from('ordenes').select('id,created_at,estado,descripcion_problema')
         .eq('cliente_id', lead.id).order('created_at', { ascending: false }).limit(5),
       supabase.from('usuarios').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).eq('es_asesor', true),
-      supabase.from('clientes').select('assigned_to, created_at').eq('id', lead.id).single(),
+      supabase.from('clientes').select('assigned_to, created_at, fecha_cierre').eq('id', lead.id).single(),
       supabase.from('historial_etapas_cliente')
         .select('etapa_anterior, etapa_nueva, created_at')
         .eq('cliente_id', lead.id)
@@ -306,6 +312,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setUsuarios((us ?? []) as { id: string; nombre: string }[])
     setAssignedTo(cliente?.assigned_to ?? '')
     setClienteRegistradoEn(cliente?.created_at ?? null)
+    setFechaVenta(cliente?.fecha_cierre ?? null)
     setHistorialEtapas((etapasHist ?? []) as EtapaMovimiento[])
   }, [lead.id, convActivaId, tenantId])
 
@@ -463,6 +470,22 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         await logCambio('asignado_a', prevNombre, newNombre)
       }
     } finally { setSaving(false) }
+  }
+
+  const guardarFechaVenta = async () => {
+    if (!esGerencia) return
+    setSavingFechaVenta(true)
+    try {
+      const nueva = fechaVentaInput ? new Date(`${fechaVentaInput}T12:00:00`).toISOString() : null
+      const { error } = await supabase.from('clientes').update({ fecha_cierre: nueva }).eq('id', lead.id).eq('tenant_id', tenantId)
+      if (error) { alert(`No se pudo guardar la fecha de venta: ${error.message}`); return }
+      await logCambio('fecha_venta', fechaVenta, nueva ?? 'Sin fecha')
+      setFechaVenta(nueva)
+      setEditandoFechaVenta(false)
+      mostrarGuardado()
+    } finally {
+      setSavingFechaVenta(false)
+    }
   }
 
   const handleRenombrar = async () => {
@@ -902,6 +925,39 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   {gruposEtapa}
                 </select>
               </div>
+
+              {/* Fecha de venta — solo aparece en etapa vendida/perdida, editable por gerencia */}
+              {(etapasPipeline.etapaMap[etapa]?.es_ganado || etapasPipeline.etapaMap[etapa]?.es_perdido) && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fecha de venta</label>
+                    {esGerencia && !editandoFechaVenta && (
+                      <button onClick={() => { setFechaVentaInput(fechaVenta ? fechaVenta.slice(0, 10) : ''); setEditandoFechaVenta(true) }}
+                        className="text-slate-400 hover:text-blue-400 transition-colors" title="Editar fecha (gerencia)">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {editandoFechaVenta ? (
+                    <div className="flex items-center gap-1.5">
+                      <input type="date" value={fechaVentaInput} onChange={e => setFechaVentaInput(e.target.value)}
+                        className="flex-1 text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1 text-slate-100 focus:outline-none" />
+                      <button onClick={guardarFechaVenta} disabled={savingFechaVenta} className="text-green-400 hover:text-green-300 p-0.5">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      </button>
+                      <button onClick={() => setEditandoFechaVenta(false)} disabled={savingFechaVenta} className="text-slate-400 hover:text-red-400 p-0.5">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-300">
+                      {fechaVenta ? new Date(fechaVenta).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Sin fecha'}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Asesor */}
               <div>
@@ -1668,6 +1724,38 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                       {gruposEtapa}
                     </select>
                   </div>
+
+                  {(etapasPipeline.etapaMap[etapa]?.es_ganado || etapasPipeline.etapaMap[etapa]?.es_perdido) && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Fecha de venta</label>
+                        {esGerencia && !editandoFechaVenta && (
+                          <button onClick={() => { setFechaVentaInput(fechaVenta ? fechaVenta.slice(0, 10) : ''); setEditandoFechaVenta(true) }}
+                            className="text-gray-300 hover:text-blue-500 transition-colors" title="Editar fecha (gerencia)">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      {editandoFechaVenta ? (
+                        <div className="flex items-center gap-2">
+                          <input type="date" value={fechaVentaInput} onChange={e => setFechaVentaInput(e.target.value)}
+                            className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <button onClick={guardarFechaVenta} disabled={savingFechaVenta} className="text-green-600 hover:text-green-700 p-1">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                          </button>
+                          <button onClick={() => setEditandoFechaVenta(false)} disabled={savingFechaVenta} className="text-gray-400 hover:text-red-500 p-1">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-700">
+                          {fechaVenta ? new Date(fechaVenta).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Sin fecha'}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Asesor</label>
