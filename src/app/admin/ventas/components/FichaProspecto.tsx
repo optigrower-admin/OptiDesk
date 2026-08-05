@@ -1171,7 +1171,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           </div>
 
           {/* ── Panel derecho: tabs + contenido ── */}
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
 
           {/* ── Tabs en fila única ── */}
           <div className="flex border-b flex-shrink-0 overflow-x-auto">
@@ -1219,7 +1219,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           )}
 
           {/* ── Chat ── */}
-          <div className={`flex-1 flex flex-col ${tabDer !== 'chats' ? 'hidden' : ''}`}>
+          <div className={`flex-1 flex flex-col min-h-0 ${tabDer !== 'chats' ? 'hidden' : ''}`}>
 
             {lead.todas_conversaciones.length > 0 && (
               <div className="flex border-b bg-gray-50 px-2 pt-1.5 gap-0.5 flex-shrink-0 overflow-x-auto">
