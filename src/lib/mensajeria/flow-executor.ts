@@ -8,7 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { decrypt } from '@/lib/crypto'
 import type { Node, Edge } from 'reactflow'
 import type { ContextoEjecucion, TriggerTipo } from '@/types/flujos'
-import { obtenerHistorialConversacion } from './historial'
+import { obtenerContextoConversacion } from './historial'
 
 type Supa = ReturnType<typeof createAdminClient>
 
@@ -780,7 +780,7 @@ async function procesarNodo(
               const { llamarIA } = await import('@/lib/ia/llamarIA')
               const quiereResumen = !!data.incluir_resumen_conversacion
               const contextoConResumen = quiereResumen && convId
-                ? { ...contexto, resumen_conversacion: await obtenerHistorialConversacion(supabase, convId) }
+                ? { ...contexto, resumen_conversacion: await obtenerContextoConversacion(supabase, tenantId, convId) }
                 : contexto
               const instrucciones = interpolarVariables(promptTemplate, contextoConResumen)
               const bloquesContexto: string[] = []

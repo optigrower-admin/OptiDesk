@@ -60,6 +60,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `La etapa "${campos.etapa_venta}" no existe en este pipeline` }, { status: 400 })
     }
     campos.etapa_venta_orden = etapaRow.orden
+
+    const { data: etapaGanado } = await admin
+      .from('etapas_pipeline')
+      .select('orden')
+      .eq('tenant_id', perfil.tenant_id)
+      .eq('pipeline_id', etapaRow.pipeline_id)
+      .eq('es_ganado', true)
+      .maybeSingle()
+
+    // Al llegar a Vendida/Carta Aprobación (o cualquier etapa posterior) el
+    // cliente debe tener un vehículo seleccionado en "Motos de interés" —
+    // ese vehículo es el que después se descuenta del Inventario de motos.
+    if (etapaGanado && etapaRow.orden >= etapaGanado.orden) {
+      const { count: motosSeleccionadas } = await admin
+        .from('clientes_motos_interes')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', cliente_id)
+      if (!motosSeleccionadas) {
+        return NextResponse.json(
+          { error: 'Antes de marcar al cliente como Vendida/Carta Aprobación debes seleccionar el vehículo en la pestaña "Motos de interés".' },
+          { status: 400 },
+        )
+      }
+    }
+
     // fecha_cierre marca cuándo se vendió/perdió el cliente — la usan los
     // dashboards para filtrar por período. Se dispara una sola vez, al
     // entrar a la etapa ganada/perdida (nunca se sobreescribe al seguir
@@ -71,13 +96,6 @@ export async function POST(req: NextRequest) {
       // corrección real, no solo seguir avanzando más allá de vendida), se
       // limpia la fecha — como si nunca se hubiera marcado vendido, para
       // que no quede una fecha vieja confundiendo si se vuelve a vender.
-      const { data: etapaGanado } = await admin
-        .from('etapas_pipeline')
-        .select('orden')
-        .eq('tenant_id', perfil.tenant_id)
-        .eq('pipeline_id', etapaRow.pipeline_id)
-        .eq('es_ganado', true)
-        .maybeSingle()
       if (etapaGanado && etapaRow.orden < etapaGanado.orden) {
         campos.fecha_cierre = null
       }

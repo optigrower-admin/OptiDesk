@@ -14,7 +14,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 import { createAdminClient } from '@/lib/supabase/admin'
 import { decrypt } from '@/lib/crypto'
-import { obtenerHistorialConversacion } from '@/lib/mensajeria/historial'
+import { obtenerContextoConversacion } from '@/lib/mensajeria/historial'
 import { CATALOGO_HERRAMIENTAS, type CtxHerramienta, type HerramientaDef } from './herramientasAgente'
 
 type Supa = ReturnType<typeof createAdminClient>
@@ -138,7 +138,7 @@ export async function llamarAgente(params: LlamarAgenteParams): Promise<Resultad
   }
 
   const [historial, memoriaRow] = await Promise.all([
-    conversacionId ? obtenerHistorialConversacion(supabase, conversacionId, 20) : Promise.resolve(''),
+    conversacionId ? obtenerContextoConversacion(supabase, tenantId, conversacionId) : Promise.resolve(''),
     conversacionId ? supabase.from('agente_memoria').select('datos').eq('agente_id', agenteId).eq('conversacion_id', conversacionId).maybeSingle() : Promise.resolve({ data: null }),
   ])
   const memoria = (memoriaRow?.data?.datos as Record<string, unknown> | undefined) ?? {}

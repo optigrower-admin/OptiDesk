@@ -60,6 +60,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/ventas',             label: 'Pipeline - Seguimiento Clientes', seccion: 'ventas',  soloGerencia: false, defaultOrden: 55, exactMatch: true },
       { href: '/admin/ventas/actividades', label: 'Seguimiento Actividades',  seccion: 'ventas',        soloGerencia: false, defaultOrden: 56 },
       { href: '/admin/lista-precios',      label: 'Lista de Motos',           seccion: 'lista_motos',    soloGerencia: false, defaultOrden: 57 },
+      { href: '/admin/ventas/inventario-motos', label: 'Inventario de Motos', seccion: 'inventario_motos', soloGerencia: false, defaultOrden: 57.5 },
       { href: '/admin/config-ventas',      label: 'Config Ventas',            seccion: 'config_ventas',  soloGerencia: true,  defaultOrden: 58 },
       { href: '/admin/ventas/comisiones',  label: '💰 Comisiones Freelance',  seccion: 'comisiones_freelance', soloGerencia: false, defaultOrden: 59 },
     ],

@@ -207,6 +207,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     if (!res.ok) {
       const json = await res.json().catch(() => ({}))
       console.error('[Kanban] Error al guardar etapa:', json.error)
+      if (json.error) alert(json.error)
       const original = leadsIniciales.find(l => l.id === id)?.etapa_venta ?? 'nuevo'
       moverLead(id, original)
     }

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/ventas/pipeline'
 import PipelinesConfig from './components/PipelinesConfig'
+import InventarioMotosConfig from './components/InventarioMotosConfig'
 import ReglasPipelineConfig from './components/ReglasPipelineConfig'
 
 /* ─── Tipos ─────────────────────────────────────────── */
@@ -1395,6 +1396,11 @@ export default function ConfigVentasPage() {
             </button>
           )}
         </div>
+      </SeccionColapsable>
+
+      {/* ── Inventario de motos ── */}
+      <SeccionColapsable titulo="Inventario de motos" icono="📦" defaultOpen={false}>
+        <InventarioMotosConfig />
       </SeccionColapsable>
 
       {/* ── Categorías de pago ── */}

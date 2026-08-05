@@ -457,6 +457,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         mostrarGuardado()
         await logCambio('etapa', etapasPipeline.etapaMap[prev]?.label ?? prev, etapasPipeline.etapaMap[newEtapa]?.label ?? newEtapa)
       } else {
+        const json = await res.json().catch(() => ({}))
+        setBloqueoMsg(json.error ?? 'No se pudo cambiar la etapa.')
         setEtapa(prev)
       }
     } catch {

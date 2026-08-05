@@ -1,0 +1,70 @@
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { NextRequest, NextResponse } from 'next/server'
+import { calcularInventarioMotos } from '@/lib/ventas/inventario'
+
+async function getPerfil(supabase: ReturnType<typeof createClient>) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data: perfil } = await supabase.from('usuarios').select('tenant_id, rol').eq('id', user.id).single()
+  if (!perfil) return null
+  const rolNorm = (perfil.rol ?? '').toLowerCase().replace('ñ', 'n')
+  const esGerencia = rolNorm === 'gerencia' || rolNorm === 'control_total' || rolNorm === 'dueno'
+  return { tenantId: perfil.tenant_id as string, esGerencia }
+}
+
+export async function GET() {
+  const supabase = createClient()
+  const perfil = await getPerfil(supabase)
+  if (!perfil) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+
+  const admin = createAdminClient()
+  const [inventario, { data: motos }] = await Promise.all([
+    calcularInventarioMotos(admin, perfil.tenantId),
+    admin.from('motos_catalogo').select('id, referencia').eq('tenant_id', perfil.tenantId).eq('activa', true).order('orden'),
+  ])
+  return NextResponse.json({ inventario, motosDisponibles: motos ?? [] })
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = createClient()
+  const perfil = await getPerfil(supabase)
+  if (!perfil) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  if (!perfil.esGerencia) return NextResponse.json({ error: 'Solo gerencia puede editar el inventario' }, { status: 403 })
+
+  const admin = createAdminClient()
+  const body = await req.json().catch(() => null) as {
+    accion?: string; id?: string; moto_catalogo_id?: string; cantidad_total?: number
+  } | null
+  const { accion } = body ?? {}
+
+  if (accion === 'crear') {
+    if (!body?.moto_catalogo_id) return NextResponse.json({ error: 'Falta la moto' }, { status: 400 })
+    const cantidad = Math.max(0, Number(body.cantidad_total ?? 0))
+    const { error } = await admin.from('inventario_motos').upsert({
+      tenant_id: perfil.tenantId, moto_catalogo_id: body.moto_catalogo_id, cantidad_total: cantidad,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'tenant_id,moto_catalogo_id' })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
+  if (accion === 'editar') {
+    if (!body?.id) return NextResponse.json({ error: 'Falta id' }, { status: 400 })
+    const cantidad = Math.max(0, Number(body.cantidad_total ?? 0))
+    const { error } = await admin.from('inventario_motos')
+      .update({ cantidad_total: cantidad, updated_at: new Date().toISOString() })
+      .eq('id', body.id).eq('tenant_id', perfil.tenantId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
+  if (accion === 'eliminar') {
+    if (!body?.id) return NextResponse.json({ error: 'Falta id' }, { status: 400 })
+    const { error } = await admin.from('inventario_motos').delete().eq('id', body.id).eq('tenant_id', perfil.tenantId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
+  return NextResponse.json({ error: 'Acción desconocida' }, { status: 400 })
+}
