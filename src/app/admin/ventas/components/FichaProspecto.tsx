@@ -248,6 +248,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [cartaInput, setCartaInput]         = useState(lead.numero_carta_negociacion ?? '')
   const [editandoCarta, setEditandoCarta]   = useState(false)
   const [savingCarta, setSavingCarta]       = useState(false)
+  const [fechaCarta, setFechaCarta]         = useState<string | null>(null)
 
   // Factura
   const [facturaActual, setFacturaActual]   = useState(lead.numero_factura ?? '')
@@ -306,7 +307,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       supabase.from('ordenes').select('id,created_at,estado,descripcion_problema')
         .eq('cliente_id', lead.id).order('created_at', { ascending: false }).limit(5),
       supabase.from('usuarios').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).eq('es_asesor', true),
-      supabase.from('clientes').select('assigned_to, created_at, fecha_cierre, fecha_matricula').eq('id', lead.id).single(),
+      supabase.from('clientes').select('assigned_to, created_at, fecha_cierre, fecha_matricula, fecha_carta_negociacion').eq('id', lead.id).single(),
       supabase.from('historial_etapas_cliente')
         .select('etapa_anterior, etapa_nueva, created_at')
         .eq('cliente_id', lead.id)
@@ -320,6 +321,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setClienteRegistradoEn(cliente?.created_at ?? null)
     setFechaVenta(cliente?.fecha_cierre ?? null)
     setFechaMatricula(cliente?.fecha_matricula ?? null)
+    setFechaCarta(cliente?.fecha_carta_negociacion ?? null)
     setHistorialEtapas((etapasHist ?? []) as EtapaMovimiento[])
   }, [lead.id, convActivaId, tenantId])
 
@@ -550,7 +552,10 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     if (!carta || carta === cartaActual) { setEditandoCarta(false); return }
     showGlobalLoading()
     setSavingCarta(true)
-    const { error } = await supabase.from('clientes').update({ numero_carta_negociacion: carta }).eq('id', lead.id).eq('tenant_id', tenantId)
+    const nuevaFechaCarta = fechaCarta ?? new Date().toISOString()
+    const { error } = await supabase.from('clientes')
+      .update({ numero_carta_negociacion: carta, fecha_carta_negociacion: nuevaFechaCarta })
+      .eq('id', lead.id).eq('tenant_id', tenantId)
     if (error) {
       alert(`No se pudo guardar la carta de negociación: ${error.message}`)
       setCartaInput(cartaActual)
@@ -558,6 +563,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       await logCambio('carta_negociacion', cartaActual || null, carta)
       setCartaActual(carta)
       setCartaInput(carta)
+      setFechaCarta(nuevaFechaCarta)
       setEditandoCarta(false)
       onLeadUpdate?.(lead.id, { numero_carta_negociacion: carta })
       mostrarGuardado()
@@ -1329,7 +1335,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
           <div className={`flex-1 overflow-y-auto p-4 ${tabDer === 'chats' ? 'hidden' : ''}`}>
 
             {/* ── Barra: Carta · Placa · Alistamiento · Factura · Fecha entrega · Aprobación ── */}
-            {(enEtapaCarta || enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || !!reglaAprobacion) && (
+            {(enEtapaCarta || enEtapaConPlaca || enEtapaAlistamiento || enEtapaFactura || enEtapaFechaEntrega || !!reglaAprobacion || !!fechaMatricula || etapasPipeline.etapaMap[etapa]?.es_matricula) && (
               <div className="mb-4 space-y-2">
 
                 {/* Fila de pills */}
@@ -1338,9 +1344,23 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold ${
                       cartaActual ? 'bg-teal-50 border-teal-200 text-teal-800' : 'bg-orange-50 border-orange-200 text-orange-700'
                     }`}>
-                      {cartaActual ? `📝 Carta ${cartaActual}` : `⚠ ${reglaCarta?.etiqueta ?? 'Sin carta negociación'}`}
+                      {cartaActual
+                        ? `📝 Carta ${cartaActual}${fechaCarta ? ` · ${new Date(fechaCarta).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}`
+                        : `⚠ ${reglaCarta?.etiqueta ?? 'Sin carta negociación'}`}
                       {cartaActual && (
                         <button onClick={() => setEditandoCarta(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
+                      )}
+                    </span>
+                  )}
+
+                  {(!!fechaMatricula || etapasPipeline.etapaMap[etapa]?.es_matricula) && !editandoFechaMatricula && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold bg-indigo-50 border-indigo-200 text-indigo-800">
+                      {fechaMatricula
+                        ? `🪪 Matrícula ${new Date(fechaMatricula).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                        : '⚠ Sin fecha de matrícula'}
+                      {esGerencia && (
+                        <button onClick={() => { setFechaMatriculaInput(fechaMatricula ? fechaMatricula.slice(0, 10) : ''); setEditandoFechaMatricula(true) }}
+                          className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
                       )}
                     </span>
                   )}

@@ -46,7 +46,7 @@ interface MotoInteresRow {
   con_papeles: boolean
   con_tarjeta: boolean
   pignorada: boolean
-  motos_catalogo: { precio: number; costo_documentos: number; costo_prenda: number } | null
+  motos_catalogo: { referencia: string; precio: number; costo_documentos: number; costo_prenda: number } | null
 }
 interface CreditoRow { entidad_id: string; estado: string; updated_at: string; assigned_to: string | null }
 interface EntidadRow { id: string; nombre: string }
@@ -205,7 +205,7 @@ export default function DashboardVentasVehiculosPage() {
         // tenant vía cliente_id → clientes.tenant_id) — filtrar aquí por
         // tenant_id haría fallar la consulta silenciosamente.
         supabase.from('clientes_motos_interes')
-          .select('cliente_id, con_papeles, con_tarjeta, pignorada, motos_catalogo(precio, costo_documentos, costo_prenda)'),
+          .select('cliente_id, con_papeles, con_tarjeta, pignorada, motos_catalogo(referencia, precio, costo_documentos, costo_prenda)'),
         supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tid).single(),
       ])
       if (cancelado) return
@@ -283,6 +283,18 @@ export default function DashboardVentasVehiculosPage() {
         valor: valorPorCliente.get(c.id) ?? 0,
         fecha: fechaVentaDe(c),
       }))
+
+    // Ventas del período agrupadas por modelo de moto (unidades vendidas)
+    const idsVentas = new Set(ventasActual.map(c => c.id))
+    const porMotoMap = new Map<string, number>()
+    for (const mi of motosInteres) {
+      if (!idsVentas.has(mi.cliente_id) || !mi.motos_catalogo) continue
+      const ref = mi.motos_catalogo.referencia
+      porMotoMap.set(ref, (porMotoMap.get(ref) ?? 0) + 1)
+    }
+    const ventasPorMoto: RankingDatum[] = [...porMotoMap.entries()]
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
 
     // Snapshot (no depende del período)
     const clientesVenta = clientes.filter(c => esVenta(c.etapa_venta))
@@ -409,11 +421,11 @@ export default function DashboardVentasVehiculosPage() {
         totalMatriculado, ticketPromedioActual, ticketPromedioAnterior,
         cuentasPorCobrar, tasaConversion, tasaAprobacionActual, tasaAprobacionAnterior,
       },
-      usoCreditoRanking, rankingAsesores, distribucionEtapa, asesoresIds, pendientesGestion, listaVentas,
+      usoCreditoRanking, rankingAsesores, distribucionEtapa, asesoresIds, pendientesGestion, listaVentas, ventasPorMoto,
       serieVentasFacturacion, serieVentasCantidad, weekdayVentasFacturacion, weekdayVentasCantidad,
       serieNuevosValor, serieNuevosCantidad, weekdayNuevosValor, weekdayNuevosCantidad,
     }
-  }, [clientes, creditosFiltrados, entidades, pagosPorCliente, valorPorCliente, usuariosMap, rango, rangoAnterior, chartRango, chartUnidad, chartRangoNuevos, chartUnidadNuevos, campoFechaVenta])
+  }, [clientes, creditosFiltrados, entidades, pagosPorCliente, valorPorCliente, motosInteres, usuariosMap, rango, rangoAnterior, chartRango, chartUnidad, chartRangoNuevos, chartUnidadNuevos, campoFechaVenta])
 
   if (authLoading || !profile) return <div className="p-8 text-center text-gray-400">Cargando...</div>
 
@@ -557,29 +569,38 @@ export default function DashboardVentasVehiculosPage() {
                 </div>
               </div>
 
-              {/* Ventas del período — lista de qué clientes componen el Total facturado */}
+              {/* Ventas del período — por cliente y por moto */}
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                 <h2 className="text-sm font-semibold text-gray-700 mb-1">Ventas de este período</h2>
                 <p className="text-xs text-gray-400 mb-3">
                   Según {CAMPO_FECHA_VENTA_LABEL[campoFechaVenta].toLowerCase()} — estos {m.listaVentas.length} clientes componen el Total facturado y el Ticket promedio de arriba
                 </p>
-                {m.listaVentas.length === 0 ? (
-                  <div className="h-20 flex items-center justify-center text-sm text-gray-400">Sin ventas en este período</div>
-                ) : (
-                  <div className="space-y-1.5 max-h-96 overflow-y-auto">
-                    {m.listaVentas.map(v => (
-                      <div key={v.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-gray-50">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate">{v.nombre}</p>
-                          <p className="text-xs text-gray-400">
-                            {v.etapaLabel}{v.fecha ? ` · ${new Date(v.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
-                          </p>
-                        </div>
-                        <span className="text-sm font-bold text-emerald-700 flex-shrink-0">{formatCOP(v.valor)}</span>
+                <div className="grid lg:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-2">Por cliente</p>
+                    {m.listaVentas.length === 0 ? (
+                      <div className="h-20 flex items-center justify-center text-sm text-gray-400">Sin ventas en este período</div>
+                    ) : (
+                      <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                        {m.listaVentas.map(v => (
+                          <div key={v.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-gray-50">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate">{v.nombre}</p>
+                              <p className="text-xs text-gray-400">
+                                {v.etapaLabel}{v.fecha ? ` · ${new Date(v.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                              </p>
+                            </div>
+                            <span className="text-sm font-bold text-emerald-700 flex-shrink-0">{formatCOP(v.valor)}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-2">Por moto (unidades)</p>
+                    <BarRankingChart data={m.ventasPorMoto} color="#16a34a" />
+                  </div>
+                </div>
               </div>
 
               {/* Tendencia de Ventas */}
