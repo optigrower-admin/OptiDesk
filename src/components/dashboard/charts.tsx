@@ -101,6 +101,37 @@ export function BarRankingChart({
   )
 }
 
+export function ParetoBarChart({
+  data, color = '#16a34a', formatValor,
+}: {
+  data: RankingDatum[]
+  color?: string
+  formatValor?: (v: number) => string
+}) {
+  if (data.length === 0) {
+    return <div className="h-56 flex items-center justify-center text-sm text-gray-400">Sin datos</div>
+  }
+  const fmt = (v: unknown) => formatValor ? formatValor(Number(v)) : String(v)
+  return (
+    <ResponsiveContainer width="100%" height={Math.max(280, data.length * 6)}>
+      <BarChart data={data} margin={{ left: 0, right: 8, top: 20, bottom: 48 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#374151' }} interval={0} angle={-35} textAnchor="end" height={60} />
+        <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} allowDecimals={false} />
+        <Tooltip formatter={fmt} />
+        <Bar dataKey="value" name="Unidades" fill={color} radius={[6, 6, 0, 0]}>
+          <LabelList
+            dataKey="value"
+            position="top"
+            formatter={(v: unknown) => Number(v) > 0 ? fmt(v) : ''}
+            style={{ fontSize: 11, fill: '#374151', fontWeight: 600 }}
+          />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
 export interface SerieDatum { fecha: string; actual: number; anterior?: number }
 
 export function TimeSeriesChart({

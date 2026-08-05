@@ -8,7 +8,7 @@ import { formatCOP } from '@/lib/utils'
 import { PeriodoFilter } from '@/components/dashboard/PeriodoFilter'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import {
-  BarRankingChart, TimeSeriesChart, WeekdayBarChart, DualLineChart,
+  BarRankingChart, TimeSeriesChart, WeekdayBarChart, DualLineChart, ParetoBarChart,
   type RankingDatum, type SerieDatum, type WeekdayDatum, type DualSerieDatum,
 } from '@/components/dashboard/charts'
 import {
@@ -39,6 +39,7 @@ interface ClienteRow {
   created_at: string
   assigned_to: string | null
   proxima_accion_fecha: string | null
+  alistamiento_orden_id: string | null
 }
 interface PagoRow { cliente_id: string; monto: number }
 interface MotoInteresRow {
@@ -48,7 +49,7 @@ interface MotoInteresRow {
   pignorada: boolean
   motos_catalogo: { referencia: string; precio: number; costo_documentos: number; costo_prenda: number } | null
 }
-interface CreditoRow { entidad_id: string; estado: string; updated_at: string; assigned_to: string | null }
+interface CreditoRow { cliente_id: string; entidad_id: string; estado: string; updated_at: string; assigned_to: string | null }
 interface EntidadRow { id: string; nombre: string }
 interface Usuario { id: string; nombre: string }
 type ChartUnidad = 'dias' | 'semanas' | 'meses'
@@ -136,6 +137,7 @@ export default function DashboardVentasVehiculosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [asesoresFiltro, setAsesoresFiltro] = useState<Set<string> | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  const [vistaVentasPeriodo, setVistaVentasPeriodo] = useState<'cliente' | 'moto'>('cliente')
 
   // Tendencias — unidad de agrupación y ventana independiente
   const [chartUnidad, setChartUnidad] = useState<ChartUnidad>('meses')
@@ -188,7 +190,7 @@ export default function DashboardVentasVehiculosPage() {
     const tid = profile.tenant_id
     const cargar = async () => {
       let q = supabase.from('clientes')
-        .select('id, nombre, etapa_venta, fecha_cierre, fecha_matricula, fecha_entrega, created_at, assigned_to, proxima_accion_fecha')
+        .select('id, nombre, etapa_venta, fecha_cierre, fecha_matricula, fecha_entrega, created_at, assigned_to, proxima_accion_fecha, alistamiento_orden_id')
         .eq('tenant_id', tid).eq('en_seguimiento_ventas', true).limit(5000)
       if (asesoresFiltro !== null) {
         const ids = [...asesoresFiltro].filter(id => id !== '__sin__')
@@ -198,7 +200,7 @@ export default function DashboardVentasVehiculosPage() {
         q,
         supabase.from('clientes_pagos').select('cliente_id, monto').eq('tenant_id', tid),
         supabase.from('clientes_credito_estudio')
-          .select('entidad_id, estado, updated_at, clientes!inner(assigned_to)')
+          .select('cliente_id, entidad_id, estado, updated_at, clientes!inner(assigned_to)')
           .eq('tenant_id', tid).in('estado', ['aprobado', 'rechazado']),
         supabase.from('entidades_financieras').select('id, nombre').eq('tenant_id', tid).eq('activa', true).order('orden'),
         // clientes_motos_interes no tiene columna tenant_id (su RLS aísla por
@@ -213,7 +215,7 @@ export default function DashboardVentasVehiculosPage() {
       setPagos((pg as PagoRow[]) ?? [])
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setCreditos(((cr ?? []) as any[]).map(c => ({
-        entidad_id: c.entidad_id, estado: c.estado, updated_at: c.updated_at,
+        cliente_id: c.cliente_id, entidad_id: c.entidad_id, estado: c.estado, updated_at: c.updated_at,
         assigned_to: (Array.isArray(c.clientes) ? c.clientes[0]?.assigned_to : c.clientes?.assigned_to) ?? null,
       })))
       setEntidades((ent as EntidadRow[]) ?? [])
@@ -298,16 +300,24 @@ export default function DashboardVentasVehiculosPage() {
 
     // Snapshot (no depende del período)
     const clientesVenta = clientes.filter(c => esVenta(c.etapa_venta))
-    const totalMatriculado = clientes.filter(c => esMatriculado(c.etapa_venta)).length
+    const clientesMatriculado = clientes.filter(c => esMatriculado(c.etapa_venta))
+    const totalAlistamientos = clientesMatriculado.filter(c => !!c.alistamiento_orden_id).length
+    const alistamientosFaltantes = clientesMatriculado.filter(c => !c.alistamiento_orden_id).length
     const cuentasPorCobrar = clientesVenta.reduce((s, c) => {
       const saldo = (valorPorCliente.get(c.id) ?? 0) - (pagosPorCliente.get(c.id) ?? 0)
       return s + Math.max(0, saldo)
     }, 0)
-    const tasaConversion = clientes.length > 0 ? (clientesVenta.length / clientes.length) * 100 : 0
+    // Se basa en las ventas del período seleccionado (según "Ver ventas
+    // según"), no en un snapshot fijo, para que cambie junto con ese filtro.
+    const tasaConversion = clientes.length > 0 ? (ventasActual.length / clientes.length) * 100 : 0
 
-    // Crédito — actual vs anterior por updated_at
-    const credActual   = creditosFiltrados.filter(c => enRango(c.updated_at, rango))
-    const credAnterior = creditosFiltrados.filter(c => enRango(c.updated_at, rangoAnterior))
+    // Crédito — restringido a los clientes que componen "las ventas" del
+    // período actual/anterior (según "Ver ventas según"), en vez de por la
+    // fecha propia del estudio de crédito, para que responda a ese filtro.
+    const idsVentasActual = new Set(ventasActual.map(c => c.id))
+    const idsVentasAnterior = new Set(ventasAnterior.map(c => c.id))
+    const credActual   = creditosFiltrados.filter(c => idsVentasActual.has(c.cliente_id))
+    const credAnterior = creditosFiltrados.filter(c => idsVentasAnterior.has(c.cliente_id))
     const aprobActual = credActual.filter(c => c.estado === 'aprobado').length
     const totActual   = credActual.length
     const aprobAnt    = credAnterior.filter(c => c.estado === 'aprobado').length
@@ -441,7 +451,7 @@ export default function DashboardVentasVehiculosPage() {
         nuevosActual: nuevosActual.length, nuevosAnterior: nuevosAnterior.length,
         ventasActual: ventasActual.length, ventasAnterior: ventasAnterior.length,
         totalFacturadoActual, totalFacturadoAnterior,
-        totalMatriculado, ticketPromedioActual, ticketPromedioAnterior,
+        totalAlistamientos, alistamientosFaltantes, ticketPromedioActual, ticketPromedioAnterior,
         cuentasPorCobrar, tasaConversion, tasaAprobacionActual, tasaAprobacionAnterior,
         diasCompraPromedio,
       },
@@ -586,7 +596,8 @@ export default function DashboardVentasVehiculosPage() {
                   <KpiCard label="Contactos nuevos" valor={String(m.kpis.nuevosActual)} variacion={v(m.kpis.nuevosActual, m.kpis.nuevosAnterior)} comparativoLabel={comparativoLabel} />
                   <KpiCard label="Ventas realizadas" valor={String(m.kpis.ventasActual)} variacion={v(m.kpis.ventasActual, m.kpis.ventasAnterior)} comparativoLabel={comparativoLabel} />
                   <KpiCard label="Total facturado" valor={formatCOP(m.kpis.totalFacturadoActual)} variacion={v(m.kpis.totalFacturadoActual, m.kpis.totalFacturadoAnterior)} comparativoLabel={comparativoLabel} sub="Vendida en adelante" />
-                  <KpiCard label="Total matriculado" valor={String(m.kpis.totalMatriculado)} sub="Alistamiento en adelante" />
+                  <KpiCard label="Total alistamientos" valor={String(m.kpis.totalAlistamientos)}
+                    sub={m.kpis.alistamientosFaltantes > 0 ? `${m.kpis.alistamientosFaltantes} faltantes por vincular` : 'Todos vinculados a una orden'} />
                   <KpiCard label="Ticket promedio" valor={formatCOP(m.kpis.ticketPromedioActual)} variacion={v(m.kpis.ticketPromedioActual, m.kpis.ticketPromedioAnterior)} comparativoLabel={comparativoLabel} />
                   <KpiCard label="Cuentas por Cobrar" valor={formatCOP(m.kpis.cuentasPorCobrar)} sub="Vendida en adelante, menos abonos" />
                   <KpiCard label="Tasa de conversión" valor={m.kpis.tasaConversion.toFixed(1)} sufijo="%" sub="Vendidos / total en pipeline" />
@@ -595,44 +606,57 @@ export default function DashboardVentasVehiculosPage() {
                 </div>
               </div>
 
-              {/* Ventas del período — por cliente y por moto */}
+              {/* Ventas del período — por cliente o por moto (toggle) */}
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                <h2 className="text-sm font-semibold text-gray-700 mb-1">Ventas de este período</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
+                  <h2 className="text-sm font-semibold text-gray-700">Ventas de este período</h2>
+                  <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+                    <button onClick={() => setVistaVentasPeriodo('cliente')}
+                      className={`px-3 py-1.5 transition-colors ${vistaVentasPeriodo === 'cliente' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                      Por cliente
+                    </button>
+                    <button onClick={() => setVistaVentasPeriodo('moto')}
+                      className={`px-3 py-1.5 transition-colors ${vistaVentasPeriodo === 'moto' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                      Por moto (unidades)
+                    </button>
+                  </div>
+                </div>
                 <p className="text-xs text-gray-400 mb-3">
                   Según {CAMPO_FECHA_VENTA_LABEL[campoFechaVenta].toLowerCase()} — estos {m.listaVentas.length} clientes componen el Total facturado y el Ticket promedio de arriba
                 </p>
-                <div className="grid lg:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">Por cliente</p>
-                    {m.listaVentas.length === 0 ? (
-                      <div className="h-20 flex items-center justify-center text-sm text-gray-400">Sin ventas en este período</div>
-                    ) : (
-                      <div className="space-y-1.5 max-h-96 overflow-y-auto">
-                        {m.listaVentas.map(v => (
-                          <div key={v.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-gray-50">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-800 truncate">{v.nombre}</p>
-                              <p className="text-xs text-gray-400">
-                                {v.etapaLabel}{v.fecha ? ` · ${new Date(v.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
-                              </p>
-                            </div>
-                            <span className="text-sm font-bold text-emerald-700 flex-shrink-0">{formatCOP(v.valor)}</span>
+                {vistaVentasPeriodo === 'cliente' ? (
+                  m.listaVentas.length === 0 ? (
+                    <div className="h-20 flex items-center justify-center text-sm text-gray-400">Sin ventas en este período</div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                      {m.listaVentas.map(v => (
+                        <div key={v.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-gray-50">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{v.nombre}</p>
+                            <p className="text-xs text-gray-400">
+                              {v.etapaLabel}{v.fecha ? ` · ${new Date(v.fecha).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                            </p>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">Por moto (unidades)</p>
-                    <BarRankingChart data={m.ventasPorMoto} color="#16a34a" />
-                  </div>
-                </div>
+                          <span className="text-sm font-bold text-emerald-700 flex-shrink-0">{formatCOP(v.valor)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <ParetoBarChart data={m.ventasPorMoto} color="#16a34a" />
+                )}
               </div>
 
               {/* Ventas vs Clientes nuevos — comparativo en la misma línea de tiempo */}
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                <h2 className="text-sm font-semibold text-gray-700 mb-1">Ventas vs Clientes nuevos</h2>
-                <p className="text-xs text-gray-400 mb-3">Cantidad, en la misma línea de tiempo — usa el rango de &quot;Últimos&quot; de Tendencia de Ventas, abajo</p>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
+                  <h2 className="text-sm font-semibold text-gray-700">Ventas vs Clientes nuevos</h2>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <UnidadSelector value={chartUnidad} onChange={setChartUnidad} />
+                    <UltimosSelector cantidad={chartRangoCantidad} unidad={chartRangoUnidad} onCantidad={setChartRangoCantidad} onUnidad={setChartRangoUnidad} />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 mb-3">Cantidad, en la misma línea de tiempo — comparte el rango con Tendencia de Ventas, abajo</p>
                 <DualLineChart data={m.serieVentasVsNuevos} labelA="Ventas" labelB="Clientes nuevos" colorA="#2563eb" colorB="#7c3aed" />
               </div>
 
