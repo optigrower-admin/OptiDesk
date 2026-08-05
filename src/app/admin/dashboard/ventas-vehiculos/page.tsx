@@ -15,7 +15,7 @@ import {
   calcularRango, calcularRangoAnterior, calcularVariacion, ymdLocal, PERIODO_LABEL,
   type PeriodoPreset,
 } from '@/lib/dashboard/periodos'
-import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, esVenta, estadoSeguimiento, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, esVenta, estadoSeguimiento, calcularPrecioMoto, type EtapaVenta } from '@/lib/ventas/pipeline'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
@@ -26,13 +26,19 @@ interface ClienteRow {
   id: string
   nombre: string | null
   etapa_venta: EtapaVenta
-  valor_estimado_venta: number | null
   fecha_cierre: string | null
   created_at: string
   assigned_to: string | null
   proxima_accion_fecha: string | null
 }
 interface PagoRow { cliente_id: string; monto: number }
+interface MotoInteresRow {
+  cliente_id: string
+  con_papeles: boolean
+  con_tarjeta: boolean
+  pignorada: boolean
+  motos_catalogo: { precio: number; costo_documentos: number; costo_prenda: number } | null
+}
 interface CreditoRow { entidad_id: string; estado: string; updated_at: string; assigned_to: string | null }
 interface EntidadRow { id: string; nombre: string }
 interface Usuario { id: string; nombre: string }
@@ -154,6 +160,8 @@ export default function DashboardVentasVehiculosPage() {
   const [pagos, setPagos] = useState<PagoRow[]>([])
   const [creditos, setCreditos] = useState<CreditoRow[]>([])
   const [entidades, setEntidades] = useState<EntidadRow[]>([])
+  const [motosInteres, setMotosInteres] = useState<MotoInteresRow[]>([])
+  const [recargoTarjeta, setRecargoTarjeta] = useState(5)
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -169,19 +177,23 @@ export default function DashboardVentasVehiculosPage() {
     const tid = profile.tenant_id
     const cargar = async () => {
       let q = supabase.from('clientes')
-        .select('id, nombre, etapa_venta, valor_estimado_venta, fecha_cierre, created_at, assigned_to, proxima_accion_fecha')
+        .select('id, nombre, etapa_venta, fecha_cierre, created_at, assigned_to, proxima_accion_fecha')
         .eq('tenant_id', tid).eq('en_seguimiento_ventas', true).limit(5000)
       if (asesoresFiltro !== null) {
         const ids = [...asesoresFiltro].filter(id => id !== '__sin__')
         if (ids.length > 0) q = q.in('assigned_to', ids)
       }
-      const [{ data: cl }, { data: pg }, { data: cr }, { data: ent }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: cr }, { data: ent }, { data: mi }, { data: tenant }] = await Promise.all([
         q,
         supabase.from('clientes_pagos').select('cliente_id, monto').eq('tenant_id', tid),
         supabase.from('clientes_credito_estudio')
           .select('entidad_id, estado, updated_at, clientes!inner(assigned_to)')
           .eq('tenant_id', tid).in('estado', ['aprobado', 'rechazado']),
         supabase.from('entidades_financieras').select('id, nombre').eq('tenant_id', tid).eq('activa', true).order('orden'),
+        supabase.from('clientes_motos_interes')
+          .select('cliente_id, con_papeles, con_tarjeta, pignorada, motos_catalogo(precio, costo_documentos, costo_prenda)')
+          .eq('tenant_id', tid),
+        supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tid).single(),
       ])
       if (cancelado) return
       setClientes((cl as ClienteRow[]) ?? [])
@@ -192,6 +204,12 @@ export default function DashboardVentasVehiculosPage() {
         assigned_to: (Array.isArray(c.clientes) ? c.clientes[0]?.assigned_to : c.clientes?.assigned_to) ?? null,
       })))
       setEntidades((ent as EntidadRow[]) ?? [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setMotosInteres(((mi ?? []) as any[]).map(x => ({
+        cliente_id: x.cliente_id, con_papeles: x.con_papeles, con_tarjeta: x.con_tarjeta, pignorada: x.pignorada,
+        motos_catalogo: Array.isArray(x.motos_catalogo) ? x.motos_catalogo[0] ?? null : x.motos_catalogo,
+      })))
+      setRecargoTarjeta(Number(tenant?.recargo_tarjeta_porcentaje ?? 5))
       setLoading(false)
     }
     cargar()
@@ -209,6 +227,19 @@ export default function DashboardVentasVehiculosPage() {
     for (const p of pagos) m.set(p.cliente_id, (m.get(p.cliente_id) ?? 0) + (p.monto ?? 0))
     return m
   }, [pagos])
+  // Valor real de venta por cliente — calculado igual que en la ficha del
+  // cliente (calcularPrecioMoto sobre sus motos de interés), en vez de
+  // depender del valor_estimado_venta guardado en `clientes` (que puede
+  // quedar desactualizado si no se sincronizó tras un cambio).
+  const valorPorCliente = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const s of motosInteres) {
+      if (!s.motos_catalogo) continue
+      const precio = calcularPrecioMoto(s.motos_catalogo, s.con_papeles, s.con_tarjeta, s.pignorada, recargoTarjeta)
+      m.set(s.cliente_id, (m.get(s.cliente_id) ?? 0) + precio)
+    }
+    return m
+  }, [motosInteres, recargoTarjeta])
 
   // ─── Métricas ────────────────────────────────────────────────────────────────
   const m = useMemo(() => {
@@ -221,7 +252,7 @@ export default function DashboardVentasVehiculosPage() {
     const ventasActual   = clientes.filter(c => esVenta(c.etapa_venta) && enRango(c.fecha_cierre, rango))
     const ventasAnterior = clientes.filter(c => esVenta(c.etapa_venta) && enRango(c.fecha_cierre, rangoAnterior))
 
-    const sumValor = (rows: ClienteRow[]) => rows.reduce((s, c) => s + (c.valor_estimado_venta ?? 0), 0)
+    const sumValor = (rows: ClienteRow[]) => rows.reduce((s, c) => s + (valorPorCliente.get(c.id) ?? 0), 0)
     const totalFacturadoActual = sumValor(ventasActual)
     const totalFacturadoAnterior = sumValor(ventasAnterior)
     const ticketPromedioActual = ventasActual.length ? totalFacturadoActual / ventasActual.length : 0
@@ -231,7 +262,7 @@ export default function DashboardVentasVehiculosPage() {
     const clientesVenta = clientes.filter(c => esVenta(c.etapa_venta))
     const totalMatriculado = clientes.filter(c => esMatriculado(c.etapa_venta)).length
     const cuentasPorCobrar = clientesVenta.reduce((s, c) => {
-      const saldo = (c.valor_estimado_venta ?? 0) - (pagosPorCliente.get(c.id) ?? 0)
+      const saldo = (valorPorCliente.get(c.id) ?? 0) - (pagosPorCliente.get(c.id) ?? 0)
       return s + Math.max(0, saldo)
     }, 0)
     const tasaConversion = clientes.length > 0 ? (clientesVenta.length / clientes.length) * 100 : 0
@@ -258,7 +289,7 @@ export default function DashboardVentasVehiculosPage() {
     const factPorAsesor = new Map<string, number>()
     for (const c of ventasActual) {
       const k = c.assigned_to ?? '__sin__'
-      factPorAsesor.set(k, (factPorAsesor.get(k) ?? 0) + (c.valor_estimado_venta ?? 0))
+      factPorAsesor.set(k, (factPorAsesor.get(k) ?? 0) + (valorPorCliente.get(c.id) ?? 0))
     }
     const rankingAsesores: RankingDatum[] = [...factPorAsesor.entries()]
       .map(([id, v]) => ({ label: id === '__sin__' ? 'Sin asignar' : (usuariosMap[id] ?? 'Desconocido'), value: Math.round(v) }))
@@ -284,7 +315,7 @@ export default function DashboardVentasVehiculosPage() {
         for (const c of arr) {
           const iso = c[dateField]; if (!iso) continue
           const k = kf(new Date(iso)); const cur = map.get(k) ?? { total: 0, cant: 0 }
-          cur.total += c.valor_estimado_venta ?? 0; cur.cant += 1; map.set(k, cur)
+          cur.total += valorPorCliente.get(c.id) ?? 0; cur.cant += 1; map.set(k, cur)
         }
         return map
       }
@@ -322,8 +353,8 @@ export default function DashboardVentasVehiculosPage() {
     function buildWeekday(rows: ClienteRow[], rowsAnt: ClienteRow[], dateField: 'created_at' | 'fecha_cierre') {
       const wdValAct = Array(7).fill(0); const wdCantAct = Array(7).fill(0)
       const wdValAnt = Array(7).fill(0); const wdCantAnt = Array(7).fill(0)
-      for (const c of rows) { const iso = c[dateField]; if (!iso) continue; const d = getDow(new Date(iso)); wdValAct[d] += c.valor_estimado_venta ?? 0; wdCantAct[d]++ }
-      for (const c of rowsAnt) { const iso = c[dateField]; if (!iso) continue; const d = getDow(new Date(iso)); wdValAnt[d] += c.valor_estimado_venta ?? 0; wdCantAnt[d]++ }
+      for (const c of rows) { const iso = c[dateField]; if (!iso) continue; const d = getDow(new Date(iso)); wdValAct[d] += valorPorCliente.get(c.id) ?? 0; wdCantAct[d]++ }
+      for (const c of rowsAnt) { const iso = c[dateField]; if (!iso) continue; const d = getDow(new Date(iso)); wdValAnt[d] += valorPorCliente.get(c.id) ?? 0; wdCantAnt[d]++ }
       const weekdayValor: WeekdayDatum[] = Array.from({ length: 7 }, (_, i) => ({ actual: wdValAct[i], anterior: wdValAnt[i] }))
       const weekdayCantidad: WeekdayDatum[] = Array.from({ length: 7 }, (_, i) => ({ actual: wdCantAct[i], anterior: wdCantAnt[i] }))
       return { weekdayValor, weekdayCantidad }
@@ -356,7 +387,7 @@ export default function DashboardVentasVehiculosPage() {
       serieVentasFacturacion, serieVentasCantidad, weekdayVentasFacturacion, weekdayVentasCantidad,
       serieNuevosValor, serieNuevosCantidad, weekdayNuevosValor, weekdayNuevosCantidad,
     }
-  }, [clientes, creditosFiltrados, entidades, pagosPorCliente, usuariosMap, rango, rangoAnterior, chartRango, chartUnidad, chartRangoNuevos, chartUnidadNuevos])
+  }, [clientes, creditosFiltrados, entidades, pagosPorCliente, valorPorCliente, usuariosMap, rango, rangoAnterior, chartRango, chartUnidad, chartRangoNuevos, chartUnidadNuevos])
 
   if (authLoading || !profile) return <div className="p-8 text-center text-gray-400">Cargando...</div>
 
