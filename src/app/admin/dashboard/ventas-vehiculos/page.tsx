@@ -190,9 +190,11 @@ export default function DashboardVentasVehiculosPage() {
           .select('entidad_id, estado, updated_at, clientes!inner(assigned_to)')
           .eq('tenant_id', tid).in('estado', ['aprobado', 'rechazado']),
         supabase.from('entidades_financieras').select('id, nombre').eq('tenant_id', tid).eq('activa', true).order('orden'),
+        // clientes_motos_interes no tiene columna tenant_id (su RLS aísla por
+        // tenant vía cliente_id → clientes.tenant_id) — filtrar aquí por
+        // tenant_id haría fallar la consulta silenciosamente.
         supabase.from('clientes_motos_interes')
-          .select('cliente_id, con_papeles, con_tarjeta, pignorada, motos_catalogo(precio, costo_documentos, costo_prenda)')
-          .eq('tenant_id', tid),
+          .select('cliente_id, con_papeles, con_tarjeta, pignorada, motos_catalogo(precio, costo_documentos, costo_prenda)'),
         supabase.from('tenants').select('recargo_tarjeta_porcentaje').eq('id', tid).single(),
       ])
       if (cancelado) return

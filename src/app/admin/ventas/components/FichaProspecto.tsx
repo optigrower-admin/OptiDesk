@@ -927,7 +927,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               </div>
 
               {/* Fecha de venta — solo aparece en etapa vendida/perdida, editable por gerencia */}
-              {(etapasPipeline.etapaMap[etapa]?.es_ganado || etapasPipeline.etapaMap[etapa]?.es_perdido) && (
+              {(!!fechaVenta || etapasPipeline.etapaMap[etapa]?.es_ganado || etapasPipeline.etapaMap[etapa]?.es_perdido) && (
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fecha de venta</label>
@@ -1725,7 +1725,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     </select>
                   </div>
 
-                  {(etapasPipeline.etapaMap[etapa]?.es_ganado || etapasPipeline.etapaMap[etapa]?.es_perdido) && (
+                  {(!!fechaVenta || etapasPipeline.etapaMap[etapa]?.es_ganado || etapasPipeline.etapaMap[etapa]?.es_perdido) && (
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Fecha de venta</label>
