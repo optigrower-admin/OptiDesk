@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
+import ReportesProgramadosManager from './components/ReportesProgramadosManager'
 
 interface Colaborador {
   id: string
@@ -12,7 +13,11 @@ interface Colaborador {
   whatsapp_number: string | null
   wa_sesion_at: string | null
   email_smtp_usuario: string | null
-  recibe_resumen_pipeline: boolean
+}
+
+function esGerenciaRol(rol: string): boolean {
+  const rolNorm = (rol ?? '').toLowerCase().replace('ñ', 'n')
+  return ['gerencia', 'dueno', 'control_total', 'admin'].includes(rolNorm)
 }
 
 type ResultadoResumen = { usuariosNotificados: number; whatsappEnviados: number; emailsEnviados: number; emailsFallidos: number }
@@ -60,9 +65,6 @@ export default function ColaboradoresPage() {
   const [resultadoTodos, setResultadoTodos] = useState<ResultadoResumen | null>(null)
   const [canalesTodos, setCanalesTodos] = useState({ whatsapp: true, email: true })
   const [canalesPorColaborador, setCanalesPorColaborador] = useState<Record<string, { whatsapp: boolean; email: boolean }>>({})
-  const [guardandoPipeline, setGuardandoPipeline] = useState<Record<string, boolean>>({})
-  const [enviandoPipeline, setEnviandoPipeline] = useState<Record<string, boolean>>({})
-  const [mensajePipeline, setMensajePipeline] = useState<{ id: string; texto: string; ok: boolean } | null>(null)
 
   // Correo de la empresa (una sola cuenta compartida, no por usuario)
   const [correoEmpresa, setCorreoEmpresa]         = useState<string | null>(null)
@@ -120,7 +122,7 @@ export default function ColaboradoresPage() {
     if (!profile?.tenant_id) return
     const { data } = await supabase
       .from('usuarios')
-      .select('id, nombre, email, rol, activo, whatsapp_number, wa_sesion_at, email_smtp_usuario, recibe_resumen_pipeline')
+      .select('id, nombre, email, rol, activo, whatsapp_number, wa_sesion_at, email_smtp_usuario')
       .eq('tenant_id', profile.tenant_id)
       .order('nombre')
     setColaboradores((data ?? []) as Colaborador[])
@@ -216,39 +218,6 @@ export default function ColaboradoresPage() {
     }
   }
 
-  async function toggleResumenPipeline(col: Colaborador) {
-    setGuardandoPipeline(p => ({ ...p, [col.id]: true }))
-    const { error } = await supabase
-      .from('usuarios')
-      .update({ recibe_resumen_pipeline: !col.recibe_resumen_pipeline })
-      .eq('id', col.id)
-    setGuardandoPipeline(p => ({ ...p, [col.id]: false }))
-    if (error) {
-      setMensajePipeline({ id: col.id, texto: error.message, ok: false })
-    } else {
-      await cargar()
-    }
-    setTimeout(() => setMensajePipeline(null), 3000)
-  }
-
-  async function enviarResumenPipelineAhora(col: Colaborador) {
-    setEnviandoPipeline(p => ({ ...p, [col.id]: true }))
-    try {
-      const res = await fetch('/api/admin/mensajes/colaboradores/resumen-pipeline', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usuarioId: col.id }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error ?? 'Error al enviar')
-      setMensajePipeline({ id: col.id, texto: 'Enviado ✓', ok: true })
-    } catch (e) {
-      setMensajePipeline({ id: col.id, texto: e instanceof Error ? e.message : 'Error al enviar', ok: false })
-    } finally {
-      setEnviandoPipeline(p => ({ ...p, [col.id]: false }))
-      setTimeout(() => setMensajePipeline(null), 4000)
-    }
-  }
-
   async function probarResumenTodos() {
     if (!canalesTodos.whatsapp && !canalesTodos.email) {
       alert('Elige al menos un canal')
@@ -297,11 +266,12 @@ export default function ColaboradoresPage() {
       </div>
 
       <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-6 text-sm text-purple-800 space-y-1">
-        <p className="font-semibold">📊 Resumen de pipeline por correo</p>
-        <p>Cada asesor puede recibir cada día un correo con un gráfico de barras de sus clientes por etapa,
-          y debajo el detalle de cada cliente (días sin movimiento y recordatorios pendientes). Actívalo por
-          persona en la tarjeta de cada colaborador — el botón &quot;Vista previa&quot; abre el correo tal cual
-          le llegaría, con sus datos reales, sin enviar nada.</p>
+        <p className="font-semibold">📊 Reportes con gráficas (pipeline y Servicio Técnico)</p>
+        <p>En la tarjeta de cada colaborador puedes crear uno o varios envíos por reporte: eliges canal
+          (correo, WhatsApp o ambos), hora, si es diario/semanal/mensual (y qué día), qué período mostrar
+          (hoy, semana, mes, trimestre o año) y el asunto del correo. En WhatsApp el gráfico llega como
+          imagen. Para Gerencia/Dueño puedes elegir ver el total general o una sección por persona en el
+          mismo envío. &quot;Vista previa&quot; abre el correo tal cual llegaría, sin enviar nada.</p>
       </div>
 
       {/* Correo de la empresa — una sola cuenta compartida, como la conexión de Meta */}
@@ -499,25 +469,16 @@ export default function ColaboradoresPage() {
                 )}
               </div>
 
-              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-3 flex-wrap">
-                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-gray-700">
-                  <input type="checkbox" checked={col.recibe_resumen_pipeline} disabled={guardandoPipeline[col.id]}
-                    onChange={() => toggleResumenPipeline(col)} className="rounded" />
-                  📊 Resumen de pipeline por correo (diario)
-                </label>
-                <a href={`/api/admin/mensajes/colaboradores/resumen-pipeline/preview?usuarioId=${col.id}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="text-xs px-2.5 py-1 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors">
-                  👁️ Vista previa
-                </a>
-                <button onClick={() => enviarResumenPipelineAhora(col)} disabled={enviandoPipeline[col.id]}
-                  className="text-xs px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 disabled:opacity-50 transition-colors">
-                  {enviandoPipeline[col.id] ? 'Enviando...' : '📤 Enviárselo ahora'}
-                </button>
-                {mensajePipeline?.id === col.id && (
-                  <span className={`text-[11px] ${mensajePipeline.ok ? 'text-green-600' : 'text-red-600'}`}>{mensajePipeline.texto}</span>
-                )}
-              </div>
+              <ReportesProgramadosManager
+                usuarioId={col.id} tipoReporte="pipeline" titulo="📊 Resumen de pipeline"
+                asuntoDefault="📊 Tu resumen de pipeline" esGerenciaDestino={esGerenciaRol(col.rol)}
+                etiquetaPorUsuario="Por asesor"
+              />
+              <ReportesProgramadosManager
+                usuarioId={col.id} tipoReporte="servicio_tecnico" titulo="🔧 Resumen de Servicio Técnico y repuestos"
+                asuntoDefault="🔧 Tu resumen de Servicio Técnico" esGerenciaDestino={esGerenciaRol(col.rol)}
+                etiquetaPorUsuario="Por mecánico"
+              />
 
               <div className="mt-3 flex items-center gap-2">
                 <div className="relative flex-1 max-w-xs">

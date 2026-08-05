@@ -48,3 +48,50 @@ export async function enviarWADirecto(
   }
   return r.ok
 }
+
+// Envía una imagen directa (ej. gráfico de reporte) a un número, sin pasar
+// por una conversación de la bandeja — mismo caso de uso que enviarWADirecto
+// (bot de colaboradores). Sube la imagen a la Media API de Meta primero.
+export async function enviarWAImagenDirecta(
+  cfg: CfgMeta,
+  to: string,
+  imagen: Buffer,
+  caption: string
+): Promise<boolean> {
+  let token = cfg.wa_access_token_enc
+  try {
+    const { decrypt } = await import('@/lib/crypto')
+    token = decrypt(cfg.wa_access_token_enc)
+  } catch { /* dev — token sin encriptar */ }
+
+  const mediaForm = new FormData()
+  mediaForm.append('file', new Blob([new Uint8Array(imagen)], { type: 'image/png' }), 'grafico.png')
+  mediaForm.append('type', 'image/png')
+  mediaForm.append('messaging_product', 'whatsapp')
+
+  const uploadRes = await fetch(
+    `https://graph.facebook.com/v20.0/${cfg.wa_phone_number_id}/media`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: mediaForm }
+  )
+  if (!uploadRes.ok) {
+    console.error('[enviarWAImagenDirecta] Error subiendo media:', uploadRes.status, await uploadRes.text().catch(() => ''))
+    return false
+  }
+  const { id: mediaId } = await uploadRes.json() as { id: string }
+
+  const r = await fetch(
+    `https://graph.facebook.com/v20.0/${cfg.wa_phone_number_id}/messages`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp', to, type: 'image',
+        image: { id: mediaId, caption: caption.slice(0, 1024) },
+      }),
+    }
+  )
+  if (!r.ok) {
+    console.error('[enviarWAImagenDirecta] Error enviando:', r.status, await r.text().catch(() => ''))
+  }
+  return r.ok
+}

@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { ejecutarResumenDiario } from '@/lib/ventas/resumenDiario'
+import { ejecutarReportesDebidos } from '@/lib/reportes/scheduler'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
@@ -10,8 +11,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const resultado = await ejecutarResumenDiario(createAdminClient())
-
-  console.log(`[cron/resumen-diario] Usuarios notificados ${resultado.usuariosNotificados} · WhatsApp ${resultado.whatsappEnviados} · Emails ${resultado.emailsEnviados} · Emails fallidos ${resultado.emailsFallidos}`)
+  const resultado = await ejecutarReportesDebidos(createAdminClient())
+  console.log(`[cron/reportes-programados] evaluados ${resultado.evaluados} · enviados ${resultado.enviados} · fallidos ${resultado.fallidos}`)
   return NextResponse.json(resultado)
 }
