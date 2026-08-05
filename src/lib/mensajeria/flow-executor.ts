@@ -374,8 +374,11 @@ async function procesarNodo(
       }
 
       const textoFinal = interpolarVariables(contenido, contexto)
-      await enviarMensajeDirecto(supabase, tenantId, convId, textoFinal, 'texto')
-      return { tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id) }
+      const envio = await enviarMensajeDirecto(supabase, tenantId, convId, textoFinal, 'texto')
+      return {
+        tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id),
+        advertencia: envio.ok ? undefined : `No se pudo entregar el mensaje por ${envio.canal ?? 'el canal'}: ${envio.error ?? 'error desconocido'}`,
+      }
     }
 
     // ── Enviar plantilla Meta aprobada ────────────────────────────────────────
@@ -1196,14 +1199,14 @@ export async function enviarMensajeDirecto(
   convId: string,
   texto: string,
   tipo: string
-) {
+): Promise<{ ok: boolean; canal?: string; error?: string }> {
   const { data: conv } = await supabase
     .from('conversaciones')
     .select('canal, canal_contact_id')
     .eq('id', convId)
     .maybeSingle()
 
-  if (!conv || !texto.trim()) return
+  if (!conv || !texto.trim()) return { ok: false, error: 'Sin conversación o mensaje vacío' }
 
   const { data: cfg } = await supabase
     .from('config_meta')
@@ -1212,6 +1215,8 @@ export async function enviarMensajeDirecto(
     .maybeSingle()
 
   let metaMessageId: string | null = null
+  let errorEnvio: string | undefined
+  const canalConocido = conv.canal === 'whatsapp' || conv.canal === 'messenger' || conv.canal === 'instagram'
 
   // Sin config_meta (o canal 'manual' del Chat de prueba) — no hay a quién mandarle
   // por Meta, pero el mensaje igual se registra en la conversación más abajo.
@@ -1230,9 +1235,12 @@ export async function enviarMensajeDirecto(
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
+    const d = await r.json().catch(() => null) as { messages?: [{ id: string }]; error?: { message?: string } } | null
     if (r.ok) {
-      const d = await r.json() as { messages?: [{ id: string }] }
-      metaMessageId = d.messages?.[0]?.id ?? null
+      metaMessageId = d?.messages?.[0]?.id ?? null
+    } else {
+      errorEnvio = d?.error?.message ?? `Error HTTP ${r.status} de WhatsApp`
+      console.error('[flow-executor] Error enviando WhatsApp:', r.status, JSON.stringify(d))
     }
   } else if (cfg && conv.canal === 'messenger' && cfg.messenger_access_token_enc) {
     let token = cfg.messenger_access_token_enc
@@ -1247,10 +1255,15 @@ export async function enviarMensajeDirecto(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
+    const d = await r.json().catch(() => null) as { message_id?: string; error?: { message?: string } } | null
     if (r.ok) {
-      const d = await r.json() as { message_id?: string }
-      metaMessageId = d.message_id ?? null
+      metaMessageId = d?.message_id ?? null
+    } else {
+      errorEnvio = d?.error?.message ?? `Error HTTP ${r.status} de Messenger`
+      console.error('[flow-executor] Error enviando Messenger:', r.status, JSON.stringify(d))
     }
+  } else if (canalConocido && conv.canal !== 'manual') {
+    errorEnvio = `Falta configurar la conexión de ${conv.canal} en Integraciones`
   }
 
   // Registrar en DB
@@ -1271,6 +1284,8 @@ export async function enviarMensajeDirecto(
     ultimo_mensaje_texto: texto.slice(0, 100),
     ultimo_mensaje_direccion: 'saliente',
   }).eq('id', convId)
+
+  return { ok: !errorEnvio, canal: conv.canal, error: errorEnvio }
 }
 
 // ─── Enviar plantilla WA aprobada ─────────────────────────────────────────────
