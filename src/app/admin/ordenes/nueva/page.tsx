@@ -385,6 +385,7 @@ export default function NuevaOrdenAdminPage() {
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono uppercase"
                   placeholder="ABC123"
                   maxLength={10}
+                  autoComplete="off"
                 />
               </div>
               <div>
@@ -394,6 +395,7 @@ export default function NuevaOrdenAdminPage() {
                   onChange={(e) => setCedula(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                   placeholder="Número de cédula"
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -437,6 +439,7 @@ export default function NuevaOrdenAdminPage() {
                 required={tipoOrden === 'servicio'}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm uppercase placeholder:normal-case"
                 placeholder="Nombre del cliente"
+                autoComplete="off"
               />
             </div>
             <div>
@@ -447,6 +450,7 @@ export default function NuevaOrdenAdminPage() {
                 onChange={(e) => setTelefono(formatTelefono(e.target.value))}
                 className={`w-full px-3 py-2 border rounded-lg text-sm ${!telefono ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                 placeholder="(310) 000-0000"
+                autoComplete="off"
               />
             </div>
           </div>

@@ -326,6 +326,7 @@ export default function RecepcionPage() {
             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="ABC123"
             maxLength={10}
+            autoComplete="off"
           />
         </div>
 
@@ -393,6 +394,7 @@ export default function RecepcionPage() {
             required
             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm uppercase placeholder:normal-case focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Nombre del cliente"
+            autoComplete="off"
           />
           {autoCliente && (cliente.trim() !== autoCliente.nombre.trim() || (telefono || '') !== (autoCliente.celular || '')) && (
             <p className="text-xs text-amber-600 mt-1">
@@ -409,6 +411,7 @@ export default function RecepcionPage() {
             onChange={(e) => setTelefono(formatTelefono(e.target.value))}
             className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${!telefono ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}
             placeholder="(310) 000-0000"
+            autoComplete="off"
           />
         </div>
 
