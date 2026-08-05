@@ -654,9 +654,11 @@ function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
 // ── Sección de archivos de un tipo de documento (o "Otros") ───────────────────
 function SeccionDocumento({
   titulo, requerido, archivos, uploading, isMobile, onFiles, onScan, onEliminar,
+  modoSeleccion, seleccion, onToggleSeleccion,
 }: {
   titulo: string; requerido: boolean; archivos: Archivo[]; uploading: boolean; isMobile: boolean
   onFiles: (files: FileList | null) => void; onScan: () => void; onEliminar: (id: string) => void
+  modoSeleccion: boolean; seleccion: Set<string>; onToggleSeleccion: (id: string) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const cumplido = !requerido || archivos.length > 0
@@ -677,22 +679,32 @@ function SeccionDocumento({
 
       {archivos.length > 0 && (
         <div className="space-y-1">
-          {archivos.map(a => (
-            <div key={a.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
-              <a href={`/api/archivos-cliente/${a.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 min-w-0 flex-1">
-                <span className="flex-shrink-0 text-sm">{ICONO[a.tipo] ?? '📎'}</span>
-                <div className="min-w-0">
-                  <p className="text-xs text-gray-700 hover:text-blue-700 truncate">{a.nombre_archivo ?? 'Archivo'}</p>
-                  <p className="text-[10px] text-gray-400">{fmtFecha(a.created_at)}{a.storage_location === 'drive' ? ' · Drive' : ''}</p>
-                </div>
-              </a>
-              {a.storage_location === 'drive' && a.drive_url && (
-                <a href={a.drive_url} target="_blank" rel="noopener noreferrer" title="Abrir en Google Drive"
-                  className="flex-shrink-0 text-[11px] text-blue-500 hover:text-blue-700 px-1 py-0.5 rounded hover:bg-blue-50">Drive ↗</a>
-              )}
-              <button onClick={() => onEliminar(a.id)} className="flex-shrink-0 text-red-400 hover:text-red-600 text-[11px]">Eliminar</button>
-            </div>
-          ))}
+          {archivos.map(a => {
+            const combinable = a.tipo === 'pdf' || a.tipo === 'imagen'
+            return (
+              <div key={a.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                {modoSeleccion && (
+                  <input type="checkbox" disabled={!combinable} checked={seleccion.has(a.id)}
+                    onChange={() => onToggleSeleccion(a.id)}
+                    className="flex-shrink-0 w-3.5 h-3.5 rounded border-gray-300 text-blue-600 disabled:opacity-30" />
+                )}
+                <a href={`/api/archivos-cliente/${a.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="flex-shrink-0 text-sm">{ICONO[a.tipo] ?? '📎'}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-700 hover:text-blue-700 truncate">{a.nombre_archivo ?? 'Archivo'}</p>
+                    <p className="text-[10px] text-gray-400">{fmtFecha(a.created_at)}{a.storage_location === 'drive' ? ' · Drive' : ''}</p>
+                  </div>
+                </a>
+                {a.storage_location === 'drive' && a.drive_url && (
+                  <a href={a.drive_url} target="_blank" rel="noopener noreferrer" title="Abrir en Google Drive"
+                    className="flex-shrink-0 text-[11px] text-blue-500 hover:text-blue-700 px-1 py-0.5 rounded hover:bg-blue-50">Drive ↗</a>
+                )}
+                {!modoSeleccion && (
+                  <button onClick={() => onEliminar(a.id)} className="flex-shrink-0 text-red-400 hover:text-red-600 text-[11px]">Eliminar</button>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -722,6 +734,9 @@ export default function ArchivosTab({ clienteId }: Props) {
   const [error, setError]       = useState('')
   const [scannerTipo, setScannerTipo] = useState<string | null | 'CERRADO'>('CERRADO')
   const [isMobile, setIsMobile] = useState(false)
+  const [modoSeleccion, setModoSeleccion] = useState(false)
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set())
+  const [combinando, setCombinando] = useState(false)
 
   useEffect(() => {
     setIsMobile('ontouchstart' in window || navigator.maxTouchPoints > 0)
@@ -777,6 +792,50 @@ export default function ArchivosTab({ clienteId }: Props) {
     if (res.ok) setArchivos(p => p.filter(a => a.id !== id))
   }
 
+  function toggleSeleccion(id: string) {
+    setSeleccion(prev => {
+      const n = new Set(prev)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+  }
+
+  function cancelarSeleccion() {
+    setModoSeleccion(false)
+    setSeleccion(new Set())
+  }
+
+  async function combinarYDescargar() {
+    if (seleccion.size === 0) return
+    setError('')
+    setCombinando(true)
+    try {
+      const res = await fetch('/api/admin/ventas/archivos/combinar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [...seleccion] }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'No se pudieron combinar los archivos')
+      }
+      const disposition = res.headers.get('content-disposition') ?? ''
+      const match = disposition.match(/filename="([^"]+)"/)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = match?.[1] ?? 'documentos combinados.pdf'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      cancelarSeleccion()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al combinar')
+    }
+    setCombinando(false)
+  }
+
   if (loading) return <p className="text-sm text-gray-400 text-center py-8">Cargando...</p>
 
   const archivosOtros = archivos.filter(a => !a.tipo_documento || !tiposCatalogo.includes(a.tipo_documento))
@@ -790,8 +849,22 @@ export default function ArchivosTab({ clienteId }: Props) {
         />
       )}
 
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Archivos</p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Archivos</p>
+        {!modoSeleccion ? (
+          <button onClick={() => setModoSeleccion(true)} className="text-xs font-semibold text-blue-600 hover:underline">
+            📎 Combinar en un PDF
+          </button>
+        ) : (
+          <button onClick={cancelarSeleccion} className="text-xs font-medium text-gray-400 hover:text-gray-600">
+            Cancelar
+          </button>
+        )}
+      </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
+      {modoSeleccion && (
+        <p className="text-[11px] text-gray-400 -mt-2">Marca uno o varios PDF/imágenes para juntarlos en un solo PDF descargable.</p>
+      )}
 
       {tiposCatalogo.map(tipo => (
         <SeccionDocumento
@@ -804,6 +877,9 @@ export default function ArchivosTab({ clienteId }: Props) {
           onFiles={files => onFiles(files, tipo)}
           onScan={() => setScannerTipo(tipo)}
           onEliminar={eliminar}
+          modoSeleccion={modoSeleccion}
+          seleccion={seleccion}
+          onToggleSeleccion={toggleSeleccion}
         />
       ))}
 
@@ -816,7 +892,19 @@ export default function ArchivosTab({ clienteId }: Props) {
         onFiles={files => onFiles(files, null)}
         onScan={() => setScannerTipo(null)}
         onEliminar={eliminar}
+        modoSeleccion={modoSeleccion}
+        seleccion={seleccion}
+        onToggleSeleccion={toggleSeleccion}
       />
+
+      {modoSeleccion && seleccion.size > 0 && (
+        <div className="sticky bottom-0 -mx-1 px-1 pt-2 pb-1 bg-gradient-to-t from-white via-white to-transparent">
+          <button onClick={combinarYDescargar} disabled={combinando}
+            className="w-full py-2.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-sm font-semibold shadow-lg">
+            {combinando ? 'Combinando...' : `📎 Combinar ${seleccion.size} archivo${seleccion.size !== 1 ? 's' : ''} y descargar`}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
