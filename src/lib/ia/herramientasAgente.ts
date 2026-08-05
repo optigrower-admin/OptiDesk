@@ -252,13 +252,21 @@ const escalarAHumano: HerramientaDef = {
 }
 
 // ─── guardar_dato_cliente ──────────────────────────────────────────────────────
+// Claves que además de quedar en la memoria del agente, se reflejan en la
+// ficha real del cliente (mismo campo que usa el nodo "Capturar dato" del
+// constructor de flujos) — así el dato queda visible en el CRM, no solo
+// disponible para que el agente lo recuerde en la conversación.
+const CAMPOS_CLIENTE_DIRECTOS: Record<string, string> = {
+  nombre: 'nombre', celular: 'celular', email: 'email', cedula: 'cedula',
+}
+
 const guardarDatoCliente: HerramientaDef = {
   nombre: 'guardar_dato_cliente',
-  descripcion: 'Guarda un dato relevante sobre el cliente para no perderlo entre mensajes (ej. el modelo que le interesa, si quiere financiamiento, una fecha que mencionó).',
+  descripcion: 'Guarda un dato relevante sobre el cliente para no perderlo entre mensajes. Úsala en cuanto el cliente lo mencione, aunque sea de pasada — ej. su nombre ("nombre"), celular ("celular"), correo ("email"), cédula ("cedula"), el modelo que le interesa ("modelo_interes"), si quiere financiamiento, una fecha que mencionó, etc.',
   parametros: {
     type: 'object',
     properties: {
-      clave: { type: 'string', description: 'Nombre corto del dato, ej. "modelo_interes"' },
+      clave: { type: 'string', description: 'Nombre corto del dato. Usa "nombre", "celular", "email" o "cedula" cuando corresponda a esos datos exactos del cliente — se guardan directo en su ficha.' },
       valor: { type: 'string', description: 'Valor a recordar' },
     },
     required: ['clave', 'valor'],
@@ -267,6 +275,7 @@ const guardarDatoCliente: HerramientaDef = {
     if (!ctx.conversacionId) return { ok: false, error: 'Sin conversación activa' }
     const clave = String(params.clave ?? '').trim()
     if (!clave) return { ok: false, error: 'Falta la clave del dato' }
+    const valor = String(params.valor ?? '').trim()
 
     const { data: existente } = await ctx.supabase
       .from('agente_memoria').select('datos').eq('agente_id', ctx.agenteId).eq('conversacion_id', ctx.conversacionId).maybeSingle()
@@ -277,6 +286,12 @@ const guardarDatoCliente: HerramientaDef = {
       updated_at: new Date().toISOString(),
     }, { onConflict: 'agente_id,conversacion_id' })
     if (error) return { ok: false, error: error.message }
+
+    const campoCliente = CAMPOS_CLIENTE_DIRECTOS[clave.toLowerCase()]
+    if (campoCliente && valor && ctx.clienteId) {
+      await ctx.supabase.from('clientes').update({ [campoCliente]: valor }).eq('id', ctx.clienteId).eq('tenant_id', ctx.tenantId)
+    }
+
     return { ok: true, resultado: { guardado: true } }
   },
 }

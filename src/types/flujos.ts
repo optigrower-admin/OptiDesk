@@ -148,7 +148,7 @@ export type CondicionTipoSimple =
   | 'respuesta_contiene' | 'palabras_clave' | 'contiene_todas' | 'es_exactamente'
   | 'empieza_con' | 'termina_con' | 'longitud_mayor'
   | 'es_positivo' | 'es_negativo' | 'es_numero'
-  | 'canal' | 'etapa' | 'tiene_celular' | 'es_nuevo' | 'horario_laboral'
+  | 'canal' | 'etapa' | 'tiene_celular' | 'tiene_nombre' | 'es_nuevo' | 'horario_laboral'
   | 'etapa_o_posterior' | 'aprobacion_pendiente'
   | 'ia_evalua'
 

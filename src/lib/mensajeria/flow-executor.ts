@@ -1078,6 +1078,11 @@ async function evaluarCondicionSimple(
       const { data: cl } = await supabase.from('clientes').select('celular').eq('id', clienteId).maybeSingle()
       return !!(cl?.celular?.trim())
     }
+    case 'tiene_nombre': {
+      if (!clienteId) return false
+      const { data: cl } = await supabase.from('clientes').select('nombre').eq('id', clienteId).maybeSingle()
+      return !!(cl?.nombre?.trim())
+    }
     case 'es_nuevo':
       return contexto.etapa_actual === 'nuevo_mensaje' || contexto.etapa_actual === 'nuevo'
     case 'respuesta_contiene':

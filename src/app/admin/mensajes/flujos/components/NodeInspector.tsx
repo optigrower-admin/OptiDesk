@@ -40,6 +40,7 @@ const CONDICIONES_OPCIONES: { value: CondicionTipoSimple; label: string; grupo: 
   { value: 'canal', label: 'Canal específico', grupo: 'Contexto del cliente' },
   { value: 'etapa', label: 'Etapa actual es', grupo: 'Contexto del cliente' },
   { value: 'tiene_celular', label: 'Tiene celular registrado', grupo: 'Contexto del cliente' },
+  { value: 'tiene_nombre', label: 'Tiene nombre registrado', grupo: 'Contexto del cliente' },
   { value: 'es_nuevo', label: 'Es cliente nuevo', grupo: 'Contexto del cliente' },
   { value: 'horario_laboral', label: 'Está en horario laboral', grupo: 'Contexto del cliente' },
   { value: 'etapa_o_posterior', label: 'Etapa: esta o más adelante', grupo: 'Pipeline' },
