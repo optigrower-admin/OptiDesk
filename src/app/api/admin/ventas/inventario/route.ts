@@ -19,11 +19,12 @@ export async function GET() {
   if (!perfil) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const admin = createAdminClient()
-  const [inventario, { data: motos }] = await Promise.all([
+  const [inventario, { data: motos }, { data: colores }] = await Promise.all([
     calcularInventarioMotos(admin, perfil.tenantId),
     admin.from('motos_catalogo').select('id, referencia').eq('tenant_id', perfil.tenantId).eq('activa', true).order('orden'),
+    admin.from('motos_catalogo_colores').select('id, moto_catalogo_id, nombre').eq('tenant_id', perfil.tenantId).order('orden'),
   ])
-  return NextResponse.json({ inventario, motosDisponibles: motos ?? [] })
+  return NextResponse.json({ inventario, motosDisponibles: motos ?? [], coloresPorMoto: colores ?? [] })
 }
 
 export async function POST(req: NextRequest) {
@@ -34,18 +35,38 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient()
   const body = await req.json().catch(() => null) as {
-    accion?: string; id?: string; moto_catalogo_id?: string; cantidad_total?: number
+    accion?: string; id?: string; moto_catalogo_id?: string; color_id?: string | null; cantidad_total?: number
   } | null
   const { accion } = body ?? {}
 
   if (accion === 'crear') {
     if (!body?.moto_catalogo_id) return NextResponse.json({ error: 'Falta la moto' }, { status: 400 })
     const cantidad = Math.max(0, Number(body.cantidad_total ?? 0))
-    const { error } = await admin.from('inventario_motos').upsert({
-      tenant_id: perfil.tenantId, moto_catalogo_id: body.moto_catalogo_id, cantidad_total: cantidad,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'tenant_id,moto_catalogo_id' })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    const colorId = body.color_id || null
+
+    if (colorId) {
+      const { error } = await admin.from('inventario_motos').upsert({
+        tenant_id: perfil.tenantId, moto_catalogo_id: body.moto_catalogo_id, color_id: colorId, cantidad_total: cantidad,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'tenant_id,moto_catalogo_id,color_id' })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ ok: true })
+    }
+
+    // Sin color: Postgres no deduplica NULL vía UNIQUE/upsert, así que se
+    // busca a mano el renglón "sin color" existente para esa moto.
+    const { data: existente } = await admin.from('inventario_motos')
+      .select('id').eq('tenant_id', perfil.tenantId).eq('moto_catalogo_id', body.moto_catalogo_id).is('color_id', null).maybeSingle()
+    if (existente) {
+      const { error } = await admin.from('inventario_motos')
+        .update({ cantidad_total: cantidad, updated_at: new Date().toISOString() }).eq('id', existente.id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    } else {
+      const { error } = await admin.from('inventario_motos').insert({
+        tenant_id: perfil.tenantId, moto_catalogo_id: body.moto_catalogo_id, color_id: null, cantidad_total: cantidad,
+      })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     return NextResponse.json({ ok: true })
   }
 
