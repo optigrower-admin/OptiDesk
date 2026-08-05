@@ -22,30 +22,42 @@ function fmtFecha(iso: string) {
   return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-// ── PDF encoder: wraps a JPEG blob into a single-page PDF ─────────────────────
-async function jpegToPdf(jpegBlob: Blob, imgW: number, imgH: number): Promise<Blob> {
-  const jpg = new Uint8Array(await jpegBlob.arrayBuffer())
+// ── PDF encoder: wraps one or more JPEG blobs into a multi-page PDF ────────────
+async function jpegsToPdf(pages: { blob: Blob; w: number; h: number }[]): Promise<Blob> {
   const e = new TextEncoder()
-  const pageW = 595
-  const pageH = Math.min(842, Math.round(595 * imgH / imgW))
-  const stream = `q ${pageW} 0 0 ${pageH} 0 0 cm /Im Do Q\n`
-  const objs: Uint8Array[] = [
+  const n = pages.length
+  const jpgs = await Promise.all(pages.map(p => p.blob.arrayBuffer().then(b => new Uint8Array(b))))
+
+  const kids = Array.from({ length: n }, (_, i) => `${3 + i * 3} 0 R`).join(' ')
+  const objBytes: Uint8Array[] = [
     e.encode(`1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n`),
-    e.encode(`2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n`),
-    e.encode(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Contents 4 0 R /Resources << /XObject << /Im 5 0 R >> >> >>\nendobj\n`),
-    e.encode(`4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}endstream\nendobj\n`),
+    e.encode(`2 0 obj\n<< /Type /Pages /Kids [${kids}] /Count ${n} >>\nendobj\n`),
   ]
-  const hdr5 = e.encode(`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${imgW} /Height ${imgH} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`)
-  const ftr5 = e.encode(`\nendstream\nendobj\n`)
+
+  for (let i = 0; i < n; i++) {
+    const { w, h } = pages[i]
+    const pageObjNum = 3 + i * 3, contObjNum = 4 + i * 3, imgObjNum = 5 + i * 3
+    const pageW = 595
+    const pageH = Math.min(842, Math.round(595 * h / w))
+    const streamStr = `q ${pageW} 0 0 ${pageH} 0 0 cm /Im${i} Do Q\n`
+    objBytes.push(e.encode(`${pageObjNum} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Contents ${contObjNum} 0 R /Resources << /XObject << /Im${i} ${imgObjNum} 0 R >> >> >>\nendobj\n`))
+    objBytes.push(e.encode(`${contObjNum} 0 obj\n<< /Length ${streamStr.length} >>\nstream\n${streamStr}endstream\nendobj\n`))
+    const hdrImg = e.encode(`${imgObjNum} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpgs[i].length} >>\nstream\n`)
+    const ftrImg = e.encode(`\nendstream\nendobj\n`)
+    const imgObj = new Uint8Array(hdrImg.length + jpgs[i].length + ftrImg.length)
+    imgObj.set(hdrImg, 0); imgObj.set(jpgs[i], hdrImg.length); imgObj.set(ftrImg, hdrImg.length + jpgs[i].length)
+    objBytes.push(imgObj)
+  }
+
   const hdr = e.encode('%PDF-1.4\n')
   let pos = hdr.length
   const offs: number[] = []
-  for (const b of objs) { offs.push(pos); pos += b.length }
-  offs.push(pos); pos += hdr5.length + jpg.length + ftr5.length
+  for (const b of objBytes) { offs.push(pos); pos += b.length }
   const xrefPos = pos
-  const xr = e.encode(['xref\n0 6\n', '0000000000 65535 f \n', ...offs.map(n => `${String(n).padStart(10, '0')} 00000 n \n`)].join(''))
-  const tr = e.encode(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`)
-  const parts = [hdr, ...objs, hdr5, jpg, ftr5, xr, tr]
+  const totalObjs = objBytes.length + 1
+  const xr = e.encode(['xref\n', `0 ${totalObjs}\n`, '0000000000 65535 f \n', ...offs.map(o => `${String(o).padStart(10, '0')} 00000 n \n`)].join(''))
+  const tr = e.encode(`trailer\n<< /Size ${totalObjs} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`)
+  const parts = [hdr, ...objBytes, xr, tr]
   const buf = new Uint8Array(parts.reduce((s, p) => s + p.length, 0))
   let off = 0
   for (const p of parts) { buf.set(p, off); off += p.length }
@@ -355,14 +367,19 @@ interface ScannerModalProps {
   onUpload: (file: File) => Promise<void>
 }
 
+type Pagina = { dataUrl: string; blob: Blob; w: number; h: number }
+
 function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
-  const videoRef   = useRef<HTMLVideoElement>(null)
-  const canvasRef  = useRef<HTMLCanvasElement>(null)
-  const streamRef  = useRef<MediaStream | null>(null)
-  const [phase,     setPhase]     = useState<'camera' | 'crop' | 'preview'>('camera')
+  const videoRef    = useRef<HTMLVideoElement>(null)
+  const canvasRef   = useRef<HTMLCanvasElement>(null)
+  const streamRef   = useRef<MediaStream | null>(null)
+  const galeriaRef  = useRef<HTMLInputElement>(null)
+  const [phase,     setPhase]     = useState<'camera' | 'crop' | 'preview' | 'paginas'>('camera')
   const [captured,  setCaptured]  = useState<{ dataUrl: string; w: number; h: number } | null>(null)
   const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null)
   const [cropped,   setCropped]   = useState<{ dataUrl: string; blob: Blob; w: number; h: number } | null>(null)
+  const [paginas,   setPaginas]   = useState<Pagina[]>([])
+  const [colaGaleria, setColaGaleria] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
   const [camError,  setCamError]  = useState('')
 
@@ -398,6 +415,31 @@ function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
     }, 'image/jpeg', 0.9)
   }
 
+  function abrirGaleria() { galeriaRef.current?.click() }
+
+  async function cargarSiguienteDeGaleria(cola: File[]) {
+    const [siguiente, ...resto] = cola
+    setColaGaleria(resto)
+    if (!siguiente) { setPhase('paginas'); return }
+    const img = new Image()
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(siguiente)
+    })
+    img.src = dataUrl
+    await new Promise<void>(r => { img.onload = () => r() })
+    setCapturedBlob(siguiente)
+    setCaptured({ dataUrl, w: img.naturalWidth, h: img.naturalHeight })
+    setPhase('crop')
+  }
+
+  function onGallerySelect(files: FileList | null) {
+    if (!files || files.length === 0) return
+    cargarSiguienteDeGaleria([...files])
+  }
+
   async function handleCropConfirm(corners: { x: number; y: number }[]) {
     if (!captured) return
     try {
@@ -424,11 +466,29 @@ function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
     setPhase('preview')
   }
 
-  async function confirm() {
+  // Agrega la página recortada a la lista. Si venía de una selección múltiple
+  // de galería, sigue con la siguiente imagen de la cola automáticamente;
+  // si no, muestra el resumen de páginas para tomar/agregar más o terminar.
+  function agregarPagina() {
     if (!cropped) return
+    setPaginas(prev => [...prev, cropped])
+    setCropped(null); setCaptured(null); setCapturedBlob(null)
+    if (colaGaleria.length > 0) {
+      cargarSiguienteDeGaleria(colaGaleria)
+    } else {
+      setPhase('paginas')
+    }
+  }
+
+  function quitarPagina(idx: number) {
+    setPaginas(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  async function finalizar() {
+    if (paginas.length === 0) return
     setUploading(true)
     try {
-      const pdfBlob = await jpegToPdf(cropped.blob, cropped.w, cropped.h)
+      const pdfBlob = await jpegsToPdf(paginas)
       const file = new File([pdfBlob], `escan_${Date.now()}.pdf`, { type: 'application/pdf' })
       await onUpload(file)
       onClose()
@@ -437,14 +497,25 @@ function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
     }
   }
 
+  const inputGaleria = (
+    <input ref={galeriaRef} type="file" accept="image/*" multiple className="hidden"
+      onChange={e => { onGallerySelect(e.target.files); e.target.value = '' }} />
+  )
+
   // Crop phase
   if (phase === 'crop' && captured) {
     return (
-      <CropEditor
-        imageData={captured}
-        onConfirm={handleCropConfirm}
-        onRetake={() => { setCaptured(null); setCapturedBlob(null); setPhase('camera') }}
-      />
+      <>
+        <CropEditor
+          imageData={captured}
+          onConfirm={handleCropConfirm}
+          onRetake={() => {
+            setCaptured(null); setCapturedBlob(null)
+            setPhase(colaGaleria.length > 0 || paginas.length > 0 ? 'paginas' : 'camera')
+          }}
+        />
+        {inputGaleria}
+      </>
     )
   }
 
@@ -461,11 +532,53 @@ function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
             className="flex-1 py-3 border border-white/30 text-white rounded-xl font-medium text-sm">
             Ajustar recorte
           </button>
-          <button onClick={confirm} disabled={uploading}
-            className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm disabled:opacity-50">
-            {uploading ? 'Subiendo...' : 'Usar esta foto'}
+          <button onClick={agregarPagina}
+            className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm">
+            + Agregar página
           </button>
         </div>
+      </div>
+    )
+  }
+
+  // Resumen de páginas: agregar más (cámara o galería), quitar, o terminar
+  if (phase === 'paginas') {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 flex-shrink-0">
+          <p className="text-white font-semibold text-sm">{paginas.length} página{paginas.length !== 1 ? 's' : ''}</p>
+          <button onClick={onClose} className="text-white/70 hover:text-white text-sm">✕ Cancelar</button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 min-h-0">
+          <div className="grid grid-cols-3 gap-2">
+            {paginas.map((p, i) => (
+              <div key={i} className="relative rounded-lg overflow-hidden border border-white/20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.dataUrl} alt={`Página ${i + 1}`} className="w-full aspect-[3/4] object-cover" />
+                <span className="absolute top-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">{i + 1}</span>
+                <button onClick={() => quitarPagina(i)}
+                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white text-xs flex items-center justify-center">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bg-gray-900 px-5 py-5 flex flex-col gap-2 flex-shrink-0">
+          <div className="flex gap-2">
+            <button onClick={() => setPhase('camera')}
+              className="flex-1 py-3 border border-white/30 text-white rounded-xl font-medium text-sm">
+              📷 Tomar foto
+            </button>
+            <button onClick={abrirGaleria}
+              className="flex-1 py-3 border border-white/30 text-white rounded-xl font-medium text-sm">
+              🖼️ Elegir de galería
+            </button>
+          </div>
+          <button onClick={finalizar} disabled={paginas.length === 0 || uploading}
+            className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm disabled:opacity-50">
+            {uploading ? 'Subiendo...' : `Guardar documento (${paginas.length} página${paginas.length !== 1 ? 's' : ''})`}
+          </button>
+        </div>
+        {inputGaleria}
       </div>
     )
   }
@@ -483,6 +596,10 @@ function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
       {camError ? (
         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-5">
           <p className="text-white text-base">{camError}</p>
+          <button onClick={abrirGaleria}
+            className="px-6 py-3 border border-white/30 text-white rounded-xl font-semibold text-sm">
+            🖼️ Elegir de galería
+          </button>
           <button onClick={onClose}
             className="px-6 py-3 bg-white text-gray-900 rounded-xl font-semibold text-sm">
             Cerrar
@@ -503,6 +620,12 @@ function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
               </p>
             </div>
           </div>
+          {paginas.length > 0 && (
+            <button onClick={() => setPhase('paginas')}
+              className="absolute top-4 right-4 bg-black/60 text-white text-xs font-semibold px-3 py-1.5 rounded-full">
+              {paginas.length} página{paginas.length !== 1 ? 's' : ''} →
+            </button>
+          )}
           <div className="absolute bottom-0 inset-x-0">
             <div className="flex items-center justify-around py-6 px-8 bg-black/60">
               <button onClick={onClose}
@@ -514,12 +637,16 @@ function ScannerModal({ onClose, onUpload }: ScannerModalProps) {
                 style={{ width: 72, height: 72 }}>
                 <div className="rounded-full bg-white" style={{ width: 56, height: 56 }} />
               </button>
-              <div className="w-16" />
+              <button onClick={abrirGaleria}
+                className="text-white text-sm font-medium px-3 py-2 rounded-lg bg-white/10">
+                🖼️ Galería
+              </button>
             </div>
           </div>
         </>
       )}
       <canvas ref={canvasRef} className="hidden" />
+      {inputGaleria}
     </div>
   )
 }
