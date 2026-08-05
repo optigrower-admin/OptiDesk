@@ -15,6 +15,20 @@ function extraerCodigo(descripcion: string): string {
   return sep > 0 ? descripcion.slice(0, sep) : descripcion
 }
 
+// Lubricantes exentos de IVA en la planilla WorldOffice: los códigos exactos
+// de esta lista, más cualquier otro del catálogo de Lubricantes cuya
+// Descripción empiece con "ACEITE" (ver repuestos_uma.tipo='lubricante').
+const CODIGOS_LUBRICANTES_SIN_IVA = new Set([
+  '10W50', '20W50', '20W50 SINTETICO', '3 W ACEITE BGO 20W50', 'ACEITE BGO 20W50 1LT PAR',
+  'BGO10W30-1LT2W', 'BGO20W50-100MLT2W', 'BGO20W50-S-1LT2W',
+])
+
+function esLubricanteSinIva(codigo: string | null | undefined, descripcionCatalogo: string | null | undefined): boolean {
+  const cod = (codigo ?? '').trim().toUpperCase()
+  if (cod && CODIGOS_LUBRICANTES_SIN_IVA.has(cod)) return true
+  return (descripcionCatalogo ?? '').trim().toUpperCase().startsWith('ACEITE')
+}
+
 // Columnas con fondo azul en la plantilla WorldOffice (índices 0-based)
 const BLUE_COLS = new Set([
   0,1,3,4,5,6,7,8,9,12,13,          // A B D E F G H I J M N
@@ -54,7 +68,7 @@ interface ItemOrdenRow {
   precio_venta: number
   cantidad: number
   created_at: string
-  repuestos_uma: { codigo: string; precio_publico_iva: number | null } | null
+  repuestos_uma: { codigo: string; descripcion: string | null; precio_publico_iva: number | null } | null
   ordenes: {
     id: string
     numero: string | null
@@ -120,11 +134,11 @@ export async function POST(req: NextRequest) {
   // movimiento de inventario siempre.
   const [{ data: itemsServicio, error: e1 }, { data: itemsVenta, error: e2 }] = await Promise.all([
     supabase.from('items_orden')
-      .select('id, descripcion, precio_venta, cantidad, created_at, repuestos_uma:repuesto_uma_id(codigo,precio_publico_iva), ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
+      .select('id, descripcion, precio_venta, cantidad, created_at, repuestos_uma:repuesto_uma_id(codigo,descripcion,precio_publico_iva), ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
       .eq('origen', 'uma').eq('ordenes.tenant_id', tenantId).eq('ordenes.tipo_orden', 'servicio')
       .gte('created_at', desdeISO).lte('created_at', hastaISO).order('created_at'),
     supabase.from('items_orden')
-      .select('id, descripcion, precio_venta, cantidad, created_at, repuestos_uma:repuesto_uma_id(codigo,precio_publico_iva), ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
+      .select('id, descripcion, precio_venta, cantidad, created_at, repuestos_uma:repuesto_uma_id(codigo,descripcion,precio_publico_iva), ordenes!inner(id, numero, placa, cliente, tipo_orden, created_at, tenant_id, estado_pago)')
       .eq('origen', 'uma').eq('ordenes.tenant_id', tenantId).eq('ordenes.tipo_orden', 'venta_repuestos')
       .gte('created_at', desdeISO).lte('created_at', hastaISO).order('created_at'),
   ])
@@ -192,6 +206,7 @@ export async function POST(req: NextRequest) {
     const excelDt  = toExcelDate(item.created_at)
     const refCode  = item.repuestos_uma?.codigo ?? extraerCodigo(item.descripcion)
     const precioUnitario = Math.round(item.precio_venta)
+    const iva = esLubricanteSinIva(refCode, item.repuestos_uma?.descripcion) ? 0 : 0.19
     const tercero  = modoTercero === 'consumidor_final'
       ? '222222222'
       : (orden.placa ? placaCedula.get(orden.placa) : undefined) ?? '222222222'
@@ -213,7 +228,7 @@ export async function POST(req: NextRequest) {
       [32, 'Principal',                     's'],
       [33, 'und.',                          's'],
       [34, item.cantidad,                   'n'],
-      [35, 0.19,                            'n'],
+      [35, iva,                              'n'],
       [36, precioUnitario,                   'n'],
       [37, 0,                               'n'],
       [38, excelDt,                         'n', 'DD/MM/YYYY'],
