@@ -46,11 +46,13 @@ export function calcularRango(preset: PeriodoPreset, desdeManual?: string, hasta
     return { desdeISO: inicioDia(desde).toISOString(), hastaISO: finDia(hoy).toISOString() }
   }
   if (preset === 'semana') {
-    // lunes de la semana actual
+    // Semana completa (lunes a domingo) de la semana actual, según el día de hoy.
     const lunes = new Date(hoy)
     const dia = hoy.getDay() // 0=dom, 1=lun, ...
     lunes.setDate(hoy.getDate() - (dia === 0 ? 6 : dia - 1))
-    return { desdeISO: inicioDia(lunes).toISOString(), hastaISO: finDia(hoy).toISOString() }
+    const domingo = new Date(lunes)
+    domingo.setDate(lunes.getDate() + 6)
+    return { desdeISO: inicioDia(lunes).toISOString(), hastaISO: finDia(domingo).toISOString() }
   }
   if (preset === 'semana_anterior') {
     const lunes = new Date(hoy)
@@ -65,8 +67,10 @@ export function calcularRango(preset: PeriodoPreset, desdeManual?: string, hasta
     return { desdeISO: inicioDia(desde).toISOString(), hastaISO: finDia(hoy).toISOString() }
   }
   if (preset === 'mes') {
+    // Mes completo (día 1 al último día) del mes actual, según el día de hoy.
     const primero = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
-    return { desdeISO: inicioDia(primero).toISOString(), hastaISO: finDia(hoy).toISOString() }
+    const ultimo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0)
+    return { desdeISO: inicioDia(primero).toISOString(), hastaISO: finDia(ultimo).toISOString() }
   }
   if (preset === 'mes_anterior') {
     const primeroMesAnt = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)
@@ -74,8 +78,10 @@ export function calcularRango(preset: PeriodoPreset, desdeManual?: string, hasta
     return { desdeISO: inicioDia(primeroMesAnt).toISOString(), hastaISO: finDia(ultimoMesAnt).toISOString() }
   }
   if (preset === 'anio') {
+    // Año completo (1 de enero al 31 de diciembre) del año actual.
     const primero = new Date(hoy.getFullYear(), 0, 1)
-    return { desdeISO: inicioDia(primero).toISOString(), hastaISO: finDia(hoy).toISOString() }
+    const ultimo = new Date(hoy.getFullYear(), 11, 31)
+    return { desdeISO: inicioDia(primero).toISOString(), hastaISO: finDia(ultimo).toISOString() }
   }
   // rango personalizado
   const desde = desdeManual ? new Date(`${desdeManual}T00:00:00`) : inicioDia(hoy)
