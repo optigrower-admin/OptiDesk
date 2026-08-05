@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   const { data: clienteActual } = await admin
     .from('clientes')
-    .select('id')
+    .select('id, fecha_cierre')
     .eq('id', cliente_id)
     .eq('tenant_id', perfil.tenant_id)
     .single()
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   if (typeof campos.etapa_venta === 'string') {
     const { data: etapaRow } = await admin
       .from('etapas_pipeline')
-      .select('orden')
+      .select('orden, es_ganado, es_perdido')
       .eq('tenant_id', perfil.tenant_id)
       .eq('clave', campos.etapa_venta)
       .maybeSingle()
@@ -60,6 +60,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `La etapa "${campos.etapa_venta}" no existe en este pipeline` }, { status: 400 })
     }
     campos.etapa_venta_orden = etapaRow.orden
+    // fecha_cierre marca cuándo se vendió/perdió el cliente — la usan los
+    // dashboards para filtrar por período. Se dispara una sola vez, al
+    // entrar a la etapa ganada/perdida (nunca se sobreescribe después).
+    if ((etapaRow.es_ganado || etapaRow.es_perdido) && !clienteActual.fecha_cierre) {
+      campos.fecha_cierre = new Date().toISOString()
+    }
   }
 
   const { error } = await admin

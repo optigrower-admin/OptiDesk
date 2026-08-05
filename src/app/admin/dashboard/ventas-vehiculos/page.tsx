@@ -15,7 +15,7 @@ import {
   calcularRango, calcularRangoAnterior, calcularVariacion, ymdLocal, PERIODO_LABEL,
   type PeriodoPreset,
 } from '@/lib/dashboard/periodos'
-import { ETAPAS, ETAPA_ORDEN, esVenta, type EtapaVenta } from '@/lib/ventas/pipeline'
+import { ETAPAS, ETAPA_MAP, ETAPA_ORDEN, esVenta, estadoSeguimiento, type EtapaVenta } from '@/lib/ventas/pipeline'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
@@ -24,11 +24,13 @@ import {
 
 interface ClienteRow {
   id: string
+  nombre: string | null
   etapa_venta: EtapaVenta
   valor_estimado_venta: number | null
   fecha_cierre: string | null
   created_at: string
   assigned_to: string | null
+  proxima_accion_fecha: string | null
 }
 interface PagoRow { cliente_id: string; monto: number }
 interface CreditoRow { entidad_id: string; estado: string; updated_at: string; assigned_to: string | null }
@@ -167,7 +169,7 @@ export default function DashboardVentasVehiculosPage() {
     const tid = profile.tenant_id
     const cargar = async () => {
       let q = supabase.from('clientes')
-        .select('id, etapa_venta, valor_estimado_venta, fecha_cierre, created_at, assigned_to')
+        .select('id, nombre, etapa_venta, valor_estimado_venta, fecha_cierre, created_at, assigned_to, proxima_accion_fecha')
         .eq('tenant_id', tid).eq('en_seguimiento_ventas', true).limit(5000)
       if (asesoresFiltro !== null) {
         const ids = [...asesoresFiltro].filter(id => id !== '__sin__')
@@ -329,14 +331,28 @@ export default function DashboardVentasVehiculosPage() {
     const { weekdayValor: weekdayVentasFacturacion, weekdayCantidad: weekdayVentasCantidad } = buildWeekday(ventasActual, ventasAnterior, 'fecha_cierre')
     const { weekdayValor: weekdayNuevosValor, weekdayCantidad: weekdayNuevosCantidad } = buildWeekday(nuevosActual, nuevosAnterior, 'created_at')
 
+    // Clientes pendientes de gestionar: siguen activos (no perdidos ni
+    // finalizados) y no tienen una próxima acción agendada, o ya venció —
+    // sin importar el período seleccionado (es un pendiente de HOY).
+    const pendientesGestion = clientes
+      .filter(c => c.etapa_venta !== 'perdido' && c.etapa_venta !== 'proceso_finalizado')
+      .map(c => ({ cliente: c, estado: estadoSeguimiento(c.proxima_accion_fecha) }))
+      .filter((x): x is { cliente: ClienteRow; estado: 'vencido' | 'sin_accion' } => x.estado === 'vencido' || x.estado === 'sin_accion')
+      .sort((a, b) => {
+        if (a.estado !== b.estado) return a.estado === 'vencido' ? -1 : 1
+        if (a.estado === 'vencido') return (a.cliente.proxima_accion_fecha ?? '').localeCompare(b.cliente.proxima_accion_fecha ?? '')
+        return 0
+      })
+
     return {
       kpis: {
         nuevosActual: nuevosActual.length, nuevosAnterior: nuevosAnterior.length,
         ventasActual: ventasActual.length, ventasAnterior: ventasAnterior.length,
+        totalFacturadoActual, totalFacturadoAnterior,
         totalMatriculado, ticketPromedioActual, ticketPromedioAnterior,
         cuentasPorCobrar, tasaConversion, tasaAprobacionActual, tasaAprobacionAnterior,
       },
-      usoCreditoRanking, rankingAsesores, distribucionEtapa, asesoresIds,
+      usoCreditoRanking, rankingAsesores, distribucionEtapa, asesoresIds, pendientesGestion,
       serieVentasFacturacion, serieVentasCantidad, weekdayVentasFacturacion, weekdayVentasCantidad,
       serieNuevosValor, serieNuevosCantidad, weekdayNuevosValor, weekdayNuevosCantidad,
     }
@@ -462,6 +478,7 @@ export default function DashboardVentasVehiculosPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <KpiCard label="Contactos nuevos" valor={String(m.kpis.nuevosActual)} variacion={v(m.kpis.nuevosActual, m.kpis.nuevosAnterior)} comparativoLabel={comparativoLabel} />
                   <KpiCard label="Ventas realizadas" valor={String(m.kpis.ventasActual)} variacion={v(m.kpis.ventasActual, m.kpis.ventasAnterior)} comparativoLabel={comparativoLabel} />
+                  <KpiCard label="Total facturado" valor={formatCOP(m.kpis.totalFacturadoActual)} variacion={v(m.kpis.totalFacturadoActual, m.kpis.totalFacturadoAnterior)} comparativoLabel={comparativoLabel} sub="Vendida en adelante" />
                   <KpiCard label="Total matriculado" valor={String(m.kpis.totalMatriculado)} sub="Alistamiento en adelante" />
                   <KpiCard label="Ticket promedio" valor={formatCOP(m.kpis.ticketPromedioActual)} variacion={v(m.kpis.ticketPromedioActual, m.kpis.ticketPromedioAnterior)} comparativoLabel={comparativoLabel} />
                   <KpiCard label="Cuentas por Cobrar" valor={formatCOP(m.kpis.cuentasPorCobrar)} sub="Vendida en adelante, menos abonos" />
@@ -516,32 +533,48 @@ export default function DashboardVentasVehiculosPage() {
                     <UltimosSelector cantidad={chartRangoCantidadNuevos} unidad={chartRangoUnidadNuevos} onCantidad={setChartRangoCantidadNuevos} onUnidad={setChartRangoUnidadNuevos} />
                   </div>
                 </div>
-                <div className="grid lg:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">Valor potencial</p>
-                    <TimeSeriesChart data={m.serieNuevosValor} formatValor={formatCOP} isMoney />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">Cantidad de clientes nuevos</p>
-                    <TimeSeriesChart data={m.serieNuevosCantidad} />
-                  </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-2">Cantidad de clientes nuevos</p>
+                  <TimeSeriesChart data={m.serieNuevosCantidad} />
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Por día de la semana</p>
                     <LeyendaActualAnterior />
                   </div>
-                  <div className="grid lg:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 mb-1">Valor potencial</p>
-                      <WeekdayBarChart data={m.weekdayNuevosValor} color="#7c3aed" formatValor={formatCOP} isMoney />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 mb-1">Cantidad</p>
-                      <WeekdayBarChart data={m.weekdayNuevosCantidad} color="#db2777" />
-                    </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Cantidad</p>
+                    <WeekdayBarChart data={m.weekdayNuevosCantidad} color="#db2777" />
                   </div>
                 </div>
+              </div>
+
+              {/* Clientes pendientes de gestionar */}
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <h2 className="text-sm font-semibold text-gray-700 mb-1">Clientes pendientes de gestionar</h2>
+                <p className="text-xs text-gray-400 mb-3">Sin próxima acción agendada, o ya vencida — no depende del período</p>
+                {m.pendientesGestion.length === 0 ? (
+                  <div className="h-24 flex items-center justify-center text-sm text-gray-400">Sin pendientes 🎉</div>
+                ) : (
+                  <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                    {m.pendientesGestion.slice(0, 30).map(({ cliente, estado }) => (
+                      <div key={cliente.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-gray-50">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">{cliente.nombre ?? 'Sin nombre'}</p>
+                          <p className="text-xs text-gray-400">{ETAPA_MAP[cliente.etapa_venta]?.label ?? cliente.etapa_venta}</p>
+                        </div>
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                          estado === 'vencido' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'
+                        }`}>
+                          {estado === 'vencido' ? '🔴 Vencido' : '⚪ Sin acción'}
+                        </span>
+                      </div>
+                    ))}
+                    {m.pendientesGestion.length > 30 && (
+                      <p className="text-xs text-gray-400 text-center pt-1">+{m.pendientesGestion.length - 30} más</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Uso de crédito por entidad + Ranking de asesores */}
