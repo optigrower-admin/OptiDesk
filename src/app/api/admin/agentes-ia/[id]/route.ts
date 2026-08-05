@@ -22,7 +22,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const body = await req.json().catch(() => null) as {
     nombre?: string; descripcion?: string | null; prompt_sistema?: string | null; instrucciones?: string | null
     integracion_ia_id?: string | null; herramientas_habilitadas?: string[]
-    temperatura?: number; max_tokens?: number; activo?: boolean
+    temperatura?: number; max_tokens?: number; activo?: boolean; modelo?: string | null
   } | null
   if (!body) return NextResponse.json({ error: 'Cuerpo inválido' }, { status: 400 })
 
@@ -32,6 +32,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (body.prompt_sistema !== undefined) update.prompt_sistema = body.prompt_sistema?.trim() || null
   if (body.instrucciones !== undefined) update.instrucciones = body.instrucciones?.trim() || null
   if (body.integracion_ia_id !== undefined) update.integracion_ia_id = body.integracion_ia_id
+  if (body.modelo !== undefined) update.modelo = body.modelo?.trim() || null
   if (body.herramientas_habilitadas !== undefined) update.herramientas_habilitadas = body.herramientas_habilitadas.filter(h => h in CATALOGO_HERRAMIENTAS)
   if (body.temperatura !== undefined) update.temperatura = body.temperatura
   if (body.max_tokens !== undefined) update.max_tokens = body.max_tokens

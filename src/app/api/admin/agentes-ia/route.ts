@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null) as {
     nombre?: string; descripcion?: string; prompt_sistema?: string; instrucciones?: string
     integracion_ia_id?: string | null; herramientas_habilitadas?: string[]
-    temperatura?: number; max_tokens?: number
+    temperatura?: number; max_tokens?: number; modelo?: string | null
   } | null
   if (!body?.nombre?.trim()) return NextResponse.json({ error: 'Falta el nombre del agente' }, { status: 400 })
   if (!body.integracion_ia_id) return NextResponse.json({ error: 'Selecciona qué integración de IA va a usar este agente' }, { status: 400 })
@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
     descripcion: body.descripcion?.trim() || null,
     proveedor: 'openai',
     integracion_ia_id: body.integracion_ia_id,
+    modelo: body.modelo?.trim() || null,
     prompt_sistema: body.prompt_sistema?.trim() || null,
     instrucciones: body.instrucciones?.trim() || null,
     herramientas_habilitadas: herramientas,

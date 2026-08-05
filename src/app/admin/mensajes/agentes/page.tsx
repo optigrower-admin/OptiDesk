@@ -26,6 +26,26 @@ interface Ejecucion {
 const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-violet-400'
 const labelCls = 'text-xs font-medium text-gray-500 mb-1 block'
 
+// Modelos disponibles por proveedor para agentes conversacionales (con
+// tool-calling) — mismo criterio de costo/capacidad que el selector del
+// constructor de Flujos. Google no soporta herramientas todavía (responde
+// solo texto) y ElevenLabs no aplica a agentes conversacionales.
+const MODELOS_AGENTE: Record<string, { modelo: string; label: string; ayuda: string }[]> = {
+  OPENAI: [
+    { modelo: 'gpt-4o-mini', label: 'GPT-4o mini', ayuda: '💰 Económico y rápido — recomendado por defecto para conversar con clientes.' },
+    { modelo: 'gpt-4o', label: 'GPT-4o', ayuda: '💰💰💰 Más capaz, mejor razonamiento — más lento y varias veces más costoso.' },
+  ],
+  ANTHROPIC: [
+    { modelo: 'claude-haiku-4-5-20251001', label: 'Claude Haiku', ayuda: '💰 Económico y rápido — recomendado por defecto.' },
+    { modelo: 'claude-sonnet-4-6', label: 'Claude Sonnet', ayuda: '💰💰💰 Más capaz — más costoso, úsalo solo si el agente necesita razonar casos complejos.' },
+  ],
+  GOOGLE: [
+    { modelo: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', ayuda: '💰 Económico. Nota: Google aún no puede usar herramientas (solo responde texto).' },
+    { modelo: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', ayuda: '💰💰 Más capaz. Nota: Google aún no puede usar herramientas (solo responde texto).' },
+  ],
+  GROK: [{ modelo: 'grok-2-latest', label: 'Grok 2', ayuda: 'Modelo general de xAI.' }],
+}
+
 function formatFecha(iso: string) {
   return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
@@ -218,9 +238,13 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
   const [promptSistema, setPromptSistema] = useState('')
   const [instrucciones, setInstrucciones] = useState('')
   const [integracionId, setIntegracionId] = useState(agente?.integracion_ia_id ?? integraciones[0]?.id ?? '')
+  const [modelo, setModelo] = useState(agente?.modelo ?? '')
   const [herramientas, setHerramientas] = useState<Set<string>>(new Set(agente?.herramientas_habilitadas ?? []))
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
+
+  const integracionActual = integraciones.find(i => i.id === integracionId)
+  const modelosDisponibles = MODELOS_AGENTE[(integracionActual?.proveedor ?? '').toUpperCase()] ?? []
 
   const toggleHerramienta = (nombreH: string) => setHerramientas(hs => {
     const next = new Set(hs)
@@ -234,7 +258,7 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
     setGuardando(true); setError('')
     const body = {
       nombre, descripcion, prompt_sistema: promptSistema, instrucciones,
-      integracion_ia_id: integracionId, herramientas_habilitadas: [...herramientas],
+      integracion_ia_id: integracionId, modelo: modelo || null, herramientas_habilitadas: [...herramientas],
     }
     const r = agente
       ? await fetch(`/api/admin/agentes-ia/${agente.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -270,6 +294,18 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
             </select>
             {!integraciones.length && <p className="text-[11px] text-amber-600 mt-1">⚠ Conecta un proveedor en Integraciones → Integraciones IA primero.</p>}
           </div>
+          {modelosDisponibles.length > 0 && (
+            <div>
+              <label className={labelCls}>Modelo</label>
+              <select value={modelo} onChange={e => setModelo(e.target.value)} className={inputCls}>
+                <option value="">Por defecto de la integración ({integracionActual?.modelo_default ?? 'automático'})</option>
+                {modelosDisponibles.map(m => <option key={m.modelo} value={m.modelo}>{m.label}</option>)}
+              </select>
+              <p className="text-[11px] text-gray-400 mt-1">
+                {modelosDisponibles.find(m => m.modelo === modelo)?.ayuda ?? 'Elige un modelo económico por defecto; sube a uno más capaz solo si el agente comete errores de razonamiento.'}
+              </p>
+            </div>
+          )}
           <div>
             <label className={labelCls}>Personalidad y objetivo (system prompt)</label>
             <textarea value={promptSistema} onChange={e => setPromptSistema(e.target.value)} rows={5}
