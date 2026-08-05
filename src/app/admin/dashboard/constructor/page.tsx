@@ -7,8 +7,9 @@ import { useAuth } from '@/hooks/useAuth'
 import { PeriodoFilter } from '@/components/dashboard/PeriodoFilter'
 import { calcularRango, type PeriodoPreset } from '@/lib/dashboard/periodos'
 import {
-  TABLAS_DISPONIBLES, AGREGACION_LABEL, calcularTodasLasMedidas, evaluarVariables, formatValor,
+  TABLAS_DISPONIBLES, AGREGACION_LABEL, OPERADOR_TERMINO_LABEL, calcularTodasLasMedidas, evaluarVariables, formatValor,
   type Medida, type VariableCalculada, type Agregacion, type FormatoNumero, type FiltroMedida, type OperadorFiltro,
+  type TerminoMedida, type OperadorTermino,
 } from '@/lib/dashboard/medidas'
 
 const ROLES_EDITA = ['gerencia', 'dueno', 'control_total', 'admin']
@@ -20,18 +21,27 @@ const FORMATOS: { valor: FormatoNumero; label: string }[] = [
   { valor: 'porcentaje', label: 'Porcentaje (%)' },
 ]
 const AGREGACIONES: Agregacion[] = ['suma', 'promedio', 'conteo', 'conteo_distinto', 'minimo', 'maximo']
-const OPERADORES: { valor: OperadorFiltro; label: string }[] = [
+const OPERADORES_TERMINO: OperadorTermino[] = ['+', '-', '*', '/']
+const OPERADORES_FILTRO: { valor: OperadorFiltro; label: string }[] = [
   { valor: 'eq', label: '=' }, { valor: 'neq', label: '≠' },
   { valor: 'gt', label: '>' }, { valor: 'gte', label: '≥' },
   { valor: 'lt', label: '<' }, { valor: 'lte', label: '≤' },
   { valor: 'in', label: 'está en (a, b, c)' },
 ]
+const PRIMERA_TABLA = Object.keys(TABLAS_DISPONIBLES)[0]
 
-const MEDIDA_VACIA = {
-  nombre: '', descripcion: '', tabla: 'clientes', campo: '', agregacion: 'suma' as Agregacion,
-  campo_fecha: '', filtros: [] as FiltroMedida[], formato: 'moneda' as FormatoNumero, decimales: 0,
+function terminoVacio(operador: OperadorTermino = '+'): TerminoMedida {
+  return { tabla: PRIMERA_TABLA, campo: '', agregacion: 'suma', campo_fecha: '', filtros: [], operador }
 }
+
+const MEDIDA_VACIA = { nombre: '', descripcion: '', terminos: [terminoVacio()], formato: 'moneda' as FormatoNumero, decimales: 0 }
 const VARIABLE_VACIA = { nombre: '', descripcion: '', formula: '', formato: 'moneda' as FormatoNumero, decimales: 0 }
+
+function resumenTermino(t: TerminoMedida): string {
+  const tabla = TABLAS_DISPONIBLES[t.tabla]?.label ?? t.tabla
+  const campo = t.agregacion === 'conteo' ? '' : ` de ${t.campo || '(sin campo)'}`
+  return `${AGREGACION_LABEL[t.agregacion]}${campo} en ${tabla}`
+}
 
 export default function ConstructorDashboardPage() {
   const supabase = createClient()
@@ -84,28 +94,27 @@ export default function ConstructorDashboardPage() {
   const valoresVariables = useMemo(() => evaluarVariables(valoresMedidas, variables), [valoresMedidas, variables])
 
   // ── Medidas ──
-  function abrirNuevaMedida() { setFormMedida({ ...MEDIDA_VACIA }); setEditandoMedidaId('__nueva__') }
+  function abrirNuevaMedida() { setFormMedida({ ...MEDIDA_VACIA, terminos: [terminoVacio()] }); setEditandoMedidaId('__nueva__') }
   function abrirEditarMedida(m: Medida) {
     setFormMedida({
-      nombre: m.nombre, descripcion: m.descripcion ?? '', tabla: m.tabla, campo: m.campo ?? '',
-      agregacion: m.agregacion, campo_fecha: m.campo_fecha ?? '', filtros: m.filtros ?? [],
+      nombre: m.nombre, descripcion: m.descripcion ?? '',
+      terminos: m.terminos.length ? m.terminos : [terminoVacio()],
       formato: m.formato, decimales: m.decimales,
     })
     setEditandoMedidaId(m.id)
   }
   async function guardarMedida() {
     if (!formMedida || !profile?.tenant_id || !formMedida.nombre.trim()) return
+    if (formMedida.terminos.some(t => t.agregacion !== 'conteo' && !t.campo)) {
+      alert('Falta elegir el campo en alguno de los términos.'); return
+    }
     setSavingMedida(true)
     try {
       const payload = {
         tenant_id: profile.tenant_id,
         nombre: formMedida.nombre.trim(),
         descripcion: formMedida.descripcion.trim() || null,
-        tabla: formMedida.tabla,
-        campo: formMedida.agregacion === 'conteo' ? null : (formMedida.campo || null),
-        agregacion: formMedida.agregacion,
-        campo_fecha: formMedida.campo_fecha || null,
-        filtros: formMedida.filtros,
+        terminos: formMedida.terminos.map(t => ({ ...t, campo: t.agregacion === 'conteo' ? null : (t.campo || null), campo_fecha: t.campo_fecha || null })),
         formato: formMedida.formato,
         decimales: formMedida.decimales,
       }
@@ -127,18 +136,34 @@ export default function ConstructorDashboardPage() {
     await supabase.from('dashboard_medidas').delete().eq('id', id)
     await cargar()
   }
-  function agregarFiltro() {
+
+  function agregarTermino() {
     if (!formMedida) return
-    const camposFiltro = TABLAS_DISPONIBLES[formMedida.tabla]?.camposFiltro ?? []
-    setFormMedida({ ...formMedida, filtros: [...formMedida.filtros, { campo: camposFiltro[0]?.valor ?? '', operador: 'eq', valor: '' }] })
+    setFormMedida({ ...formMedida, terminos: [...formMedida.terminos, terminoVacio('+')] })
   }
-  function actualizarFiltro(idx: number, cambios: Partial<FiltroMedida>) {
+  function actualizarTermino(idx: number, cambios: Partial<TerminoMedida>) {
     if (!formMedida) return
-    setFormMedida({ ...formMedida, filtros: formMedida.filtros.map((f, i) => i === idx ? { ...f, ...cambios } : f) })
+    setFormMedida({ ...formMedida, terminos: formMedida.terminos.map((t, i) => i === idx ? { ...t, ...cambios } : t) })
   }
-  function quitarFiltro(idx: number) {
+  function quitarTermino(idx: number) {
+    if (!formMedida || formMedida.terminos.length <= 1) return
+    setFormMedida({ ...formMedida, terminos: formMedida.terminos.filter((_, i) => i !== idx) })
+  }
+  function agregarFiltroTermino(idxTermino: number) {
     if (!formMedida) return
-    setFormMedida({ ...formMedida, filtros: formMedida.filtros.filter((_, i) => i !== idx) })
+    const t = formMedida.terminos[idxTermino]
+    const camposFiltro = TABLAS_DISPONIBLES[t.tabla]?.camposFiltro ?? []
+    actualizarTermino(idxTermino, { filtros: [...t.filtros, { campo: camposFiltro[0]?.valor ?? '', operador: 'eq', valor: '' }] })
+  }
+  function actualizarFiltroTermino(idxTermino: number, idxFiltro: number, cambios: Partial<FiltroMedida>) {
+    if (!formMedida) return
+    const t = formMedida.terminos[idxTermino]
+    actualizarTermino(idxTermino, { filtros: t.filtros.map((f, i) => i === idxFiltro ? { ...f, ...cambios } : f) })
+  }
+  function quitarFiltroTermino(idxTermino: number, idxFiltro: number) {
+    if (!formMedida) return
+    const t = formMedida.terminos[idxTermino]
+    actualizarTermino(idxTermino, { filtros: t.filtros.filter((_, i) => i !== idxFiltro) })
   }
 
   // ── Variables ──
@@ -187,8 +212,10 @@ export default function ConstructorDashboardPage() {
       <div>
         <h1 className="text-xl font-bold text-gray-900">Medidas y Variables</h1>
         <p className="text-sm text-gray-500 mt-1">
-          La base del constructor de dashboard: define qué se calcula (Medidas) y combínalo en fórmulas (Variables calculadas).
-          Más adelante estas medidas y variables se van a poder graficar y filtrar entre sí, como en Power BI.
+          La base del constructor de dashboard. Una <strong>Medida</strong> puede combinar varios campos con +, −, × y ÷
+          (ej. Ganancia = Ventas − Costos). Las <strong>Variables calculadas</strong> combinan medidas (y otras variables)
+          con fórmulas más avanzadas, incluyendo condicionales (SI). Más adelante esto se va a poder graficar y filtrar
+          entre sí, como en Power BI.
         </p>
       </div>
 
@@ -219,8 +246,7 @@ export default function ConstructorDashboardPage() {
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-gray-800">{m.nombre}</p>
                 <p className="text-xs text-gray-400 truncate">
-                  {AGREGACION_LABEL[m.agregacion]} de {TABLAS_DISPONIBLES[m.tabla]?.label ?? m.tabla}
-                  {m.campo ? ` · ${m.campo}` : ''}{m.filtros?.length ? ` · ${m.filtros.length} filtro(s)` : ''}
+                  {m.terminos.map((t, i) => (i === 0 ? '' : ` ${t.operador} `) + resumenTermino(t)).join('')}
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -241,12 +267,12 @@ export default function ConstructorDashboardPage() {
         </div>
 
         {formMedida && (
-          <div className="border border-blue-200 bg-blue-50 rounded-xl p-3 space-y-2">
+          <div className="border border-blue-200 bg-blue-50 rounded-xl p-3 space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-xs text-gray-500">Nombre</label>
                 <input value={formMedida.nombre} onChange={e => setFormMedida({ ...formMedida, nombre: e.target.value })}
-                  placeholder="Ej: Total vendido"
+                  placeholder="Ej: Ganancia"
                   className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
@@ -260,61 +286,69 @@ export default function ConstructorDashboardPage() {
             <input value={formMedida.descripcion} onChange={e => setFormMedida({ ...formMedida, descripcion: e.target.value })}
               placeholder="Descripción (opcional)"
               className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-gray-500">Tabla</label>
-                <select value={formMedida.tabla} onChange={e => setFormMedida({ ...formMedida, tabla: e.target.value, campo: '', campo_fecha: '', filtros: [] })}
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {Object.entries(TABLAS_DISPONIBLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Agregación</label>
-                <select value={formMedida.agregacion} onChange={e => setFormMedida({ ...formMedida, agregacion: e.target.value as Agregacion })}
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {AGREGACIONES.map(a => <option key={a} value={a}>{AGREGACION_LABEL[a]}</option>)}
-                </select>
-              </div>
-            </div>
-            {formMedida.agregacion !== 'conteo' && (
-              <div>
-                <label className="text-xs text-gray-500">Campo</label>
-                <select value={formMedida.campo} onChange={e => setFormMedida({ ...formMedida, campo: e.target.value })}
-                  className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Selecciona un campo...</option>
-                  {(TABLAS_DISPONIBLES[formMedida.tabla]?.campos ?? []).map(c => <option key={c.valor} value={c.valor}>{c.label}</option>)}
-                </select>
-              </div>
-            )}
-            <div>
-              <label className="text-xs text-gray-500">Filtrar por fecha usando</label>
-              <select value={formMedida.campo_fecha} onChange={e => setFormMedida({ ...formMedida, campo_fecha: e.target.value })}
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">Sin filtro de fecha (todo el histórico)</option>
-                {(TABLAS_DISPONIBLES[formMedida.tabla]?.camposFecha ?? []).map(c => <option key={c.valor} value={c.valor}>{c.label}</option>)}
-              </select>
-            </div>
 
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-gray-500">Filtros adicionales</label>
-                <button onClick={agregarFiltro} className="text-xs text-blue-600 hover:text-blue-800 font-semibold">+ Agregar filtro</button>
-              </div>
-              {formMedida.filtros.map((f, idx) => (
-                <div key={idx} className="flex items-center gap-1.5">
-                  <select value={f.campo} onChange={e => actualizarFiltro(idx, { campo: e.target.value })}
-                    className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white">
-                    {(TABLAS_DISPONIBLES[formMedida.tabla]?.camposFiltro ?? []).map(c => <option key={c.valor} value={c.valor}>{c.label}</option>)}
+            <div className="space-y-2">
+              {formMedida.terminos.map((t, idx) => (
+                <div key={idx} className="bg-white border border-gray-200 rounded-xl p-2.5 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    {idx === 0 ? (
+                      <span className="text-xs font-semibold text-gray-400 w-20">Primero</span>
+                    ) : (
+                      <select value={t.operador} onChange={e => actualizarTermino(idx, { operador: e.target.value as OperadorTermino })}
+                        className="text-xs font-bold border border-gray-200 rounded-lg px-2 py-1 w-20 bg-gray-50">
+                        {OPERADORES_TERMINO.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    )}
+                    <select value={t.tabla} onChange={e => actualizarTermino(idx, { tabla: e.target.value, campo: '', campo_fecha: '', filtros: [] })}
+                      className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white">
+                      {Object.entries(TABLAS_DISPONIBLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                    </select>
+                    <select value={t.agregacion} onChange={e => actualizarTermino(idx, { agregacion: e.target.value as Agregacion })}
+                      className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white">
+                      {AGREGACIONES.map(a => <option key={a} value={a}>{AGREGACION_LABEL[a]}</option>)}
+                    </select>
+                    {formMedida.terminos.length > 1 && (
+                      <button onClick={() => quitarTermino(idx)} className="text-red-400 hover:text-red-600 p-0.5 flex-shrink-0">✕</button>
+                    )}
+                  </div>
+
+                  {t.agregacion !== 'conteo' && (
+                    <select value={t.campo ?? ''} onChange={e => actualizarTermino(idx, { campo: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white">
+                      <option value="">Selecciona un campo...</option>
+                      {(TABLAS_DISPONIBLES[t.tabla]?.campos ?? []).map(c => <option key={c.valor} value={c.valor}>{c.label}</option>)}
+                    </select>
+                  )}
+
+                  <select value={t.campo_fecha ?? ''} onChange={e => actualizarTermino(idx, { campo_fecha: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white">
+                    <option value="">Sin filtro de fecha (todo el histórico)</option>
+                    {(TABLAS_DISPONIBLES[t.tabla]?.camposFecha ?? []).map(c => <option key={c.valor} value={c.valor}>Filtrar período por: {c.label}</option>)}
                   </select>
-                  <select value={f.operador} onChange={e => actualizarFiltro(idx, { operador: e.target.value as OperadorFiltro })}
-                    className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white">
-                    {OPERADORES.map(o => <option key={o.valor} value={o.valor}>{o.label}</option>)}
-                  </select>
-                  <input value={f.valor} onChange={e => actualizarFiltro(idx, { valor: e.target.value })} placeholder="Valor"
-                    className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white" />
-                  <button onClick={() => quitarFiltro(idx)} className="text-red-400 hover:text-red-600 p-0.5">✕</button>
+
+                  <div className="space-y-1">
+                    {t.filtros.map((f, fi) => (
+                      <div key={fi} className="flex items-center gap-1">
+                        <select value={f.campo} onChange={e => actualizarFiltroTermino(idx, fi, { campo: e.target.value })}
+                          className="flex-1 border border-gray-200 rounded-lg px-1.5 py-0.5 text-[11px] bg-white">
+                          {(TABLAS_DISPONIBLES[t.tabla]?.camposFiltro ?? []).map(c => <option key={c.valor} value={c.valor}>{c.label}</option>)}
+                        </select>
+                        <select value={f.operador} onChange={e => actualizarFiltroTermino(idx, fi, { operador: e.target.value as OperadorFiltro })}
+                          className="border border-gray-200 rounded-lg px-1.5 py-0.5 text-[11px] bg-white">
+                          {OPERADORES_FILTRO.map(o => <option key={o.valor} value={o.valor}>{o.label}</option>)}
+                        </select>
+                        <input value={f.valor} onChange={e => actualizarFiltroTermino(idx, fi, { valor: e.target.value })} placeholder="Valor"
+                          className="flex-1 border border-gray-200 rounded-lg px-1.5 py-0.5 text-[11px] bg-white" />
+                        <button onClick={() => quitarFiltroTermino(idx, fi)} className="text-red-400 hover:text-red-600 px-0.5">✕</button>
+                      </div>
+                    ))}
+                    <button onClick={() => agregarFiltroTermino(idx)} className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold">+ filtro</button>
+                  </div>
                 </div>
               ))}
+              <button onClick={agregarTermino} className="text-xs text-blue-700 font-semibold hover:text-blue-900">
+                + Combinar con otro campo ({OPERADORES_TERMINO.map(o => OPERADOR_TERMINO_LABEL[o]).join(' / ')})
+              </button>
             </div>
 
             <div className="flex gap-2 pt-1">
@@ -333,13 +367,12 @@ export default function ConstructorDashboardPage() {
       <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-gray-900">Variables calculadas</h2>
-          {puedeEditar && !formVariable && medidas.length > 0 && (
+          {puedeEditar && !formVariable && (
             <button onClick={abrirNuevaVariable} className="text-xs text-blue-700 font-semibold hover:text-blue-900">+ Nueva variable</button>
           )}
         </div>
 
-        {medidas.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Crea al menos una medida primero.</p>}
-        {medidas.length > 0 && variables.length === 0 && !formVariable && <p className="text-sm text-gray-400 text-center py-4">Sin variables creadas todavía.</p>}
+        {variables.length === 0 && !formVariable && <p className="text-sm text-gray-400 text-center py-4">Sin variables creadas todavía. Úsalas para combinar medidas con condicionales (SI) — para sumar/restar/dividir campos simples, hazlo directo en la Medida.</p>}
 
         <div className="space-y-2">
           {variables.filter(v => editandoVariableId !== v.id).map(v => (
@@ -391,7 +424,7 @@ export default function ConstructorDashboardPage() {
                 placeholder="Ej: [Total vendido] - [Total pagado]  ·  SI([Total vendido] > 1000000, 1, 0)"
                 rows={2}
                 className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-mono bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              {nombresDisponibles.length > 0 && (
+              {nombresDisponibles.length > 0 ? (
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {nombresDisponibles.map(n => (
                     <button key={n} type="button"
@@ -401,6 +434,8 @@ export default function ConstructorDashboardPage() {
                     </button>
                   ))}
                 </div>
+              ) : (
+                <p className="text-[10px] text-amber-600 mt-1">Aún no tienes medidas ni variables para referenciar — crea una medida primero.</p>
               )}
               <p className="text-[10px] text-gray-400 mt-1">Usa [Nombre] para referenciar una medida u otra variable. Operadores: + − * / ( ) &gt; &lt; &gt;= &lt;= == !=. Función: SI(condición, si_cumple, si_no).</p>
             </div>
