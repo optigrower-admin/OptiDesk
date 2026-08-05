@@ -231,6 +231,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   type EtapaMovimiento = { etapa_anterior: string | null; etapa_nueva: string; created_at: string }
   const [historialEtapas, setHistorialEtapas]         = useState<EtapaMovimiento[]>([])
   const [clienteRegistradoEn, setClienteRegistradoEn] = useState<string | null>(null)
+  const [editandoFechaCreacion, setEditandoFechaCreacion] = useState(false)
+  const [fechaCreacionInput, setFechaCreacionInput]       = useState('')
+  const [savingFechaCreacion, setSavingFechaCreacion]     = useState(false)
 
   // Celular
   const [celularActual, setCelularActual]   = useState(lead.cliente?.celular ?? '')
@@ -494,6 +497,22 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       mostrarGuardado()
     } finally {
       setSavingFechaVenta(false)
+    }
+  }
+
+  const guardarFechaCreacion = async () => {
+    if (!esGerencia || !fechaCreacionInput) return
+    setSavingFechaCreacion(true)
+    try {
+      const nueva = new Date(fechaCreacionInput).toISOString()
+      const { error } = await supabase.from('clientes').update({ created_at: nueva }).eq('id', lead.id).eq('tenant_id', tenantId)
+      if (error) { alert(`No se pudo guardar la fecha de creación: ${error.message}`); return }
+      await logCambio('fecha_creacion', clienteRegistradoEn, nueva)
+      setClienteRegistradoEn(nueva)
+      setEditandoFechaCreacion(false)
+      mostrarGuardado()
+    } finally {
+      setSavingFechaCreacion(false)
     }
   }
 
@@ -1719,8 +1738,30 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     <p className="font-semibold text-gray-900">{lead.cliente?.nombre ?? '—'}</p>
                     {lead.cliente?.celular && <p className="text-sm text-gray-600">{lead.cliente.celular}</p>}
                     {lead.lead_source && <p className="text-xs text-gray-400 mt-1">Origen: {lead.lead_source}</p>}
-                    {clienteRegistradoEn && (
-                      <p className="text-xs text-gray-400 mt-1">🗓️ Agregado el {formatDate(clienteRegistradoEn)} a las {formatTime(clienteRegistradoEn)}</p>
+                    {clienteRegistradoEn && !editandoFechaCreacion && (
+                      <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                        🗓️ Agregado el {formatDate(clienteRegistradoEn)} a las {formatTime(clienteRegistradoEn)}
+                        {esGerencia && (
+                          <button onClick={() => { setFechaCreacionInput(clienteRegistradoEn.slice(0, 16)); setEditandoFechaCreacion(true) }}
+                            className="text-gray-300 hover:text-blue-500 transition-colors" title="Editar fecha de creación (gerencia)">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                      </p>
+                    )}
+                    {editandoFechaCreacion && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <input type="datetime-local" value={fechaCreacionInput} onChange={e => setFechaCreacionInput(e.target.value)}
+                          className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button onClick={guardarFechaCreacion} disabled={savingFechaCreacion} className="text-green-600 hover:text-green-700 p-0.5">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        </button>
+                        <button onClick={() => setEditandoFechaCreacion(false)} disabled={savingFechaCreacion} className="text-gray-400 hover:text-red-500 p-0.5">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
                     )}
                     {lead.cliente?.id && (
                       <div className="flex items-center gap-3 mt-1.5">

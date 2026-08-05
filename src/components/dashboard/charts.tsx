@@ -143,6 +143,40 @@ export function TimeSeriesChart({
   )
 }
 
+export interface DualSerieDatum { fecha: string; serieA: number; serieB: number }
+
+export function DualLineChart({
+  data, labelA, labelB, colorA = '#2563eb', colorB = '#7c3aed',
+}: {
+  data: DualSerieDatum[]
+  labelA: string
+  labelB: string
+  colorA?: string
+  colorB?: string
+}) {
+  if (data.length === 0) {
+    return <div className="h-56 flex items-center justify-center text-sm text-gray-400">Sin datos</div>
+  }
+  const showLabels = data.length <= 18
+  return (
+    <ResponsiveContainer width="100%" height={250}>
+      <LineChart data={data} margin={{ left: 0, right: 8, top: showLabels ? 22 : 8, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+        <XAxis dataKey="fecha" tick={{ fontSize: 11, fill: '#9ca3af' }} />
+        <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} width={40} allowDecimals={false} />
+        <Tooltip />
+        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Line type="monotone" dataKey="serieA" name={labelA} stroke={colorA} strokeWidth={2} dot={showLabels ? { r: 3, fill: colorA } : false}>
+          {showLabels && <LabelList dataKey="serieA" position="top" style={{ fontSize: 10, fill: colorA, fontWeight: 600 }} />}
+        </Line>
+        <Line type="monotone" dataKey="serieB" name={labelB} stroke={colorB} strokeWidth={2} dot={showLabels ? { r: 3, fill: colorB } : false}>
+          {showLabels && <LabelList dataKey="serieB" position="top" style={{ fontSize: 10, fill: colorB, fontWeight: 600 }} />}
+        </Line>
+      </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
 export interface FunnelDatum { label: string; value: number; color?: string }
 
 export function FunnelBars({ data, dataAnterior }: { data: FunnelDatum[]; dataAnterior?: FunnelDatum[] }) {

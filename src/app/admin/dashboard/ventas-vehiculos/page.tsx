@@ -8,8 +8,8 @@ import { formatCOP } from '@/lib/utils'
 import { PeriodoFilter } from '@/components/dashboard/PeriodoFilter'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import {
-  BarRankingChart, TimeSeriesChart, WeekdayBarChart,
-  type RankingDatum, type SerieDatum, type WeekdayDatum,
+  BarRankingChart, TimeSeriesChart, WeekdayBarChart, DualLineChart,
+  type RankingDatum, type SerieDatum, type WeekdayDatum, type DualSerieDatum,
 } from '@/components/dashboard/charts'
 import {
   calcularRango, calcularRangoAnterior, calcularVariacion, ymdLocal, PERIODO_LABEL,
@@ -387,6 +387,29 @@ export default function DashboardVentasVehiculosPage() {
     const { serieFacturacion: serieNuevosValor, serieCantidad: serieNuevosCantidad } =
       buildSeries(nuevosEnRangoChart, nuevosEnRangoChartAnt, chartUnidadNuevos, chartRangoNuevos, 'created_at')
 
+    // Ventas vs Clientes nuevos, en la misma línea de tiempo (la de "Tendencia
+    // de Ventas") para poder comparar ambas tendencias en una sola gráfica.
+    const nuevosEnRangoVentasChart = clientes.filter(c => enRango(c.created_at, { desdeISO: chartRango.desdeISO, hastaISO: chartRango.hastaISO }))
+    const nuevosEnRangoVentasChartAnt = clientes.filter(c => enRango(c.created_at, { desdeISO: chartRango.desdeAntISO, hastaISO: chartRango.hastaAntISO }))
+    const { serieCantidad: serieNuevosEnRangoVentas } =
+      buildSeries(nuevosEnRangoVentasChart, nuevosEnRangoVentasChartAnt, chartUnidad, chartRango, 'created_at')
+    const serieVentasVsNuevos: DualSerieDatum[] = serieVentasCantidad.map((v, i) => ({
+      fecha: v.fecha, serieA: v.actual, serieB: serieNuevosEnRangoVentas[i]?.actual ?? 0,
+    }))
+
+    // Días de compra promedio: solo entre quienes NO compraron el mismo día
+    // que se registraron (para no distorsionar el promedio con ventas
+    // instantáneas de contado).
+    const diasCompra = ventasActual
+      .map(c => {
+        const fVenta = fechaVentaDe(c)
+        if (!fVenta) return null
+        const dias = Math.round((new Date(fVenta).getTime() - new Date(c.created_at).getTime()) / 86400000)
+        return dias > 0 ? dias : null
+      })
+      .filter((d): d is number => d !== null)
+    const diasCompraPromedio = diasCompra.length ? diasCompra.reduce((s, d) => s + d, 0) / diasCompra.length : null
+
     // Por día de la semana — a partir del período de KPIs (ventasActual/ventasAnterior y nuevosActual/nuevosAnterior)
     function buildWeekday(rows: ClienteRow[], rowsAnt: ClienteRow[], dateField: 'created_at' | CampoFechaVenta) {
       const wdValAct = Array(7).fill(0); const wdCantAct = Array(7).fill(0)
@@ -420,10 +443,12 @@ export default function DashboardVentasVehiculosPage() {
         totalFacturadoActual, totalFacturadoAnterior,
         totalMatriculado, ticketPromedioActual, ticketPromedioAnterior,
         cuentasPorCobrar, tasaConversion, tasaAprobacionActual, tasaAprobacionAnterior,
+        diasCompraPromedio,
       },
       usoCreditoRanking, rankingAsesores, distribucionEtapa, asesoresIds, pendientesGestion, listaVentas, ventasPorMoto,
       serieVentasFacturacion, serieVentasCantidad, weekdayVentasFacturacion, weekdayVentasCantidad,
       serieNuevosValor, serieNuevosCantidad, weekdayNuevosValor, weekdayNuevosCantidad,
+      serieVentasVsNuevos,
     }
   }, [clientes, creditosFiltrados, entidades, pagosPorCliente, valorPorCliente, motosInteres, usuariosMap, rango, rangoAnterior, chartRango, chartUnidad, chartRangoNuevos, chartUnidadNuevos, campoFechaVenta])
 
@@ -566,6 +591,7 @@ export default function DashboardVentasVehiculosPage() {
                   <KpiCard label="Cuentas por Cobrar" valor={formatCOP(m.kpis.cuentasPorCobrar)} sub="Vendida en adelante, menos abonos" />
                   <KpiCard label="Tasa de conversión" valor={m.kpis.tasaConversion.toFixed(1)} sufijo="%" sub="Vendidos / total en pipeline" />
                   <KpiCard label="Tasa aprobación créditos" valor={m.kpis.tasaAprobacionActual.toFixed(1)} sufijo="%" variacion={v(m.kpis.tasaAprobacionActual, m.kpis.tasaAprobacionAnterior)} comparativoLabel={comparativoLabel} />
+                  <KpiCard label="Días de compra promedio" valor={m.kpis.diasCompraPromedio !== null ? m.kpis.diasCompraPromedio.toFixed(1) : '—'} sufijo="días" sub="Excluye compras el mismo día que se agregó el cliente" />
                 </div>
               </div>
 
@@ -601,6 +627,13 @@ export default function DashboardVentasVehiculosPage() {
                     <BarRankingChart data={m.ventasPorMoto} color="#16a34a" />
                   </div>
                 </div>
+              </div>
+
+              {/* Ventas vs Clientes nuevos — comparativo en la misma línea de tiempo */}
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <h2 className="text-sm font-semibold text-gray-700 mb-1">Ventas vs Clientes nuevos</h2>
+                <p className="text-xs text-gray-400 mb-3">Cantidad, en la misma línea de tiempo — usa el rango de &quot;Últimos&quot; de Tendencia de Ventas, abajo</p>
+                <DualLineChart data={m.serieVentasVsNuevos} labelA="Ventas" labelB="Clientes nuevos" colorA="#2563eb" colorB="#7c3aed" />
               </div>
 
               {/* Tendencia de Ventas */}
