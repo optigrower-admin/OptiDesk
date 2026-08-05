@@ -10,6 +10,7 @@ import { BuscarClienteModal } from '@/components/BuscarClienteModal'
 import { normalizarPlaca } from '@/lib/utils'
 import { upsertMotoCliente } from '@/lib/clienteMoto'
 import { subirArchivoOrden } from '@/lib/clientUpload'
+import { ProgramarCitaModal } from '@/components/servicio/ProgramarCitaModal'
 import type { ClienteMotoPanelResult } from '@/components/ClienteMotoPanel'
 import type { ClienteEncontrado } from '@/components/BuscarClienteModal'
 
@@ -54,6 +55,9 @@ export default function NuevaOrdenAdminPage() {
   const [esProgramada, setEsProgramada] = useState(false)
   const [fechaProgramada, setFechaProgramada] = useState('')
   const [duracionEstimada, setDuracionEstimada] = useState('')
+  const [mecanicoProgramadoId, setMecanicoProgramadoId] = useState('')
+  const [mecanicoProgramadoNombre, setMecanicoProgramadoNombre] = useState('')
+  const [showProgramarModal, setShowProgramarModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
@@ -82,6 +86,8 @@ export default function NuevaOrdenAdminPage() {
         if (d.esProgramada) setEsProgramada(d.esProgramada)
         if (d.fechaProgramada) setFechaProgramada(d.fechaProgramada)
         if (d.duracionEstimada) setDuracionEstimada(d.duracionEstimada)
+        if (d.mecanicoProgramadoId) setMecanicoProgramadoId(d.mecanicoProgramadoId)
+        if (d.mecanicoProgramadoNombre) setMecanicoProgramadoNombre(d.mecanicoProgramadoNombre)
       }
     } catch { /* borrador inválido */ }
   }, [])
@@ -89,12 +95,12 @@ export default function NuevaOrdenAdminPage() {
   useEffect(() => {
     if (draftTimer.current) clearTimeout(draftTimer.current)
     draftTimer.current = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, cedula, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA, esProgramada, fechaProgramada, duracionEstimada }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ placa, cliente, telefono, cedula, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA, esProgramada, fechaProgramada, duracionEstimada, mecanicoProgramadoId, mecanicoProgramadoNombre }))
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 1500)
     }, 800)
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current) }
-  }, [placa, cliente, telefono, cedula, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA, esProgramada, fechaProgramada, duracionEstimada])
+  }, [placa, cliente, telefono, cedula, descripcion, manifiestaCliente, diagnostico, categoriaId, subcategoriaIds, tipoServicio, numeroOt, numerosOrdenUMA, esProgramada, fechaProgramada, duracionEstimada, mecanicoProgramadoId, mecanicoProgramadoNombre])
 
   useEffect(() => {
     if (!profile?.tenant_id) return
@@ -145,7 +151,7 @@ export default function NuevaOrdenAdminPage() {
     e.preventDefault()
     if (!profile?.tenant_id) return
     if (tipoOrden === 'servicio' && esProgramada && !fechaProgramada) {
-      setError('Ingresa la fecha y hora de la cita programada.')
+      setError('Elige el mecánico y el espacio disponible para la cita programada.')
       return
     }
     if (tipoOrden === 'servicio' && !tipoServicio) {
@@ -206,7 +212,7 @@ export default function NuevaOrdenAdminPage() {
           tipo_servicio: tipoOrden === 'servicio' ? tipoServicio : 'terceros',
           numero_ot: tipoServicio === 'uma' ? (numeroOt || null) : null,
           numeros_orden_uma: esUMACategoria ? numerosOrdenUMA : [],
-          mecanico_id: profile.id,
+          mecanico_id: tipoOrden === 'servicio' && esProgramada && mecanicoProgramadoId ? mecanicoProgramadoId : profile.id,
           estado: tipoOrden === 'servicio' && esProgramada ? 'programado' : 'en_proceso',
           fecha_programada: tipoOrden === 'servicio' && esProgramada && fechaProgramada ? new Date(fechaProgramada).toISOString() : null,
           duracion_estimada_horas: tipoOrden === 'servicio' && esProgramada && duracionEstimada ? parseFloat(duracionEstimada) : null,
@@ -284,27 +290,29 @@ export default function NuevaOrdenAdminPage() {
             </div>
             {esProgramada && (
               <div className="space-y-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                <div>
-                  <label className="block text-xs font-medium text-orange-700 mb-1">Fecha y hora de la cita *</label>
-                  <input
-                    type="datetime-local"
-                    value={fechaProgramada}
-                    onChange={(e) => setFechaProgramada(e.target.value)}
-                    className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-orange-700 mb-1">Duración estimada del servicio (horas)</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    value={duracionEstimada}
-                    onChange={(e) => setDuracionEstimada(e.target.value)}
-                    placeholder="Ej: 1.5"
-                    className="w-full px-3 py-2 border border-orange-200 rounded-lg text-sm"
-                  />
-                </div>
+                {fechaProgramada ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm">
+                      <p className="font-semibold text-orange-900">
+                        {new Date(fechaProgramada).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}
+                        {' · '}
+                        {new Date(fechaProgramada).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      <p className="text-xs text-orange-600">
+                        {mecanicoProgramadoNombre || 'Sin mecánico'} · {duracionEstimada || '1'}h estimadas
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => setShowProgramarModal(true)}
+                      className="text-xs font-semibold text-orange-700 hover:underline whitespace-nowrap">
+                      ✏️ Cambiar
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setShowProgramarModal(true)}
+                    className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-semibold">
+                    📅 Elegir mecánico y horario disponible
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -614,6 +622,24 @@ export default function NuevaOrdenAdminPage() {
         tenantId={profile.tenant_id}
         onSelect={seleccionarCliente}
         onCancel={() => setBuscandoCliente(false)}
+      />
+    )}
+
+    {showProgramarModal && profile?.tenant_id && (
+      <ProgramarCitaModal
+        tenantId={profile.tenant_id}
+        mecanicoInicialId={mecanicoProgramadoId || undefined}
+        onClose={() => setShowProgramarModal(false)}
+        onConfirm={({ mecanicoId, mecanicoNombre, fechaISO, duracionHoras }) => {
+          setMecanicoProgramadoId(mecanicoId)
+          setMecanicoProgramadoNombre(mecanicoNombre)
+          // datetime-local necesita hora local sin zona horaria (YYYY-MM-DDTHH:MM)
+          const d = new Date(fechaISO)
+          const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+          setFechaProgramada(local)
+          setDuracionEstimada(String(duracionHoras))
+          setShowProgramarModal(false)
+        }}
       />
     )}
     </>
