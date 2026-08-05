@@ -8,6 +8,7 @@ type EtapaFlags = {
   es_etapa_inicial?: boolean
   es_ganado?: boolean
   es_perdido?: boolean
+  es_matricula?: boolean
   es_auxiliar?: boolean
   requiere_celular?: boolean
   requiere_placa?: boolean
@@ -206,6 +207,7 @@ export async function POST(req: NextRequest) {
         es_etapa_inicial: body.es_etapa_inicial ?? false,
         es_ganado: body.es_ganado ?? false,
         es_perdido: body.es_perdido ?? false,
+        es_matricula: body.es_matricula ?? false,
         es_auxiliar: body.es_auxiliar ?? false,
         requiere_celular: body.requiere_celular ?? false,
         requiere_placa: body.requiere_placa ?? false,
@@ -223,7 +225,7 @@ export async function POST(req: NextRequest) {
     if (!body.etapa_id) return NextResponse.json({ error: 'Falta etapa_id' }, { status: 400 })
     const camposTexto = ['label', 'color', 'bg', 'border'] as const
     const camposFlag = [
-      'es_activa', 'es_lead', 'es_etapa_inicial', 'es_ganado', 'es_perdido', 'es_auxiliar',
+      'es_activa', 'es_lead', 'es_etapa_inicial', 'es_ganado', 'es_perdido', 'es_matricula', 'es_auxiliar',
       'requiere_celular', 'requiere_placa', 'requiere_fecha_entrega',
       'requiere_carta_negociacion', 'requiere_factura', 'requiere_aprobacion_gerencia',
     ] as const

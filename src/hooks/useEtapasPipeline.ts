@@ -38,6 +38,7 @@ export interface EtapaDinamica {
   es_etapa_inicial: boolean
   es_ganado: boolean
   es_perdido: boolean
+  es_matricula: boolean
   es_auxiliar: boolean
   requiere_celular: boolean
   requiere_placa: boolean
@@ -72,6 +73,7 @@ interface RowEtapa {
   id: string; pipeline_id: string; grupo_id: string | null; clave: string; label: string
   color: string; bg: string; border: string; orden: number
   es_activa: boolean; es_lead: boolean; es_etapa_inicial: boolean; es_ganado: boolean; es_perdido: boolean
+  es_matricula: boolean
   es_auxiliar: boolean
   requiere_celular: boolean; requiere_placa: boolean; requiere_fecha_entrega: boolean
   requiere_carta_negociacion: boolean; requiere_factura: boolean; requiere_aprobacion_gerencia: boolean
@@ -115,7 +117,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
           grupoId: g?.id ?? '', grupoLabel: g?.nombre ?? '', grupoColor: g?.color ?? '#6b7280',
           pipelineId: p?.id ?? e.pipeline_id, pipelineNombre: p?.nombre ?? '', pipelineClave: p?.clave ?? '',
           es_activa: e.es_activa, es_lead: e.es_lead, es_etapa_inicial: e.es_etapa_inicial,
-          es_ganado: e.es_ganado, es_perdido: e.es_perdido, es_auxiliar: e.es_auxiliar,
+          es_ganado: e.es_ganado, es_perdido: e.es_perdido, es_matricula: e.es_matricula, es_auxiliar: e.es_auxiliar,
           requiere_celular: e.requiere_celular, requiere_placa: e.requiere_placa,
           requiere_fecha_entrega: e.requiere_fecha_entrega,
           requiere_carta_negociacion: e.requiere_carta_negociacion,

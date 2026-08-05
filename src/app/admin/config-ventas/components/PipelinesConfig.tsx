@@ -14,28 +14,30 @@ type Etapa = {
   es_etapa_inicial: boolean
   es_ganado: boolean
   es_perdido: boolean
+  es_matricula: boolean
   es_auxiliar: boolean
 }
 
 type Grupo = { id: string; clave: string; nombre: string; color: string; orden: number; etapas: Etapa[] }
 type Pipeline = { id: string; clave: string; nombre: string; orden: number; grupos: Grupo[]; roles_ocultos: string[] | null }
 
-type FlagKey = 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido' | 'es_auxiliar'
+type FlagKey = 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido' | 'es_matricula' | 'es_auxiliar'
 
 const FLAGS: { key: FlagKey; label: string; hint: string }[] = [
   { key: 'es_activa',                   label: 'Activa',                     hint: 'Cuenta como lead en gestión (vistas Hoy/Bandeja/Resumen)' },
   { key: 'es_lead',                     label: 'Es lead',                    hint: 'Aparece en el conteo de leads' },
   { key: 'es_etapa_inicial',            label: 'Etapa inicial',              hint: 'Acá caen los clientes cuando escriben por primera vez' },
-  { key: 'es_ganado',                   label: 'Marca venta ganada',         hint: 'Registra la fecha de cierre' },
+  { key: 'es_ganado',                   label: 'Marca venta ganada',         hint: 'Registra la fecha de cierre (fecha de venta)' },
   { key: 'es_perdido',                  label: 'Marca venta perdida',        hint: 'Registra la fecha de cierre' },
+  { key: 'es_matricula',                label: 'Marca matrícula',            hint: 'Registra la fecha de matrícula' },
   { key: 'es_auxiliar',                 label: 'Estado auxiliar',            hint: 'Fuera del orden normal del pipeline (ej. Cliente Perdido) — no hereda reglas en cascada como "Aprobación de gerencia" por tener un número de orden alto' },
 ]
 
-type EtapaDraft = Pick<Etapa, 'label' | 'color' | 'bg' | 'border' | 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido' | 'es_auxiliar'>
+type EtapaDraft = Pick<Etapa, 'label' | 'color' | 'bg' | 'border' | 'es_activa' | 'es_lead' | 'es_etapa_inicial' | 'es_ganado' | 'es_perdido' | 'es_matricula' | 'es_auxiliar'>
 
 const DRAFT_VACIO: EtapaDraft = {
   label: '', color: '#2563EB', bg: 'bg-blue-50', border: 'border-blue-500',
-  es_activa: true, es_lead: false, es_etapa_inicial: false, es_ganado: false, es_perdido: false, es_auxiliar: false,
+  es_activa: true, es_lead: false, es_etapa_inicial: false, es_ganado: false, es_perdido: false, es_matricula: false, es_auxiliar: false,
 }
 
 async function llamar(body: Record<string, unknown>) {
@@ -582,6 +584,7 @@ export default function PipelinesConfig() {
                             {e.es_etapa_inicial && <span className="text-[9px] bg-sky-100 text-sky-700 px-1.5 rounded-full">inicial</span>}
                             {e.es_ganado && <span className="text-[9px] bg-green-100 text-green-700 px-1.5 rounded-full">ganado</span>}
                             {e.es_perdido && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 rounded-full">perdido</span>}
+                            {e.es_matricula && <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 rounded-full">matrícula</span>}
                             {e.es_auxiliar && <span className="text-[9px] bg-gray-200 text-gray-600 px-1.5 rounded-full">auxiliar</span>}
                           </div>
                           <button onClick={() => setEditEtapa({
@@ -589,7 +592,7 @@ export default function PipelinesConfig() {
                             draft: {
                               label: e.label, color: e.color, bg: e.bg, border: e.border,
                               es_activa: e.es_activa, es_lead: e.es_lead, es_etapa_inicial: e.es_etapa_inicial,
-                              es_ganado: e.es_ganado, es_perdido: e.es_perdido, es_auxiliar: e.es_auxiliar,
+                              es_ganado: e.es_ganado, es_perdido: e.es_perdido, es_matricula: e.es_matricula, es_auxiliar: e.es_auxiliar,
                             },
                           })} className="text-[11px] text-blue-600 hover:underline flex-shrink-0">Editar</button>
                           <button onClick={() => eliminarEtapa(e.id, e.label)} className="text-[11px] text-red-500 hover:underline flex-shrink-0">Eliminar</button>

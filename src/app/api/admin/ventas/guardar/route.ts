@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   const { data: clienteActual } = await admin
     .from('clientes')
-    .select('id, fecha_cierre')
+    .select('id, fecha_cierre, fecha_matricula')
     .eq('id', cliente_id)
     .eq('tenant_id', perfil.tenant_id)
     .single()
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   if (typeof campos.etapa_venta === 'string') {
     const { data: etapaRow } = await admin
       .from('etapas_pipeline')
-      .select('orden, es_ganado, es_perdido, pipeline_id')
+      .select('orden, es_ganado, es_perdido, es_matricula, pipeline_id')
       .eq('tenant_id', perfil.tenant_id)
       .eq('clave', campos.etapa_venta)
       .maybeSingle()
@@ -80,6 +80,21 @@ export async function POST(req: NextRequest) {
         .maybeSingle()
       if (etapaGanado && etapaRow.orden < etapaGanado.orden) {
         campos.fecha_cierre = null
+      }
+    }
+    // fecha_matricula sigue el mismo patrón, para la etapa marcada es_matricula.
+    if (etapaRow.es_matricula) {
+      if (!clienteActual.fecha_matricula) campos.fecha_matricula = new Date().toISOString()
+    } else if (clienteActual.fecha_matricula) {
+      const { data: etapaMatricula } = await admin
+        .from('etapas_pipeline')
+        .select('orden')
+        .eq('tenant_id', perfil.tenant_id)
+        .eq('pipeline_id', etapaRow.pipeline_id)
+        .eq('es_matricula', true)
+        .maybeSingle()
+      if (etapaMatricula && etapaRow.orden < etapaMatricula.orden) {
+        campos.fecha_matricula = null
       }
     }
   }

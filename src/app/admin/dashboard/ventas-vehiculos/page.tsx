@@ -22,11 +22,20 @@ import {
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
+type CampoFechaVenta = 'fecha_cierre' | 'fecha_matricula' | 'fecha_entrega'
+const CAMPO_FECHA_VENTA_LABEL: Record<CampoFechaVenta, string> = {
+  fecha_cierre: 'Fecha de venta / Carta negociación',
+  fecha_matricula: 'Fecha de matrícula',
+  fecha_entrega: 'Fecha de entrega',
+}
+
 interface ClienteRow {
   id: string
   nombre: string | null
   etapa_venta: EtapaVenta
   fecha_cierre: string | null
+  fecha_matricula: string | null
+  fecha_entrega: string | null
   created_at: string
   assigned_to: string | null
   proxima_accion_fecha: string | null
@@ -120,6 +129,8 @@ export default function DashboardVentasVehiculosPage() {
   const [hastaManual, setHastaManual] = useState(ymdLocal(new Date()))
   const rango = useMemo(() => calcularRango(preset, desdeManual, hastaManual), [preset, desdeManual, hastaManual])
   const rangoAnterior = useMemo(() => calcularRangoAnterior(rango), [rango])
+  // Qué fecha usar para decidir si una venta cayó en el período seleccionado
+  const [campoFechaVenta, setCampoFechaVenta] = useState<CampoFechaVenta>('fecha_cierre')
 
   // Asesores
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
@@ -177,7 +188,7 @@ export default function DashboardVentasVehiculosPage() {
     const tid = profile.tenant_id
     const cargar = async () => {
       let q = supabase.from('clientes')
-        .select('id, nombre, etapa_venta, fecha_cierre, created_at, assigned_to, proxima_accion_fecha')
+        .select('id, nombre, etapa_venta, fecha_cierre, fecha_matricula, fecha_entrega, created_at, assigned_to, proxima_accion_fecha')
         .eq('tenant_id', tid).eq('en_seguimiento_ventas', true).limit(5000)
       if (asesoresFiltro !== null) {
         const ids = [...asesoresFiltro].filter(id => id !== '__sin__')
@@ -251,8 +262,9 @@ export default function DashboardVentasVehiculosPage() {
     const nuevosActual   = clientes.filter(c => enRango(c.created_at, rango))
     const nuevosAnterior = clientes.filter(c => enRango(c.created_at, rangoAnterior))
 
-    const ventasActual   = clientes.filter(c => esVenta(c.etapa_venta) && enRango(c.fecha_cierre, rango))
-    const ventasAnterior = clientes.filter(c => esVenta(c.etapa_venta) && enRango(c.fecha_cierre, rangoAnterior))
+    const fechaVentaDe = (c: ClienteRow) => c[campoFechaVenta]
+    const ventasActual   = clientes.filter(c => esVenta(c.etapa_venta) && enRango(fechaVentaDe(c), rango))
+    const ventasAnterior = clientes.filter(c => esVenta(c.etapa_venta) && enRango(fechaVentaDe(c), rangoAnterior))
 
     const sumValor = (rows: ClienteRow[]) => rows.reduce((s, c) => s + (valorPorCliente.get(c.id) ?? 0), 0)
     const totalFacturadoActual = sumValor(ventasActual)
@@ -310,7 +322,7 @@ export default function DashboardVentasVehiculosPage() {
 
     // ── Series de tiempo: Ventas (facturación + cantidad) ──
     const keyFn = (unidad: ChartUnidad) => unidad === 'dias' ? ymdKey : unidad === 'semanas' ? weekKey : monthKey
-    function buildSeries(rows: ClienteRow[], rowsAnt: ClienteRow[], unidad: ChartUnidad, r: typeof chartRango, dateField: 'created_at' | 'fecha_cierre') {
+    function buildSeries(rows: ClienteRow[], rowsAnt: ClienteRow[], unidad: ChartUnidad, r: typeof chartRango, dateField: 'created_at' | CampoFechaVenta) {
       const kf = keyFn(unidad)
       const buildMap = (arr: ClienteRow[]) => {
         const map = new Map<string, { total: number; cant: number }>()
@@ -341,10 +353,10 @@ export default function DashboardVentasVehiculosPage() {
       return { serieFacturacion, serieCantidad }
     }
 
-    const ventasEnRangoChart = clientes.filter(c => esVenta(c.etapa_venta) && enRango(c.fecha_cierre, { desdeISO: chartRango.desdeISO, hastaISO: chartRango.hastaISO }))
-    const ventasEnRangoChartAnt = clientes.filter(c => esVenta(c.etapa_venta) && enRango(c.fecha_cierre, { desdeISO: chartRango.desdeAntISO, hastaISO: chartRango.hastaAntISO }))
+    const ventasEnRangoChart = clientes.filter(c => esVenta(c.etapa_venta) && enRango(fechaVentaDe(c), { desdeISO: chartRango.desdeISO, hastaISO: chartRango.hastaISO }))
+    const ventasEnRangoChartAnt = clientes.filter(c => esVenta(c.etapa_venta) && enRango(fechaVentaDe(c), { desdeISO: chartRango.desdeAntISO, hastaISO: chartRango.hastaAntISO }))
     const { serieFacturacion: serieVentasFacturacion, serieCantidad: serieVentasCantidad } =
-      buildSeries(ventasEnRangoChart, ventasEnRangoChartAnt, chartUnidad, chartRango, 'fecha_cierre')
+      buildSeries(ventasEnRangoChart, ventasEnRangoChartAnt, chartUnidad, chartRango, campoFechaVenta)
 
     const nuevosEnRangoChart = clientes.filter(c => enRango(c.created_at, { desdeISO: chartRangoNuevos.desdeISO, hastaISO: chartRangoNuevos.hastaISO }))
     const nuevosEnRangoChartAnt = clientes.filter(c => enRango(c.created_at, { desdeISO: chartRangoNuevos.desdeAntISO, hastaISO: chartRangoNuevos.hastaAntISO }))
@@ -352,7 +364,7 @@ export default function DashboardVentasVehiculosPage() {
       buildSeries(nuevosEnRangoChart, nuevosEnRangoChartAnt, chartUnidadNuevos, chartRangoNuevos, 'created_at')
 
     // Por día de la semana — a partir del período de KPIs (ventasActual/ventasAnterior y nuevosActual/nuevosAnterior)
-    function buildWeekday(rows: ClienteRow[], rowsAnt: ClienteRow[], dateField: 'created_at' | 'fecha_cierre') {
+    function buildWeekday(rows: ClienteRow[], rowsAnt: ClienteRow[], dateField: 'created_at' | CampoFechaVenta) {
       const wdValAct = Array(7).fill(0); const wdCantAct = Array(7).fill(0)
       const wdValAnt = Array(7).fill(0); const wdCantAnt = Array(7).fill(0)
       for (const c of rows) { const iso = c[dateField]; if (!iso) continue; const d = getDow(new Date(iso)); wdValAct[d] += valorPorCliente.get(c.id) ?? 0; wdCantAct[d]++ }
@@ -361,7 +373,7 @@ export default function DashboardVentasVehiculosPage() {
       const weekdayCantidad: WeekdayDatum[] = Array.from({ length: 7 }, (_, i) => ({ actual: wdCantAct[i], anterior: wdCantAnt[i] }))
       return { weekdayValor, weekdayCantidad }
     }
-    const { weekdayValor: weekdayVentasFacturacion, weekdayCantidad: weekdayVentasCantidad } = buildWeekday(ventasActual, ventasAnterior, 'fecha_cierre')
+    const { weekdayValor: weekdayVentasFacturacion, weekdayCantidad: weekdayVentasCantidad } = buildWeekday(ventasActual, ventasAnterior, campoFechaVenta)
     const { weekdayValor: weekdayNuevosValor, weekdayCantidad: weekdayNuevosCantidad } = buildWeekday(nuevosActual, nuevosAnterior, 'created_at')
 
     // Clientes pendientes de gestionar: siguen activos (no perdidos ni
@@ -389,7 +401,7 @@ export default function DashboardVentasVehiculosPage() {
       serieVentasFacturacion, serieVentasCantidad, weekdayVentasFacturacion, weekdayVentasCantidad,
       serieNuevosValor, serieNuevosCantidad, weekdayNuevosValor, weekdayNuevosCantidad,
     }
-  }, [clientes, creditosFiltrados, entidades, pagosPorCliente, valorPorCliente, usuariosMap, rango, rangoAnterior, chartRango, chartUnidad, chartRangoNuevos, chartUnidadNuevos])
+  }, [clientes, creditosFiltrados, entidades, pagosPorCliente, valorPorCliente, usuariosMap, rango, rangoAnterior, chartRango, chartUnidad, chartRangoNuevos, chartUnidadNuevos, campoFechaVenta])
 
   if (authLoading || !profile) return <div className="p-8 text-center text-gray-400">Cargando...</div>
 
@@ -401,6 +413,19 @@ export default function DashboardVentasVehiculosPage() {
       <FilterDropdown title="Período">
         <PeriodoFilter preset={preset} desdeManual={desdeManual} hastaManual={hastaManual}
           onChangePreset={setPreset} onChangeDesdeManual={setDesdeManual} onChangeHastaManual={setHastaManual} />
+      </FilterDropdown>
+
+      <FilterDropdown title="Ver ventas según">
+        <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1.5 font-semibold">Qué fecha usar</p>
+        <div className="space-y-1">
+          {(['fecha_cierre', 'fecha_matricula', 'fecha_entrega'] as CampoFechaVenta[]).map(campo => (
+            <label key={campo} className="flex items-center gap-2 py-1 cursor-pointer group">
+              <input type="radio" name="campoFechaVenta" checked={campoFechaVenta === campo} onChange={() => setCampoFechaVenta(campo)}
+                className="w-3.5 h-3.5 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+              <span className="text-xs text-gray-700 group-hover:text-gray-900 select-none">{CAMPO_FECHA_VENTA_LABEL[campo]}</span>
+            </label>
+          ))}
+        </div>
       </FilterDropdown>
 
       {esGerencia && (

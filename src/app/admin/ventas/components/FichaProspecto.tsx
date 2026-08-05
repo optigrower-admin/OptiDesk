@@ -158,6 +158,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [fechaVentaInput, setFechaVentaInput]   = useState('')
   const [savingFechaVenta, setSavingFechaVenta] = useState(false)
 
+  // Fecha de matrícula — mismo patrón que fecha de venta
+  const [fechaMatricula, setFechaMatricula]             = useState<string | null>(null)
+  const [editandoFechaMatricula, setEditandoFechaMatricula] = useState(false)
+  const [fechaMatriculaInput, setFechaMatriculaInput]   = useState('')
+  const [savingFechaMatricula, setSavingFechaMatricula] = useState(false)
+
   // Panel lateral izquierdo
   const [proximaAccion,   setProximaAccion]   = useState(lead.proxima_accion ?? '')
   const [proximaFecha,    setProximaFecha]     = useState(
@@ -300,7 +306,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       supabase.from('ordenes').select('id,created_at,estado,descripcion_problema')
         .eq('cliente_id', lead.id).order('created_at', { ascending: false }).limit(5),
       supabase.from('usuarios').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).eq('es_asesor', true),
-      supabase.from('clientes').select('assigned_to, created_at, fecha_cierre').eq('id', lead.id).single(),
+      supabase.from('clientes').select('assigned_to, created_at, fecha_cierre, fecha_matricula').eq('id', lead.id).single(),
       supabase.from('historial_etapas_cliente')
         .select('etapa_anterior, etapa_nueva, created_at')
         .eq('cliente_id', lead.id)
@@ -313,6 +319,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setAssignedTo(cliente?.assigned_to ?? '')
     setClienteRegistradoEn(cliente?.created_at ?? null)
     setFechaVenta(cliente?.fecha_cierre ?? null)
+    setFechaMatricula(cliente?.fecha_matricula ?? null)
     setHistorialEtapas((etapasHist ?? []) as EtapaMovimiento[])
   }, [lead.id, convActivaId, tenantId])
 
@@ -485,6 +492,22 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       mostrarGuardado()
     } finally {
       setSavingFechaVenta(false)
+    }
+  }
+
+  const guardarFechaMatricula = async () => {
+    if (!esGerencia) return
+    setSavingFechaMatricula(true)
+    try {
+      const nueva = fechaMatriculaInput ? new Date(`${fechaMatriculaInput}T12:00:00`).toISOString() : null
+      const { error } = await supabase.from('clientes').update({ fecha_matricula: nueva }).eq('id', lead.id).eq('tenant_id', tenantId)
+      if (error) { alert(`No se pudo guardar la fecha de matrícula: ${error.message}`); return }
+      await logCambio('fecha_matricula', fechaMatricula, nueva ?? 'Sin fecha')
+      setFechaMatricula(nueva)
+      setEditandoFechaMatricula(false)
+      mostrarGuardado()
+    } finally {
+      setSavingFechaMatricula(false)
     }
   }
 
@@ -959,6 +982,39 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 </div>
               )}
 
+              {/* Fecha de matrícula — aparece en etapa matrícula (o posterior si ya se guardó) */}
+              {(!!fechaMatricula || etapasPipeline.etapaMap[etapa]?.es_matricula) && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fecha de matrícula</label>
+                    {esGerencia && !editandoFechaMatricula && (
+                      <button onClick={() => { setFechaMatriculaInput(fechaMatricula ? fechaMatricula.slice(0, 10) : ''); setEditandoFechaMatricula(true) }}
+                        className="text-slate-400 hover:text-blue-400 transition-colors" title="Editar fecha (gerencia)">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {editandoFechaMatricula ? (
+                    <div className="flex items-center gap-1.5">
+                      <input type="date" value={fechaMatriculaInput} onChange={e => setFechaMatriculaInput(e.target.value)}
+                        className="flex-1 text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1 text-slate-100 focus:outline-none" />
+                      <button onClick={guardarFechaMatricula} disabled={savingFechaMatricula} className="text-green-400 hover:text-green-300 p-0.5">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      </button>
+                      <button onClick={() => setEditandoFechaMatricula(false)} disabled={savingFechaMatricula} className="text-slate-400 hover:text-red-400 p-0.5">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-300">
+                      {fechaMatricula ? new Date(fechaMatricula).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Sin fecha'}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Asesor */}
               <div>
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Asesor</label>
@@ -1339,7 +1395,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                       {fechaEntregaActual
                         ? `📅 ${new Date(fechaEntregaActual + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}`
                         : `⚠ ${reglaFechaEntrega?.etiqueta ?? 'Sin fecha entrega'}`}
-                      {fechaEntregaActual && (
+                      {esGerencia && fechaEntregaActual && (
                         <button onClick={() => setEditandoFechaEntrega(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
                       )}
                     </span>
@@ -1752,6 +1808,38 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                       ) : (
                         <p className="text-sm text-gray-700">
                           {fechaVenta ? new Date(fechaVenta).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Sin fecha'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {(!!fechaMatricula || etapasPipeline.etapaMap[etapa]?.es_matricula) && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Fecha de matrícula</label>
+                        {esGerencia && !editandoFechaMatricula && (
+                          <button onClick={() => { setFechaMatriculaInput(fechaMatricula ? fechaMatricula.slice(0, 10) : ''); setEditandoFechaMatricula(true) }}
+                            className="text-gray-300 hover:text-blue-500 transition-colors" title="Editar fecha (gerencia)">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      {editandoFechaMatricula ? (
+                        <div className="flex items-center gap-2">
+                          <input type="date" value={fechaMatriculaInput} onChange={e => setFechaMatriculaInput(e.target.value)}
+                            className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <button onClick={guardarFechaMatricula} disabled={savingFechaMatricula} className="text-green-600 hover:text-green-700 p-1">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                          </button>
+                          <button onClick={() => setEditandoFechaMatricula(false)} disabled={savingFechaMatricula} className="text-gray-400 hover:text-red-500 p-1">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-700">
+                          {fechaMatricula ? new Date(fechaMatricula).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Sin fecha'}
                         </p>
                       )}
                     </div>
