@@ -43,7 +43,13 @@ export async function POST(req: NextRequest) {
   }
 
   const placaNorm = (orden.placa ?? 'SIN_PLACA').replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()
-  await renameDriveFolder(orden.drive_folder_id, placaNorm, tenant.google_refresh_token)
+  try {
+    await renameDriveFolder(orden.drive_folder_id, placaNorm, tenant.google_refresh_token)
+  } catch (err) {
+    return NextResponse.json({
+      error: err instanceof Error ? err.message : 'No se pudo renombrar la carpeta de Drive',
+    }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true, renombrado: true })
 }

@@ -685,12 +685,21 @@ export default function AdminOrdenDetallePage() {
     })
     if (campo === 'placa') {
       // Si ya hay una carpeta de Drive creada para esta orden, renombrarla
-      // en vez de dejar que la próxima subida cree una duplicada.
-      fetch('/api/admin/ordenes/renombrar-carpeta-drive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orden_id: ordenId }),
-      }).catch(() => {})
+      // en vez de dejar que la próxima subida cree una duplicada con el
+      // nombre nuevo mientras la vieja queda huérfana con el material.
+      try {
+        const renombreRes = await fetch('/api/admin/ordenes/renombrar-carpeta-drive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orden_id: ordenId }),
+        })
+        if (!renombreRes.ok) {
+          const err = await renombreRes.json().catch(() => ({}))
+          alert(`La placa se guardó, pero no se pudo renombrar la carpeta de Drive: ${err.error ?? 'error desconocido'}. Puede quedar una carpeta duplicada — avisa a soporte si ves archivos en la carpeta equivocada.`)
+        }
+      } catch {
+        alert('La placa se guardó, pero no se pudo contactar el servidor para renombrar la carpeta de Drive. Puede quedar una carpeta duplicada — avisa a soporte si ves archivos en la carpeta equivocada.')
+      }
     }
     if (campo === 'kilometraje' && orden.motos?.id && update.kilometraje_ingreso != null) {
       await supabase.rpc('actualizar_kilometraje_moto', {

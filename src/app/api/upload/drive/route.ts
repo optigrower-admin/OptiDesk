@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { uploadToDrive, getOrCreateDriveSubfolder } from '@/lib/drive'
+import { uploadToDrive, getOrCreateDriveSubfolder, trashDriveFile } from '@/lib/drive'
 import { registrarAuditoria } from '@/lib/audit'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
+
+const MESES_ES = [
+  'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+  'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE',
+]
+function fechaCorta(d: Date): string {
+  const dia = d.getDate()
+  const mes = MESES_ES[d.getMonth()]
+  const anio = String(d.getFullYear()).slice(-2)
+  return `${dia}_${mes}_${anio}`
+}
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -51,8 +62,15 @@ export async function POST(req: NextRequest) {
   const placaNorm = (orden?.placa ?? 'SIN_PLACA').replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()
   const numero = orden?.numero ?? 0
   const ext = (file.name.split('.').pop()?.toLowerCase()) ?? 'jpg'
-  const timestamp = Date.now()
-  const nombreArchivo = `${placaNorm}_#${numero}_${timestamp}.${ext}`
+
+  // Prefijo IMG/VID con numeración consecutiva por tipo dentro de la orden
+  // (IMG1, IMG2... / VID1, VID2...) + fecha legible en vez de timestamp crudo.
+  const prefijo = tipo === 'video' ? 'VID' : 'IMG'
+  const { count: yaSubidos } = await supabase.from('medios')
+    .select('id', { count: 'exact', head: true })
+    .eq('orden_id', ordenId).eq('tipo', tipo)
+  const consecutivo = (yaSubidos ?? 0) + 1
+  const nombreArchivo = `${placaNorm}_#${numero}_${prefijo}${consecutivo}_${fechaCorta(new Date())}.${ext}`
 
   const buffer = Buffer.from(await file.arrayBuffer())
   const mimeType = file.type || 'image/jpeg'
@@ -73,7 +91,26 @@ export async function POST(req: NextRequest) {
       placaNorm,
       tenant.google_refresh_token,
     )
-    await supabase.from('ordenes').update({ drive_folder_id: subFolderId }).eq('id', ordenId)
+    // Guardado condicional: si dos subidas concurrentes a esta misma orden
+    // (sin drive_folder_id todavía) crean cada una su propia carpeta, solo
+    // la primera en escribir "gana" — la otra detecta que perdió la carrera,
+    // usa el drive_folder_id ganador y manda su carpeta recién creada a la
+    // papelera para no dejar una carpeta duplicada huérfana.
+    const { data: filaActualizada } = await supabase.from('ordenes')
+      .update({ drive_folder_id: subFolderId })
+      .eq('id', ordenId)
+      .is('drive_folder_id', null)
+      .select('drive_folder_id')
+      .maybeSingle()
+
+    if (!filaActualizada) {
+      const { data: ordenActual } = await supabase.from('ordenes')
+        .select('drive_folder_id').eq('id', ordenId).single()
+      if (ordenActual?.drive_folder_id && ordenActual.drive_folder_id !== subFolderId) {
+        await trashDriveFile(subFolderId, tenant.google_refresh_token).catch(() => {})
+        subFolderId = ordenActual.drive_folder_id
+      }
+    }
   }
 
   // Subir archivo a Drive

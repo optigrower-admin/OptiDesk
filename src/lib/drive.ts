@@ -162,3 +162,15 @@ export async function deleteFromDrive(
   const drive = google.drive({ version: 'v3', auth })
   await drive.files.delete({ fileId })
 }
+
+/** Mueve una carpeta/archivo a la papelera (reversible) en vez de borrarlo
+ * permanentemente — usado para limpiar carpetas duplicadas creadas por una
+ * condición de carrera al subir varios archivos a la vez a una orden nueva. */
+export async function trashDriveFile(
+  fileId: string,
+  oauthRefreshToken?: string | null,
+): Promise<void> {
+  const auth = getAuthClient(oauthRefreshToken)
+  const drive = google.drive({ version: 'v3', auth })
+  await drive.files.update({ fileId, requestBody: { trashed: true } })
+}
