@@ -66,3 +66,32 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ carpetasConArchivos, ordenes, medios }, { status: 200 })
 }
+
+// Fix puntual, un solo uso: la orden #308 se corrigió a placa BXR16H por
+// error (en realidad es BXR18H) y eso disparó el rename de su carpeta,
+// chocando con la carpeta BXR16H real de otras órdenes. Revierte la placa
+// y renombra su carpeta de vuelta a BXR18H, sin tocar la otra carpeta.
+export async function POST(req: NextRequest) {
+  const authHeader = req.headers.get('authorization')
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+
+  const ORDEN_308_ID = 'b4bf6097-96fa-4dcf-a996-10537650af14'
+  const CARPETA_DUPLICADA_ID = '15SVYs7G4FJmo-QdxLvQzvPt2P2f0GcCj'
+
+  const admin = createAdminClient()
+  const { data: tenant } = await admin.from('tenants')
+    .select('google_refresh_token').eq('id', TENANT_ID).single()
+  if (!tenant?.google_refresh_token) return NextResponse.json({ error: 'Sin token de Drive' }, { status: 400 })
+
+  const auth = getAuthClient(tenant.google_refresh_token)
+  const drive = google.drive({ version: 'v3', auth: auth as any })
+
+  await drive.files.update({ fileId: CARPETA_DUPLICADA_ID, requestBody: { name: 'BXR18H' } })
+
+  const { error: updErr } = await admin.from('ordenes')
+    .update({ placa: 'BXR18H' }).eq('id', ORDEN_308_ID)
+
+  return NextResponse.json({ ok: true, carpetaRenombrada: 'BXR18H', placaActualizada: !updErr, updErr })
+}
