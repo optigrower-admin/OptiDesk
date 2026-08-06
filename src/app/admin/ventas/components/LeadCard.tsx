@@ -172,6 +172,22 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, 
                   : 'bg-white border-gray-200'
       } ${overlay ? 'shadow-lg rotate-1' : ''}`}
     >
+      {/* Punto de urgencia — visible de un vistazo sin leer el resto de la tarjeta */}
+      {(sinResponder.urgente || seguimiento === 'vencido' || seguimiento === 'hoy') && (
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span
+            className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              sinResponder.urgente || seguimiento === 'vencido' ? 'bg-red-500 animate-pulse' : 'bg-amber-400'
+            }`}
+          />
+          <span className={`text-[10px] font-bold uppercase tracking-wide ${
+            sinResponder.urgente || seguimiento === 'vencido' ? 'text-red-600' : 'text-amber-600'
+          }`}>
+            {sinResponder.urgente ? sinResponder.texto : seguimiento === 'vencido' ? 'Seguimiento vencido' : 'Acción hoy'}
+          </span>
+        </div>
+      )}
+
       {/* Badge automatizado */}
       {esAutomatizado && (
         <div className="flex items-center gap-1.5 mb-1.5">
@@ -358,13 +374,7 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, 
         </div>
       )}
 
-      {/* Indicadores de urgencia */}
-      {sinResponder.urgente && (
-        <p className="text-xs text-red-600 font-semibold">⚡ {sinResponder.texto}</p>
-      )}
-      {!sinResponder.urgente && seguimiento === 'vencido' && (
-        <p className="text-xs text-red-600 font-semibold">⏰ Seguimiento vencido</p>
-      )}
+      {/* Indicadores de urgencia (detalle adicional — el resumen ya está arriba) */}
       {!sinResponder.urgente && seguimiento === 'hoy' && lead.proxima_accion && lead.proxima_accion_fecha && (
         <p className="text-xs text-amber-700 font-medium truncate">
           📌 {lead.proxima_accion} · {formatHora(lead.proxima_accion_fecha)}

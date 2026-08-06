@@ -32,12 +32,20 @@ function calcPrioridad(lead: LeadData): Prioridad {
   return { lead, motivo: 'Sin actividad urgente', nivel: 'normal' }
 }
 
+// Etapas cerradas: ya no necesitan ninguna acción de seguimiento — no deben
+// llenar Vista Hoy con "ruido" (perdidos, entregados y proceso finalizado).
+const ETAPAS_CERRADAS: EtapaVenta[] = ['perdido', 'entregada', 'proceso_finalizado']
+
 export default function VistaHoy({ leads, tenantId, onLeadPatch, onLeadRemove }: Props) {
   const etapasPipeline = useEtapasPipeline(tenantId)
   const [fichaId, setFichaId] = useState<string | null>(null)
-  const [leadsLocal, setLeadsLocal] = useState<LeadData[]>(leads)
+  const [leadsLocal, setLeadsLocal] = useState<LeadData[]>(
+    leads.filter(l => !ETAPAS_CERRADAS.includes(l.etapa_venta))
+  )
 
-  useEffect(() => { setLeadsLocal(leads) }, [leads])
+  useEffect(() => {
+    setLeadsLocal(leads.filter(l => !ETAPAS_CERRADAS.includes(l.etapa_venta)))
+  }, [leads])
 
   const handleLeadUpdate = useCallback((id: string, updates: Record<string, unknown>) => {
     setLeadsLocal(prev => prev.map(l => {

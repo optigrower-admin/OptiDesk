@@ -1,6 +1,9 @@
 'use client'
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { ETAPAS, ETAPA_MAP, formatCOP, estadoSeguimiento, esVenta, type EtapaVenta } from '@/lib/ventas/pipeline'
+
+// Etapas cerradas: ya no necesitan seguimiento (mismo criterio que Vista Hoy).
+const ETAPAS_CERRADAS: EtapaVenta[] = ['perdido', 'entregada', 'proceso_finalizado']
 import type { LeadData } from './LeadCard'
 import FichaProspecto from './FichaProspecto'
 import { useEtapasPipeline } from '@/hooks/useEtapasPipeline'
@@ -25,7 +28,7 @@ export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove 
   const etapasPipeline = useEtapasPipeline(tenantId)
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [busqueda, setBusqueda]       = useState('')
-  const [etapaFiltro, setEtapaFiltro] = useState<EtapaVenta | 'todas'>('todas')
+  const [etapaFiltro, setEtapaFiltro] = useState<EtapaVenta | 'todas' | 'activas'>('activas')
   const [canalFiltro, setCanalFiltro] = useState<string>('todos')
   const [ordenPor, setOrdenPor]       = useState<Orden>('seguimiento')
   const [asc, setAsc]                 = useState(true)
@@ -68,7 +71,9 @@ export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove 
       )
     }
 
-    if (etapaFiltro !== 'todas') {
+    if (etapaFiltro === 'activas') {
+      r = r.filter(l => !ETAPAS_CERRADAS.includes(l.etapa_venta))
+    } else if (etapaFiltro !== 'todas') {
       r = r.filter(l => l.etapa_venta === etapaFiltro)
     }
 
@@ -128,9 +133,10 @@ export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove 
         />
         <select
           value={etapaFiltro}
-          onChange={e => setEtapaFiltro(e.target.value as EtapaVenta | 'todas')}
+          onChange={e => setEtapaFiltro(e.target.value as EtapaVenta | 'todas' | 'activas')}
           className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
+          <option value="activas">Solo activos</option>
           <option value="todas">Todas las etapas</option>
           {ETAPAS.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
         </select>
