@@ -58,6 +58,7 @@ export default function NuevaOrdenAdminPage() {
   const [mecanicoProgramadoId, setMecanicoProgramadoId] = useState('')
   const [mecanicoProgramadoNombre, setMecanicoProgramadoNombre] = useState('')
   const [showProgramarModal, setShowProgramarModal] = useState(false)
+  const [mostrarAgendadoOk, setMostrarAgendadoOk] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [draftSaved, setDraftSaved] = useState(false)
@@ -245,7 +246,13 @@ export default function NuevaOrdenAdminPage() {
         setSaving(false)
         return
       }
-      router.push(`/admin/ordenes/${(orden as { id: string }).id}`)
+      const ordenId = (orden as { id: string }).id
+      if (tipoOrden === 'servicio' && esProgramada) {
+        setMostrarAgendadoOk(true)
+        setTimeout(() => router.push(`/admin/ordenes/${ordenId}`), 1400)
+      } else {
+        router.push(`/admin/ordenes/${ordenId}`)
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al guardar')
     } finally {
@@ -641,6 +648,19 @@ export default function NuevaOrdenAdminPage() {
           setShowProgramarModal(false)
         }}
       />
+    )}
+
+    {mostrarAgendadoOk && (
+      <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-2xl px-8 py-8 flex flex-col items-center gap-3 text-center">
+          <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+            <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <p className="font-bold text-gray-900">Agendado con éxito</p>
+        </div>
+      </div>
     )}
     </>
   )

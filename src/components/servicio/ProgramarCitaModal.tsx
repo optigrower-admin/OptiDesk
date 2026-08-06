@@ -29,7 +29,7 @@ export function ProgramarCitaModal({ tenantId, onClose, onConfirm, mecanicoInici
       .then(({ data }) => {
         const rows = (data as Mecanico[]) ?? []
         setMecanicos(rows)
-        if (!mecanicoId && rows.length === 1) setMecanicoId(rows[0].id)
+        if (!mecanicoId && rows.length >= 1) setMecanicoId(rows[0].id)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
