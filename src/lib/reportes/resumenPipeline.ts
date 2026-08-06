@@ -1,11 +1,19 @@
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { ETAPAS, type EtapaVenta } from '@/lib/ventas/pipeline'
 import { barrasHtml, barrasPng, type BarraDatum } from './chart'
-import { PERIODO_LABEL, type PeriodoReporte } from './periodo'
 
 type Supa = ReturnType<typeof createAdminClient>
 
-const ETAPAS_EXCLUIDAS = new Set<EtapaVenta>(['perdido', 'proceso_finalizado'])
+// El reporte de pipeline es una foto del estado ACTUAL del embudo comercial,
+// desde el primer contacto hasta que la moto queda en espera de entrega —
+// no incluye posventa (revisiones) ni etapas cerradas (perdido, entregada,
+// proceso finalizado), y no se filtra por fecha de creación del cliente:
+// un cliente en Alistamiento normalmente se creó hace semanas, no "hoy".
+const ETAPAS_INCLUIDAS: EtapaVenta[] = [
+  'nuevo', 'con_interes', 'con_objecion',
+  'seguimiento', 'buscando_credito', 'en_proceso_credito',
+  'ganado', 'aprobado_matricula', 'en_matricula', 'alistamiento', 'espera_entrega',
+]
 
 export interface DatosPipelineSeccion {
   titulo: string
@@ -18,13 +26,12 @@ interface ClienteFila { id: string; nombre: string | null; etapa_venta: EtapaVen
 interface RecordatorioFila { cliente_id: string | null; nota: string | null; fecha_recordatorio: string }
 
 async function seccionParaUsuario(
-  supabase: Supa, tenantId: string, usuarioId: string | null, titulo: string, desdeISO: string, hastaISO: string
+  supabase: Supa, tenantId: string, usuarioId: string | null, titulo: string
 ): Promise<DatosPipelineSeccion> {
   let qClientes = supabase.from('clientes')
     .select('id, nombre, etapa_venta, updated_at')
     .eq('tenant_id', tenantId).eq('en_seguimiento_ventas', true)
-    .not('etapa_venta', 'in', '("perdido","proceso_finalizado")')
-    .gte('created_at', desdeISO).lte('created_at', hastaISO)
+    .in('etapa_venta', ETAPAS_INCLUIDAS)
   if (usuarioId) qClientes = qClientes.eq('assigned_to', usuarioId)
 
   let qRecordatorios = supabase.from('recordatorios')
@@ -46,13 +53,12 @@ async function seccionParaUsuario(
   const ahora = Date.now()
   const porEtapaMap = new Map<EtapaVenta, { nombre: string; diasSinMovimiento: number; recordatorios: string[] }[]>()
   for (const c of (clientes ?? []) as ClienteFila[]) {
-    if (ETAPAS_EXCLUIDAS.has(c.etapa_venta)) continue
     const dias = Math.max(0, Math.floor((ahora - new Date(c.updated_at).getTime()) / 86400000))
     if (!porEtapaMap.has(c.etapa_venta)) porEtapaMap.set(c.etapa_venta, [])
     porEtapaMap.get(c.etapa_venta)!.push({ nombre: c.nombre ?? 'Sin nombre', diasSinMovimiento: dias, recordatorios: recPorCliente.get(c.id) ?? [] })
   }
 
-  const etapasConDatos = ETAPAS.filter(e => !ETAPAS_EXCLUIDAS.has(e.id) && (porEtapaMap.get(e.id)?.length ?? 0) > 0)
+  const etapasConDatos = ETAPAS.filter(e => ETAPAS_INCLUIDAS.includes(e.id) && (porEtapaMap.get(e.id)?.length ?? 0) > 0)
   const total = etapasConDatos.reduce((s, e) => s + (porEtapaMap.get(e.id)?.length ?? 0), 0)
 
   return {
@@ -69,33 +75,34 @@ async function seccionParaUsuario(
 // una sola sección; 'por_usuario' = una sección por cada asesor con datos).
 export async function obtenerSeccionesPipeline(
   supabase: Supa, tenantId: string, usuario: { id: string; nombre: string; rol: string },
-  desdeISO: string, hastaISO: string, modoGerencia: 'general' | 'por_usuario',
+  modoGerencia: 'general' | 'por_usuario',
 ): Promise<DatosPipelineSeccion[]> {
   const rolNorm = (usuario.rol ?? '').toLowerCase().replace('ñ', 'n')
   const esGerencia = ['gerencia', 'dueno', 'control_total'].includes(rolNorm)
 
   if (!esGerencia) {
-    return [await seccionParaUsuario(supabase, tenantId, usuario.id, usuario.nombre, desdeISO, hastaISO)]
+    return [await seccionParaUsuario(supabase, tenantId, usuario.id, usuario.nombre)]
   }
   if (modoGerencia === 'general') {
-    return [await seccionParaUsuario(supabase, tenantId, null, 'Todo el equipo', desdeISO, hastaISO)]
+    return [await seccionParaUsuario(supabase, tenantId, null, 'Todo el equipo')]
   }
 
   const { data: asesores } = await supabase.from('usuarios')
     .select('id, nombre').eq('tenant_id', tenantId).eq('activo', true)
   const secciones = await Promise.all(
     ((asesores ?? []) as { id: string; nombre: string | null }[])
-      .map(a => seccionParaUsuario(supabase, tenantId, a.id, a.nombre ?? 'Sin nombre', desdeISO, hastaISO))
+      .map(a => seccionParaUsuario(supabase, tenantId, a.id, a.nombre ?? 'Sin nombre'))
   )
   return secciones.filter(s => s.total > 0)
 }
 
 // ── Render: correo (HTML, todas las secciones en un solo envío) ───────────────
-export function construirPipelineHtml(secciones: DatosPipelineSeccion[], periodo: PeriodoReporte, nombreDestinatario: string): string {
+// El pipeline es una foto del estado actual — no varía por período elegido.
+export function construirPipelineHtml(secciones: DatosPipelineSeccion[], nombreDestinatario: string): string {
   if (secciones.length === 0 || secciones.every(s => s.total === 0)) {
     return `<div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width:640px; margin:0 auto; color:#111827;">
-      <p style="font-size:15px;">👋 Hola <strong>${nombreDestinatario}</strong>, este es tu resumen de pipeline (${PERIODO_LABEL[periodo]}):</p>
-      <p style="color:#9ca3af; font-size:13px;">Sin clientes en seguimiento en este período. 🎉</p>
+      <p style="font-size:15px;">👋 Hola <strong>${nombreDestinatario}</strong>, este es tu resumen de pipeline:</p>
+      <p style="color:#9ca3af; font-size:13px;">Sin clientes activos en el pipeline. 🎉</p>
     </div>`
   }
 
@@ -123,15 +130,15 @@ export function construirPipelineHtml(secciones: DatosPipelineSeccion[], periodo
   }).join('')
 
   return `<div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width:640px; margin:0 auto; color:#111827;">
-    <p style="font-size:15px;">👋 Hola <strong>${nombreDestinatario}</strong>, este es tu resumen de pipeline (${PERIODO_LABEL[periodo]}):</p>
+    <p style="font-size:15px;">👋 Hola <strong>${nombreDestinatario}</strong>, este es tu resumen de pipeline:</p>
     ${bloques}
   </div>`
 }
 
 // ── Render: WhatsApp (una imagen + texto de detalle por sección) ──────────────
-export async function construirPipelineWhatsapp(seccion: DatosPipelineSeccion, periodo: PeriodoReporte): Promise<{ imagen: Buffer; caption: string; textoDetalle: string }> {
+export async function construirPipelineWhatsapp(seccion: DatosPipelineSeccion): Promise<{ imagen: Buffer; caption: string; textoDetalle: string }> {
   const imagen = await barrasPng(seccion.porEtapa)
-  const caption = `📊 *${seccion.titulo}* — Resumen de pipeline (${PERIODO_LABEL[periodo]})\n${seccion.total} cliente${seccion.total === 1 ? '' : 's'} activo${seccion.total === 1 ? '' : 's'}`
+  const caption = `📊 *${seccion.titulo}* — Resumen de pipeline\n${seccion.total} cliente${seccion.total === 1 ? '' : 's'} activo${seccion.total === 1 ? '' : 's'}`
 
   let textoDetalle = ''
   for (const e of seccion.detalle) {

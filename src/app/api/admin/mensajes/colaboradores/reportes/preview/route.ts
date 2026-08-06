@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   const perfilUsuario = { id: usuario.id, nombre: nombreUsuario, rol: usuario.rol }
 
   const html = tipoReporte === 'pipeline'
-    ? construirPipelineHtml(await obtenerSeccionesPipeline(admin, perfil.tenant_id, perfilUsuario, desdeISO, hastaISO, modoGerencia), periodo, nombreUsuario)
+    ? construirPipelineHtml(await obtenerSeccionesPipeline(admin, perfil.tenant_id, perfilUsuario, modoGerencia), nombreUsuario)
     : construirServicioTecnicoHtml(await obtenerSeccionesServicioTecnico(admin, perfil.tenant_id, perfilUsuario, desdeISO, hastaISO, modoGerencia), periodo, nombreUsuario)
 
   return new NextResponse(`<!doctype html><html><head><meta charset="utf-8"><title>Vista previa</title></head><body style="background:#f9fafb; padding:24px 12px;">${html}</body></html>`, {

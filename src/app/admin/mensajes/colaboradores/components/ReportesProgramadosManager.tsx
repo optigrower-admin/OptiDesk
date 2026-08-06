@@ -41,7 +41,8 @@ function resumenEnvio(r: ReporteProgramado): string {
   if (r.frecuencia === 'semanal') cuando += ` (${DIAS.find(d => d.v === r.dia_semana)?.label ?? '—'})`
   if (r.frecuencia === 'mensual') cuando += ` (día ${r.dia_mes})`
   const canales = [r.canal_correo && '✉️', r.canal_whatsapp && '📱'].filter(Boolean).join(' ')
-  return `${canales} · ${cuando} · ${r.hora_envio.slice(0, 5)} · ${PERIODOS.find(p => p.v === r.periodo)?.label}`
+  const periodo = r.tipo_reporte === 'pipeline' ? '' : ` · ${PERIODOS.find(p => p.v === r.periodo)?.label}`
+  return `${canales} · ${cuando} · ${r.hora_envio.slice(0, 5)}${periodo}`
 }
 
 const inputCls = 'border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400'
@@ -199,11 +200,16 @@ export default function ReportesProgramadosManager({ usuarioId, tipoReporte, tit
       {showForm && (
         <div className="mt-2 p-3 bg-blue-50/50 border border-blue-100 rounded-lg space-y-2">
           <div className="grid grid-cols-2 gap-2">
-            <input placeholder="Nombre (ej: Diario 8am)" value={fNombre} onChange={e => setFNombre(e.target.value)} className={inputCls} />
-            <select value={fPeriodo} onChange={e => setFPeriodo(e.target.value as ReporteProgramado['periodo'])} className={inputCls}>
-              {PERIODOS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
-            </select>
+            <input placeholder="Nombre (ej: Diario 8am)" value={fNombre} onChange={e => setFNombre(e.target.value)} className={`${tipoReporte === 'pipeline' ? 'col-span-2' : ''} ${inputCls}`} />
+            {tipoReporte !== 'pipeline' && (
+              <select value={fPeriodo} onChange={e => setFPeriodo(e.target.value as ReporteProgramado['periodo'])} className={inputCls}>
+                {PERIODOS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
+              </select>
+            )}
           </div>
+          {tipoReporte === 'pipeline' && (
+            <p className="text-[10px] text-gray-400">📊 Este reporte siempre muestra la foto actual del pipeline (Nuevo a Espera entrega), sin filtro de período.</p>
+          )}
           <input placeholder="Asunto del correo" value={fAsunto} onChange={e => setFAsunto(e.target.value)} className={`w-full ${inputCls}`} />
 
           <div className="flex items-center gap-3">

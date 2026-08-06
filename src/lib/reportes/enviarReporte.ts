@@ -32,14 +32,14 @@ export async function generarYEnviarReporte(supabase: Supa, config: ReporteProgr
   let enviarWhatsappSecciones: () => Promise<boolean>
 
   if (config.tipo_reporte === 'pipeline') {
-    const secciones = await obtenerSeccionesPipeline(supabase, config.tenant_id, perfilUsuario, desdeISO, hastaISO, config.modo_gerencia)
-    html = construirPipelineHtml(secciones, config.periodo, nombreUsuario)
+    const secciones = await obtenerSeccionesPipeline(supabase, config.tenant_id, perfilUsuario, config.modo_gerencia)
+    html = construirPipelineHtml(secciones, nombreUsuario)
     enviarWhatsappSecciones = async () => {
       const cfg = await getCfgMeta(supabase, config.tenant_id)
       if (!cfg || !usuario.whatsapp_number) return false
       let algunOk = false
       for (const seccion of secciones) {
-        const { imagen, caption, textoDetalle } = await construirPipelineWhatsapp(seccion, config.periodo)
+        const { imagen, caption, textoDetalle } = await construirPipelineWhatsapp(seccion)
         const ok = await enviarWAImagenDirecta(cfg, usuario.whatsapp_number, imagen, caption)
         if (ok) { algunOk = true; if (textoDetalle) await enviarWADirecto(cfg, usuario.whatsapp_number, textoDetalle) }
       }
