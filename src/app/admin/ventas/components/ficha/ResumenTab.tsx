@@ -46,21 +46,23 @@ function PasoItem({ p, onToggle, confirmId, onConfirm, onCancelConfirm, reprogId
   return (
     <div className="rounded-xl border overflow-hidden">
       <div className={`px-3 py-2 ${isConfirm ? 'bg-red-50 border-red-200' : p.completado ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
-        <span className={`text-sm ${p.completado ? 'line-through text-gray-400' : 'text-gray-800'}`}>{p.descripcion}</span>
-        {!isConfirm && (
-          <div className="flex gap-1.5 mt-2">
-            <button onClick={() => onToggle(p)}
-              className={`flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg transition-colors ${
-                p.completado ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}>
-              {p.completado ? '✓ Hecho' : '⏳ Pendiente'}
-            </button>
-            <button onClick={() => onAbrirReprog(p.id, '')}
-              className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
-              📅 Reprogramar
-            </button>
-          </div>
-        )}
+        <div className="flex items-start justify-between gap-2">
+          <span className={`text-sm ${p.completado ? 'line-through text-gray-400' : 'text-gray-800'}`}>{p.descripcion}</span>
+          {!isConfirm && (
+            <div className="flex gap-1 flex-shrink-0">
+              <button onClick={() => onToggle(p)} title={p.completado ? 'Desmarcar' : 'Marcar completado'}
+                className={`w-7 h-7 flex items-center justify-center rounded-lg text-sm transition-colors ${
+                  p.completado ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}>
+                ✓
+              </button>
+              <button onClick={() => onAbrirReprog(p.id, '')} title="Reprogramar"
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
+                📅
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       {isReprog && (
         <div className="bg-amber-50 border-t border-amber-200 px-3 py-2 space-y-1.5">
@@ -112,25 +114,27 @@ function RecordatorioItem({ r, onToggle, onDuplicar, confirmId, onConfirm, onCan
         <p className={`text-[10px] font-bold mb-0.5 ${r.completado ? 'text-green-600' : vencido ? 'text-red-600' : 'text-blue-600'}`}>
           {r.completado ? '✓ ' : vencido ? '⏰ ' : '📌 '}{formatDateHour(r.fecha_recordatorio)}
         </p>
-        {r.nota && <p className={`text-sm ${r.completado ? 'line-through text-gray-400' : vencido ? 'text-red-800' : 'text-gray-800'}`}>{r.nota}</p>}
-        {!isConfirm && (
-          <div className="flex gap-1.5 mt-2">
-            <button onClick={() => onToggle(r)}
-              className={`flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg transition-colors ${
-                r.completado ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}>
-              {r.completado ? '✓ Hecho' : '⏳ Pendiente'}
-            </button>
-            <button onClick={() => onDuplicar(r)}
-              className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
-              🔁 Duplicar
-            </button>
-            <button onClick={() => onAbrirReprog(r.id, r.fecha_recordatorio.slice(0, 16))}
-              className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
-              📅 Reprogramar
-            </button>
-          </div>
-        )}
+        <div className="flex items-start justify-between gap-2">
+          {r.nota && <p className={`text-sm ${r.completado ? 'line-through text-gray-400' : vencido ? 'text-red-800' : 'text-gray-800'}`}>{r.nota}</p>}
+          {!isConfirm && (
+            <div className="flex gap-1 flex-shrink-0 ml-auto">
+              <button onClick={() => onToggle(r)} title={r.completado ? 'Desmarcar' : 'Marcar completado'}
+                className={`w-7 h-7 flex items-center justify-center rounded-lg text-sm transition-colors ${
+                  r.completado ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}>
+                ✓
+              </button>
+              <button onClick={() => onDuplicar(r)} title="Duplicar"
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
+                🔁
+              </button>
+              <button onClick={() => onAbrirReprog(r.id, r.fecha_recordatorio.slice(0, 16))} title="Reprogramar"
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
+                📅
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       {isReprog && (
         <div className="bg-amber-50 border-t border-amber-200 px-3 py-2 space-y-1.5">

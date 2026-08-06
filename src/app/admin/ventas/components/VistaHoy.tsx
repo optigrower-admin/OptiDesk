@@ -32,20 +32,26 @@ function calcPrioridad(lead: LeadData): Prioridad {
   return { lead, motivo: 'Sin actividad urgente', nivel: 'normal' }
 }
 
-// Etapas cerradas: ya no necesitan ninguna acción de seguimiento — no deben
-// llenar Vista Hoy con "ruido" (perdidos, entregados y proceso finalizado).
-const ETAPAS_CERRADAS: EtapaVenta[] = ['perdido', 'entregada', 'proceso_finalizado']
+// Vista Prospectos: solo etapas de pipeline previas a la venta — una vez
+// vendido (ganado en adelante) o cerrado (perdido) ya no es un "prospecto"
+// que necesite seguimiento comercial activo.
+const ETAPAS_PROSPECTO: EtapaVenta[] = [
+  'nuevo', 'con_interes', 'con_objecion', 'seguimiento', 'buscando_credito', 'en_proceso_credito',
+]
 
 export default function VistaHoy({ leads, tenantId, onLeadPatch, onLeadRemove }: Props) {
   const etapasPipeline = useEtapasPipeline(tenantId)
   const [fichaId, setFichaId] = useState<string | null>(null)
+  const [etapaFiltro, setEtapaFiltro] = useState<EtapaVenta | 'todas'>('todas')
   const [leadsLocal, setLeadsLocal] = useState<LeadData[]>(
-    leads.filter(l => !ETAPAS_CERRADAS.includes(l.etapa_venta))
+    leads.filter(l => ETAPAS_PROSPECTO.includes(l.etapa_venta))
   )
 
   useEffect(() => {
-    setLeadsLocal(leads.filter(l => !ETAPAS_CERRADAS.includes(l.etapa_venta)))
+    setLeadsLocal(leads.filter(l => ETAPAS_PROSPECTO.includes(l.etapa_venta)))
   }, [leads])
+
+  const leadsMostrados = etapaFiltro === 'todas' ? leadsLocal : leadsLocal.filter(l => l.etapa_venta === etapaFiltro)
 
   const handleLeadUpdate = useCallback((id: string, updates: Record<string, unknown>) => {
     setLeadsLocal(prev => prev.map(l => {
@@ -65,7 +71,7 @@ export default function VistaHoy({ leads, tenantId, onLeadPatch, onLeadRemove }:
 
   const fichaLead = fichaId ? leadsLocal.find(l => l.id === fichaId) ?? null : null
 
-  const prioridades: Prioridad[] = leadsLocal
+  const prioridades: Prioridad[] = leadsMostrados
     .map(calcPrioridad)
     .sort((a, b) => {
       const orden = { critico: 0, alto: 1, normal: 2 }
@@ -76,18 +82,35 @@ export default function VistaHoy({ leads, tenantId, onLeadPatch, onLeadRemove }:
   const altos    = prioridades.filter(p => p.nivel === 'alto')
   const normales = prioridades.filter(p => p.nivel === 'normal')
 
-  if (leadsLocal.length === 0) {
+  const filtroSelector = (
+    <div className="flex items-center gap-2 mb-4">
+      <label className="text-xs font-medium text-gray-500">Etapa:</label>
+      <select value={etapaFiltro} onChange={e => setEtapaFiltro(e.target.value as EtapaVenta | 'todas')}
+        className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="todas">Todas ({leadsLocal.length})</option>
+        {ETAPAS_PROSPECTO.map(id => (
+          <option key={id} value={id}>{ETAPA_MAP[id].label} ({leadsLocal.filter(l => l.etapa_venta === id).length})</option>
+        ))}
+      </select>
+    </div>
+  )
+
+  if (leadsMostrados.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <p className="text-4xl mb-3">🎉</p>
-        <p className="font-semibold text-gray-700">Todo al día</p>
-        <p className="text-sm text-gray-400 mt-1">No hay prospectos con acciones pendientes hoy</p>
-      </div>
+      <>
+        {filtroSelector}
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <p className="text-4xl mb-3">🎉</p>
+          <p className="font-semibold text-gray-700">Todo al día</p>
+          <p className="text-sm text-gray-400 mt-1">No hay prospectos con acciones pendientes</p>
+        </div>
+      </>
     )
   }
 
   return (
     <>
+      {filtroSelector}
       <div className="space-y-6">
         {criticos.length > 0 && (
           <Section

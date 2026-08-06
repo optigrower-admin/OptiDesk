@@ -258,32 +258,32 @@ export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail,
                     )}
                   </div>
                   {!isConfirm && (
-                    <button onClick={() => eliminar(item)} className="flex-shrink-0 text-red-400 hover:text-red-600 text-xs transition-colors">✕</button>
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => { if (item.completado) setConfirmId(item.id); else completar(item) }}
+                        title={item.completado ? 'Desmarcar' : 'Marcar completado'}
+                        className={`w-7 h-7 flex items-center justify-center rounded-lg text-sm transition-colors ${
+                          item.completado ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}>
+                        ✓
+                      </button>
+                      {isRec && (
+                        <button onClick={() => duplicar(item as RecItem)} title="Duplicar"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
+                          🔁
+                        </button>
+                      )}
+                      <button onClick={() => abrirReprogramar(item)} title="Reprogramar"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
+                        📅
+                      </button>
+                      <button onClick={() => eliminar(item)} title="Eliminar"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-sm text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                        ✕
+                      </button>
+                    </div>
                   )}
                 </div>
-
-                {/* Hecho/Pendiente · Duplicar · Reprogramar — siempre visibles */}
-                {!isConfirm && (
-                  <div className="flex gap-1.5 mt-2">
-                    <button
-                      onClick={() => { if (item.completado) setConfirmId(item.id); else completar(item) }}
-                      className={`flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg transition-colors ${
-                        item.completado ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}>
-                      {item.completado ? '✓ Hecho' : '⏳ Pendiente'}
-                    </button>
-                    {isRec && (
-                      <button onClick={() => duplicar(item as RecItem)}
-                        className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
-                        🔁 Duplicar
-                      </button>
-                    )}
-                    <button onClick={() => abrirReprogramar(item)}
-                      className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
-                      📅 Reprogramar
-                    </button>
-                  </div>
-                )}
               </div>
 
               {/* Panel reprogramar */}

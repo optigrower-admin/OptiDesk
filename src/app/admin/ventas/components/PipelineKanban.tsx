@@ -78,10 +78,6 @@ function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuar
               etapaInfo={etapaConfig}
               tenantId={tenantId}
               usuarioId={usuarioId}
-              onQuickDone={() => onQuickDone(lead.id)}
-              onQuickNote={(t) => onQuickNote(lead.id, t)}
-              onQuickReminder={(n, f) => onQuickReminder(lead.id, n, f)}
-              onQuickNext={() => onQuickNext(lead.id)}
             />
           ))}
         </SortableContext>

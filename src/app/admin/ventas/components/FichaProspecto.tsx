@@ -19,6 +19,18 @@ import HistorialTab from './ficha/HistorialTab'
 import VisibilidadTab from './ficha/VisibilidadTab'
 import CotizacionTab from './ficha/CotizacionTab'
 
+// "Probabilidad de venta" se muestra como Frío/Tibio/Caliente en vez de %,
+// pero sigue guardándose en la misma columna numérica probabilidad_venta
+// (sin migración: frío<40, tibio 40-69, caliente>=70).
+type Temperatura = '' | 'frio' | 'tibio' | 'caliente'
+const TEMPERATURA_VALOR: Record<Exclude<Temperatura, ''>, number> = { frio: 20, tibio: 50, caliente: 80 }
+function temperaturaDeProbabilidad(p: number | null): Temperatura {
+  if (p === null) return ''
+  if (p >= 70) return 'caliente'
+  if (p >= 40) return 'tibio'
+  return 'frio'
+}
+
 const CANAL_ICON: Record<string, string> = {
   whatsapp: '📱', messenger: '💬', instagram: '📸', manual: '✍️',
 }
@@ -1078,20 +1090,21 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 )}
               </div>
 
-              {/* Probabilidad de venta */}
+              {/* Temperatura del prospecto */}
               <div>
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Probabilidad de venta</label>
-                <select value={probabilidad ?? ''} onChange={e => guardarProbabilidad(e.target.value)}
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Temperatura</label>
+                <select value={temperaturaDeProbabilidad(probabilidad)}
+                  onChange={e => guardarProbabilidad(e.target.value ? String(TEMPERATURA_VALOR[e.target.value as Exclude<Temperatura, ''>]) : '')}
                   className={`w-full text-xs rounded-lg px-2 py-1.5 font-bold border border-[#2a3550] focus:outline-none ${
                     probabilidad === null ? 'bg-[#232f47] text-slate-300'
-                    : probabilidad >= 70 ? 'bg-green-900/40 text-green-300'
+                    : probabilidad >= 70 ? 'bg-red-900/40 text-red-300'
                     : probabilidad >= 40 ? 'bg-amber-900/40 text-amber-300'
-                    : 'bg-red-900/40 text-red-300'
+                    : 'bg-cyan-900/40 text-cyan-300'
                   }`}>
                   <option value="">Sin definir</option>
-                  {Array.from({ length: 11 }, (_, i) => i * 10).map(v => (
-                    <option key={v} value={v}>{v}%</option>
-                  ))}
+                  <option value="frio">🔵 Frío</option>
+                  <option value="tibio">🟡 Tibio</option>
+                  <option value="caliente">🔴 Caliente</option>
                 </select>
               </div>
 
@@ -1943,18 +1956,19 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Probabilidad de venta</label>
-                    <select value={probabilidad ?? ''} onChange={e => guardarProbabilidad(e.target.value)}
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Temperatura</label>
+                    <select value={temperaturaDeProbabilidad(probabilidad)}
+                      onChange={e => guardarProbabilidad(e.target.value ? String(TEMPERATURA_VALOR[e.target.value as Exclude<Temperatura, ''>]) : '')}
                       className={`w-full text-sm rounded-xl px-3 py-2.5 font-bold border focus:outline-none ${
                         probabilidad === null ? 'bg-gray-100 border-gray-200 text-gray-500'
-                        : probabilidad >= 70 ? 'bg-green-50 border-green-200 text-green-700'
+                        : probabilidad >= 70 ? 'bg-red-50 border-red-200 text-red-700'
                         : probabilidad >= 40 ? 'bg-amber-50 border-amber-200 text-amber-700'
-                        : 'bg-red-50 border-red-200 text-red-700'
+                        : 'bg-cyan-50 border-cyan-200 text-cyan-700'
                       }`}>
                       <option value="">Sin definir</option>
-                      {Array.from({ length: 11 }, (_, i) => i * 10).map(v => (
-                        <option key={v} value={v}>{v}%</option>
-                      ))}
+                      <option value="frio">🔵 Frío</option>
+                      <option value="tibio">🟡 Tibio</option>
+                      <option value="caliente">🔴 Caliente</option>
                     </select>
                   </div>
 

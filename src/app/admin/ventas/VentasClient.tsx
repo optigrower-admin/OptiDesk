@@ -239,7 +239,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
             {([
               { id: 'kanban',  label: 'Kanban' },
               ...(esFreelancer ? [] : [{ id: 'bandeja' as Tab, label: '📥 Bandeja' }]),
-              { id: 'hoy',     label: 'Hoy' },
+              { id: 'hoy',     label: 'Prospectos' },
               { id: 'lista',   label: 'Lista' },
             ] as { id: Tab; label: string }[]).map(t => (
               <button
