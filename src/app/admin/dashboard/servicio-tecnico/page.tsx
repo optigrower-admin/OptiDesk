@@ -46,12 +46,28 @@ interface OrdenRow {
 interface ItemOrdenRow {
   orden_id: string
   origen: string
+  descripcion: string | null
   cantidad: number
   precio_venta: number
   costo: number | null
   repuesto_uma_id: string | null
   repuesto_externo_id: string | null
   estado_repuesto: string | null
+}
+
+type TipoItemKey = 'uma' | 'externo' | 'insumo' | 'porta_placas' | 'mano_obra'
+const TIPO_ITEM_OPCIONES: { key: TipoItemKey; label: string }[] = [
+  { key: 'uma', label: 'Repuestos UMA' },
+  { key: 'externo', label: 'Externos / Propios' },
+  { key: 'insumo', label: 'Insumos' },
+  { key: 'porta_placas', label: 'Porta Placas' },
+  { key: 'mano_obra', label: 'Mano de Obra' },
+]
+function categorizarItem(it: ItemOrdenRow): TipoItemKey {
+  if (it.origen === 'insumo') return it.descripcion === 'Porta Placas' ? 'porta_placas' : 'insumo'
+  if (it.origen === 'mano_obra') return 'mano_obra'
+  if (it.origen === 'externo') return 'externo'
+  return 'uma'
 }
 
 interface PagoProvRow { orden_id: string; monto: number }
@@ -169,6 +185,7 @@ export default function DashboardServicioTecnicoPage() {
   // Service-type filters
   const [tipoServicio, setTipoServicio] = useState<Set<TipoServicioKey>>(new Set(['uma', 'otro']))
   const [subtipoUMA, setSubtipoUMA] = useState<Set<string>>(new Set())
+  const [tipoItem, setTipoItem] = useState<Set<TipoItemKey>>(new Set(TIPO_ITEM_OPCIONES.map((o) => o.key)))
   const [subcategorias, setSubcategorias] = useState<SubcatRow[]>([])
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
@@ -230,7 +247,7 @@ export default function DashboardServicioTecnicoPage() {
       const ids = oA.map((o) => o.id)
 
       const [{ data: dItems }, { data: dPP }] = await Promise.all([
-        ids.length ? supabase.from('items_orden').select('orden_id, origen, cantidad, precio_venta, costo, repuesto_uma_id, repuesto_externo_id, estado_repuesto').in('orden_id', ids)
+        ids.length ? supabase.from('items_orden').select('orden_id, origen, descripcion, cantidad, precio_venta, costo, repuesto_uma_id, repuesto_externo_id, estado_repuesto').in('orden_id', ids)
           : Promise.resolve({ data: [] as ItemOrdenRow[] }),
         ids.length ? supabase.from('pagos_proveedor').select('orden_id, monto').in('orden_id', ids)
           : Promise.resolve({ data: [] as PagoProvRow[] }),
@@ -301,6 +318,11 @@ export default function DashboardServicioTecnicoPage() {
     [actual, anterior, chartOrdenes, chartOrdenesAnt, applyFilters]
   )
 
+  const itemsF = useMemo(
+    () => tipoItem.size === TIPO_ITEM_OPCIONES.length ? items : items.filter((it) => tipoItem.has(categorizarItem(it))),
+    [items, tipoItem]
+  )
+
   // Computed metrics
   const m = useMemo(() => {
     const sum = (rows: OrdenRow[]) => rows.reduce((s, o) => s + (o.valor_total ?? 0), 0)
@@ -318,7 +340,7 @@ export default function DashboardServicioTecnicoPage() {
 
     // CxP
     const costoExt = new Map<string, number>()
-    for (const it of items) {
+    for (const it of itemsF) {
       if (it.origen !== 'externo') continue
       costoExt.set(it.orden_id, (costoExt.get(it.orden_id) ?? 0) + (it.costo ?? 0) * it.cantidad)
     }
@@ -418,7 +440,7 @@ export default function DashboardServicioTecnicoPage() {
     const totalAbonado = oF.filter((o) => o.estado_pago === 'abono').reduce((s, o) => s + (o.valor_abono ?? 0), 0)
 
     // Alertas
-    const ordenIdsConRepuestoPedido = new Set(items.filter((i) => i.estado_repuesto === 'pedido').map((i) => i.orden_id))
+    const ordenIdsConRepuestoPedido = new Set(itemsF.filter((i) => i.estado_repuesto === 'pedido').map((i) => i.orden_id))
     const alertas = [
       { key: 'sin_mecanico', label: 'Sin asignación de mecánico', count: oF.filter((o) => !o.mecanico_id && o.estado !== 'listo').length },
       { key: 'sin_diagnostico', label: 'Sin diagnóstico', count: oF.filter((o) => !o.diagnostico && o.estado === 'falta_revision').length },
@@ -438,7 +460,7 @@ export default function DashboardServicioTecnicoPage() {
       cartera: { carteraPendienteActual, totalPagado, totalAbonado, totalVencido, pendientesCount: pendientesActual.length },
       alertas,
     }
-  }, [oF, oAntF, cF, cAntF, items, pagosProveedor, chartUnidad, chartRango, mapCategorias, mapSubcategorias])
+  }, [oF, oAntF, cF, cAntF, itemsF, pagosProveedor, chartUnidad, chartRango, mapCategorias, mapSubcategorias])
 
   if (authLoading || !profile) return <div className="p-8 text-center text-gray-400">Cargando...</div>
   if (!['gerencia', 'dueno'].includes(profile.rol)) return null
@@ -450,6 +472,8 @@ export default function DashboardServicioTecnicoPage() {
     setTipoServicio((prev) => { const n = new Set(prev); checked ? n.add(key) : n.delete(key); return n })
   const toggleSubtipo = (id: string, checked: boolean) =>
     setSubtipoUMA((prev) => { const n = new Set(prev); checked ? n.add(id) : n.delete(id); return n })
+  const toggleTipoItem = (key: TipoItemKey, checked: boolean) =>
+    setTipoItem((prev) => { const n = new Set(prev); checked ? n.add(key) : n.delete(key); return n })
 
   const filterPanel = (
     <div className="py-2 px-2 space-y-1">
@@ -481,6 +505,21 @@ export default function DashboardServicioTecnicoPage() {
           )}
         </FilterDropdown>
       )}
+
+      <FilterDropdown title="Tipo de repuesto / ítem" badge={TIPO_ITEM_OPCIONES.length - tipoItem.size}>
+        <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1.5 font-semibold">Tipo de repuesto / ítem</p>
+        {TIPO_ITEM_OPCIONES.map((o) => (
+          <CheckItem key={o.key} checked={tipoItem.has(o.key)} label={o.label} onChange={(c) => toggleTipoItem(o.key, c)} />
+        ))}
+        <div className="flex items-center gap-3 mt-2">
+          <button onClick={() => setTipoItem(new Set(TIPO_ITEM_OPCIONES.map((o) => o.key)))} className="text-xs text-blue-600 hover:underline">
+            Todos
+          </button>
+          <button onClick={() => setTipoItem(new Set())} className="text-xs text-blue-600 hover:underline">
+            Ninguno
+          </button>
+        </div>
+      </FilterDropdown>
     </div>
   )
 
