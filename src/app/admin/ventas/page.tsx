@@ -97,6 +97,7 @@ export default function VentasPage() {
       type EtiquetaRow = { id: string; nombre: string; color: string }
       const etiquetasMap: Record<string, EtiquetaRow[]> = {}
       const creditoMap: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
+      const creditoPorEntidadMap: Record<string, Record<string, string>> = {}
 
       if (ids.length > 0) {
         const [etiquetasRows, creditoResult, alistamientoIds] = await Promise.all([
@@ -111,29 +112,36 @@ export default function VentasPage() {
           })(),
 
           // 2. Crédito (dos pasos internos, pero corre en paralelo con las otras)
-          (async (): Promise<Record<string, { aprobada: string | null; rechazadas: string[] }>> => {
+          (async (): Promise<{
+            aprobadas: Record<string, { aprobada: string | null; rechazadas: string[] }>
+            porEntidad: Record<string, Record<string, string>>
+          }> => {
             try {
               const { data: estudiosRows } = await supabase
                 .from('clientes_credito_estudio')
                 .select('cliente_id, entidad_id, estado')
                 .in('cliente_id', ids)
-                .in('estado', ['aprobado', 'rechazado'])
-              if (!(estudiosRows ?? []).length) return {}
+              if (!(estudiosRows ?? []).length) return { aprobadas: {}, porEntidad: {} }
               const entidadIds = [...new Set((estudiosRows ?? []).map(r => r.entidad_id as string))]
               const { data: entRows } = await supabase
                 .from('entidades_financieras').select('id, nombre').in('id', entidadIds)
               const entNombreMap: Record<string, string> = {}
               for (const e of entRows ?? []) entNombreMap[e.id as string] = e.nombre as string
-              const result: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
+              const aprobadas: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
+              const porEntidad: Record<string, Record<string, string>> = {}
               for (const row of estudiosRows ?? []) {
+                const clienteId = row.cliente_id as string
+                if (!porEntidad[clienteId]) porEntidad[clienteId] = {}
+                porEntidad[clienteId][row.entidad_id as string] = row.estado as string
+
                 const nombre = entNombreMap[row.entidad_id as string]
                 if (!nombre) continue
-                if (!result[row.cliente_id as string]) result[row.cliente_id as string] = { aprobada: null, rechazadas: [] }
-                if (row.estado === 'aprobado') result[row.cliente_id as string].aprobada = nombre
-                if (row.estado === 'rechazado') result[row.cliente_id as string].rechazadas.push(nombre)
+                if (!aprobadas[clienteId]) aprobadas[clienteId] = { aprobada: null, rechazadas: [] }
+                if (row.estado === 'aprobado') aprobadas[clienteId].aprobada = nombre
+                if (row.estado === 'rechazado') aprobadas[clienteId].rechazadas.push(nombre)
               }
-              return result
-            } catch { return {} }
+              return { aprobadas, porEntidad }
+            } catch { return { aprobadas: {}, porEntidad: {} } }
           })(),
 
           // 3. Alistamiento UMA (dos pasos internos, corre en paralelo con las otras)
@@ -173,7 +181,8 @@ export default function VentasPage() {
           if (!etiquetasMap[row.cliente_id]) etiquetasMap[row.cliente_id] = []
           etiquetasMap[row.cliente_id].push(row.etiquetas_venta)
         }
-        Object.assign(creditoMap, creditoResult)
+        Object.assign(creditoMap, creditoResult.aprobadas)
+        Object.assign(creditoPorEntidadMap, creditoResult.porEntidad)
         for (const id of alistamientoIds) clientesConAlistamiento.add(id)
       }
 
@@ -220,6 +229,7 @@ export default function VentasPage() {
           fecha_entrega:  (cr.fecha_entrega ?? null) as string | null,
           creditoAprobadoEntidad: creditoMap[c.id as string]?.aprobada ?? null,
           creditoRechazadoEntidades: creditoMap[c.id as string]?.rechazadas ?? [],
+          creditoPorEntidad: creditoPorEntidadMap[c.id as string] ?? {},
           automatizado: cr.automatizado === true,
           updated_at: (cr.updated_at ?? null) as string | null,
           created_at: (cr.created_at ?? null) as string | null,

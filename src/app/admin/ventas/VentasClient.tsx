@@ -21,6 +21,13 @@ interface Props {
 }
 
 type UsuarioFiltro = { id: string; nombre: string }
+type EntidadFiltro = { id: string; nombre: string }
+const ESTADO_CREDITO_OPCIONES: { key: string; label: string }[] = [
+  { key: 'sin_iniciar', label: 'Sin iniciar' },
+  { key: 'en_estudio', label: 'En estudio' },
+  { key: 'aprobado', label: 'Aprobado' },
+  { key: 'rechazado', label: 'Rechazado' },
+]
 
 export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const { profile } = useAuth()
@@ -32,6 +39,9 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [usuarios, setUsuarios] = useState<UsuarioFiltro[]>([])
   const [usuariosFiltro, setUsuariosFiltro] = useState<Set<string>>(new Set())
+  const [entidadesCredito, setEntidadesCredito] = useState<EntidadFiltro[]>([])
+  const [creditoFiltro, setCreditoFiltro] = useState<Record<string, Set<string>>>({})
+  const [creditoPanelOpen, setCreditoPanelOpen] = useState(false)
   const [abrirClienteId, setAbrirClienteId] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
   const [fechaDesde, setFechaDesde] = useState('')
@@ -143,6 +153,31 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
 
+  useEffect(() => {
+    supabase
+      .from('entidades_financieras')
+      .select('id, nombre')
+      .eq('tenant_id', tenantId)
+      .eq('activa', true)
+      .order('orden')
+      .then(({ data }) => {
+        setEntidadesCredito((data ?? []).map(e => ({ id: e.id as string, nombre: e.nombre as string })))
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId])
+
+  const toggleCreditoEstado = useCallback((entidadId: string, estado: string) => {
+    setCreditoFiltro(prev => {
+      const next = { ...prev }
+      const set = new Set(next[entidadId] ?? [])
+      if (set.has(estado)) set.delete(estado)
+      else set.add(estado)
+      if (set.size === 0) delete next[entidadId]
+      else next[entidadId] = set
+      return next
+    })
+  }, [])
+
   // Búsqueda extendida: comentarios + recordatorios (debounced, server-side)
   useEffect(() => {
     const q = busqueda.trim()
@@ -199,8 +234,15 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       const hasta = new Date(fechaHasta + 'T23:59:59.999').getTime()
       lista = lista.filter(l => l.created_at && new Date(l.created_at).getTime() <= hasta)
     }
+    const entidadesConFiltro = Object.keys(creditoFiltro)
+    if (entidadesConFiltro.length > 0) {
+      lista = lista.filter(l => entidadesConFiltro.every(entidadId => {
+        const estadoCliente = l.creditoPorEntidad?.[entidadId] ?? 'sin_iniciar'
+        return creditoFiltro[entidadId].has(estadoCliente)
+      }))
+    }
     return lista
-  }, [leadsState, usuariosFiltro, busqueda, idsExtraSearch, fechaDesde, fechaHasta])
+  }, [leadsState, usuariosFiltro, busqueda, idsExtraSearch, fechaDesde, fechaHasta, creditoFiltro])
 
   const sinSeguim = activos.filter(l => !l.proxima_accion_fecha).length
 
@@ -293,6 +335,63 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
               </button>
             )
           })}
+        </div>
+      )}
+
+      {/* Filtro por estudio de crédito por entidad */}
+      {entidadesCredito.length > 0 && (
+        <div className="mb-4">
+          <button
+            onClick={() => setCreditoPanelOpen(p => !p)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+              Object.keys(creditoFiltro).length > 0
+                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+            }`}
+          >
+            🏦 Estudio de crédito
+            {Object.keys(creditoFiltro).length > 0 && (
+              <span className="bg-blue-600 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                {Object.keys(creditoFiltro).length}
+              </span>
+            )}
+            <svg className={`w-3 h-3 transition-transform ${creditoPanelOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {creditoPanelOpen && (
+            <div className="mt-2 p-3 bg-white border border-gray-200 rounded-xl space-y-3 max-w-xl">
+              {entidadesCredito.map(ent => (
+                <div key={ent.id}>
+                  <p className="text-xs font-semibold text-gray-700 mb-1">{ent.nombre}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ESTADO_CREDITO_OPCIONES.map(op => {
+                      const activo = creditoFiltro[ent.id]?.has(op.key) ?? false
+                      return (
+                        <button
+                          key={op.key}
+                          onClick={() => toggleCreditoEstado(ent.id, op.key)}
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors border ${
+                            activo
+                              ? 'bg-blue-700 text-white border-blue-700'
+                              : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+                          }`}
+                        >
+                          {op.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+              {Object.keys(creditoFiltro).length > 0 && (
+                <button onClick={() => setCreditoFiltro({})} className="text-xs text-blue-600 hover:underline">
+                  Limpiar filtro de crédito
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -37,6 +37,7 @@ export type LeadData = {
   fecha_entrega?: string | null
   creditoAprobadoEntidad?: string | null
   creditoRechazadoEntidades?: string[]
+  creditoPorEntidad?: Record<string, string>  // entidad_id -> estado ('sin_iniciar'|'en_estudio'|'aprobado'|'rechazado')
   automatizado?: boolean
   flujo_nombre?: string | null
   updated_at?: string | null
