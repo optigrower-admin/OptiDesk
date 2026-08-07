@@ -212,14 +212,21 @@ export default function DashboardServicioTecnicoPage() {
   const rangoAnterior = useMemo(() => calcularRangoAnterior(rango), [rango])
 
   const chartRango = useMemo(() => {
-    const hasta = new Date(rango.hastaISO)
+    // El período elegido arriba (ej. "Este mes") puede terminar en una fecha
+    // futura (el día 31 aunque hoy sea 6) — para "Tendencias" siempre hay que
+    // anclar al día de hoy como máximo, si no, con ventanas cortas (días) la
+    // ventana entera cae en fechas futuras sin órdenes todavía.
+    const hastaPeriodo = new Date(rango.hastaISO)
+    const ahora = new Date()
+    const hasta = hastaPeriodo > ahora ? ahora : hastaPeriodo
+    const hastaISOEfectivo = hasta.toISOString()
     let dias = chartRangoCantidad
     if (chartRangoUnidad === 'semanas') dias *= 7
     else if (chartRangoUnidad === 'meses') dias *= 30
     const desde = new Date(hasta); desde.setDate(hasta.getDate() - dias + 1); desde.setHours(0, 0, 0, 0)
     const hastaAnt = new Date(desde.getTime() - 1)
     const desdeAnt = new Date(hastaAnt.getTime() - dias * 86400000)
-    return { desdeISO: desde.toISOString(), hastaISO: rango.hastaISO, desdeAntISO: desdeAnt.toISOString(), hastaAntISO: hastaAnt.toISOString() }
+    return { desdeISO: desde.toISOString(), hastaISO: hastaISOEfectivo, desdeAntISO: desdeAnt.toISOString(), hastaAntISO: hastaAnt.toISOString() }
   }, [rango.hastaISO, chartRangoCantidad, chartRangoUnidad])
 
   // Load subcategorias once
