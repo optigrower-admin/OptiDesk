@@ -96,20 +96,58 @@ function unicos<T>(arr: (T | null | undefined)[]): T[] {
 function ymdKey(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-function weekKey(d: Date) {
-  const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
-  const day = tmp.getUTCDay() || 7; tmp.setUTCDate(tmp.getUTCDate() + 4 - day)
-  const ys = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1))
-  const wn = Math.ceil(((tmp.getTime() - ys.getTime()) / 86400000 + 1) / 7)
-  return `S${wn}/${String(tmp.getUTCFullYear()).slice(2)}`
+// Lunes de la semana de d (semana Lun–Dom)
+function inicioSemana(d: Date): Date {
+  const r = new Date(d); r.setHours(0, 0, 0, 0)
+  const dia = r.getDay() // 0=Dom..6=Sáb
+  r.setDate(r.getDate() - (dia === 0 ? 6 : dia - 1))
+  return r
 }
-function monthKey(d: Date) {
-  return d.toLocaleDateString('es-CO', { month: 'short', year: '2-digit' })
+function fmtDiaCorto(d: Date) {
+  return `${d.getDate()}/${d.getMonth() + 1}/${String(d.getFullYear()).slice(-2)}`
 }
-function monthOrder(k: string): number {
-  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-  const [m, y] = k.split(' ')
-  return Number(y) * 12 + months.indexOf(m.toLowerCase())
+function fmtSemanaCorta(lunes: Date) {
+  const domingo = new Date(lunes); domingo.setDate(lunes.getDate() + 6)
+  return `${fmtDiaCorto(lunes)} - ${fmtDiaCorto(domingo)}`
+}
+const MESES_LARGO = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+function fmtMesLargo(d: Date) {
+  return MESES_LARGO[d.getMonth()]
+}
+function claveDia(d: Date) { return ymdKey(d) }
+function claveSemana(d: Date) { return ymdKey(inicioSemana(d)) }
+function claveMes(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
+
+// Genera la lista continua de "cubetas" (día/semana/mes) que cubren todo el
+// rango [desdeISO, hastaISO] — a diferencia de agrupar solo por lo que tenga
+// datos, esto asegura que se vea cada día/semana/mes del período elegido.
+function generarBuckets(desdeISO: string, hastaISO: string, unidad: ChartUnidad): { key: string; label: string }[] {
+  const desde = new Date(desdeISO)
+  const hasta = new Date(hastaISO)
+  const buckets: { key: string; label: string }[] = []
+  if (unidad === 'dias') {
+    const cur = new Date(desde); cur.setHours(0, 0, 0, 0)
+    const fin = new Date(hasta); fin.setHours(0, 0, 0, 0)
+    while (cur <= fin) {
+      buckets.push({ key: claveDia(cur), label: fmtDiaCorto(cur) })
+      cur.setDate(cur.getDate() + 1)
+    }
+  } else if (unidad === 'semanas') {
+    let cur = inicioSemana(desde)
+    const fin = inicioSemana(hasta)
+    while (cur <= fin) {
+      buckets.push({ key: claveSemana(cur), label: fmtSemanaCorta(cur) })
+      cur = new Date(cur); cur.setDate(cur.getDate() + 7)
+    }
+  } else {
+    let cur = new Date(desde.getFullYear(), desde.getMonth(), 1)
+    const fin = new Date(hasta.getFullYear(), hasta.getMonth(), 1)
+    while (cur <= fin) {
+      buckets.push({ key: claveMes(cur), label: fmtMesLargo(cur) })
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+    }
+  }
+  return buckets
 }
 
 // ─── FilterDropdown (popup) ────────────────────────────────────────────────────
@@ -189,10 +227,9 @@ export default function DashboardServicioTecnicoPage() {
   const [subcategorias, setSubcategorias] = useState<SubcatRow[]>([])
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
-  // Chart config — chartUnidad: how to group data points; chartRango*: how far back to fetch
+  // Chart config — chartUnidad: cómo agrupar los puntos de "Tendencias".
+  // El rango de fechas siempre es el mismo período elegido arriba (rango).
   const [chartUnidad, setChartUnidad] = useState<ChartUnidad>('meses')
-  const [chartRangoCantidad, setChartRangoCantidad] = useState(6)
-  const [chartRangoUnidad, setChartRangoUnidad] = useState<ChartUnidad>('meses')
 
   // KPI data
   const [loading, setLoading] = useState(true)
@@ -203,31 +240,9 @@ export default function DashboardServicioTecnicoPage() {
   const [mapCategorias, setMapCategorias] = useState<Map<string, string>>(new Map())
   const [mapSubcategorias, setMapSubcategorias] = useState<Map<string, string>>(new Map())
 
-  // Chart data (independent range)
-  const [chartOrdenes, setChartOrdenes] = useState<OrdenRow[]>([])
-  const [chartOrdenesAnt, setChartOrdenesAnt] = useState<OrdenRow[]>([])
-
   // Ranges
   const rango = useMemo(() => calcularRango(preset, desdeManual, hastaManual), [preset, desdeManual, hastaManual])
   const rangoAnterior = useMemo(() => calcularRangoAnterior(rango), [rango])
-
-  const chartRango = useMemo(() => {
-    // El período elegido arriba (ej. "Este mes") puede terminar en una fecha
-    // futura (el día 31 aunque hoy sea 6) — para "Tendencias" siempre hay que
-    // anclar al día de hoy como máximo, si no, con ventanas cortas (días) la
-    // ventana entera cae en fechas futuras sin órdenes todavía.
-    const hastaPeriodo = new Date(rango.hastaISO)
-    const ahora = new Date()
-    const hasta = hastaPeriodo > ahora ? ahora : hastaPeriodo
-    const hastaISOEfectivo = hasta.toISOString()
-    let dias = chartRangoCantidad
-    if (chartRangoUnidad === 'semanas') dias *= 7
-    else if (chartRangoUnidad === 'meses') dias *= 30
-    const desde = new Date(hasta); desde.setDate(hasta.getDate() - dias + 1); desde.setHours(0, 0, 0, 0)
-    const hastaAnt = new Date(desde.getTime() - 1)
-    const desdeAnt = new Date(hastaAnt.getTime() - dias * 86400000)
-    return { desdeISO: desde.toISOString(), hastaISO: hastaISOEfectivo, desdeAntISO: desdeAnt.toISOString(), hastaAntISO: hastaAnt.toISOString() }
-  }, [rango.hastaISO, chartRangoCantidad, chartRangoUnidad])
 
   // Load subcategorias once
   useEffect(() => {
@@ -282,26 +297,6 @@ export default function DashboardServicioTecnicoPage() {
     return () => { cancelado = true }
   }, [profile?.tenant_id, rango.desdeISO, rango.hastaISO, rangoAnterior.desdeISO, rangoAnterior.hastaISO])
 
-  // Load chart data (independent period)
-  useEffect(() => {
-    if (!profile?.tenant_id) return
-    let cancelado = false
-    const cargar = async () => {
-      const tid = profile.tenant_id
-      const [{ data: dC }, { data: dCA }] = await Promise.all([
-        supabase.from('ordenes').select(SELECT_ORDEN).eq('tenant_id', tid).eq('tipo_orden', 'servicio')
-          .gte('created_at', chartRango.desdeISO).lte('created_at', chartRango.hastaISO),
-        supabase.from('ordenes').select(SELECT_ORDEN).eq('tenant_id', tid).eq('tipo_orden', 'servicio')
-          .gte('created_at', chartRango.desdeAntISO).lte('created_at', chartRango.hastaAntISO),
-      ])
-      if (cancelado) return
-      setChartOrdenes((dC as OrdenRow[]) ?? [])
-      setChartOrdenesAnt((dCA as OrdenRow[]) ?? [])
-    }
-    cargar()
-    return () => { cancelado = true }
-  }, [profile?.tenant_id, chartRango.desdeISO, chartRango.hastaISO, chartRango.desdeAntISO, chartRango.hastaAntISO])
-
   // Client-side filtering
   const applyFilters = useCallback((rows: OrdenRow[]): OrdenRow[] => {
     let r = rows
@@ -320,9 +315,9 @@ export default function DashboardServicioTecnicoPage() {
     return r
   }, [tipoServicio, subtipoUMA])
 
-  const [oF, oAntF, cF, cAntF] = useMemo(
-    () => [applyFilters(actual), applyFilters(anterior), applyFilters(chartOrdenes), applyFilters(chartOrdenesAnt)],
-    [actual, anterior, chartOrdenes, chartOrdenesAnt, applyFilters]
+  const [oF, oAntF] = useMemo(
+    () => [applyFilters(actual), applyFilters(anterior)],
+    [actual, anterior, applyFilters]
   )
 
   const itemsF = useMemo(
@@ -373,8 +368,10 @@ export default function DashboardServicioTecnicoPage() {
     const funnelData: FunnelDatum[] = ORDEN_ESTADOS.map((e) => ({ label: ESTADO_INFO[e].label, value: conteoEst.get(e) ?? 0, color: ESTADO_INFO[e].color }))
     const funnelDataAnt: FunnelDatum[] = ORDEN_ESTADOS.map((e) => ({ label: ESTADO_INFO[e].label, value: conteoEstAnt.get(e) ?? 0, color: ESTADO_INFO[e].color }))
 
-    // Time series (from chart data, grouped by chartUnidad)
-    const keyFn: (d: Date) => string = chartUnidad === 'dias' ? ymdKey : chartUnidad === 'semanas' ? weekKey : monthKey
+    // Time series — cubetas día/semana/mes que cubren TODO el período elegido
+    // arriba (rango), no solo lo que tenga datos. El "anterior" se alinea por
+    // posición (misma cantidad de cubetas, mismo tamaño de período).
+    const keyFn: (d: Date) => string = chartUnidad === 'dias' ? claveDia : chartUnidad === 'semanas' ? claveSemana : claveMes
     const buildMap = (rows: OrdenRow[]) => {
       const map = new Map<string, { total: number; cant: number }>()
       for (const o of rows) {
@@ -383,27 +380,18 @@ export default function DashboardServicioTecnicoPage() {
       }
       return map
     }
-    const porPeriodo = buildMap(cF)
-    const porPeriodoAnt = buildMap(cAntF)
+    const porPeriodo = buildMap(oF)
+    const porPeriodoAnt = buildMap(oAntF)
 
-    let labels: string[]
-    if (chartUnidad === 'dias') {
-      const desde = new Date(chartRango.desdeISO); const hasta = new Date(chartRango.hastaISO)
-      const n = Math.max(1, Math.round((hasta.getTime() - desde.getTime()) / 86400000) + 1)
-      labels = Array.from({ length: n }, (_, i) => { const d = new Date(desde); d.setDate(desde.getDate() + i); return ymdKey(d) })
-    } else if (chartUnidad === 'semanas') {
-      const keys = new Set([...cF, ...cAntF].map((o) => weekKey(new Date(o.created_at))))
-      labels = [...keys].sort()
-    } else {
-      const keys = new Set([...cF, ...cAntF].map((o) => monthKey(new Date(o.created_at))))
-      labels = [...keys].sort((a, b) => monthOrder(a) - monthOrder(b))
-    }
-    const friendlyLabel = chartUnidad === 'dias'
-      ? (k: string) => new Date(k + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
-      : (k: string) => k
+    const bucketsActual = generarBuckets(rango.desdeISO, rango.hastaISO, chartUnidad)
+    const bucketsAnterior = generarBuckets(rangoAnterior.desdeISO, rangoAnterior.hastaISO, chartUnidad)
 
-    const serieFacturacion: SerieDatum[] = labels.map((k) => ({ fecha: friendlyLabel(k), actual: porPeriodo.get(k)?.total ?? 0, anterior: porPeriodoAnt.get(k)?.total ?? 0 }))
-    const serieCantidad: SerieDatum[] = labels.map((k) => ({ fecha: friendlyLabel(k), actual: porPeriodo.get(k)?.cant ?? 0, anterior: porPeriodoAnt.get(k)?.cant ?? 0 }))
+    const serieFacturacion: SerieDatum[] = bucketsActual.map((b, i) => ({
+      fecha: b.label, actual: porPeriodo.get(b.key)?.total ?? 0, anterior: porPeriodoAnt.get(bucketsAnterior[i]?.key ?? '')?.total ?? 0,
+    }))
+    const serieCantidad: SerieDatum[] = bucketsActual.map((b, i) => ({
+      fecha: b.label, actual: porPeriodo.get(b.key)?.cant ?? 0, anterior: porPeriodoAnt.get(bucketsAnterior[i]?.key ?? '')?.cant ?? 0,
+    }))
 
     // Weekday breakdown (Mon=0 … Sun=6) — from KPI period data (oF / oAntF)
     const getDow = (d: Date) => { const day = d.getDay(); return day === 0 ? 6 : day - 1 }
@@ -467,7 +455,7 @@ export default function DashboardServicioTecnicoPage() {
       cartera: { carteraPendienteActual, totalPagado, totalAbonado, totalVencido, pendientesCount: pendientesActual.length },
       alertas,
     }
-  }, [oF, oAntF, cF, cAntF, itemsF, pagosProveedor, chartUnidad, chartRango, mapCategorias, mapSubcategorias])
+  }, [oF, oAntF, itemsF, pagosProveedor, chartUnidad, rango, rangoAnterior, mapCategorias, mapSubcategorias])
 
   if (authLoading || !profile) return <div className="p-8 text-center text-gray-400">Cargando...</div>
   if (!['gerencia', 'dueno'].includes(profile.rol)) return null
@@ -636,39 +624,19 @@ export default function DashboardServicioTecnicoPage() {
                 {/* Header con controles */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-sm font-semibold text-gray-700">Tendencias</h2>
-                  <div className="flex flex-wrap items-center gap-3">
-                    {/* Agrupación de puntos */}
-                    <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
-                      {(['dias', 'semanas', 'meses'] as ChartUnidad[]).map((u) => (
-                        <button
-                          key={u}
-                          onClick={() => setChartUnidad(u)}
-                          className={`px-3 py-1.5 transition-colors ${
-                            chartUnidad === u ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          {u === 'dias' ? 'Días' : u === 'semanas' ? 'Semanas' : 'Meses'}
-                        </button>
-                      ))}
-                    </div>
-                    {/* Rango a mostrar */}
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <span>Últimos</span>
-                      <input
-                        type="number" min={1} max={72} value={chartRangoCantidad}
-                        onChange={(e) => setChartRangoCantidad(Math.max(1, Math.min(72, Number(e.target.value))))}
-                        className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-center text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <select
-                        value={chartRangoUnidad}
-                        onChange={(e) => setChartRangoUnidad(e.target.value as ChartUnidad)}
-                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  {/* Agrupación de puntos — el rango de fechas siempre es el Período elegido arriba */}
+                  <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+                    {(['dias', 'semanas', 'meses'] as ChartUnidad[]).map((u) => (
+                      <button
+                        key={u}
+                        onClick={() => setChartUnidad(u)}
+                        className={`px-3 py-1.5 transition-colors ${
+                          chartUnidad === u ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'
+                        }`}
                       >
-                        <option value="dias">días</option>
-                        <option value="semanas">semanas</option>
-                        <option value="meses">meses</option>
-                      </select>
-                    </div>
+                        {u === 'dias' ? 'Días' : u === 'semanas' ? 'Semanas' : 'Meses'}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
