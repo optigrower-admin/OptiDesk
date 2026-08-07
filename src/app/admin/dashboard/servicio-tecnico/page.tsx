@@ -267,9 +267,12 @@ export default function DashboardServicioTecnicoPage() {
       const oA = (dA as OrdenRow[]) ?? []
       const oAnt = (dAnt as OrdenRow[]) ?? []
       const ids = oA.map((o) => o.id)
+      // Se traen items del período actual Y del anterior (no solo actual) para
+      // poder comparar facturación por tipo de ítem contra el período anterior.
+      const idsTodos = [...ids, ...oAnt.map((o) => o.id)]
 
       const [{ data: dItems }, { data: dPP }] = await Promise.all([
-        ids.length ? supabase.from('items_orden').select('orden_id, origen, descripcion, cantidad, precio_venta, costo, repuesto_uma_id, repuesto_externo_id, estado_repuesto').in('orden_id', ids)
+        idsTodos.length ? supabase.from('items_orden').select('orden_id, origen, descripcion, cantidad, precio_venta, costo, repuesto_uma_id, repuesto_externo_id, estado_repuesto').in('orden_id', idsTodos)
           : Promise.resolve({ data: [] as ItemOrdenRow[] }),
         ids.length ? supabase.from('pagos_proveedor').select('orden_id, monto').in('orden_id', ids)
           : Promise.resolve({ data: [] as PagoProvRow[] }),
@@ -327,11 +330,23 @@ export default function DashboardServicioTecnicoPage() {
 
   // Computed metrics
   const m = useMemo(() => {
-    const sum = (rows: OrdenRow[]) => rows.reduce((s, o) => s + (o.valor_total ?? 0), 0)
-    const totalFacturadoActual = sum(oF)
-    const totalFacturadoAnterior = sum(oAntF)
-    const totalOrdenesActual = oF.length
-    const totalOrdenesAnterior = oAntF.length
+    // Cuando el filtro "Tipo de repuesto / ítem" excluye al menos un tipo,
+    // las órdenes se restringen a las que tienen al menos un ítem del tipo
+    // elegido, y la facturación se calcula SOLO con el valor de esos ítems
+    // (no el total de la orden) — así "Mano de Obra" filtra de verdad todo
+    // el dashboard, no solo Cuentas por Pagar.
+    const itemFiltroActivo = tipoItem.size < TIPO_ITEM_OPCIONES.length
+    const valorItemsPorOrden = new Map<string, number>()
+    for (const it of itemsF) valorItemsPorOrden.set(it.orden_id, (valorItemsPorOrden.get(it.orden_id) ?? 0) + it.precio_venta * it.cantidad)
+    const facturacionOrden = (o: OrdenRow) => itemFiltroActivo ? (valorItemsPorOrden.get(o.id) ?? 0) : (o.valor_total ?? 0)
+    const oFF = itemFiltroActivo ? oF.filter((o) => valorItemsPorOrden.has(o.id)) : oF
+    const oAntFF = itemFiltroActivo ? oAntF.filter((o) => valorItemsPorOrden.has(o.id)) : oAntF
+
+    const sum = (rows: OrdenRow[]) => rows.reduce((s, o) => s + facturacionOrden(o), 0)
+    const totalFacturadoActual = sum(oFF)
+    const totalFacturadoAnterior = sum(oAntFF)
+    const totalOrdenesActual = oFF.length
+    const totalOrdenesAnterior = oAntFF.length
     const ticketPromedioActual = totalOrdenesActual ? totalFacturadoActual / totalOrdenesActual : 0
     const ticketPromedioAnterior = totalOrdenesAnterior ? totalFacturadoAnterior / totalOrdenesAnterior : 0
 
@@ -349,22 +364,22 @@ export default function DashboardServicioTecnicoPage() {
     const pagado = new Map<string, number>()
     for (const pp of pagosProveedor) pagado.set(pp.orden_id, (pagado.get(pp.orden_id) ?? 0) + pp.monto)
     let cxpProveedores = 0
-    for (const o of oF) {
+    for (const o of oFF) {
       if (!o.gestiona_pago_proveedor) continue
       cxpProveedores += Math.max(0, (costoExt.get(o.id) ?? 0) - (pagado.get(o.id) ?? 0))
     }
 
     // Operative
-    const entradasAbiertas = oF.filter((o) => ESTADOS_ABIERTOS.has(o.estado)).length
-    const finalizadasCount = oF.filter((o) => o.estado === 'listo').length
+    const entradasAbiertas = oFF.filter((o) => ESTADOS_ABIERTOS.has(o.estado)).length
+    const finalizadasCount = oFF.filter((o) => o.estado === 'listo').length
     const ordenesUMA = oF.filter((o) => o.tipo_servicio === 'uma')
     const ordenesUMAsinNumero = ordenesUMA.filter((o) => !o.numeros_orden_uma?.length).length
 
     // Funnel (current + anterior)
     const conteoEst = new Map<string, number>()
-    for (const o of oF) conteoEst.set(o.estado, (conteoEst.get(o.estado) ?? 0) + 1)
+    for (const o of oFF) conteoEst.set(o.estado, (conteoEst.get(o.estado) ?? 0) + 1)
     const conteoEstAnt = new Map<string, number>()
-    for (const o of oAntF) conteoEstAnt.set(o.estado, (conteoEstAnt.get(o.estado) ?? 0) + 1)
+    for (const o of oAntFF) conteoEstAnt.set(o.estado, (conteoEstAnt.get(o.estado) ?? 0) + 1)
     const funnelData: FunnelDatum[] = ORDEN_ESTADOS.map((e) => ({ label: ESTADO_INFO[e].label, value: conteoEst.get(e) ?? 0, color: ESTADO_INFO[e].color }))
     const funnelDataAnt: FunnelDatum[] = ORDEN_ESTADOS.map((e) => ({ label: ESTADO_INFO[e].label, value: conteoEstAnt.get(e) ?? 0, color: ESTADO_INFO[e].color }))
 
@@ -376,12 +391,12 @@ export default function DashboardServicioTecnicoPage() {
       const map = new Map<string, { total: number; cant: number }>()
       for (const o of rows) {
         const k = keyFn(new Date(o.created_at)); const cur = map.get(k) ?? { total: 0, cant: 0 }
-        cur.total += o.valor_total ?? 0; cur.cant += 1; map.set(k, cur)
+        cur.total += facturacionOrden(o); cur.cant += 1; map.set(k, cur)
       }
       return map
     }
-    const porPeriodo = buildMap(oF)
-    const porPeriodoAnt = buildMap(oAntF)
+    const porPeriodo = buildMap(oFF)
+    const porPeriodoAnt = buildMap(oAntFF)
 
     const bucketsActual = generarBuckets(rango.desdeISO, rango.hastaISO, chartUnidad)
     const bucketsAnterior = generarBuckets(rangoAnterior.desdeISO, rangoAnterior.hastaISO, chartUnidad)
@@ -397,8 +412,8 @@ export default function DashboardServicioTecnicoPage() {
     const getDow = (d: Date) => { const day = d.getDay(); return day === 0 ? 6 : day - 1 }
     const wdFactAct = Array(7).fill(0); const wdCantAct = Array(7).fill(0)
     const wdFactAnt = Array(7).fill(0); const wdCantAnt = Array(7).fill(0)
-    for (const o of oF) { const d = getDow(new Date(o.created_at)); wdFactAct[d] += o.valor_total ?? 0; wdCantAct[d]++ }
-    for (const o of oAntF) { const d = getDow(new Date(o.created_at)); wdFactAnt[d] += o.valor_total ?? 0; wdCantAnt[d]++ }
+    for (const o of oFF) { const d = getDow(new Date(o.created_at)); wdFactAct[d] += facturacionOrden(o); wdCantAct[d]++ }
+    for (const o of oAntFF) { const d = getDow(new Date(o.created_at)); wdFactAnt[d] += facturacionOrden(o); wdCantAnt[d]++ }
     const weekdayFacturacion: WeekdayDatum[] = Array.from({ length: 7 }, (_, i) => ({ actual: wdFactAct[i], anterior: wdFactAnt[i] }))
     const weekdayCantidad: WeekdayDatum[] = Array.from({ length: 7 }, (_, i) => ({ actual: wdCantAct[i], anterior: wdCantAnt[i] }))
 
@@ -411,13 +426,13 @@ export default function DashboardServicioTecnicoPage() {
           ? o.subcategoria_servicio_ids
           : (o.subcategoria_servicio_id ? [o.subcategoria_servicio_id] : (o.categoria_servicio_id ? [o.categoria_servicio_id] : []))
         if (!tagIds.length) continue
-        const mpt = (o.valor_total ?? 0) / tagIds.length
+        const mpt = facturacionOrden(o) / tagIds.length
         for (const t of tagIds) { cant.set(t, (cant.get(t) ?? 0) + 1); fact.set(t, (fact.get(t) ?? 0) + mpt) }
       }
       return { cant, fact }
     }
-    const { cant: cantAct, fact: factAct } = buildServicioMap(oF)
-    const { cant: cantAntM, fact: factAntM } = buildServicioMap(oAntF)
+    const { cant: cantAct, fact: factAct } = buildServicioMap(oFF)
+    const { cant: cantAntM, fact: factAntM } = buildServicioMap(oAntFF)
 
     const topServiciosCantidadRaw = [...cantAct.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
     const topServiciosCantidad: RankingDatum[] = topServiciosCantidadRaw.map(([id, v]) => ({ label: labelServicio(id), value: v }))
@@ -455,7 +470,7 @@ export default function DashboardServicioTecnicoPage() {
       cartera: { carteraPendienteActual, totalPagado, totalAbonado, totalVencido, pendientesCount: pendientesActual.length },
       alertas,
     }
-  }, [oF, oAntF, itemsF, pagosProveedor, chartUnidad, rango, rangoAnterior, mapCategorias, mapSubcategorias])
+  }, [oF, oAntF, itemsF, tipoItem, pagosProveedor, chartUnidad, rango, rangoAnterior, mapCategorias, mapSubcategorias])
 
   if (authLoading || !profile) return <div className="p-8 text-center text-gray-400">Cargando...</div>
   if (!['gerencia', 'dueno'].includes(profile.rol)) return null
