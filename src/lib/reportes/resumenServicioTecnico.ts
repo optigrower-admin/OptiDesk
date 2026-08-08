@@ -16,6 +16,15 @@ const ESTADO_COLOR: Record<string, string> = {
 const ORDEN_ESTADOS = ['programado', 'falta_revision', 'en_proceso', 'pendiente', 'pagado', 'listo', 'finalizado_incompleto']
 const ESTADO_EXCLUIDO_DETALLE = 'listo' // "Finalizado" — solo sale en la gráfica, no en el detalle
 
+// Estados abiertos: se muestran como foto ACTUAL (sin importar cuándo entró
+// la orden) — igual que el reporte de pipeline, un taller necesita ver TODO
+// lo que sigue pendiente, no solo lo que entró en el período elegido.
+// Estados cerrados (Finalizado / Finalizado - Incompleto) sí se filtran por
+// período: "cuántas se cerraron en este período" es una métrica que sí debe
+// acotarse en el tiempo, si no crecería indefinidamente.
+const ESTADOS_ABIERTOS = ['programado', 'falta_revision', 'en_proceso', 'pendiente', 'pagado']
+const ESTADOS_CERRADOS = ['listo', 'finalizado_incompleto']
+
 interface OrdenFila {
   id: string; numero: number | null; placa: string | null; cliente: string | null
   estado: string; created_at: string; numeros_orden_uma: string[] | null
@@ -44,14 +53,22 @@ function esUmaFaltante(o: OrdenFila): boolean {
 async function seccionParaUsuario(
   supabase: Supa, tenantId: string, mecanicoId: string | null, titulo: string, desdeISO: string, hastaISO: string
 ): Promise<DatosServicioTecnicoSeccion> {
-  let q = supabase.from('ordenes')
-    .select('id, numero, placa, cliente, estado, created_at, numeros_orden_uma, categorias_servicio(nombre)')
-    .eq('tenant_id', tenantId).neq('tipo_orden', 'venta_repuestos')
-    .gte('created_at', desdeISO).lte('created_at', hastaISO)
-  if (mecanicoId) q = q.eq('mecanico_id', mecanicoId)
-  const { data } = await q
+  const SELECT_ORDEN = 'id, numero, placa, cliente, estado, created_at, numeros_orden_uma, categorias_servicio(nombre)'
 
-  const ordenes = (data ?? []) as unknown as OrdenFila[]
+  let qAbiertas = supabase.from('ordenes').select(SELECT_ORDEN)
+    .eq('tenant_id', tenantId).neq('tipo_orden', 'venta_repuestos')
+    .in('estado', ESTADOS_ABIERTOS)
+  if (mecanicoId) qAbiertas = qAbiertas.eq('mecanico_id', mecanicoId)
+
+  let qCerradas = supabase.from('ordenes').select(SELECT_ORDEN)
+    .eq('tenant_id', tenantId).neq('tipo_orden', 'venta_repuestos')
+    .in('estado', ESTADOS_CERRADOS)
+    .gte('created_at', desdeISO).lte('created_at', hastaISO)
+  if (mecanicoId) qCerradas = qCerradas.eq('mecanico_id', mecanicoId)
+
+  const [{ data: dAbiertas }, { data: dCerradas }] = await Promise.all([qAbiertas, qCerradas])
+
+  const ordenes = [...(dAbiertas ?? []), ...(dCerradas ?? [])] as unknown as OrdenFila[]
   const porEstadoMap = new Map<string, OrdenFila[]>()
   for (const o of ordenes) {
     if (!porEstadoMap.has(o.estado)) porEstadoMap.set(o.estado, [])
