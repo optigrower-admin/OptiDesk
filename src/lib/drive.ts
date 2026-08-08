@@ -174,3 +174,15 @@ export async function trashDriveFile(
   const drive = google.drive({ version: 'v3', auth })
   await drive.files.update({ fileId, requestBody: { trashed: true } })
 }
+
+/** Mueve un archivo/carpeta de Drive de una carpeta padre a otra. */
+export async function moverDriveFile(
+  fileId: string,
+  nuevoParentId: string,
+  viejoParentId: string,
+  oauthRefreshToken?: string | null,
+): Promise<void> {
+  const auth = getAuthClient(oauthRefreshToken)
+  const drive = google.drive({ version: 'v3', auth })
+  await drive.files.update({ fileId, addParents: nuevoParentId, removeParents: viejoParentId, fields: 'id, parents' })
+}

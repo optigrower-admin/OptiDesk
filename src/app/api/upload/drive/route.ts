@@ -17,6 +17,16 @@ function fechaCorta(d: Date): string {
   return `${dia}_${mes}_${anio}`
 }
 
+// Nombre de la subcarpeta por fecha de entrada dentro de la carpeta de la
+// placa, ej. "02_07_26_BXR16H" — así una moto con varias entradas de
+// servicio técnico queda con una carpeta separada por cada visita.
+function nombreCarpetaFecha(d: Date, placaNorm: string): string {
+  const dia = String(d.getDate()).padStart(2, '0')
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const anio = String(d.getFullYear()).slice(-2)
+  return `${dia}_${mes}_${anio}_${placaNorm}`
+}
+
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -57,7 +67,7 @@ export async function POST(req: NextRequest) {
 
   // Obtener placa de la orden para crear la subcarpeta
   const { data: orden } = await supabase
-    .from('ordenes').select('placa, numero, drive_folder_id').eq('id', ordenId).single()
+    .from('ordenes').select('placa, numero, drive_folder_id, created_at').eq('id', ordenId).single()
 
   const placaNorm = (orden?.placa ?? 'SIN_PLACA').replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()
   const numero = orden?.numero ?? 0
@@ -84,11 +94,20 @@ export async function POST(req: NextRequest) {
   // Reusar la subcarpeta ya asociada a esta orden si existe, para no crear
   // una carpeta duplicada cuando la placa se corrigió después de la primera
   // subida (la carpeta se renombra aparte, ver /api/admin/ordenes/renombrar-carpeta-drive).
+  // Estructura: <carpeta del tenant>/<PLACA>/<DD_MM_YY_PLACA>/archivos — así
+  // una moto con varias entradas de servicio queda con una carpeta separada
+  // por cada fecha de entrada, en vez de mezclar todo en una sola carpeta.
   let subFolderId = orden?.drive_folder_id ?? null
   if (!subFolderId) {
-    subFolderId = await getOrCreateDriveSubfolder(
+    const placaFolderId = await getOrCreateDriveSubfolder(
       folderId,
       placaNorm,
+      tenant.google_refresh_token,
+    )
+    const carpetaFecha = nombreCarpetaFecha(orden?.created_at ? new Date(orden.created_at) : new Date(), placaNorm)
+    subFolderId = await getOrCreateDriveSubfolder(
+      placaFolderId,
+      carpetaFecha,
       tenant.google_refresh_token,
     )
     // Guardado condicional: si dos subidas concurrentes a esta misma orden
