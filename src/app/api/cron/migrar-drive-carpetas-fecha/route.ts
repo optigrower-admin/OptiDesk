@@ -7,7 +7,7 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 const TENANT_ID = 'f9126ff6-0fdf-4a62-a61b-ff07c60652a5'
-const LOTE = 15 // órdenes por llamada, para no pasarse del tiempo límite
+const LOTE = 6 // órdenes por llamada, para no pasarse del tiempo límite
 
 function getAuthClient(oauthRefreshToken: string) {
   const client = new google.auth.OAuth2(process.env.GOOGLE_OAUTH_CLIENT_ID, process.env.GOOGLE_OAUTH_CLIENT_SECRET)
