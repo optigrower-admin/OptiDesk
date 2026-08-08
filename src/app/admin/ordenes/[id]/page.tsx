@@ -374,7 +374,7 @@ export default function AdminOrdenDetallePage() {
 
   const cargar = useCallback(async () => {
     if (!profile?.tenant_id) return
-    const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }, { data: lmCfg }, { data: lmOrd }, { data: pprov }, { data: coments }] = await Promise.all([
+    const [{ data: o }, { data: i }, { data: m }, { data: mp }, { data: cats }, { data: pg }, { data: lmCfg }, { data: lmOrd }, { data: pprov }, { data: coments, error: comentsErr }] = await Promise.all([
       supabase.from('ordenes')
         .select(`id, numero, placa, cliente, telefono, estado, estado_pago, valor_total, valor_abono, motivo_pendiente, fecha_programada, duracion_estimada_horas, descripcion, manifiesta_cliente, diagnostico, tipo_orden, tipo_servicio, numero_ot, nota_ot, notas, numeros_orden_uma, categoria_servicio_id, subcategoria_servicio_id, subcategoria_servicio_ids, tenant_id, created_at, fecha_finalizacion, nota_finalizado_incompleto, moto_id, cliente_id, gestiona_pago_proveedor, kilometraje_ingreso,
           categorias_servicio(nombre), subcategorias_servicio(nombre), metodos_pago(id, nombre), usuarios:mecanico_id(nombre), motos:moto_id(id, marca, modelo, año, color, kilometraje)`)
@@ -475,6 +475,7 @@ export default function AdminOrdenDetallePage() {
     setLavaMotoConfig((lmCfg as LavaMotoConfig | null) ?? null)
     setLavaMotoOrdenes((lmOrd as unknown as LavaMotoOrden[]) ?? [])
     setPagosProveedor((pprov as unknown as PagoProveedor[]) ?? [])
+    if (comentsErr) console.error('No se pudieron cargar los comentarios de la orden:', comentsErr.message)
     setComentariosOrden((coments as unknown as ComentarioOrden[]) ?? [])
   }, [ordenId, profile?.tenant_id])
 
@@ -1484,12 +1485,13 @@ export default function AdminOrdenDetallePage() {
     if (!nuevoComentario.trim() || !orden) return
     setSavingComentario(true)
     try {
-      await supabase.from('comentarios_orden').insert({
+      const { error } = await supabase.from('comentarios_orden').insert({
         orden_id: ordenId,
         tenant_id: orden.tenant_id,
         comentario: nuevoComentario.trim(),
         usuario_id: profile?.id ?? null,
       })
+      if (error) { alert(`No se pudo guardar el comentario: ${error.message}`); return }
       setNuevoComentario('')
       await cargar()
     } finally {
@@ -1499,7 +1501,8 @@ export default function AdminOrdenDetallePage() {
 
   const handleDeleteComentario = async (id: string) => {
     if (!confirm('¿Eliminar este comentario?')) return
-    await supabase.from('comentarios_orden').delete().eq('id', id)
+    const { error } = await supabase.from('comentarios_orden').delete().eq('id', id)
+    if (error) { alert(`No se pudo eliminar: ${error.message}`); return }
     await cargar()
   }
 
@@ -2829,25 +2832,25 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
           </div>
 
           {/* ── COMENTARIOS ── */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">
-                Comentarios {comentariosOrden.length > 0 && <span className="text-xs font-normal text-gray-400">({comentariosOrden.length})</span>}
+          <div className="bg-amber-50 rounded-xl border border-amber-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-amber-200 flex items-center justify-between">
+              <h2 className="font-semibold text-amber-900">
+                Comentarios {comentariosOrden.length > 0 && <span className="text-xs font-normal text-amber-600">({comentariosOrden.length})</span>}
               </h2>
             </div>
-            <div className="p-4 space-y-3">
+            <div className="p-3 space-y-2">
               {comentariosOrden.length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-3">Sin comentarios todavía.</p>
+                <p className="text-xs text-amber-700/60 text-center py-2">Sin comentarios todavía.</p>
               )}
               {comentariosOrden.map((c) => (
-                <div key={c.id} className="flex gap-3 group">
-                  <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                <div key={c.id} className="flex gap-2 group bg-white/60 rounded-lg px-2.5 py-1.5">
+                  <div className="w-6 h-6 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5">
                     {(c.usuarios?.nombre ?? 'U').charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="text-xs font-semibold text-gray-800">{c.usuarios?.nombre ?? 'Usuario'}</span>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-[11px] text-gray-400">
                         {new Date(c.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}
                         {' · '}{new Date(c.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
                       </span>
@@ -2867,14 +2870,14 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                   )}
                 </div>
               ))}
-              <div className="flex gap-2 pt-1 border-t border-gray-100">
+              <div className="flex gap-2 pt-2 border-t border-amber-200">
                 <textarea
                   value={nuevoComentario}
                   onChange={(e) => setNuevoComentario(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddComentario() } }}
                   placeholder="Escribe un comentario... (Enter para enviar)"
                   rows={2}
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="flex-1 px-3 py-2 border border-amber-200 bg-white rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
                 <button
                   onClick={handleAddComentario}
