@@ -1,6 +1,7 @@
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { barrasHtml, barrasPng, type BarraDatum } from './chart'
 import { PERIODO_LABEL, type PeriodoReporte } from './periodo'
+import { esGerenciaParaReportes } from './permisos'
 
 type Supa = ReturnType<typeof createAdminClient>
 
@@ -73,11 +74,10 @@ async function seccionParaUsuario(
 }
 
 export async function obtenerSeccionesServicioTecnico(
-  supabase: Supa, tenantId: string, usuario: { id: string; nombre: string; rol: string },
+  supabase: Supa, tenantId: string, usuario: { id: string; nombre: string; rol: string; reportesVeTodo?: boolean | null },
   desdeISO: string, hastaISO: string, modoGerencia: 'general' | 'por_usuario',
 ): Promise<DatosServicioTecnicoSeccion[]> {
-  const rolNorm = (usuario.rol ?? '').toLowerCase().replace('ñ', 'n')
-  const esGerencia = ['gerencia', 'dueno', 'control_total'].includes(rolNorm)
+  const esGerencia = esGerenciaParaReportes(usuario.rol, usuario.reportesVeTodo)
 
   if (!esGerencia) {
     return [await seccionParaUsuario(supabase, tenantId, usuario.id, usuario.nombre, desdeISO, hastaISO)]

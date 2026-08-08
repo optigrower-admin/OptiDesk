@@ -26,13 +26,13 @@ export async function GET(req: NextRequest) {
   if (usuarioId !== user.id && !esGerencia) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
   const admin = createAdminClient()
-  const { data: usuario } = await admin.from('usuarios').select('id, nombre, rol')
+  const { data: usuario } = await admin.from('usuarios').select('id, nombre, rol, reportes_ve_todo')
     .eq('id', usuarioId).eq('tenant_id', perfil.tenant_id).maybeSingle()
   if (!usuario) return NextResponse.json({ error: 'Colaborador no encontrado' }, { status: 404 })
 
   const { desdeISO, hastaISO } = calcularPeriodoReporte(periodo)
   const nombreUsuario = usuario.nombre ?? 'colaborador'
-  const perfilUsuario = { id: usuario.id, nombre: nombreUsuario, rol: usuario.rol }
+  const perfilUsuario = { id: usuario.id, nombre: nombreUsuario, rol: usuario.rol, reportesVeTodo: usuario.reportes_ve_todo }
 
   const html = tipoReporte === 'pipeline'
     ? construirPipelineHtml(await obtenerSeccionesPipeline(admin, perfil.tenant_id, perfilUsuario, modoGerencia), nombreUsuario)

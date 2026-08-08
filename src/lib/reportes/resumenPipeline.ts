@@ -1,6 +1,7 @@
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { ETAPAS, type EtapaVenta } from '@/lib/ventas/pipeline'
 import { barrasHtml, barrasPng, type BarraDatum } from './chart'
+import { esGerenciaParaReportes } from './permisos'
 
 type Supa = ReturnType<typeof createAdminClient>
 
@@ -71,14 +72,14 @@ async function seccionParaUsuario(
   }
 }
 
-// usuario.rol determina si aplica modoGerencia ('general' = todo el equipo en
-// una sola sección; 'por_usuario' = una sección por cada asesor con datos).
+// usuario.rol (+ reportesVeTodo para admin) determina si aplica modoGerencia
+// ('general' = todo el equipo en una sola sección; 'por_usuario' = una
+// sección por cada asesor con datos).
 export async function obtenerSeccionesPipeline(
-  supabase: Supa, tenantId: string, usuario: { id: string; nombre: string; rol: string },
+  supabase: Supa, tenantId: string, usuario: { id: string; nombre: string; rol: string; reportesVeTodo?: boolean | null },
   modoGerencia: 'general' | 'por_usuario',
 ): Promise<DatosPipelineSeccion[]> {
-  const rolNorm = (usuario.rol ?? '').toLowerCase().replace('ñ', 'n')
-  const esGerencia = ['gerencia', 'dueno', 'control_total'].includes(rolNorm)
+  const esGerencia = esGerenciaParaReportes(usuario.rol, usuario.reportesVeTodo)
 
   if (!esGerencia) {
     return [await seccionParaUsuario(supabase, tenantId, usuario.id, usuario.nombre)]

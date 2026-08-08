@@ -13,11 +13,17 @@ interface Colaborador {
   whatsapp_number: string | null
   wa_sesion_at: string | null
   email_smtp_usuario: string | null
+  reportes_ve_todo: boolean
 }
 
-function esGerenciaRol(rol: string): boolean {
+// Gerencia/dueño/control_total siempre ven el equipo completo en sus
+// reportes; admin solo si tiene marcada la opción "Ver todo" (checkbox en
+// esta pantalla, guardada en usuarios.reportes_ve_todo).
+function esGerenciaRol(rol: string, reportesVeTodo?: boolean): boolean {
   const rolNorm = (rol ?? '').toLowerCase().replace('ñ', 'n')
-  return ['gerencia', 'dueno', 'control_total', 'admin'].includes(rolNorm)
+  if (['gerencia', 'dueno', 'control_total'].includes(rolNorm)) return true
+  if (rolNorm === 'admin') return !!reportesVeTodo
+  return false
 }
 
 type ResultadoResumen = { usuariosNotificados: number; whatsappEnviados: number; emailsEnviados: number; emailsFallidos: number }
@@ -122,13 +128,23 @@ export default function ColaboradoresPage() {
     if (!profile?.tenant_id) return
     const { data } = await supabase
       .from('usuarios')
-      .select('id, nombre, email, rol, activo, whatsapp_number, wa_sesion_at, email_smtp_usuario')
+      .select('id, nombre, email, rol, activo, whatsapp_number, wa_sesion_at, email_smtp_usuario, reportes_ve_todo')
       .eq('tenant_id', profile.tenant_id)
       .order('nombre')
     setColaboradores((data ?? []) as Colaborador[])
   }, [profile?.tenant_id])
 
   useEffect(() => { cargar() }, [cargar])
+
+  async function toggleReportesVeTodo(id: string, valor: boolean) {
+    setColaboradores(p => p.map(c => c.id === id ? { ...c, reportes_ve_todo: valor } : c))
+    const { error } = await supabase.from('usuarios').update({ reportes_ve_todo: valor }).eq('id', id)
+    if (error) {
+      setColaboradores(p => p.map(c => c.id === id ? { ...c, reportes_ve_todo: !valor } : c))
+      setMensaje({ id, texto: error.message, ok: false })
+      setTimeout(() => setMensaje(null), 4000)
+    }
+  }
 
   async function guardarNumero(id: string) {
     const numero = (editando[id] ?? '').replace(/\s/g, '')
@@ -469,14 +485,25 @@ export default function ColaboradoresPage() {
                 )}
               </div>
 
+              {col.rol?.toLowerCase() === 'admin' && (
+                <label className="flex items-center gap-2 mb-2 text-xs text-gray-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={col.reportes_ve_todo}
+                    onChange={(e) => toggleReportesVeTodo(col.id, e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  Ver todo el equipo en sus reportes (si no, solo ve lo asignado a él)
+                </label>
+              )}
               <ReportesProgramadosManager
                 usuarioId={col.id} tipoReporte="pipeline" titulo="📊 Resumen de pipeline"
-                asuntoDefault="📊 Tu resumen de pipeline" esGerenciaDestino={esGerenciaRol(col.rol)}
+                asuntoDefault="📊 Tu resumen de pipeline" esGerenciaDestino={esGerenciaRol(col.rol, col.reportes_ve_todo)}
                 etiquetaPorUsuario="Por asesor"
               />
               <ReportesProgramadosManager
                 usuarioId={col.id} tipoReporte="servicio_tecnico" titulo="🔧 Resumen de Servicio Técnico y repuestos"
-                asuntoDefault="🔧 Tu resumen de Servicio Técnico" esGerenciaDestino={esGerenciaRol(col.rol)}
+                asuntoDefault="🔧 Tu resumen de Servicio Técnico" esGerenciaDestino={esGerenciaRol(col.rol, col.reportes_ve_todo)}
                 etiquetaPorUsuario="Por mecánico"
               />
 

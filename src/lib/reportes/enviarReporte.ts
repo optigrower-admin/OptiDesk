@@ -21,12 +21,12 @@ export interface ReporteProgramadoRow {
 
 export async function generarYEnviarReporte(supabase: Supa, config: ReporteProgramadoRow): Promise<{ ok: boolean; error?: string }> {
   const { data: usuario } = await supabase.from('usuarios')
-    .select('id, nombre, rol, email, whatsapp_number').eq('id', config.usuario_id).maybeSingle()
+    .select('id, nombre, rol, email, whatsapp_number, reportes_ve_todo').eq('id', config.usuario_id).maybeSingle()
   if (!usuario) return { ok: false, error: 'Usuario no encontrado' }
 
   const { desdeISO, hastaISO } = calcularPeriodoReporte(config.periodo)
   const nombreUsuario = usuario.nombre ?? 'colaborador'
-  const perfilUsuario = { id: usuario.id, nombre: nombreUsuario, rol: usuario.rol }
+  const perfilUsuario = { id: usuario.id, nombre: nombreUsuario, rol: usuario.rol, reportesVeTodo: usuario.reportes_ve_todo }
 
   let html: string
   let enviarWhatsappSecciones: () => Promise<boolean>
