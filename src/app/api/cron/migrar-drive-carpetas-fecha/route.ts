@@ -62,14 +62,11 @@ export async function GET(req: NextRequest) {
 
   for (const orden of (ordenes ?? []) as { id: string; placa: string | null; numero: number | null; drive_folder_id: string | null; created_at: string }[]) {
     try {
-      if (!orden.drive_folder_id) { resultados.push({ orden: orden.numero, ok: true, archivosMovidos: 0 }); continue }
-
+      // No filtrar por orden.drive_folder_id: hay órdenes antiguas (de antes
+      // de que se guardara ese campo) que ya tienen material en Drive pero
+      // nunca quedó cacheado — igual hay que reorganizar sus archivos.
       const placaNorm = (orden.placa ?? 'SIN_PLACA').replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()
       const carpetaFecha = nombreCarpetaFecha(new Date(orden.created_at), placaNorm)
-
-      // ¿La carpeta actual de la orden ya tiene el nombre de fecha esperado? (ya migrada)
-      const actual = await drive.files.get({ fileId: orden.drive_folder_id, fields: 'name, parents' })
-      if (actual.data.name === carpetaFecha) { resultados.push({ orden: orden.numero, ok: true, archivosMovidos: 0 }); continue }
 
       const placaFolderId = await getOrCreateDriveSubfolder(folderId, placaNorm, tenant.google_refresh_token)
       const fechaFolderId = await getOrCreateDriveSubfolder(placaFolderId, carpetaFecha, tenant.google_refresh_token)
