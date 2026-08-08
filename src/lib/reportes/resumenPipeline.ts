@@ -33,7 +33,17 @@ async function seccionParaUsuario(
     .select('id, nombre, etapa_venta, updated_at')
     .eq('tenant_id', tenantId).eq('en_seguimiento_ventas', true)
     .in('etapa_venta', ETAPAS_INCLUIDAS)
-  if (usuarioId) qClientes = qClientes.eq('assigned_to', usuarioId)
+  if (usuarioId) {
+    // Igual que en Seguimiento de Ventas: además de lo asignado a él, incluye
+    // los clientes que Gerencia le compartió puntualmente vía clientes_visibilidad
+    // aunque no estén asignados a esta persona.
+    const { data: compartidos } = await supabase.from('clientes_visibilidad')
+      .select('cliente_id').eq('usuario_id', usuarioId)
+    const idsCompartidos = (compartidos ?? []).map(c => c.cliente_id as string)
+    qClientes = idsCompartidos.length > 0
+      ? qClientes.or(`assigned_to.eq.${usuarioId},id.in.(${idsCompartidos.join(',')})`)
+      : qClientes.eq('assigned_to', usuarioId)
+  }
 
   let qRecordatorios = supabase.from('recordatorios')
     .select('cliente_id, nota, fecha_recordatorio')
