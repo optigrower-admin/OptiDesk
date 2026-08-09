@@ -221,15 +221,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [openGroups, setOpenGroups]     = useState<Record<string, boolean>>({ 'serv-tec': true, 'ventas': false, 'mensajes': false, 'comentarios': false })
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [topbarDark, setTopbarDark] = useState(false)
 
   useEffect(() => {
     if (localStorage.getItem('od_sidebar_collapsed') === '1') setSidebarCollapsed(true)
+    if (localStorage.getItem('od_topbar_dark') === '1') setTopbarDark(true)
   }, [])
 
   const toggleSidebar = () => {
     setSidebarCollapsed(prev => {
       const next = !prev
       localStorage.setItem('od_sidebar_collapsed', next ? '1' : '0')
+      return next
+    })
+  }
+
+  const toggleTopbarDark = () => {
+    setTopbarDark(prev => {
+      const next = !prev
+      localStorage.setItem('od_topbar_dark', next ? '1' : '0')
       return next
     })
   }
@@ -579,7 +589,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const sidebarContent = (isDesktop: boolean) => (
     <>
-        {logoBlock(isDesktop)}
+        {/* En escritorio el logo ya vive en la barra superior fija — solo se
+            repite acá dentro del drawer móvil. */}
+        {!isDesktop && logoBlock(isDesktop)}
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {permisosLoading ? (
@@ -786,6 +798,81 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="w-9" />
       </div>
 
+      {/* Barra superior fija de escritorio — logo + versión + menú a la
+          izquierda, navegación e interruptor de tema a la derecha. Siempre
+          visible (no se mueve ni tapa contenido), a diferencia de la
+          tarjeta flotante que tenía antes cuando el sidebar se colapsaba. */}
+      <div className={cn(
+        'hidden md:flex print:hidden flex-shrink-0 items-center justify-between px-3 py-1.5 border-b transition-colors',
+        topbarDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200',
+      )}>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="h-8 w-auto max-w-[7rem] object-contain" onError={() => setLogoUrl(null)} />
+            ) : (
+              <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-white font-bold text-xs">OD</span>
+              </div>
+            )}
+            <div className="flex flex-col leading-tight">
+              <span className={cn('font-bold text-sm truncate max-w-[9rem]', topbarDark ? 'text-white' : 'text-gray-900')}>
+                {nombreNegocio || 'OptiDesk'}
+              </span>
+              <span className={cn('italic text-[10px]', topbarDark ? 'text-gray-400' : 'text-gray-400')}>OptiDesk V1.5</span>
+            </div>
+          </div>
+          <button
+            onClick={toggleSidebar}
+            className={cn('p-1.5 rounded-lg ml-1', topbarDark ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100')}
+            aria-label={sidebarCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
+            title={sidebarCollapsed ? 'Mostrar menú' : 'Ocultar menú'}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => router.back()}
+            className={cn('p-1.5 rounded-lg', topbarDark ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100')}
+            aria-label="Página anterior" title="Atrás"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <button
+            onClick={() => router.forward()}
+            className={cn('p-1.5 rounded-lg', topbarDark ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100')}
+            aria-label="Página siguiente" title="Adelante"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <div className={cn('w-px h-5 mx-1', topbarDark ? 'bg-gray-700' : 'bg-gray-200')} />
+          <button
+            onClick={toggleTopbarDark}
+            className={cn('p-1.5 rounded-lg', topbarDark ? 'text-amber-300 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-100')}
+            aria-label={topbarDark ? 'Barra en modo claro' : 'Barra en modo oscuro'}
+            title={topbarDark ? 'Modo claro' : 'Modo oscuro'}
+          >
+            {topbarDark ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* Drawer móvil */}
       {mobileNavOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
@@ -797,11 +884,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       )}
 
       <div className="flex flex-1 min-h-0">
-      {sidebarCollapsed ? (
-        <div className="hidden md:flex print:hidden fixed top-3 left-3 z-40 flex-col bg-white border border-gray-200 rounded-xl shadow-md">
-          {logoBlock(true, false)}
-        </div>
-      ) : (
+      {!sidebarCollapsed && (
         <aside className="hidden md:flex print:hidden w-48 bg-white border-r border-gray-200 flex-col flex-shrink-0">
           {sidebarContent(true)}
         </aside>
