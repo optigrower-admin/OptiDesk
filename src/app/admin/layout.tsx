@@ -809,18 +809,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">
             {logoUrl ? (
-              <img src={logoUrl} alt="Logo" className="h-8 w-auto max-w-[7rem] object-contain" onError={() => setLogoUrl(null)} />
+              <img src={logoUrl} alt="Logo" className="h-12 w-auto max-w-[11rem] object-contain" onError={() => setLogoUrl(null)} />
             ) : (
-              <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
-                <span className="text-white font-bold text-xs">OD</span>
+              <div className="w-12 h-12 bg-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-white font-bold text-lg">OD</span>
               </div>
             )}
-            <div className="flex flex-col leading-tight">
-              <span className={cn('font-bold text-sm truncate max-w-[9rem]', topbarDark ? 'text-white' : 'text-gray-900')}>
-                {nombreNegocio || 'OptiDesk'}
-              </span>
-              <span className={cn('italic text-[10px]', topbarDark ? 'text-gray-400' : 'text-gray-400')}>OptiDesk V1.5</span>
-            </div>
+            <span className={cn('italic text-[10px]', topbarDark ? 'text-gray-400' : 'text-gray-400')}>OptiDesk V1.5</span>
           </div>
           <button
             onClick={toggleSidebar}
