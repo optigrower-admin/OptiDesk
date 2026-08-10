@@ -300,6 +300,7 @@ export default function AdminOrdenDetallePage() {
   // Refs para interceptar navegación sin crear listeners nuevos en cada render
   const ordenEstadoRef = useRef<string | undefined>(undefined)
   const umaSinNumeroRef = useRef(false)
+  const proveedorPendienteRef = useRef(false)
   const pagoCompletoSinMarcarRef = useRef(false)
   const motivoPendienteFaltaRef = useRef(false)
   const notaIncompletoFaltaRef = useRef(false)
@@ -513,6 +514,9 @@ export default function AdminOrdenDetallePage() {
       } else if (notaIncompletoFaltaRef.current) {
         window.history.pushState(null, '', window.location.href)
         setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
+      } else if (ordenEstadoRef.current === 'pagado' && proveedorPendienteRef.current) {
+        window.history.pushState(null, '', window.location.href)
+        setBloqueoSalidaMsg('Falta registrar el pago a proveedor pendiente de esta orden. Regístralo antes de finalizarla.')
       } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         window.history.pushState(null, '', window.location.href)
         setPendingNavBack(true); setPendingNavUrl(null)
@@ -541,6 +545,9 @@ export default function AdminOrdenDetallePage() {
       } else if (notaIncompletoFaltaRef.current) {
         e.preventDefault(); e.stopPropagation()
         setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
+      } else if (ordenEstadoRef.current === 'pagado' && proveedorPendienteRef.current) {
+        e.preventDefault(); e.stopPropagation()
+        setBloqueoSalidaMsg('Falta registrar el pago a proveedor pendiente de esta orden. Regístralo antes de finalizarla.')
       } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         e.preventDefault(); e.stopPropagation()
         setPendingNavUrl(href); setPendingNavBack(false)
@@ -1835,6 +1842,7 @@ export default function AdminOrdenDetallePage() {
   const esUMA = categoriaNombreActual.toLowerCase().includes('uma')
   const esVenta = orden.tipo_orden === 'venta_repuestos'
   umaSinNumeroRef.current = esUMA && numerosOrdenUMA.length === 0
+  proveedorPendienteRef.current = gestionaProveedor && totalCostoProveedorLive > 0 && !proveedorPagadoCompleto
   // El pago ya quedó completo (con lo guardado) pero el estado de la orden todavía no
   // refleja eso — al salir de la página se le pregunta si quiere marcarla como Pagada.
   const totalPagadoClienteGlobal = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
@@ -2168,6 +2176,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 setBloqueoSalidaMsg('Falta el motivo del estado Pendiente. Complétalo antes de salir de esta orden.')
               } else if (notaIncompletoFaltaRef.current) {
                 setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
+              } else if (orden.estado === 'pagado' && proveedorPendienteRef.current) {
+                setBloqueoSalidaMsg('Falta registrar el pago a proveedor pendiente de esta orden. Regístralo antes de finalizarla.')
               } else if (orden.estado === 'pagado' && !(esUMA && numerosOrdenUMA.length === 0)) {
                 setPendingNavBack(true); setPendingNavUrl(null)
                 setFinalizeDialogModo('finalizar')

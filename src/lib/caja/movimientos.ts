@@ -172,8 +172,8 @@ export async function construirMovimientos(
       supabase.from('pagos_proveedor').select('orden_id, monto, fecha').in('orden_id', ordenIds).eq('tenant_id', tenantId),
       supabase.from('ordenes').select('id, gestiona_pago_proveedor, estado, estado_pago').in('id', ordenIds),
     ])
-    costosExtTodos = (r1b.data ?? []) as unknown as typeof costosExt
-    lavadosTodos = (r2b.data ?? []) as unknown as typeof lavados
+    costosExtTodos = (r1b.data ?? []) as unknown as NonNullable<typeof costosExt>
+    lavadosTodos = (r2b.data ?? []) as unknown as NonNullable<typeof lavados>
     for (const it of (r1.data ?? []) as { orden_id: string; costo: number; cantidad: number }[]) {
       totalCostoPorOrden.set(it.orden_id, (totalCostoPorOrden.get(it.orden_id) ?? 0) + it.costo * it.cantidad)
     }
