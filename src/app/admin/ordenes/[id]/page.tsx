@@ -1984,6 +1984,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               ) : (
                 <p className="text-sm text-gray-600">¿Deseas mover el estado de <strong>{orden?.placa ?? 'esta moto'}</strong> a <strong>Finalizado</strong>?</p>
               )
+            ) : proveedorPendienteRef.current ? (
+              <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                Esta orden tiene un pago a proveedor pendiente (saldo: ${saldoPendienteProveedor.toLocaleString('es-CO')}). Regístralo antes de poder marcarla como <strong>Pagada</strong>.
+              </p>
             ) : (
               <p className="text-sm text-gray-600">El cliente ya pagó el total de <strong>{orden?.placa ?? 'esta moto'}</strong>, pero el estado sigue como <strong>{orden?.estado === 'en_proceso' ? 'En proceso' : orden?.estado === 'pendiente' ? 'Pendiente' : orden?.estado === 'programado' ? 'Programado' : orden?.estado}</strong>. ¿Deseas marcarla como <strong>Pagada</strong>?</p>
             )}
@@ -2030,22 +2034,24 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </>
               ) : (
                 <>
-                  <button
-                    disabled={savingFinalize}
-                    onClick={async () => {
-                      setSavingFinalize(true)
-                      const { error: pagError } = await supabase.from('ordenes').update({ estado: 'pagado' }).eq('id', ordenId)
-                      setSavingFinalize(false)
-                      if (pagError) { alert(`No se pudo guardar: ${pagError.message}`); return }
-                      setEstado('pagado' as EstadoOrden)
-                      setFinalizeDialogModo(null)
-                      if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
-                      else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
-                    }}
-                    className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-xl text-sm font-semibold transition-colors"
-                  >
-                    {savingFinalize ? 'Guardando...' : 'Sí, marcar como Pagada'}
-                  </button>
+                  {!proveedorPendienteRef.current && (
+                    <button
+                      disabled={savingFinalize}
+                      onClick={async () => {
+                        setSavingFinalize(true)
+                        const { error: pagError } = await supabase.from('ordenes').update({ estado: 'pagado' }).eq('id', ordenId)
+                        setSavingFinalize(false)
+                        if (pagError) { alert(`No se pudo guardar: ${pagError.message}`); return }
+                        setEstado('pagado' as EstadoOrden)
+                        setFinalizeDialogModo(null)
+                        if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
+                        else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
+                      }}
+                      className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-xl text-sm font-semibold transition-colors"
+                    >
+                      {savingFinalize ? 'Guardando...' : 'Sí, marcar como Pagada'}
+                    </button>
+                  )}
                   <button
                     disabled={savingFinalize}
                     onClick={() => {
@@ -3789,7 +3795,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 const pagoIncompleto = s.value === 'listo' && totalPagadoOrden < valorConLMBtn
                 const umaIncompleto = s.value === 'listo' && esUMA && numerosOrdenUMA.length === 0
                 const pagadoBloqueado = s.value === 'pagado' && totalPagadoOrden < valorConLMBtn
-                const proveedorIncompleto = s.value === 'listo' && gestionaProveedor && !proveedorPagadoCompleto && totalCostoProveedorLive > 0
+                const proveedorIncompleto = (s.value === 'listo' || s.value === 'pagado') && gestionaProveedor && !proveedorPagadoCompleto && totalCostoProveedorLive > 0
                 const bloqueado = tieneRepPendientes || pagoIncompleto || umaIncompleto || pagadoBloqueado || proveedorIncompleto
                 const titleMsg = tieneRepPendientes
                   ? 'Hay repuestos marcados como Pedido que aún no han llegado'
