@@ -301,6 +301,7 @@ export default function AdminOrdenDetallePage() {
   const ordenEstadoRef = useRef<string | undefined>(undefined)
   const umaSinNumeroRef = useRef(false)
   const proveedorPendienteRef = useRef(false)
+  const subcategoriaFaltaRef = useRef(false)
   const pagoCompletoSinMarcarRef = useRef(false)
   const motivoPendienteFaltaRef = useRef(false)
   const notaIncompletoFaltaRef = useRef(false)
@@ -514,6 +515,9 @@ export default function AdminOrdenDetallePage() {
       } else if (notaIncompletoFaltaRef.current) {
         window.history.pushState(null, '', window.location.href)
         setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
+      } else if (subcategoriaFaltaRef.current) {
+        window.history.pushState(null, '', window.location.href)
+        setBloqueoSalidaMsg('Falta seleccionar el subtipo de ingreso (Garantías, Cambio de Aceite, Alistamiento, Particular, etc.). Complétalo antes de salir de esta orden.')
       } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         window.history.pushState(null, '', window.location.href)
         setPendingNavBack(true); setPendingNavUrl(null)
@@ -542,6 +546,9 @@ export default function AdminOrdenDetallePage() {
       } else if (notaIncompletoFaltaRef.current) {
         e.preventDefault(); e.stopPropagation()
         setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
+      } else if (subcategoriaFaltaRef.current) {
+        e.preventDefault(); e.stopPropagation()
+        setBloqueoSalidaMsg('Falta seleccionar el subtipo de ingreso (Garantías, Cambio de Aceite, Alistamiento, Particular, etc.). Complétalo antes de salir de esta orden.')
       } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         e.preventDefault(); e.stopPropagation()
         setPendingNavUrl(href); setPendingNavBack(false)
@@ -1837,6 +1844,13 @@ export default function AdminOrdenDetallePage() {
   const esVenta = orden.tipo_orden === 'venta_repuestos'
   umaSinNumeroRef.current = esUMA && numerosOrdenUMA.length === 0
   proveedorPendienteRef.current = gestionaProveedor && totalCostoProveedorLive > 0 && !proveedorPagadoCompleto
+  // Si la categoría de la orden tiene subcategorías configuradas (ej. Garantías,
+  // Cambios de aceite, Alistamiento, Particular), se debe elegir al menos una.
+  const subsDisponiblesOrden = categorias.find((c) => c.id === orden.categoria_servicio_id)?.subcategorias_servicio ?? []
+  const subcategoriasOrdenIds = orden.subcategoria_servicio_ids?.length
+    ? orden.subcategoria_servicio_ids
+    : orden.subcategoria_servicio_id ? [orden.subcategoria_servicio_id] : []
+  subcategoriaFaltaRef.current = !esVenta && subsDisponiblesOrden.length > 0 && subcategoriasOrdenIds.length === 0
   // El pago ya quedó completo (con lo guardado) pero el estado de la orden todavía no
   // refleja eso — al salir de la página se le pregunta si quiere marcarla como Pagada.
   const totalPagadoClienteGlobal = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
@@ -2184,6 +2198,8 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 setBloqueoSalidaMsg('Falta el motivo del estado Pendiente. Complétalo antes de salir de esta orden.')
               } else if (notaIncompletoFaltaRef.current) {
                 setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
+              } else if (subcategoriaFaltaRef.current) {
+                setBloqueoSalidaMsg('Falta seleccionar el subtipo de ingreso (Garantías, Cambio de Aceite, Alistamiento, Particular, etc.). Complétalo antes de salir de esta orden.')
               } else if (orden.estado === 'pagado' && !(esUMA && numerosOrdenUMA.length === 0)) {
                 setPendingNavBack(true); setPendingNavUrl(null)
                 setFinalizeDialogModo('finalizar')
