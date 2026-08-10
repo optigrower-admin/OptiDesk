@@ -1124,8 +1124,13 @@ export default function CajaPage() {
   // Editar/eliminar gastos de caja (incluye transferencias) — Gerencia y Admin.
   // Los ajustes de caja siguen exclusivos de Gerencia (requisito explícito distinto).
   const puedeEditarGastos = esGerencia || profile?.rol === 'admin'
-  // El monto de los ajustes de caja solo lo ve gerencia; admin ve la fila pero el monto oculto.
-  const ocultarMontoAjuste = (categoria: Categoria) => categoria === 'ajuste' && profile?.rol === 'admin'
+  // Los ajustes de caja en general siguen ocultos para admin (regla propia,
+  // sin relación con Caja fuerte). Pero un ajuste que ES una transferencia
+  // hacia/desde Caja fuerte sí debe mostrarse completo si ya se le dio acceso
+  // a Caja fuerte — si no, quedaba con el monto oculto aunque ya pudiera ver
+  // el resto de esa cuenta.
+  const ocultarMontoAjuste = (categoria: Categoria, cuentaEspecial?: string | null) =>
+    categoria === 'ajuste' && profile?.rol === 'admin' && !(cuentaEspecial === 'caja_fuerte' && puedeVerCajaFuerte)
   const { desde, hasta } = calcularRango(periodo, desdeManual, hastaManual)
   const etiquetaIngresoGasto = etiquetaPeriodo(periodo, desde, hasta)
 
@@ -1279,6 +1284,7 @@ export default function CajaPage() {
   interface FilaMetodo {
     key: string; rawId: string; fecha: string; categoria: Categoria
     concepto: string; metodoPago: string | null; metodoPagoId: string | null; monto: number
+    cuentaEspecial?: string | null
   }
   const filasPorMetodo = useMemo(() => {
     const mapa = new Map<string, FilaMetodo>()
@@ -1299,6 +1305,7 @@ export default function CajaPage() {
           metodoPago: m.metodoPago,
           metodoPagoId: m.metodoPagoId,
           monto: m.monto,
+          cuentaEspecial: m.cuentaEspecial,
         })
       }
     }
@@ -1762,7 +1769,7 @@ export default function CajaPage() {
                   <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${
                     m.categoria === 'ajuste' ? 'text-gray-700' : m.monto >= 0 ? 'text-emerald-700' : 'text-red-600'
                   }`}>
-                    {ocultarMontoAjuste(m.categoria) ? '•••••••' : `${m.monto >= 0 ? '+' : ''}${formatCOP(m.monto)}`}
+                    {ocultarMontoAjuste(m.categoria, m.cuentaEspecial) ? '•••••••' : `${m.monto >= 0 ? '+' : ''}${formatCOP(m.monto)}`}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap space-x-2">
                     {m.categoria === 'gasto' && puedeEditarGastos && (
@@ -1863,7 +1870,7 @@ export default function CajaPage() {
                   <td className={`px-4 py-3 text-right font-semibold font-mono whitespace-nowrap ${
                     f.categoria === 'ajuste' ? 'text-gray-700' : f.monto >= 0 ? 'text-emerald-700' : 'text-red-600'
                   }`}>
-                    {ocultarMontoAjuste(f.categoria) ? '•••••••' : `${f.monto >= 0 ? '+' : ''}${formatCOP(f.monto)}`}
+                    {ocultarMontoAjuste(f.categoria, f.cuentaEspecial) ? '•••••••' : `${f.monto >= 0 ? '+' : ''}${formatCOP(f.monto)}`}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap space-x-2">
                     {f.categoria === 'gasto' && puedeEditarGastos && (
