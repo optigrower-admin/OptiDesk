@@ -149,26 +149,44 @@ export async function construirMovimientos(
 
   const totalCostoPorOrden = new Map<string, number>()
   const totalPagadoPorOrden = new Map<string, number>()
+  const ultimaFechaPagoPorOrden = new Map<string, string>()
   const ordenesConGestion = new Set<string>()
   const estadoPorOrden = new Map<string, string>()
   const estadoPagoPorOrden = new Map<string, string>()
 
+  // Ítems/lavados completos (no solo orden_id+costo) de las órdenes con costo,
+  // sin filtrar por fecha — hacen falta para poder mostrar en el período
+  // correcto el costo de una orden que se pagó en este período aunque el
+  // repuesto se haya agregado a la orden en un período anterior.
+  let costosExtTodos: NonNullable<typeof costosExt> = []
+  let lavadosTodos: NonNullable<typeof lavados> = []
   if (ordenIdsConCosto.size > 0) {
     const ordenIds = [...ordenIdsConCosto]
-    const [r1, r2, r3, r4] = await Promise.all([
+    const [r1, r1b, r2, r2b, r3, r4] = await Promise.all([
       supabase.from('items_orden').select('orden_id, costo, cantidad').eq('origen', 'externo').in('orden_id', ordenIds),
+      supabase.from('items_orden').select('id, orden_id, descripcion, costo, precio_venta, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
+        .eq('origen', 'externo').eq('ordenes.tenant_id', tenantId).gt('costo', 0).in('orden_id', ordenIds),
       supabase.from('lava_moto_ordenes').select('orden_id, costo_unitario, cantidad').in('orden_id', ordenIds),
-      supabase.from('pagos_proveedor').select('orden_id, monto').in('orden_id', ordenIds).eq('tenant_id', tenantId),
+      supabase.from('lava_moto_ordenes').select('id, orden_id, costo_unitario, precio_venta_unitario, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
+        .eq('ordenes.tenant_id', tenantId).gt('costo_unitario', 0).in('orden_id', ordenIds),
+      supabase.from('pagos_proveedor').select('orden_id, monto, fecha').in('orden_id', ordenIds).eq('tenant_id', tenantId),
       supabase.from('ordenes').select('id, gestiona_pago_proveedor, estado, estado_pago').in('id', ordenIds),
     ])
+    costosExtTodos = (r1b.data ?? []) as unknown as typeof costosExt
+    lavadosTodos = (r2b.data ?? []) as unknown as typeof lavados
     for (const it of (r1.data ?? []) as { orden_id: string; costo: number; cantidad: number }[]) {
       totalCostoPorOrden.set(it.orden_id, (totalCostoPorOrden.get(it.orden_id) ?? 0) + it.costo * it.cantidad)
     }
     for (const lm of (r2.data ?? []) as { orden_id: string; costo_unitario: number; cantidad: number }[]) {
       totalCostoPorOrden.set(lm.orden_id, (totalCostoPorOrden.get(lm.orden_id) ?? 0) + lm.costo_unitario * lm.cantidad)
     }
-    for (const pp of (r3.data ?? []) as { orden_id: string; monto: number }[]) {
+    for (const pp of (r3.data ?? []) as { orden_id: string; monto: number; fecha: string }[]) {
       totalPagadoPorOrden.set(pp.orden_id, (totalPagadoPorOrden.get(pp.orden_id) ?? 0) + pp.monto)
+      // Fecha del último pago a proveedor de la orden — el gasto de Caja debe
+      // quedar registrado el día que el dinero realmente salió (se pagó al
+      // proveedor), no el día que el repuesto se agregó a la orden.
+      const actual = ultimaFechaPagoPorOrden.get(pp.orden_id)
+      if (!actual || pp.fecha > actual) ultimaFechaPagoPorOrden.set(pp.orden_id, pp.fecha)
     }
     for (const ord of (r4.data ?? []) as { id: string; gestiona_pago_proveedor: boolean; estado: string; estado_pago: string }[]) {
       if (ord.gestiona_pago_proveedor) ordenesConGestion.add(ord.id)
@@ -241,6 +259,22 @@ export async function construirMovimientos(
     })
   }
 
+  // Unir lo que ya cayó dentro del período por fecha de creación con lo que
+  // se liquidó (se le pagó al proveedor) en este período aunque el repuesto
+  // se haya agregado antes — sin duplicar filas. Solo aporta filas de COSTO
+  // (reubicadas a la fecha real de pago); el ingreso por venta del repuesto
+  // sigue reconociéndose únicamente en su fecha de creación original, para
+  // no hacer aparecer ingresos fuera del período que se está viendo.
+  const costosExtVistos = new Set((costosExt ?? []).map((it: { id: string }) => it.id))
+  const costosExtSoloLiquidados = costosExtTodos.filter((it: { id: string; orden_id: string }) => {
+    if (costosExtVistos.has(it.id)) return false
+    const fechaPago = ultimaFechaPagoPorOrden.get(it.orden_id)
+    if (!fechaPago) return false
+    if (desdeISO && fechaPago < desdeISO) return false
+    if (hastaISO && fechaPago > hastaISO) return false
+    return true
+  })
+
   for (const it of (costosExt ?? []) as unknown as { id: string; orden_id: string; descripcion: string; costo: number; precio_venta: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
     const ord = it.ordenes
     const concepto = `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
@@ -248,7 +282,7 @@ export async function construirMovimientos(
       lista.push({
         id: `extcosto_${it.id}`,
         rawId: it.id,
-        fecha: it.created_at,
+        fecha: ultimaFechaPagoPorOrden.get(it.orden_id) ?? it.created_at,
         categoria: 'costo_externo',
         concepto,
         nombre: it.descripcion,
@@ -282,6 +316,27 @@ export async function construirMovimientos(
     }
   }
 
+  // Costos de repuestos externos que se liquidaron (se pagó al proveedor)
+  // dentro de este período, aunque el repuesto se haya agregado antes.
+  for (const it of costosExtSoloLiquidados as unknown as { id: string; orden_id: string; descripcion: string; costo: number; cantidad: number; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
+    const ord = it.ordenes
+    if (!mostrarItemsPorSeparado(it.orden_id)) continue
+    lista.push({
+      id: `extcosto_${it.id}`,
+      rawId: it.id,
+      fecha: ultimaFechaPagoPorOrden.get(it.orden_id)!,
+      categoria: 'costo_externo',
+      concepto: `${it.descripcion} · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
+      nombre: it.descripcion,
+      codigo: ord?.placa ?? null,
+      monto: -(it.costo * it.cantidad),
+      metodoPagoId: it.metodo_pago_id,
+      metodoPago: it.metodos_pago?.nombre ?? null,
+      cuentaEspecial: null,
+      grupo: grupoOrden(ord),
+    })
+  }
+
   for (const lm of (lavados ?? []) as unknown as { id: string; orden_id: string; costo_unitario: number; precio_venta_unitario: number; cantidad: number; created_at: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
     const ord = lm.ordenes
     const concepto = `Servicio de lavado · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`
@@ -289,7 +344,7 @@ export async function construirMovimientos(
       lista.push({
         id: `lavadocosto_${lm.id}`,
         rawId: lm.id,
-        fecha: lm.created_at,
+        fecha: ultimaFechaPagoPorOrden.get(lm.orden_id) ?? lm.created_at,
         categoria: 'costo_lavado',
         concepto,
         nombre: 'Servicio de lavado',
@@ -319,6 +374,36 @@ export async function construirMovimientos(
         grupo: grupoOrden(ord),
       })
     }
+  }
+
+  // Igual que con repuestos externos: costo de lavado liquidado (pagado al
+  // proveedor) dentro de este período aunque se haya agregado antes.
+  const lavadosVistos = new Set((lavados ?? []).map((lm: { id: string }) => lm.id))
+  const lavadosSoloLiquidados = lavadosTodos.filter((lm: { id: string; orden_id: string }) => {
+    if (lavadosVistos.has(lm.id)) return false
+    const fechaPago = ultimaFechaPagoPorOrden.get(lm.orden_id)
+    if (!fechaPago) return false
+    if (desdeISO && fechaPago < desdeISO) return false
+    if (hastaISO && fechaPago > hastaISO) return false
+    return true
+  })
+  for (const lm of lavadosSoloLiquidados as unknown as { id: string; orden_id: string; costo_unitario: number; cantidad: number; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string; tipo_orden: string } | null }[]) {
+    const ord = lm.ordenes
+    if (!mostrarItemsPorSeparado(lm.orden_id)) continue
+    lista.push({
+      id: `lavadocosto_${lm.id}`,
+      rawId: lm.id,
+      fecha: ultimaFechaPagoPorOrden.get(lm.orden_id)!,
+      categoria: 'costo_lavado',
+      concepto: `Servicio de lavado · ${ord?.cliente ?? 'Cliente'} · Orden #${ord?.numero ?? '—'} (${ord?.placa ?? '—'})`,
+      nombre: 'Servicio de lavado',
+      codigo: ord?.placa ?? null,
+      monto: -(lm.costo_unitario * lm.cantidad),
+      metodoPagoId: lm.metodo_pago_id,
+      metodoPago: lm.metodos_pago?.nombre ?? null,
+      cuentaEspecial: null,
+      grupo: grupoOrden(ord),
+    })
   }
 
   // Pagos a proveedor en el período: aparecen como provisional cuando el proveedor
