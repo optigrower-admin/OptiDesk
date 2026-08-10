@@ -11,6 +11,7 @@ interface UsuarioProfile {
   tenant_id: string
   sandbox_tenant_id: string | null
   pin: string | null
+  acceso_caja_fuerte: boolean
   isStaging?: boolean
 }
 
@@ -29,7 +30,7 @@ export function useAuth() {
     const fetchProfile = async (authUser: User) => {
       const { data } = await supabase
         .from('usuarios')
-        .select('id, nombre, email, rol, tenant_id, sandbox_tenant_id, pin')
+        .select('id, nombre, email, rol, tenant_id, sandbox_tenant_id, pin, acceso_caja_fuerte')
         .eq('id', authUser.id)
         .single()
 

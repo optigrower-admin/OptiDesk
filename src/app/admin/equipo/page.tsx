@@ -19,6 +19,7 @@ interface UsuarioEquipo {
   rol: Rol
   activo: boolean
   es_asesor: boolean
+  acceso_caja_fuerte: boolean
 }
 
 interface SeccionDef { key: string; label: string; defaultOrden: number; soloGerencia?: boolean; soloRoles?: Rol[] }
@@ -198,7 +199,7 @@ export default function EquipoPage() {
     setLoading(true)
     const { data } = await supabase
       .from('usuarios')
-      .select('id, nombre, email, rol, activo, es_asesor')
+      .select('id, nombre, email, rol, activo, es_asesor, acceso_caja_fuerte')
       .eq('tenant_id', profile.tenant_id)
       .neq('id', profile.id)
       .neq('rol', 'control_total')
@@ -413,6 +414,23 @@ export default function EquipoPage() {
   const toggleEsAsesor = async (u: UsuarioEquipo) => {
     await supabase.from('usuarios').update({ es_asesor: !u.es_asesor }).eq('id', u.id)
     setUsuarios((prev) => prev.map((x) => x.id === u.id ? { ...x, es_asesor: !u.es_asesor } : x))
+  }
+
+  // Toggle acceso a Caja fuerte (saldo + transacciones) — gerencia/dueño
+  // siempre la ven; esto es solo para dar acceso puntual a otro rol/usuario.
+  const toggleAccesoCajaFuerte = async (u: UsuarioEquipo) => {
+    await supabase.from('usuarios').update({ acceso_caja_fuerte: !u.acceso_caja_fuerte }).eq('id', u.id)
+    await registrarAuditoria(supabase, {
+      tenant_id: profile?.tenant_id ?? '',
+      tabla: 'usuarios',
+      registro_id: u.id,
+      tipo: 'edicion',
+      valor_anterior: { acceso_caja_fuerte: u.acceso_caja_fuerte },
+      valor_nuevo: { acceso_caja_fuerte: !u.acceso_caja_fuerte },
+      descripcion: `${!u.acceso_caja_fuerte ? 'Dio' : 'Quitó'} acceso a Caja fuerte a "${u.nombre}"`,
+      usuario_id: profile?.id,
+    })
+    setUsuarios((prev) => prev.map((x) => x.id === u.id ? { ...x, acceso_caja_fuerte: !u.acceso_caja_fuerte } : x))
   }
 
   // Cambiar rol
@@ -635,6 +653,20 @@ export default function EquipoPage() {
                       <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${u.es_asesor ? 'translate-x-4' : ''}`} />
                     </button>
                   </div>
+
+                  {/* Toggle acceso a Caja fuerte — gerencia/dueño ya la ven siempre */}
+                  {u.rol !== 'gerencia' && u.rol !== 'dueno' && (
+                    <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                      <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">🔒 Caja fuerte</span>
+                      <button
+                        onClick={() => toggleAccesoCajaFuerte(u)}
+                        title={u.acceso_caja_fuerte ? 'Quitar acceso a Caja fuerte' : 'Dar acceso a Caja fuerte'}
+                        className={`w-9 h-5 rounded-full transition-colors ${u.acceso_caja_fuerte ? 'bg-blue-500' : 'bg-gray-300'}`}
+                      >
+                        <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${u.acceso_caja_fuerte ? 'translate-x-4' : ''}`} />
+                      </button>
+                    </div>
+                  )}
 
                   {/* Toggle activo */}
                   <div className="flex flex-col items-center gap-0.5 flex-shrink-0">

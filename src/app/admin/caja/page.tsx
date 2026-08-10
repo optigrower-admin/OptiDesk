@@ -1116,6 +1116,11 @@ export default function CajaPage() {
   const [vistaTabla, setVistaTabla] = useState<'item' | 'metodo'>('item')
 
   const esGerencia = profile?.rol === 'gerencia' || profile?.rol === 'dueno'
+  // Ver saldo y transacciones de Caja fuerte: gerencia/dueño siempre, o
+  // cualquier otro usuario al que se le haya dado acceso puntual desde
+  // Mi equipo (usuarios.acceso_caja_fuerte) — Efectivo y Nequi ya son
+  // visibles para todos los roles.
+  const puedeVerCajaFuerte = esGerencia || profile?.acceso_caja_fuerte === true
   // Editar/eliminar gastos de caja (incluye transferencias) — Gerencia y Admin.
   // Los ajustes de caja siguen exclusivos de Gerencia (requisito explícito distinto).
   const puedeEditarGastos = esGerencia || profile?.rol === 'admin'
@@ -1187,6 +1192,9 @@ export default function CajaPage() {
 
   const filtrados = useMemo(() => {
     let r = movimientos
+    if (!puedeVerCajaFuerte) {
+      r = r.filter(m => m.cuentaEspecial !== 'caja_fuerte' && m.metodoPago?.trim().toLowerCase() !== 'caja fuerte')
+    }
     if (catFiltro !== 'todos') {
       r = r.filter(m => {
         const esTransfer = esTransferenciaConcepto(m.concepto)
@@ -1225,7 +1233,7 @@ export default function CajaPage() {
       )
     }
     return r
-  }, [movimientos, catFiltro, filtroMetodo, busqueda])
+  }, [movimientos, catFiltro, filtroMetodo, busqueda, puedeVerCajaFuerte])
 
   const totalesFiltrados = useMemo(() => {
     let ingresos = 0
@@ -1599,7 +1607,7 @@ export default function CajaPage() {
           El saldo actual es el total acumulado y no cambia según el período; el ingreso y el gasto sí son del período seleccionado.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {saldosCuentasOrdenados.length === 0 && !esGerencia && (
+          {saldosCuentasOrdenados.length === 0 && !puedeVerCajaFuerte && (
             <p className="text-sm text-gray-400 col-span-full text-center py-6">Sin movimientos registrados</p>
           )}
           {saldosCuentasOrdenados.map(s => {
@@ -1633,7 +1641,7 @@ export default function CajaPage() {
               </div>
             )
           })}
-          {esGerencia && (() => {
+          {puedeVerCajaFuerte && (() => {
             const color = colorCuenta('caja fuerte')
             return (
               <div className="flex flex-col gap-3">
@@ -1705,7 +1713,7 @@ export default function CajaPage() {
           ))}
         </div>
         <div className="flex flex-wrap gap-1.5 pt-1 border-t border-gray-100">
-          {FILTROS_METODO.map(f => (
+          {FILTROS_METODO.filter(f => f.id !== 'caja_fuerte' || puedeVerCajaFuerte).map(f => (
             <button
               key={f.id}
               onClick={() => setFiltroMetodo(f.id)}
