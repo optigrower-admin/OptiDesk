@@ -55,6 +55,7 @@ export default function VentasPage() {
           email,
           estado_aprobacion_matricula,
           aprobado_matricula_por,
+          revision_perdida,
           conversaciones ( id, canal, no_leidos_count )
         `)
         .eq('tenant_id', profile.tenant_id)
@@ -221,6 +222,7 @@ export default function VentasPage() {
             : undefined,
           estadoAprobacionMatricula: ((cr.estado_aprobacion_matricula ?? 'pendiente') as 'pendiente' | 'aprobado' | 'rechazado'),
           aprobadoMatriculaPor: (cr.aprobado_matricula_por ?? null) as string | null,
+          revisionPerdida: (cr.revision_perdida ?? null) as 'falta_revision' | 'revisado' | null,
           tienePlaca: (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(c.etapa_venta as EtapaVenta)
             ? !!(cr.placa)
             : undefined,

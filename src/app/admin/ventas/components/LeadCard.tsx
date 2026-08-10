@@ -31,6 +31,7 @@ export type LeadData = {
   tieneAlistamiento?: boolean
   estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'
   aprobadoMatriculaPor?: string | null
+  revisionPerdida?: 'falta_revision' | 'revisado' | null
   tienePlaca?: boolean
   numero_carta_negociacion?: string | null
   numero_factura?: string | null
@@ -211,6 +212,13 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo }
           {lead.estadoAprobacionMatricula === 'aprobado'  ? '✅ APROBADO'
            : lead.estadoAprobacionMatricula === 'rechazado' ? '❌ RECHAZADO'
            : '⏳ PENDIENTE'}
+        </div>
+      )}
+
+      {/* Badge revisión de pérdida (gerencia/dueño) */}
+      {etapaInfo?.es_perdido && lead.revisionPerdida === 'falta_revision' && (
+        <div className="text-center py-1.5 px-2 rounded-lg mb-2 text-[11px] font-bold uppercase tracking-widest bg-amber-500 text-white">
+          ⏳ Falta revisión
         </div>
       )}
 

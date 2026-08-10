@@ -63,7 +63,7 @@ interface Props {
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_carta_negociacion?: string | null; numero_factura?: string | null; fecha_entrega?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[]; estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'; aprobadoMatriculaPor?: string | null }) => void
+  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_carta_negociacion?: string | null; numero_factura?: string | null; fecha_entrega?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[]; estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'; aprobadoMatriculaPor?: string | null; revisionPerdida?: 'falta_revision' | 'revisado' | null }) => void
   onLeadDelete?: (id: string) => void
   etapasPipeline: { etapas: EtapaDinamica[]; etapaMap: Record<string, EtapaDinamica> }
 }
@@ -169,6 +169,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [editandoFechaVenta, setEditandoFechaVenta] = useState(false)
   const [fechaVentaInput, setFechaVentaInput]   = useState('')
   const [savingFechaVenta, setSavingFechaVenta] = useState(false)
+
+  // Revisión de gerencia/dueño al perder el cliente — falta_revision / revisado
+  const [revisionPerdida, setRevisionPerdida]           = useState<string | null>(null)
+  const [revisadoPerdidaPorNombre, setRevisadoPerdidaPorNombre] = useState<string | null>(null)
+  const [savingRevisionPerdida, setSavingRevisionPerdida] = useState(false)
 
   // Fecha de matrícula — mismo patrón que fecha de venta
   const [fechaMatricula, setFechaMatricula]             = useState<string | null>(null)
@@ -322,7 +327,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       supabase.from('ordenes').select('id,created_at,estado,descripcion_problema')
         .eq('cliente_id', lead.id).order('created_at', { ascending: false }).limit(5),
       supabase.from('usuarios').select('id, nombre').eq('tenant_id', tenantId).eq('activo', true).eq('es_asesor', true),
-      supabase.from('clientes').select('assigned_to, created_at, fecha_cierre, fecha_matricula, fecha_carta_negociacion').eq('id', lead.id).single(),
+      supabase.from('clientes').select('assigned_to, created_at, fecha_cierre, fecha_matricula, fecha_carta_negociacion, revision_perdida, revisado_perdida_por, usuarios_revisado_perdida:usuarios!clientes_revisado_perdida_por_fkey(nombre)').eq('id', lead.id).single(),
       supabase.from('historial_etapas_cliente')
         .select('etapa_anterior, etapa_nueva, created_at')
         .eq('cliente_id', lead.id)
@@ -335,6 +340,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setAssignedTo(cliente?.assigned_to ?? '')
     setClienteRegistradoEn(cliente?.created_at ?? null)
     setFechaVenta(cliente?.fecha_cierre ?? null)
+    setRevisionPerdida(cliente?.revision_perdida ?? null)
+    const usuarioRevisado = Array.isArray(cliente?.usuarios_revisado_perdida) ? cliente.usuarios_revisado_perdida[0] : cliente?.usuarios_revisado_perdida
+    setRevisadoPerdidaPorNombre(usuarioRevisado?.nombre ?? null)
     setFechaMatricula(cliente?.fecha_matricula ?? null)
     setFechaCarta(cliente?.fecha_carta_negociacion ?? null)
     setHistorialEtapas((etapasHist ?? []) as EtapaMovimiento[])
@@ -511,6 +519,25 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       mostrarGuardado()
     } finally {
       setSavingFechaVenta(false)
+    }
+  }
+
+  const marcarRevisionPerdida = async () => {
+    if (!esGerencia) return
+    setSavingRevisionPerdida(true)
+    try {
+      const res = await fetch('/api/admin/ventas/guardar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cliente_id: lead.id, revision_perdida: 'revisado' }),
+      })
+      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error ?? 'No se pudo marcar como revisado'); return }
+      await logCambio('revision_perdida', 'Falta revisión', 'Revisado')
+      setRevisionPerdida('revisado')
+      setRevisadoPerdidaPorNombre(profile?.nombre ?? null)
+      onLeadUpdate?.(lead.id, { revisionPerdida: 'revisado' })
+      mostrarGuardado()
+    } finally {
+      setSavingRevisionPerdida(false)
     }
   }
 
@@ -1017,6 +1044,25 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     <p className="text-xs text-slate-300">
                       {fechaVenta ? new Date(fechaVenta).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Sin fecha'}
                     </p>
+                  )}
+                </div>
+              )}
+
+              {/* Revisión de gerencia/dueño al perder el cliente */}
+              {etapasPipeline.etapaMap[etapa]?.es_perdido && !!revisionPerdida && (
+                <div>
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Revisión de pérdida</label>
+                  {revisionPerdida === 'revisado' ? (
+                    <p className="text-xs text-emerald-400 font-semibold">
+                      ✓ Revisado{revisadoPerdidaPorNombre ? ` por ${revisadoPerdidaPorNombre}` : ''}
+                    </p>
+                  ) : esGerencia ? (
+                    <button onClick={marcarRevisionPerdida} disabled={savingRevisionPerdida}
+                      className="w-full py-1.5 px-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50">
+                      {savingRevisionPerdida ? 'Guardando...' : '⏳ Falta revisión — marcar como revisado'}
+                    </button>
+                  ) : (
+                    <p className="text-xs text-amber-400 font-semibold">⏳ Falta revisión (gerencia/dueño)</p>
                   )}
                 </div>
               )}

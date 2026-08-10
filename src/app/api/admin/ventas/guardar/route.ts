@@ -34,13 +34,22 @@ export async function POST(req: NextRequest) {
   if (!esGerencia) {
     delete campos.estado_aprobacion_matricula
     delete campos.aprobado_matricula_por
+    delete campos.revision_perdida
+    delete campos.revisado_perdida_por
+    delete campos.revisado_perdida_at
+  }
+  // Solo gerencia/dueño puede marcar la revisión de un cliente perdido como
+  // completada, y siempre queda registrado quién y cuándo la hizo.
+  if (esGerencia && campos.revision_perdida === 'revisado') {
+    campos.revisado_perdida_por = perfil.id
+    campos.revisado_perdida_at = new Date().toISOString()
   }
 
   const admin = createAdminClient()
 
   const { data: clienteActual } = await admin
     .from('clientes')
-    .select('id, fecha_cierre, fecha_matricula')
+    .select('id, fecha_cierre, fecha_matricula, revision_perdida')
     .eq('id', cliente_id)
     .eq('tenant_id', perfil.tenant_id)
     .single()
@@ -72,7 +81,7 @@ export async function POST(req: NextRequest) {
     // Al llegar a Vendida/Carta Aprobación (o cualquier etapa posterior) el
     // cliente debe tener un vehículo seleccionado en "Motos de interés" —
     // ese vehículo es el que después se descuenta del Inventario de motos.
-    if (etapaGanado && etapaRow.orden >= etapaGanado.orden) {
+    if (etapaGanado && etapaRow.orden >= etapaGanado.orden && !etapaRow.es_perdido) {
       const { count: motosSeleccionadas } = await admin
         .from('clientes_motos_interes')
         .select('id', { count: 'exact', head: true })
@@ -98,6 +107,16 @@ export async function POST(req: NextRequest) {
       // que no quede una fecha vieja confundiendo si se vuelve a vender.
       if (etapaGanado && etapaRow.orden < etapaGanado.orden) {
         campos.fecha_cierre = null
+      }
+    }
+    // Al entrar por primera vez a "perdido" queda pendiente de revisión por
+    // gerencia/dueño; si ya se había revisado y se vuelve a perder, se pide
+    // revisar de nuevo.
+    if (etapaRow.es_perdido) {
+      if (!clienteActual.fecha_cierre || clienteActual.revision_perdida === 'revisado') {
+        campos.revision_perdida = 'falta_revision'
+        campos.revisado_perdida_por = null
+        campos.revisado_perdida_at = null
       }
     }
     // fecha_matricula sigue el mismo patrón, para la etapa marcada es_matricula.
