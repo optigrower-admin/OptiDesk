@@ -514,9 +514,6 @@ export default function AdminOrdenDetallePage() {
       } else if (notaIncompletoFaltaRef.current) {
         window.history.pushState(null, '', window.location.href)
         setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
-      } else if (ordenEstadoRef.current === 'pagado' && proveedorPendienteRef.current) {
-        window.history.pushState(null, '', window.location.href)
-        setBloqueoSalidaMsg('Falta registrar el pago a proveedor pendiente de esta orden. Regístralo antes de finalizarla.')
       } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         window.history.pushState(null, '', window.location.href)
         setPendingNavBack(true); setPendingNavUrl(null)
@@ -545,9 +542,6 @@ export default function AdminOrdenDetallePage() {
       } else if (notaIncompletoFaltaRef.current) {
         e.preventDefault(); e.stopPropagation()
         setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
-      } else if (ordenEstadoRef.current === 'pagado' && proveedorPendienteRef.current) {
-        e.preventDefault(); e.stopPropagation()
-        setBloqueoSalidaMsg('Falta registrar el pago a proveedor pendiente de esta orden. Regístralo antes de finalizarla.')
       } else if (ordenEstadoRef.current === 'pagado' && !umaSinNumeroRef.current) {
         e.preventDefault(); e.stopPropagation()
         setPendingNavUrl(href); setPendingNavBack(false)
@@ -1983,32 +1977,40 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
               </div>
             </div>
             {finalizeDialogModo === 'finalizar' ? (
-              <p className="text-sm text-gray-600">¿Deseas mover el estado de <strong>{orden?.placa ?? 'esta moto'}</strong> a <strong>Finalizado</strong>?</p>
+              proveedorPendienteRef.current ? (
+                <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                  Esta orden tiene un pago a proveedor pendiente (saldo: ${saldoPendienteProveedor.toLocaleString('es-CO')}). Regístralo antes de poder marcarla como <strong>Finalizado</strong>.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-600">¿Deseas mover el estado de <strong>{orden?.placa ?? 'esta moto'}</strong> a <strong>Finalizado</strong>?</p>
+              )
             ) : (
               <p className="text-sm text-gray-600">El cliente ya pagó el total de <strong>{orden?.placa ?? 'esta moto'}</strong>, pero el estado sigue como <strong>{orden?.estado === 'en_proceso' ? 'En proceso' : orden?.estado === 'pendiente' ? 'Pendiente' : orden?.estado === 'programado' ? 'Programado' : orden?.estado}</strong>. ¿Deseas marcarla como <strong>Pagada</strong>?</p>
             )}
             <div className="space-y-2">
               {finalizeDialogModo === 'finalizar' ? (
                 <>
-                  <button
-                    disabled={savingFinalize}
-                    onClick={async () => {
-                      setSavingFinalize(true)
-                      const { error: finError } = await supabase.from('ordenes').update({
-                        estado: 'listo',
-                        fecha_finalizacion: new Date().toISOString(),
-                      }).eq('id', ordenId)
-                      setSavingFinalize(false)
-                      if (finError) { alert(`No se pudo finalizar: ${finError.message}`); return }
-                      setEstado('listo' as EstadoOrden)
-                      setFinalizeDialogModo(null)
-                      if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
-                      else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
-                    }}
-                    className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-xl text-sm font-semibold transition-colors"
-                  >
-                    {savingFinalize ? 'Guardando...' : 'Sí, marcar como Finalizada'}
-                  </button>
+                  {!proveedorPendienteRef.current && (
+                    <button
+                      disabled={savingFinalize}
+                      onClick={async () => {
+                        setSavingFinalize(true)
+                        const { error: finError } = await supabase.from('ordenes').update({
+                          estado: 'listo',
+                          fecha_finalizacion: new Date().toISOString(),
+                        }).eq('id', ordenId)
+                        setSavingFinalize(false)
+                        if (finError) { alert(`No se pudo finalizar: ${finError.message}`); return }
+                        setEstado('listo' as EstadoOrden)
+                        setFinalizeDialogModo(null)
+                        if (pendingNavUrl) { router.push(pendingNavUrl); setPendingNavUrl(null) }
+                        else if (pendingNavBack) { skipNextPopstate.current = true; router.back() }
+                      }}
+                      className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white rounded-xl text-sm font-semibold transition-colors"
+                    >
+                      {savingFinalize ? 'Guardando...' : 'Sí, marcar como Finalizada'}
+                    </button>
+                  )}
                   <button
                     disabled={savingFinalize}
                     onClick={async () => {
@@ -2176,8 +2178,6 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 setBloqueoSalidaMsg('Falta el motivo del estado Pendiente. Complétalo antes de salir de esta orden.')
               } else if (notaIncompletoFaltaRef.current) {
                 setBloqueoSalidaMsg('Falta la nota de "Finalizado - Incompleto". Complétala antes de salir de esta orden.')
-              } else if (orden.estado === 'pagado' && proveedorPendienteRef.current) {
-                setBloqueoSalidaMsg('Falta registrar el pago a proveedor pendiente de esta orden. Regístralo antes de finalizarla.')
               } else if (orden.estado === 'pagado' && !(esUMA && numerosOrdenUMA.length === 0)) {
                 setPendingNavBack(true); setPendingNavUrl(null)
                 setFinalizeDialogModo('finalizar')
