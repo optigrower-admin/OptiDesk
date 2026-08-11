@@ -43,6 +43,14 @@ interface OrdenRow {
   gestiona_pago_proveedor: boolean
 }
 
+interface DetalleCuenta {
+  ordenId: string
+  numero: number
+  placa: string
+  cliente: string
+  saldo: number
+}
+
 interface ItemOrdenRow {
   orden_id: string
   origen: string
@@ -226,6 +234,7 @@ export default function DashboardServicioTecnicoPage() {
   const [tipoItem, setTipoItem] = useState<Set<TipoItemKey>>(new Set(TIPO_ITEM_OPCIONES.map((o) => o.key)))
   const [subcategorias, setSubcategorias] = useState<SubcatRow[]>([])
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  const [detalleCuentaModal, setDetalleCuentaModal] = useState<'cobrar' | 'pagar' | null>(null)
 
   // Chart config — chartUnidad: cómo agrupar los puntos de "Tendencias".
   // El rango de fechas siempre es el mismo período elegido arriba (rango).
@@ -442,6 +451,19 @@ export default function DashboardServicioTecnicoPage() {
     const topServiciosFacturacion: RankingDatum[] = topServiciosFacturacionRaw.map(([id, v]) => ({ label: labelServicio(id), value: Math.round(v) }))
     const topServiciosFacturacionAnt: RankingDatum[] = topServiciosFacturacionRaw.map(([id]) => ({ label: labelServicio(id), value: Math.round(factAntM.get(id) ?? 0) }))
 
+    // Detalle Cuentas por Cobrar (clic en la tarjeta del KPI) — placa/cliente y saldo pendiente del cliente
+    const cuentasPorCobrarDetalle: DetalleCuenta[] = pendientesActual
+      .map((o) => ({ ordenId: o.id, numero: o.numero, placa: o.placa, cliente: o.cliente, saldo: (o.valor_total ?? 0) - (o.valor_abono ?? 0) }))
+      .filter((d) => d.saldo > 0)
+      .sort((a, b) => b.saldo - a.saldo)
+
+    // Detalle Cuentas por Pagar (clic en la tarjeta del KPI) — placa/cliente y saldo pendiente al proveedor
+    const cuentasPorPagarDetalle: DetalleCuenta[] = oFF
+      .filter((o) => o.gestiona_pago_proveedor)
+      .map((o) => ({ ordenId: o.id, numero: o.numero, placa: o.placa, cliente: o.cliente, saldo: Math.max(0, (costoExt.get(o.id) ?? 0) - (pagado.get(o.id) ?? 0)) }))
+      .filter((d) => d.saldo > 0)
+      .sort((a, b) => b.saldo - a.saldo)
+
     // Cartera
     const ahora = Date.now()
     const vencidas = pendientesActual.filter((o) => (ahora - new Date(o.created_at).getTime()) / 86400000 > 7)
@@ -469,6 +491,7 @@ export default function DashboardServicioTecnicoPage() {
       topServiciosFacturacion, topServiciosFacturacionAnt,
       cartera: { carteraPendienteActual, totalPagado, totalAbonado, totalVencido, pendientesCount: pendientesActual.length },
       alertas,
+      cuentasPorCobrarDetalle, cuentasPorPagarDetalle,
     }
   }, [oF, oAntF, itemsF, tipoItem, pagosProveedor, chartUnidad, rango, rangoAnterior, mapCategorias, mapSubcategorias])
 
@@ -605,8 +628,8 @@ export default function DashboardServicioTecnicoPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <KpiCard label="Total facturado" valor={formatCOP(m.kpis.totalFacturadoActual)} variacion={v(m.kpis.totalFacturadoActual, m.kpis.totalFacturadoAnterior)} comparativoLabel={comparativoLabel} />
                   <KpiCard label="Ticket promedio" valor={formatCOP(m.kpis.ticketPromedioActual)} variacion={v(m.kpis.ticketPromedioActual, m.kpis.ticketPromedioAnterior)} comparativoLabel={comparativoLabel} />
-                  <KpiCard label="Cuentas por Cobrar" valor={formatCOP(m.kpis.carteraPendienteActual)} variacion={v(m.kpis.carteraPendienteActual, m.kpis.carteraPendienteAnterior)} comparativoLabel={comparativoLabel} />
-                  <KpiCard label="Cuentas por Pagar" valor={formatCOP(m.kpis.cxpProveedores)} />
+                  <KpiCard label="Cuentas por Cobrar" valor={formatCOP(m.kpis.carteraPendienteActual)} variacion={v(m.kpis.carteraPendienteActual, m.kpis.carteraPendienteAnterior)} comparativoLabel={comparativoLabel} onClick={() => setDetalleCuentaModal('cobrar')} />
+                  <KpiCard label="Cuentas por Pagar" valor={formatCOP(m.kpis.cxpProveedores)} onClick={() => setDetalleCuentaModal('pagar')} />
                 </div>
               </div>
 
@@ -708,7 +731,7 @@ export default function DashboardServicioTecnicoPage() {
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                 <h2 className="text-sm font-semibold text-gray-700 mb-3">Cartera y pagos</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                  <KpiCard label="Pendiente por cobrar" valor={formatCOP(m.cartera.carteraPendienteActual)} />
+                  <KpiCard label="Pendiente por cobrar" valor={formatCOP(m.cartera.carteraPendienteActual)} onClick={() => setDetalleCuentaModal('cobrar')} />
                   <KpiCard label="Total pagado" valor={formatCOP(m.cartera.totalPagado)} />
                   <KpiCard label="Total abonado" valor={formatCOP(m.cartera.totalAbonado)} />
                   <KpiCard label="Total vencido" valor={formatCOP(m.cartera.totalVencido)} />
@@ -737,6 +760,40 @@ export default function DashboardServicioTecnicoPage() {
           )}
         </main>
       </div>
+
+      {/* Modal detalle Cuentas por Cobrar / Cuentas por Pagar */}
+      {detalleCuentaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDetalleCuentaModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="font-bold text-gray-900">
+                {detalleCuentaModal === 'cobrar' ? 'Cuentas por Cobrar' : 'Cuentas por Pagar'}
+              </h2>
+              <button onClick={() => setDetalleCuentaModal(null)} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
+              {(detalleCuentaModal === 'cobrar' ? m.cuentasPorCobrarDetalle : m.cuentasPorPagarDetalle).length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">Sin saldos pendientes en el período filtrado</p>
+              ) : (
+                (detalleCuentaModal === 'cobrar' ? m.cuentasPorCobrarDetalle : m.cuentasPorPagarDetalle).map((d) => (
+                  <button key={d.ordenId} onClick={() => router.push(`/admin/ordenes/${d.ordenId}`)}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border border-gray-100 hover:border-blue-300 hover:bg-blue-50 transition-colors text-left">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{d.placa || `Orden #${d.numero}`}</p>
+                      <p className="text-xs text-gray-500 truncate">{d.cliente || 'Sin cliente'} · #{d.numero}</p>
+                    </div>
+                    <p className="text-sm font-bold text-gray-900 flex-shrink-0">{formatCOP(d.saldo)}</p>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

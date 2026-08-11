@@ -8,11 +8,15 @@ interface KpiCardProps {
   comparativoLabel?: string
   sufijo?: string
   sub?: string
+  onClick?: () => void
 }
 
-export function KpiCard({ label, valor, variacion, comparativoLabel, sufijo, sub }: KpiCardProps) {
+export function KpiCard({ label, valor, variacion, comparativoLabel, sufijo, sub, onClick }: KpiCardProps) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+    <div
+      onClick={onClick}
+      className={`bg-white rounded-xl border border-gray-100 shadow-sm p-4${onClick ? ' cursor-pointer hover:border-blue-300 hover:shadow-md transition-all' : ''}`}
+    >
       <p className="text-xs text-gray-500 font-medium">{label}</p>
       <p className="text-2xl font-bold text-gray-900 mt-1">
         {valor}{sufijo && <span className="text-sm font-medium text-gray-400 ml-1">{sufijo}</span>}
