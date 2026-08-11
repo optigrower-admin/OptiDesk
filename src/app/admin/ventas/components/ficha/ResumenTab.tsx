@@ -29,9 +29,10 @@ function formatDateHour(d: string) {
   return new Date(d).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function PasoItem({ p, onToggle, confirmId, onConfirm, onCancelConfirm, reprogId, reprogFecha, onReprogFecha, onAbrirReprog, onGuardarReprog }: {
+function PasoItem({ p, onToggle, onEliminar, confirmId, onConfirm, onCancelConfirm, reprogId, reprogFecha, onReprogFecha, onAbrirReprog, onGuardarReprog }: {
   p: Paso
   onToggle: (p: Paso) => void
+  onEliminar: (p: Paso) => void
   confirmId: string | null
   onConfirm: () => void
   onCancelConfirm: () => void
@@ -59,6 +60,10 @@ function PasoItem({ p, onToggle, confirmId, onConfirm, onCancelConfirm, reprogId
               <button onClick={() => onAbrirReprog(p.id, '')} title="Reprogramar"
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
                 📅
+              </button>
+              <button onClick={() => onEliminar(p)} title="Eliminar"
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-sm text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                ✕
               </button>
             </div>
           )}
@@ -88,10 +93,11 @@ function PasoItem({ p, onToggle, confirmId, onConfirm, onCancelConfirm, reprogId
   )
 }
 
-function RecordatorioItem({ r, onToggle, onDuplicar, confirmId, onConfirm, onCancelConfirm, reprogId, reprogFecha, onReprogFecha, onAbrirReprog, onGuardarReprog }: {
+function RecordatorioItem({ r, onToggle, onDuplicar, onEliminar, confirmId, onConfirm, onCancelConfirm, reprogId, reprogFecha, onReprogFecha, onAbrirReprog, onGuardarReprog }: {
   r: Recordatorio
   onToggle: (r: Recordatorio) => void
   onDuplicar: (r: Recordatorio) => void
+  onEliminar: (r: Recordatorio) => void
   confirmId: string | null
   onConfirm: () => void
   onCancelConfirm: () => void
@@ -131,6 +137,10 @@ function RecordatorioItem({ r, onToggle, onDuplicar, confirmId, onConfirm, onCan
               <button onClick={() => onAbrirReprog(r.id, r.fecha_recordatorio.slice(0, 16))} title="Reprogramar"
                 className="w-7 h-7 flex items-center justify-center rounded-lg text-sm bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
                 📅
+              </button>
+              <button onClick={() => onEliminar(r)} title="Eliminar"
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-sm text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                ✕
               </button>
             </div>
           )}
@@ -253,6 +263,17 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
     cargar()
   }
 
+  async function eliminarRecordatorio(r: Recordatorio) {
+    await supabase.from('recordatorios').delete().eq('id', r.id)
+    await sincronizarProximaAccion()
+    cargar()
+  }
+
+  async function eliminarPaso(p: Paso) {
+    await supabase.from('clientes_pasos').delete().eq('id', p.id)
+    cargar()
+  }
+
   async function duplicarRecordatorio(r: Recordatorio) {
     const nuevaFecha = new Date(new Date(r.fecha_recordatorio).getTime() + 24 * 60 * 60 * 1000)
     await supabase.from('recordatorios').insert({
@@ -348,33 +369,33 @@ export default function ResumenTab({ clienteId, tenantId, usuarioId, onProximaAc
         <div className="space-y-1.5">
           {/* Recordatorios vencidos primero */}
           {recordatorios.filter(r => !r.completado && new Date(r.fecha_recordatorio).getTime() < Date.now()).map(r => (
-            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} onDuplicar={duplicarRecordatorio}
+            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} onDuplicar={duplicarRecordatorio} onEliminar={eliminarRecordatorio}
               confirmId={confirmUncheckRecId} onConfirm={confirmarUncheckRec} onCancelConfirm={() => setConfirmUncheckRecId(null)}
               reprogId={reprogramarId} reprogFecha={reprogramarFecha} onReprogFecha={setReprogramarFecha}
               onAbrirReprog={abrirReprogramar} onGuardarReprog={() => guardarReprogramarRec(r)} />
           ))}
           {/* Recordatorios futuros */}
           {recordatorios.filter(r => !r.completado && new Date(r.fecha_recordatorio).getTime() >= Date.now()).map(r => (
-            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} onDuplicar={duplicarRecordatorio}
+            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} onDuplicar={duplicarRecordatorio} onEliminar={eliminarRecordatorio}
               confirmId={confirmUncheckRecId} onConfirm={confirmarUncheckRec} onCancelConfirm={() => setConfirmUncheckRecId(null)}
               reprogId={reprogramarId} reprogFecha={reprogramarFecha} onReprogFecha={setReprogramarFecha}
               onAbrirReprog={abrirReprogramar} onGuardarReprog={() => guardarReprogramarRec(r)} />
           ))}
           {/* Pasos legados sin fecha */}
           {pasos.filter(p => !p.completado).map(p => (
-            <PasoItem key={p.id} p={p} onToggle={togglePaso} confirmId={confirmUncheckPasoId} onConfirm={confirmarUncheckPaso} onCancelConfirm={() => setConfirmUncheckPasoId(null)}
+            <PasoItem key={p.id} p={p} onToggle={togglePaso} onEliminar={eliminarPaso} confirmId={confirmUncheckPasoId} onConfirm={confirmarUncheckPaso} onCancelConfirm={() => setConfirmUncheckPasoId(null)}
               reprogId={reprogramarId} reprogFecha={reprogramarFecha} onReprogFecha={setReprogramarFecha}
               onAbrirReprog={abrirReprogramar} onGuardarReprog={() => guardarReprogramarPaso(p)} />
           ))}
           {/* Completadas */}
           {recordatorios.filter(r => r.completado).map(r => (
-            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} onDuplicar={duplicarRecordatorio}
+            <RecordatorioItem key={r.id} r={r} onToggle={toggleRecordatorio} onDuplicar={duplicarRecordatorio} onEliminar={eliminarRecordatorio}
               confirmId={confirmUncheckRecId} onConfirm={confirmarUncheckRec} onCancelConfirm={() => setConfirmUncheckRecId(null)}
               reprogId={reprogramarId} reprogFecha={reprogramarFecha} onReprogFecha={setReprogramarFecha}
               onAbrirReprog={abrirReprogramar} onGuardarReprog={() => guardarReprogramarRec(r)} />
           ))}
           {pasos.filter(p => p.completado).map(p => (
-            <PasoItem key={p.id} p={p} onToggle={togglePaso} confirmId={confirmUncheckPasoId} onConfirm={confirmarUncheckPaso} onCancelConfirm={() => setConfirmUncheckPasoId(null)}
+            <PasoItem key={p.id} p={p} onToggle={togglePaso} onEliminar={eliminarPaso} confirmId={confirmUncheckPasoId} onConfirm={confirmarUncheckPaso} onCancelConfirm={() => setConfirmUncheckPasoId(null)}
               reprogId={reprogramarId} reprogFecha={reprogramarFecha} onReprogFecha={setReprogramarFecha}
               onAbrirReprog={abrirReprogramar} onGuardarReprog={() => guardarReprogramarPaso(p)} />
           ))}
