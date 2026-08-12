@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import SeguimientoModal from '@/components/SeguimientoModal'
 import EtiquetasPicker, { type Etiqueta } from '@/app/admin/ventas/components/EtiquetasPicker'
+import EnviarPlantillaModal from './components/EnviarPlantillaModal'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -175,6 +176,8 @@ export default function BandejaPage() {
 
   const [convs, setConvs]             = useState<Conversacion[]>([])
   const [selectedId, setSelectedId]   = useState<string | null>(null)
+  const [showNuevoMensaje, setShowNuevoMensaje] = useState(false)
+  const [showUsarPlantilla, setShowUsarPlantilla] = useState(false)
   const [mensajes, setMensajes]       = useState<Mensaje[]>([])
   const [equipo, setEquipo]           = useState<Usuario[]>([])
   const [loadingConvs, setLoadingConvs] = useState(true)
@@ -814,9 +817,16 @@ export default function BandejaPage() {
       {/* ── Lista de conversaciones ──────────────────────────────────────── */}
       <div className={`${selectedId ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 flex-shrink-0 border-r border-gray-200 bg-white`}>
         <div className="p-4 border-b space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h1 className="font-bold text-gray-900 md:hidden">Bandeja</h1>
-            <span className="text-xs text-gray-400 md:ml-auto">{convsFiltradas.length} conv.</span>
+            <span className="text-xs text-gray-400">{convsFiltradas.length} conv.</span>
+            <button onClick={() => setShowNuevoMensaje(true)}
+              className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-blue-700 text-white text-xs font-medium rounded-lg hover:bg-blue-800 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              Nuevo mensaje
+            </button>
           </div>
           <input type="search" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar..." className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -1245,9 +1255,9 @@ export default function BandejaPage() {
                     <span className="flex-shrink-0">⚠️</span>
                     <span className="truncate">Ventana cerrada — el contacto no ha escrito en 24 h. Solo puedes enviar una plantilla aprobada.</span>
                   </div>
-                  <a href="/admin/mensajes/plantillas" className="flex-shrink-0 text-blue-700 font-semibold hover:underline whitespace-nowrap">
-                    Ver plantillas →
-                  </a>
+                  <button onClick={() => setShowUsarPlantilla(true)} className="flex-shrink-0 text-blue-700 font-semibold hover:underline whitespace-nowrap">
+                    Usar plantilla →
+                  </button>
                 </div>
               )}
               {/* Banner ventana cerrada — Messenger */}
@@ -1650,6 +1660,28 @@ export default function BandejaPage() {
         </div>
       )}
       </div>{/* fin panel derecho mobile wrapper */}
+
+      {showNuevoMensaje && (
+        <EnviarPlantillaModal
+          onClose={() => setShowNuevoMensaje(false)}
+          onEnviado={(convId) => {
+            setShowNuevoMensaje(false)
+            cargarConversaciones(true)
+            setSelectedId(convId)
+          }}
+        />
+      )}
+      {showUsarPlantilla && selectedConv && (
+        <EnviarPlantillaModal
+          onClose={() => setShowUsarPlantilla(false)}
+          conversacionExistente={{ id: selectedConv.id, nombre: getDisplayName(selectedConv) }}
+          onEnviado={(convId) => {
+            setShowUsarPlantilla(false)
+            cargarConversaciones(true)
+            setSelectedId(convId)
+          }}
+        />
+      )}
     </div>
   )
 }
