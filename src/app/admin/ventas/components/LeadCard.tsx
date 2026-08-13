@@ -32,7 +32,7 @@ export type LeadData = {
   estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'
   aprobadoMatriculaPor?: string | null
   revisionPerdida?: 'falta_revision' | 'revisado' | null
-  colaboradores?: string[]
+  colaboradores?: { id: string; nombre: string }[]
   tienePlaca?: boolean
   numero_carta_negociacion?: string | null
   numero_factura?: string | null
@@ -358,11 +358,11 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo }
 
       {/* Colaborando — quién más tiene visibilidad sobre este cliente */}
       {!!lead.colaboradores?.length && (
-        <div className="flex items-center gap-1 flex-wrap mb-1.5" title={`Comparten visibilidad: ${lead.colaboradores.join(', ')}`}>
+        <div className="flex items-center gap-1 flex-wrap mb-1.5" title={`Comparten visibilidad: ${lead.colaboradores.map(c => c.nombre).join(', ')}`}>
           <span className="text-[9px] text-gray-400">👥</span>
-          {lead.colaboradores.map((c, i) => (
-            <span key={i} className="text-[10px] bg-gray-100 text-gray-600 rounded-full px-1.5 py-0.5 truncate max-w-[90px]">
-              {c}
+          {lead.colaboradores.map(c => (
+            <span key={c.id} className="text-[10px] bg-gray-100 text-gray-600 rounded-full px-1.5 py-0.5 truncate max-w-[90px]">
+              {c.nombre}
             </span>
           ))}
         </div>

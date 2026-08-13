@@ -99,7 +99,7 @@ export default function VentasPage() {
       const etiquetasMap: Record<string, EtiquetaRow[]> = {}
       const creditoMap: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
       const creditoPorEntidadMap: Record<string, Record<string, string>> = {}
-      const colaboradoresMap: Record<string, string[]> = {}
+      const colaboradoresMap: Record<string, { id: string; nombre: string }[]> = {}
 
       if (ids.length > 0) {
         const [etiquetasRows, creditoResult, alistamientoIds, visibilidadRows] = await Promise.all([
@@ -180,7 +180,7 @@ export default function VentasPage() {
           (async () => {
             try {
               const { data } = await supabase.from('clientes_visibilidad')
-                .select('cliente_id, usuarios(nombre)')
+                .select('cliente_id, usuarios(id, nombre)')
                 .in('cliente_id', ids)
               return data ?? []
             } catch { return [] }
@@ -196,11 +196,11 @@ export default function VentasPage() {
         Object.assign(creditoMap, creditoResult.aprobadas)
         Object.assign(creditoPorEntidadMap, creditoResult.porEntidad)
         for (const id of alistamientoIds) clientesConAlistamiento.add(id)
-        for (const row of (visibilidadRows as unknown as { cliente_id: string; usuarios: { nombre: string } | { nombre: string }[] | null }[])) {
+        for (const row of (visibilidadRows as unknown as { cliente_id: string; usuarios: { id: string; nombre: string } | { id: string; nombre: string }[] | null }[])) {
           const u = Array.isArray(row.usuarios) ? row.usuarios[0] : row.usuarios
           if (!u?.nombre) continue
           if (!colaboradoresMap[row.cliente_id]) colaboradoresMap[row.cliente_id] = []
-          colaboradoresMap[row.cliente_id].push(u.nombre)
+          colaboradoresMap[row.cliente_id].push({ id: u.id, nombre: u.nombre })
         }
       }
 

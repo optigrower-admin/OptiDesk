@@ -39,6 +39,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [nuevoOpen, setNuevoOpen] = useState(false)
   const [usuarios, setUsuarios] = useState<UsuarioFiltro[]>([])
   const [usuariosFiltro, setUsuariosFiltro] = useState<Set<string>>(new Set())
+  const [visibilidadFiltro, setVisibilidadFiltro] = useState<Set<string>>(new Set())
   const [entidadesCredito, setEntidadesCredito] = useState<EntidadFiltro[]>([])
   const [creditoFiltro, setCreditoFiltro] = useState<Record<string, Set<string>>>({})
   const [creditoPanelOpen, setCreditoPanelOpen] = useState(false)
@@ -214,6 +215,9 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
 
   const leadsFiltrados = useMemo(() => {
     let lista = usuariosFiltro.size > 0 ? leadsState.filter(l => usuariosFiltro.has(l.assigned_to ?? '')) : leadsState
+    if (visibilidadFiltro.size > 0) {
+      lista = lista.filter(l => l.colaboradores?.some(c => visibilidadFiltro.has(c.id)))
+    }
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase().trim()
       lista = lista.filter(l =>
@@ -242,7 +246,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       }))
     }
     return lista
-  }, [leadsState, usuariosFiltro, busqueda, idsExtraSearch, fechaDesde, fechaHasta, creditoFiltro])
+  }, [leadsState, usuariosFiltro, visibilidadFiltro, busqueda, idsExtraSearch, fechaDesde, fechaHasta, creditoFiltro])
 
   const sinSeguim = activos.filter(l => !l.proxima_accion_fecha).length
 
@@ -329,6 +333,44 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
                   activo
                     ? 'bg-blue-700 text-white border-blue-700'
                     : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+                }`}
+              >
+                {u.nombre}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Filtro por visibilidad compartida (multi-select) */}
+      {usuarios.length > 1 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-xs text-gray-500 font-medium">Visible para:</span>
+          <button
+            onClick={() => setVisibilidadFiltro(new Set())}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+              visibilidadFiltro.size === 0
+                ? 'bg-purple-700 text-white border-purple-700'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:text-purple-700'
+            }`}
+          >
+            Todos
+          </button>
+          {usuarios.map(u => {
+            const activo = visibilidadFiltro.has(u.id)
+            return (
+              <button
+                key={u.id}
+                onClick={() => setVisibilidadFiltro(prev => {
+                  const next = new Set(prev)
+                  if (next.has(u.id)) next.delete(u.id)
+                  else next.add(u.id)
+                  return next
+                })}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                  activo
+                    ? 'bg-purple-700 text-white border-purple-700'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:text-purple-700'
                 }`}
               >
                 {u.nombre}
