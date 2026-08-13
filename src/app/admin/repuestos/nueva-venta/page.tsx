@@ -364,7 +364,8 @@ function NuevaVentaContent() {
         usuario_id: profile?.id,
       })
       // La cascada de DB se encarga de items_orden y pagos_orden
-      await supabase.from('ordenes').delete().eq('id', ordenId as string)
+      const { error: delError } = await supabase.from('ordenes').delete().eq('id', ordenId as string)
+      if (delError) { alert(`No se pudo eliminar la venta: ${delError.message}`); return }
       router.push('/admin/repuestos')
     } finally {
       setDeletingOrden(false)
@@ -421,7 +422,14 @@ function NuevaVentaContent() {
     if (!confirm(`¿Eliminar "${item.descripcion}"?`)) return
     await supabase.from('items_orden').delete().eq('id', item.id)
     const nuevoTotal = items.filter((i) => i.id !== item.id).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-    await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId)
+    // El abono/estado de pago no se recalculaban al borrar un repuesto — si la
+    // venta ya tenía pago registrado, quedaba con valor_abono > 0 aunque el
+    // total bajara a 0, y por eso seguía apareciendo como ingreso en Caja
+    // (Caja filtra por valor_abono > 0, sin importar si quedan repuestos).
+    const totalPagadoReal = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+    const nuevoAbono = Math.min(totalPagadoReal, nuevoTotal)
+    const nuevoEstadoPago = calcularEstadoPago(pagosOrden, nuevoTotal)
+    await supabase.from('ordenes').update({ valor_total: nuevoTotal, valor_abono: nuevoAbono, estado_pago: nuevoEstadoPago }).eq('id', ordenId)
     await registrarDevolucion(supabase, {
       tenantId: orden.tenant_id,
       repuesto_uma_id: item.repuesto_uma_id ?? undefined,
@@ -461,7 +469,10 @@ function NuevaVentaContent() {
       return
     }
     const nuevoTotal = items.map((i) => i.id === id ? { ...i, ...cambios } : i).reduce((s, i) => s + i.precio_venta * i.cantidad, 0)
-    await supabase.from('ordenes').update({ valor_total: nuevoTotal }).eq('id', ordenId as string)
+    const totalPagadoReal = pagosOrden.filter((p) => p.monto > 0).reduce((s, p) => s + p.monto, 0)
+    const nuevoAbono = Math.min(totalPagadoReal, nuevoTotal)
+    const nuevoEstadoPago = calcularEstadoPago(pagosOrden, nuevoTotal)
+    await supabase.from('ordenes').update({ valor_total: nuevoTotal, valor_abono: nuevoAbono, estado_pago: nuevoEstadoPago }).eq('id', ordenId as string)
     await registrarAuditoria(supabase, {
       tenant_id: orden.tenant_id,
       tabla: 'items_orden',
