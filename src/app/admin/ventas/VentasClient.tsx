@@ -504,7 +504,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         <VistaHoy leads={leadsFiltrados} tenantId={tenantId} onLeadPatch={patchLead} onLeadRemove={removeLead} />
       )}
       {tab === 'lista' && (
-        <VistaLista leads={leadsFiltrados} tenantId={tenantId} onLeadPatch={patchLead} onLeadRemove={removeLead} />
+        <VistaLista leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} onLeadPatch={patchLead} onLeadRemove={removeLead} />
       )}
     </div>
   )

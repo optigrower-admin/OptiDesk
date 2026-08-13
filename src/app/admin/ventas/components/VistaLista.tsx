@@ -11,6 +11,7 @@ import { useEtapasPipeline } from '@/hooks/useEtapasPipeline'
 interface Props {
   leads: LeadData[]
   tenantId: string
+  usuarios?: { id: string; nombre: string }[]
   onLeadPatch?: (id: string, patch: Record<string, unknown>) => void
   onLeadRemove?: (id: string) => void
 }
@@ -24,8 +25,9 @@ const CANAL_BADGE: Record<string, string> = {
   manual:    'bg-gray-100 text-gray-600',
 }
 
-export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove }: Props) {
+export default function VistaLista({ leads, tenantId, usuarios = [], onLeadPatch, onLeadRemove }: Props) {
   const etapasPipeline = useEtapasPipeline(tenantId)
+  const usuariosMap = useMemo(() => Object.fromEntries(usuarios.map(u => [u.id, u.nombre])), [usuarios])
   const [fichaId, setFichaId]         = useState<string | null>(null)
   const [busqueda, setBusqueda]       = useState('')
   const [etapaFiltro, setEtapaFiltro] = useState<EtapaVenta | 'todas' | 'activas'>('activas')
@@ -166,6 +168,8 @@ export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove 
               <Th campo="nombre" label="Prospecto" />
               <Th campo="etapa"  label="Etapa" />
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Canal</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Asesor</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Visible para</th>
               <Th campo="valor"       label="Valor estimado" />
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Moto</th>
               <Th campo="seguimiento" label="Próxima acción" />
@@ -175,7 +179,7 @@ export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove 
           <tbody>
             {filtrados.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
+                <td colSpan={9} className="text-center py-12 text-gray-400 text-sm">
                   No hay prospectos que coincidan con los filtros
                 </td>
               </tr>
@@ -229,6 +233,32 @@ export default function VistaLista({ leads, tenantId, onLeadPatch, onLeadRemove 
                         </span>
                       ))}
                     </div>
+                  </td>
+
+                  {/* Asesor */}
+                  <td className="px-4 py-3">
+                    {lead.assigned_to && usuariosMap[lead.assigned_to] ? (
+                      <span className="text-xs font-semibold text-blue-700 truncate max-w-[110px] block">
+                        {usuariosMap[lead.assigned_to]}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">Sin asignar</span>
+                    )}
+                  </td>
+
+                  {/* Visible para (colaboradores) */}
+                  <td className="px-4 py-3">
+                    {lead.colaboradores?.length ? (
+                      <div className="flex flex-wrap gap-1 max-w-[140px]">
+                        {lead.colaboradores.map(c => (
+                          <span key={c.id} className="text-[10px] bg-gray-100 text-gray-600 rounded-full px-1.5 py-0.5 truncate max-w-[90px]">
+                            {c.nombre}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
                   </td>
 
                   {/* Valor */}
