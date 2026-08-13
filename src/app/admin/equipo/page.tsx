@@ -355,7 +355,12 @@ export default function EquipoPage() {
     setSavingNombre(true)
     const nombreCambio = editNombreModal.trim() !== editModal.nombre
     const rolCambio = editRolModal !== editModal.rol
-    await supabase.from('usuarios').update({ nombre: editNombreModal.trim(), rol: editRolModal }).eq('id', editModal.id)
+    const { error } = await supabase.from('usuarios').update({ nombre: editNombreModal.trim(), rol: editRolModal }).eq('id', editModal.id)
+    if (error) {
+      alert(`No se pudieron guardar los cambios: ${error.message}`)
+      setSavingNombre(false)
+      return
+    }
     if (nombreCambio) {
       await registrarAuditoria(supabase, {
         tenant_id: profile?.tenant_id ?? '',
@@ -449,7 +454,12 @@ export default function EquipoPage() {
   const guardarRol = async (id: string) => {
     setSavingRol(true)
     const usuarioAnterior = usuarios.find((x) => x.id === id)
-    await supabase.from('usuarios').update({ rol: nuevoRol }).eq('id', id)
+    const { error } = await supabase.from('usuarios').update({ rol: nuevoRol }).eq('id', id)
+    if (error) {
+      alert(`No se pudo cambiar el rol: ${error.message}`)
+      setSavingRol(false)
+      return
+    }
     await registrarAuditoria(supabase, {
       tenant_id: profile?.tenant_id ?? '',
       tabla: 'usuarios',
