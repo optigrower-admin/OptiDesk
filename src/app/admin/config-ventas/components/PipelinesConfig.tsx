@@ -16,6 +16,7 @@ type Etapa = {
   es_perdido: boolean
   es_matricula: boolean
   es_auxiliar: boolean
+  roles_ocultos: string[] | null
 }
 
 type Grupo = { id: string; clave: string; nombre: string; color: string; orden: number; etapas: Etapa[] }
@@ -362,6 +363,36 @@ function BloqueoRolConfig({ etapaId }: { etapaId: string }) {
   )
 }
 
+function OcultarEtapaRolConfig({ rolesOcultos, busy, onToggle }: {
+  rolesOcultos: string[] | null
+  busy: boolean
+  onToggle: (rol: RolBloqueo, oculto: boolean) => void
+}) {
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 space-y-1.5">
+      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+        Ocultar esta columna para
+      </p>
+      <p className="text-[10px] text-gray-400 -mt-1">
+        El rol marcado no ve esta columna en el Kanban (los clientes que ya estén en ella tampoco se le muestran).
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {ROLES_BLOQUEO.map(r => {
+          const oculto = (rolesOcultos ?? []).includes(r.value)
+          return (
+            <button key={r.value} disabled={busy} onClick={() => onToggle(r.value, !oculto)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors disabled:opacity-50 ${
+                oculto ? 'bg-gray-700 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'
+              }`}>
+              {oculto ? '🚫 ' : ''}{r.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function PipelinesConfig() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
   const [loading, setLoading]     = useState(true)
@@ -570,6 +601,11 @@ export default function PipelinesConfig() {
                           </div>
                           <ReglasEtapaConfig etapaId={e.id} />
                           <BloqueoRolConfig etapaId={e.id} />
+                          <OcultarEtapaRolConfig
+                            rolesOcultos={e.roles_ocultos}
+                            busy={busy}
+                            onToggle={(rol, oculto) => accionar(() => llamar({ accion: 'set_etapa_oculta', etapa_id: e.id, rol, oculto }))}
+                          />
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">

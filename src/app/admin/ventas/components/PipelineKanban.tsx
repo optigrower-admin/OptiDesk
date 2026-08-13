@@ -381,17 +381,22 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   }
 
   const activePipelineObj = pipelines.find(p => p.id === activePipelineId) ?? pipelines[0]
-  const pipeline = activePipelineObj?.grupos ?? []
+  const pipeline = (activePipelineObj?.grupos ?? []).map(g => ({
+    ...g,
+    etapas: g.etapas.filter(e => !e.rolesOcultos?.includes(rolNorm)),
+  }))
 
-  // Counts for tab labels — un contador por pipeline
+  // Counts for tab labels — un contador por pipeline (sin contar columnas ocultas para este rol)
   const countsPorPipeline = useMemo(() => {
     const m = new Map<string, number>()
     for (const p of pipelines) {
-      const etapasDelPipeline = new Set(p.grupos.flatMap(g => g.etapas.map(e => e.id)))
+      const etapasDelPipeline = new Set(
+        p.grupos.flatMap(g => g.etapas.filter(e => !e.rolesOcultos?.includes(rolNorm)).map(e => e.id))
+      )
       m.set(p.id, leads.filter(l => etapasDelPipeline.has(l.etapa_venta)).length)
     }
     return m
-  }, [pipelines, leads])
+  }, [pipelines, leads, rolNorm])
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false)
