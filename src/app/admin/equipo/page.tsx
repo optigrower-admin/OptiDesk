@@ -79,6 +79,7 @@ const GRUPOS_ADMIN: GrupoDef[] = [
     secciones: [
       { key: 'ventas',              label: 'Seguimiento Ventas',    defaultOrden: 55 },
       { key: 'lista_motos',         label: 'Lista de Motos',        defaultOrden: 57 },
+      { key: 'inventario_motos',    label: 'Inventario de Motos',   defaultOrden: 57.5 },
       { key: 'config_ventas',       label: 'Config Ventas',         defaultOrden: 56, soloGerencia: true },
       { key: 'comisiones_freelance', label: 'Comisiones Freelance', defaultOrden: 59 },
     ],

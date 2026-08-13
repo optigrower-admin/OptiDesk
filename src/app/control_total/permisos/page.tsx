@@ -12,6 +12,15 @@ interface PermisoRow { tenant_id: string; rol: Rol; seccion: string; habilitado:
 
 const GRUPOS_ADMIN: GrupoDef[] = [
   {
+    key: 'dashboard',
+    label: 'Dashboard',
+    secciones: [
+      { key: 'dashboard_servicio_tecnico', label: 'Dashboard Servicio Técnico', descripcion: 'Métricas de Servicio Técnico', defaultOrden: 5 },
+      { key: 'dashboard_repuestos',        label: 'Dashboard Repuestos',        descripcion: 'Métricas de Repuestos',        defaultOrden: 6 },
+      { key: 'dashboard_ventas_vehiculos', label: 'Dashboard Ventas Vehículos', descripcion: 'Métricas de Ventas',           defaultOrden: 7 },
+    ],
+  },
+  {
     key: 'serv-tec',
     label: 'Serv Tec & Rep',
     secciones: [
@@ -21,6 +30,7 @@ const GRUPOS_ADMIN: GrupoDef[] = [
       { key: 'caja',             label: 'Caja',               descripcion: 'Entradas y salidas de dinero de Serv. Téc. y Repuestos', defaultOrden: 35 },
       { key: 'clientes',         label: 'Clientes',          descripcion: 'Base de datos de clientes',       defaultOrden: 40 },
       { key: 'motos',            label: 'Motos',             descripcion: 'Base de datos de motos',          defaultOrden: 50 },
+      { key: 'cotizaciones_servtec', label: 'Cotizaciones S.T.', descripcion: 'Cotizaciones de Servicio Técnico', defaultOrden: 55 },
       { key: 'config_servicio',  label: 'Config Serv. Téc.', descripcion: 'Configuración y catálogos UMA',  defaultOrden: 85, soloGerencia: true },
     ],
   },
@@ -28,8 +38,11 @@ const GRUPOS_ADMIN: GrupoDef[] = [
     key: 'ventas',
     label: 'Ventas',
     secciones: [
-      { key: 'ventas',        label: 'Seguimiento Ventas', descripcion: 'Seguimiento de clientes y ventas de motos', defaultOrden: 55 },
-      { key: 'config_ventas', label: 'Config Ventas',      descripcion: 'Catálogos administrables de Seguimiento Ventas', defaultOrden: 56, soloGerencia: true },
+      { key: 'ventas',              label: 'Seguimiento Ventas',   descripcion: 'Seguimiento de clientes y ventas de motos', defaultOrden: 55 },
+      { key: 'lista_motos',         label: 'Lista de Motos',       descripcion: 'Lista de precios imprimible', defaultOrden: 57 },
+      { key: 'inventario_motos',    label: 'Inventario de Motos',  descripcion: 'Inventario de motos disponibles', defaultOrden: 57.5 },
+      { key: 'config_ventas',       label: 'Config Ventas',        descripcion: 'Catálogos administrables de Seguimiento Ventas', defaultOrden: 56, soloGerencia: true },
+      { key: 'comisiones_freelance', label: 'Comisiones Freelance', descripcion: 'Comisiones por venta de vehículo', defaultOrden: 59 },
     ],
   },
   {
@@ -49,12 +62,29 @@ const GRUPOS_ADMIN: GrupoDef[] = [
       { key: 'comentarios', label: 'Publicaciones', descripcion: 'Comentarios de redes sociales', defaultOrden: 200 },
     ],
   },
+  {
+    key: 'integraciones',
+    label: 'Integraciones',
+    secciones: [
+      { key: 'integraciones_api',      label: 'API Keys',         descripcion: 'Llaves de API',           defaultOrden: 300, soloGerencia: true },
+      { key: 'integraciones_webhooks', label: 'Webhooks',         descripcion: 'Webhooks salientes',      defaultOrden: 310, soloGerencia: true },
+      { key: 'integraciones_ia',       label: 'Integraciones IA', descripcion: 'Conexiones de IA',        defaultOrden: 320, soloGerencia: true },
+    ],
+  },
+  {
+    key: 'consultas-sql',
+    label: 'Consultas SQL',
+    secciones: [
+      { key: 'consultas_sql', label: 'Editor SQL / Permisos', descripcion: 'Consola SQL', defaultOrden: 330 },
+    ],
+  },
 ]
 
 const STANDALONE_ADMIN: SeccionDef[] = [
   { key: 'reportes',  label: 'Reportes',  descripcion: 'Reportes y estadísticas',  defaultOrden: 60 },
   { key: 'auditoria', label: 'Auditoría', descripcion: 'Log de cambios y acciones', defaultOrden: 70 },
   { key: 'mi_equipo', label: 'Mi equipo', descripcion: 'Gestión del equipo y permisos', defaultOrden: 80, soloGerencia: true },
+  { key: 'mi_uso',    label: 'Mi Uso',    descripcion: 'Uso propio de la herramienta', defaultOrden: 81 },
 ]
 
 const SECCIONES_ADMIN: SeccionDef[] = [
