@@ -99,9 +99,10 @@ export default function VentasPage() {
       const etiquetasMap: Record<string, EtiquetaRow[]> = {}
       const creditoMap: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
       const creditoPorEntidadMap: Record<string, Record<string, string>> = {}
+      const colaboradoresMap: Record<string, string[]> = {}
 
       if (ids.length > 0) {
-        const [etiquetasRows, creditoResult, alistamientoIds] = await Promise.all([
+        const [etiquetasRows, creditoResult, alistamientoIds, visibilidadRows] = await Promise.all([
           // 1. Etiquetas
           (async () => {
             try {
@@ -174,6 +175,16 @@ export default function VentasPage() {
                 return []
               })()
             : Promise.resolve([] as string[]),
+
+          // 4. Visibilidad compartida — quién más tiene acceso a cada cliente
+          (async () => {
+            try {
+              const { data } = await supabase.from('clientes_visibilidad')
+                .select('cliente_id, usuarios(nombre)')
+                .in('cliente_id', ids)
+              return data ?? []
+            } catch { return [] }
+          })(),
         ])
 
         // Aplicar resultados
@@ -185,6 +196,12 @@ export default function VentasPage() {
         Object.assign(creditoMap, creditoResult.aprobadas)
         Object.assign(creditoPorEntidadMap, creditoResult.porEntidad)
         for (const id of alistamientoIds) clientesConAlistamiento.add(id)
+        for (const row of (visibilidadRows as unknown as { cliente_id: string; usuarios: { nombre: string } | { nombre: string }[] | null }[])) {
+          const u = Array.isArray(row.usuarios) ? row.usuarios[0] : row.usuarios
+          if (!u?.nombre) continue
+          if (!colaboradoresMap[row.cliente_id]) colaboradoresMap[row.cliente_id] = []
+          colaboradoresMap[row.cliente_id].push(u.nombre)
+        }
       }
 
       const mapped: LeadData[] = (raw ?? []).map((c) => {
@@ -223,6 +240,7 @@ export default function VentasPage() {
           estadoAprobacionMatricula: ((cr.estado_aprobacion_matricula ?? 'pendiente') as 'pendiente' | 'aprobado' | 'rechazado'),
           aprobadoMatriculaPor: (cr.aprobado_matricula_por ?? null) as string | null,
           revisionPerdida: (cr.revision_perdida ?? null) as 'falta_revision' | 'revisado' | null,
+          colaboradores: colaboradoresMap[c.id as string] ?? [],
           tienePlaca: (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(c.etapa_venta as EtapaVenta)
             ? !!(cr.placa)
             : undefined,

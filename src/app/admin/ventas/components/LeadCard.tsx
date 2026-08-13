@@ -32,6 +32,7 @@ export type LeadData = {
   estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'
   aprobadoMatriculaPor?: string | null
   revisionPerdida?: 'falta_revision' | 'revisado' | null
+  colaboradores?: string[]
   tienePlaca?: boolean
   numero_carta_negociacion?: string | null
   numero_factura?: string | null
@@ -352,6 +353,18 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo }
             ?
           </div>
           <span className="text-xs font-semibold text-white truncate">Sin asignar</span>
+        </div>
+      )}
+
+      {/* Colaborando — quién más tiene visibilidad sobre este cliente */}
+      {!!lead.colaboradores?.length && (
+        <div className="flex items-center gap-1 flex-wrap mb-1.5" title={`Comparten visibilidad: ${lead.colaboradores.join(', ')}`}>
+          <span className="text-[9px] text-gray-400">👥</span>
+          {lead.colaboradores.map((c, i) => (
+            <span key={i} className="text-[10px] bg-gray-100 text-gray-600 rounded-full px-1.5 py-0.5 truncate max-w-[90px]">
+              {c}
+            </span>
+          ))}
         </div>
       )}
 
