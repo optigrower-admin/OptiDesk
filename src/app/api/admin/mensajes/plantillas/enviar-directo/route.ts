@@ -4,6 +4,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { buscarOCrearCliente } from '@/lib/clientes/buscarOCrearCliente'
 
 const GRAPH_VERSION = 'v20.0'
+const MAX_MEDIA_BYTES = 4 * 1024 * 1024
+
+export const maxDuration = 30
+export const runtime = 'nodejs'
 
 async function decryptToken(enc: string): Promise<string> {
   try {
@@ -48,14 +52,22 @@ export async function POST(req: NextRequest) {
     .from('usuarios').select('tenant_id, id').eq('id', user.id).single()
   if (!perfil) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
 
-  const body = await req.json()
-  const { plantilla_id, conversacion_id, telefono, nombre, variables } = body as {
-    plantilla_id?: string
-    conversacion_id?: string
-    telefono?: string
-    nombre?: string
-    variables?: Record<string, string>
+  // FormData porque las plantillas con header de imagen/video/documento
+  // llevan un archivo — para las demás, los mismos campos llegan igual.
+  let form: FormData
+  try {
+    form = await req.formData()
+  } catch {
+    return NextResponse.json({ error: 'No se pudo leer la solicitud' }, { status: 400 })
   }
+
+  const plantilla_id = form.get('plantilla_id')?.toString()
+  const conversacion_id = form.get('conversacion_id')?.toString() || undefined
+  const telefono = form.get('telefono')?.toString() || undefined
+  const nombre = form.get('nombre')?.toString() || undefined
+  const variables = JSON.parse(form.get('variables')?.toString() || '{}') as Record<string, string>
+  const headerFile = form.get('header_media') as File | null
+
   if (!plantilla_id) return NextResponse.json({ error: 'Falta plantilla_id' }, { status: 400 })
   if (!conversacion_id && !telefono) return NextResponse.json({ error: 'Falta el número de teléfono' }, { status: 400 })
 
@@ -76,8 +88,12 @@ export async function POST(req: NextRequest) {
   if (!p.meta_template_name?.trim()) {
     return NextResponse.json({ error: 'Falta el "Nombre en Meta" de la plantilla' }, { status: 400 })
   }
-  if (p.tipo_header === 'imagen' || p.tipo_header === 'video' || p.tipo_header === 'documento') {
-    return NextResponse.json({ error: 'Por ahora no se pueden enviar directamente plantillas con imagen/video/documento en el header — usa una plantilla sin ese tipo de header.' }, { status: 400 })
+  const esHeaderMedia = p.tipo_header === 'imagen' || p.tipo_header === 'video' || p.tipo_header === 'documento'
+  if (esHeaderMedia && !headerFile) {
+    return NextResponse.json({ error: `Esta plantilla necesita un archivo (${p.tipo_header}) para el header.` }, { status: 400 })
+  }
+  if (esHeaderMedia && headerFile && headerFile.size > MAX_MEDIA_BYTES) {
+    return NextResponse.json({ error: `El archivo pesa ${(headerFile.size / 1024 / 1024).toFixed(1)} MB. El máximo soportado es 4 MB.` }, { status: 400 })
   }
 
   const varsFaltantes = (p.variables ?? []).filter((v) => !variables?.[v]?.trim())
@@ -108,6 +124,8 @@ export async function POST(req: NextRequest) {
   if ((plantillasHoy ?? 0) >= efectiveLimite - 2) {
     return NextResponse.json({ error: `Límite diario de WhatsApp alcanzado (${plantillasHoy}/${efectiveLimite} plantillas).` }, { status: 429 })
   }
+
+  const token = await decryptToken(cfg.wa_access_token_enc)
 
   // ── Resolver conversación (existente o nueva) ────────────────────────────
   let convId = conversacion_id ?? null
@@ -176,14 +194,65 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Si el header lleva media, subirlo primero a la Media API de Meta ────
+  // (distinto del "resumable upload" que usa el ejemplo de la plantilla al
+  // crearla — para ENVIAR un mensaje se necesita un media id de este otro
+  // endpoint, ligado al número de WhatsApp del negocio).
+  let headerMediaId: string | null = null
+  let headerMediaUrl: string | null = null
+  if (esHeaderMedia && headerFile) {
+    const buffer = Buffer.from(await headerFile.arrayBuffer())
+    const mediaForm = new FormData()
+    mediaForm.append('file', new Blob([buffer], { type: headerFile.type }), headerFile.name)
+    mediaForm.append('type', headerFile.type)
+    mediaForm.append('messaging_product', 'whatsapp')
+
+    const uploadRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${cfg.wa_phone_number_id}/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: mediaForm,
+    })
+    const uploadData = await uploadRes.json()
+    if (!uploadRes.ok || !uploadData?.id) {
+      const msg = uploadData?.error?.error_user_msg || uploadData?.error?.message || 'No se pudo subir el archivo del header a Meta'
+      return NextResponse.json({ error: msg, code: 'META_ERROR' }, { status: 422 })
+    }
+    headerMediaId = uploadData.id as string
+
+    // Solo para dejar registro visual del envío en la bandeja (no se le manda a Meta).
+    try {
+      const { uploadToR2, getSignedDownloadUrl } = await import('@/lib/r2')
+      const ext = headerFile.name.split('.').pop() ?? 'bin'
+      const r2Key = `mensajes/${perfil.tenant_id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      await uploadToR2(r2Key, buffer, headerFile.type)
+      headerMediaUrl = await getSignedDownloadUrl(r2Key, 60 * 60 * 24 * 7)
+    } catch {
+      // No bloquea el envío si falla solo el guardado de la copia visual.
+    }
+  }
+
   // ── Armar y enviar el mensaje de plantilla a Meta ────────────────────────
   const components: Record<string, unknown>[] = []
+
+  if (esHeaderMedia && headerMediaId) {
+    const tipoMeta = p.tipo_header === 'imagen' ? 'image' : p.tipo_header === 'video' ? 'video' : 'document'
+    components.push({
+      type: 'header',
+      parameters: [{
+        type: tipoMeta,
+        [tipoMeta]: {
+          id: headerMediaId,
+          ...(p.tipo_header === 'documento' && headerFile ? { filename: headerFile.name } : {}),
+        },
+      }],
+    })
+  }
+
   const varsOrdenadas = (p.variables ?? []).map((v) => variables![v])
   if (varsOrdenadas.length > 0) {
     components.push({ type: 'body', parameters: varsOrdenadas.map((texto) => ({ type: 'text', text: texto })) })
   }
 
-  const token = await decryptToken(cfg.wa_access_token_enc)
   const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${cfg.wa_phone_number_id}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -217,6 +286,7 @@ export async function POST(req: NextRequest) {
     meta_message_id: result.messages?.[0]?.id ?? null,
     estado_envio: 'enviado',
     leido_por_asesor: true,
+    ...(headerMediaUrl ? { media_url: headerMediaUrl } : {}),
   })
 
   await admin.from('conversaciones').update({

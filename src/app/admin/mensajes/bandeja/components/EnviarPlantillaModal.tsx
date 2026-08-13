@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -10,6 +10,8 @@ type Plantilla = {
   variables: string[]
   meta_status: string
   tipo_header: 'texto' | 'imagen' | 'documento' | 'video' | 'ninguno' | null
+  header_texto: string | null
+  footer_texto: string | null
 }
 
 interface Props {
@@ -20,6 +22,12 @@ interface Props {
   conversacionExistente?: { id: string; nombre: string }
 }
 
+const ACCEPT_POR_TIPO: Record<string, string> = {
+  imagen: 'image/*',
+  video: 'video/*',
+  documento: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx',
+}
+
 function renderPreview(cuerpo: string, vars: Record<string, string>): string {
   return cuerpo.replace(/\{\{([^}]+)\}\}/g, (_, name) => vars[name.trim()] || `[${name.trim()}]`)
 }
@@ -27,6 +35,7 @@ function renderPreview(cuerpo: string, vars: Record<string, string>): string {
 export default function EnviarPlantillaModal({ onClose, onEnviado, conversacionExistente }: Props) {
   const { profile } = useAuth()
   const supabase = createClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [plantillas, setPlantillas] = useState<Plantilla[]>([])
   const [loadingPlantillas, setLoadingPlantillas] = useState(true)
@@ -34,13 +43,15 @@ export default function EnviarPlantillaModal({ onClose, onEnviado, conversacionE
   const [telefono, setTelefono] = useState('')
   const [nombre, setNombre] = useState('')
   const [vars, setVars] = useState<Record<string, string>>({})
+  const [headerFile, setHeaderFile] = useState<File | null>(null)
+  const [headerPreviewUrl, setHeaderPreviewUrl] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!profile?.tenant_id) return
     supabase.from('plantillas_mensajes')
-      .select('id, nombre, cuerpo, variables, meta_status, tipo_header')
+      .select('id, nombre, cuerpo, variables, meta_status, tipo_header, header_texto, footer_texto')
       .eq('tenant_id', profile.tenant_id)
       .eq('meta_status', 'aprobada')
       .eq('activa', true)
@@ -58,30 +69,42 @@ export default function EnviarPlantillaModal({ onClose, onEnviado, conversacionE
   useEffect(() => {
     setVars({})
     setError(null)
+    setHeaderFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }, [plantillaId])
+
+  // Preview local del archivo (solo imágenes/video, para que se vea algo antes de enviar)
+  useEffect(() => {
+    if (!headerFile) { setHeaderPreviewUrl(null); return }
+    const url = URL.createObjectURL(headerFile)
+    setHeaderPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [headerFile])
 
   const preview = useMemo(() => plantilla ? renderPreview(plantilla.cuerpo, vars) : '', [plantilla, vars])
 
-  const puedeEnviar = !!plantillaId && !usaMediaHeader
+  const puedeEnviar = !!plantillaId
+    && (!usaMediaHeader || !!headerFile)
     && (conversacionExistente || telefono.trim().length >= 10)
     && (plantilla?.variables ?? []).every(v => vars[v]?.trim())
 
   async function enviar() {
-    if (!puedeEnviar || enviando) return
+    if (!puedeEnviar || enviando || !plantilla) return
     setEnviando(true)
     setError(null)
     try {
-      const r = await fetch('/api/admin/mensajes/plantillas/enviar-directo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          plantilla_id: plantillaId,
-          variables: vars,
-          ...(conversacionExistente
-            ? { conversacion_id: conversacionExistente.id }
-            : { telefono: telefono.trim(), nombre: nombre.trim() || undefined }),
-        }),
-      })
+      const fd = new FormData()
+      fd.append('plantilla_id', plantillaId)
+      fd.append('variables', JSON.stringify(vars))
+      if (conversacionExistente) {
+        fd.append('conversacion_id', conversacionExistente.id)
+      } else {
+        fd.append('telefono', telefono.trim())
+        if (nombre.trim()) fd.append('nombre', nombre.trim())
+      }
+      if (headerFile) fd.append('header_media', headerFile)
+
+      const r = await fetch('/api/admin/mensajes/plantillas/enviar-directo', { method: 'POST', body: fd })
       const result = await r.json()
       if (!r.ok) { setError(result.error ?? 'No se pudo enviar la plantilla'); return }
       onEnviado(result.conversacion_id)
@@ -150,13 +173,37 @@ export default function EnviarPlantillaModal({ onClose, onEnviado, conversacionE
             )}
           </div>
 
-          {usaMediaHeader && (
-            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              Esta plantilla tiene una imagen/video/documento en el header — por ahora esos envíos directos no están soportados. Elige otra plantilla.
-            </p>
+          {usaMediaHeader && plantilla && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Archivo del header ({plantilla.tipo_header}) — obligatorio
+              </label>
+              <div className="flex items-center gap-2">
+                <label className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">
+                  📎 {headerFile ? 'Cambiar archivo' : 'Elegir archivo'}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept={ACCEPT_POR_TIPO[plantilla.tipo_header ?? '']}
+                    onChange={e => setHeaderFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+                {headerFile && (
+                  <span className="text-xs text-gray-500 truncate max-w-[180px]">{headerFile.name}</span>
+                )}
+              </div>
+              {headerPreviewUrl && plantilla.tipo_header === 'imagen' && (
+                <img src={headerPreviewUrl} alt="" className="mt-2 max-h-32 rounded-lg border border-gray-100" />
+              )}
+              {headerPreviewUrl && plantilla.tipo_header === 'video' && (
+                <video src={headerPreviewUrl} controls className="mt-2 max-h-32 rounded-lg border border-gray-100" />
+              )}
+              <p className="text-xs text-gray-400 mt-1">Máximo 4 MB.</p>
+            </div>
           )}
 
-          {plantilla && !usaMediaHeader && plantilla.variables.length > 0 && (
+          {plantilla && plantilla.variables.length > 0 && (
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">Variables</label>
               {plantilla.variables.map(v => (
@@ -170,10 +217,30 @@ export default function EnviarPlantillaModal({ onClose, onEnviado, conversacionE
             </div>
           )}
 
-          {plantilla && !usaMediaHeader && (
+          {plantilla && (
             <div className="bg-[#e5ddd5] rounded-xl px-4 py-3">
-              <div className="max-w-[260px] ml-auto bg-white rounded-xl px-3 py-2.5 shadow-sm">
-                <p className="text-sm text-gray-900 whitespace-pre-wrap">{preview}</p>
+              <div className="max-w-[260px] ml-auto bg-white rounded-xl overflow-hidden shadow-sm">
+                {plantilla.tipo_header === 'texto' && plantilla.header_texto && (
+                  <p className="font-bold text-gray-900 text-sm px-3 pt-2.5">{plantilla.header_texto}</p>
+                )}
+                {headerPreviewUrl && plantilla.tipo_header === 'imagen' && (
+                  <img src={headerPreviewUrl} alt="" className="w-full max-h-40 object-cover" />
+                )}
+                {headerPreviewUrl && plantilla.tipo_header === 'video' && (
+                  <video src={headerPreviewUrl} className="w-full max-h-40 object-cover" />
+                )}
+                {usaMediaHeader && plantilla.tipo_header === 'documento' && headerFile && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-100">
+                    <span>📄</span>
+                    <span className="text-xs text-gray-600 truncate">{headerFile.name}</span>
+                  </div>
+                )}
+                <div className="px-3 py-2.5">
+                  <p className="text-sm text-gray-900 whitespace-pre-wrap">{preview}</p>
+                  {plantilla.footer_texto && (
+                    <p className="text-xs text-gray-400 mt-1.5 pt-1.5 border-t border-gray-100">{plantilla.footer_texto}</p>
+                  )}
+                </div>
               </div>
             </div>
           )}
