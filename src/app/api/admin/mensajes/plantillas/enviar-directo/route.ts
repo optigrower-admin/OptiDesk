@@ -111,20 +111,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'WhatsApp no está conectado. Configúralo en Conexión Meta.' }, { status: 400 })
   }
 
-  // Límite diario de plantillas
-  const efectiveLimite = cfg.negocio_verificado ? (cfg.limite_diario_wa ?? 1000) : 250
-  const hoyUTC = new Date(); hoyUTC.setUTCHours(0, 0, 0, 0)
-  const { count: plantillasHoy } = await admin
-    .from('mensajes')
-    .select('id', { count: 'exact', head: true })
-    .eq('tenant_id', perfil.tenant_id)
-    .eq('tipo', 'plantilla')
-    .eq('direccion', 'saliente')
-    .gte('created_at', hoyUTC.toISOString())
-  if ((plantillasHoy ?? 0) >= efectiveLimite - 2) {
-    return NextResponse.json({ error: `Límite diario de WhatsApp alcanzado (${plantillasHoy}/${efectiveLimite} plantillas).` }, { status: 429 })
-  }
-
   const token = await decryptToken(cfg.wa_access_token_enc)
 
   // ── Resolver conversación (existente o nueva) ────────────────────────────
@@ -194,10 +180,43 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Ventana de 24h: si el contacto escribió hace menos de 24h, se puede
+  // responder gratis (mensaje normal) en vez de pagar por la plantilla —
+  // Meta solo exige/cobra la plantilla para ABRIR o REABRIR una conversación.
+  const { data: ultimoEntrante } = await admin
+    .from('mensajes')
+    .select('created_at')
+    .eq('conversacion_id', convId!)
+    .eq('direccion', 'entrante')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const ventanaAbierta = !!ultimoEntrante && (Date.now() - new Date(ultimoEntrante.created_at).getTime()) < 86_400_000
+
+  // Límite diario de plantillas — solo aplica cuando de verdad se va a pagar
+  // una plantilla (ventana cerrada). Los mensajes gratis dentro de la ventana
+  // abierta no cuentan contra este límite.
+  if (!ventanaAbierta) {
+    const efectiveLimite = cfg.negocio_verificado ? (cfg.limite_diario_wa ?? 1000) : 250
+    const hoyUTC = new Date(); hoyUTC.setUTCHours(0, 0, 0, 0)
+    const { count: plantillasHoy } = await admin
+      .from('mensajes')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', perfil.tenant_id)
+      .eq('tipo', 'plantilla')
+      .eq('direccion', 'saliente')
+      .gte('created_at', hoyUTC.toISOString())
+    if ((plantillasHoy ?? 0) >= efectiveLimite - 2) {
+      return NextResponse.json({ error: `Límite diario de WhatsApp alcanzado (${plantillasHoy}/${efectiveLimite} plantillas).` }, { status: 429 })
+    }
+  }
+
   // ── Si el header lleva media, subirlo primero a la Media API de Meta ────
   // (distinto del "resumable upload" que usa el ejemplo de la plantilla al
   // crearla — para ENVIAR un mensaje se necesita un media id de este otro
-  // endpoint, ligado al número de WhatsApp del negocio).
+  // endpoint, ligado al número de WhatsApp del negocio). Hace falta tanto
+  // si se manda como plantilla (pagada) como si se manda gratis con ventana
+  // abierta (ahí va como mensaje de imagen/video/documento normal).
   let headerMediaId: string | null = null
   let headerMediaUrl: string | null = null
   if (esHeaderMedia && headerFile) {
@@ -231,59 +250,96 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Armar y enviar el mensaje de plantilla a Meta ────────────────────────
-  const components: Record<string, unknown>[] = []
-
-  if (esHeaderMedia && headerMediaId) {
-    const tipoMeta = p.tipo_header === 'imagen' ? 'image' : p.tipo_header === 'video' ? 'video' : 'document'
-    components.push({
-      type: 'header',
-      parameters: [{
-        type: tipoMeta,
-        [tipoMeta]: {
-          id: headerMediaId,
-          ...(p.tipo_header === 'documento' && headerFile ? { filename: headerFile.name } : {}),
-        },
-      }],
-    })
-  }
-
-  const varsOrdenadas = (p.variables ?? []).map((v) => variables![v])
-  if (varsOrdenadas.length > 0) {
-    components.push({ type: 'body', parameters: varsOrdenadas.map((texto) => ({ type: 'text', text: texto })) })
-  }
-
-  const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${cfg.wa_phone_number_id}/messages`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: canalContactId,
-      type: 'template',
-      template: {
-        name: p.meta_template_name,
-        language: { code: p.idioma },
-        ...(components.length > 0 ? { components } : {}),
-      },
-    }),
-  })
-  const result = await r.json()
-  if (!r.ok) {
-    const metaMsg = result?.error?.error_user_msg || result?.error?.message || 'Error al enviar la plantilla por WhatsApp'
-    return NextResponse.json({ error: metaMsg, code: 'META_ERROR' }, { status: 422 })
-  }
-
   const contenidoRenderizado = renderPreview(p.cuerpo, variables ?? {})
+  let metaMessageId: string | null = null
+  let tipoGuardado: string = 'plantilla'
+
+  if (ventanaAbierta) {
+    // ── Envío gratis: mensaje normal (texto o media con caption) ──────────
+    const tipoMediaMeta = p.tipo_header === 'imagen' ? 'image' : p.tipo_header === 'video' ? 'video' : p.tipo_header === 'documento' ? 'document' : null
+    const msgBody: Record<string, unknown> = tipoMediaMeta && headerMediaId
+      ? {
+          messaging_product: 'whatsapp',
+          to: canalContactId,
+          type: tipoMediaMeta,
+          [tipoMediaMeta]: {
+            id: headerMediaId,
+            caption: contenidoRenderizado,
+            ...(tipoMediaMeta === 'document' && headerFile ? { filename: headerFile.name } : {}),
+          },
+        }
+      : {
+          messaging_product: 'whatsapp',
+          to: canalContactId,
+          type: 'text',
+          text: { preview_url: false, body: contenidoRenderizado },
+        }
+
+    const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${cfg.wa_phone_number_id}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(msgBody),
+    })
+    const result = await r.json()
+    if (!r.ok) {
+      const metaMsg = result?.error?.error_user_msg || result?.error?.message || 'Error al enviar el mensaje por WhatsApp'
+      return NextResponse.json({ error: metaMsg, code: 'META_ERROR' }, { status: 422 })
+    }
+    metaMessageId = result.messages?.[0]?.id ?? null
+    tipoGuardado = tipoMediaMeta ?? 'texto'
+  } else {
+    // ── Envío pagado: mensaje de plantilla (obligatorio fuera de la ventana) ──
+    const components: Record<string, unknown>[] = []
+    if (esHeaderMedia && headerMediaId) {
+      const tipoMeta = p.tipo_header === 'imagen' ? 'image' : p.tipo_header === 'video' ? 'video' : 'document'
+      components.push({
+        type: 'header',
+        parameters: [{
+          type: tipoMeta,
+          [tipoMeta]: {
+            id: headerMediaId,
+            ...(p.tipo_header === 'documento' && headerFile ? { filename: headerFile.name } : {}),
+          },
+        }],
+      })
+    }
+    const varsOrdenadas = (p.variables ?? []).map((v) => variables![v])
+    if (varsOrdenadas.length > 0) {
+      components.push({ type: 'body', parameters: varsOrdenadas.map((texto) => ({ type: 'text', text: texto })) })
+    }
+
+    const r = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${cfg.wa_phone_number_id}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: canalContactId,
+        type: 'template',
+        template: {
+          name: p.meta_template_name,
+          language: { code: p.idioma },
+          ...(components.length > 0 ? { components } : {}),
+        },
+      }),
+    })
+    const result = await r.json()
+    if (!r.ok) {
+      const metaMsg = result?.error?.error_user_msg || result?.error?.message || 'Error al enviar la plantilla por WhatsApp'
+      return NextResponse.json({ error: metaMsg, code: 'META_ERROR' }, { status: 422 })
+    }
+    metaMessageId = result.messages?.[0]?.id ?? null
+  }
+
   const now = new Date().toISOString()
 
   await admin.from('mensajes').insert({
     conversacion_id: convId,
     tenant_id: perfil.tenant_id,
     direccion: 'saliente',
-    tipo: 'plantilla',
+    tipo: tipoGuardado,
     contenido: contenidoRenderizado,
     enviado_por: perfil.id,
-    meta_message_id: result.messages?.[0]?.id ?? null,
+    meta_message_id: metaMessageId,
     estado_envio: 'enviado',
     leido_por_asesor: true,
     ...(headerMediaUrl ? { media_url: headerMediaUrl } : {}),
@@ -296,11 +352,13 @@ export async function POST(req: NextRequest) {
     updated_at: now,
   }).eq('id', convId)
 
-  const mismodia = new Date(cfg.limite_reset_at ?? 0).toDateString() === new Date().toDateString()
-  await admin.from('config_meta').update({
-    mensajes_iniciados_hoy: mismodia ? (cfg.mensajes_iniciados_hoy ?? 0) + 1 : 1,
-    ...(mismodia ? {} : { limite_reset_at: now }),
-  }).eq('tenant_id', perfil.tenant_id)
+  if (!ventanaAbierta) {
+    const mismodia = new Date(cfg.limite_reset_at ?? 0).toDateString() === new Date().toDateString()
+    await admin.from('config_meta').update({
+      mensajes_iniciados_hoy: mismodia ? (cfg.mensajes_iniciados_hoy ?? 0) + 1 : 1,
+      ...(mismodia ? {} : { limite_reset_at: now }),
+    }).eq('tenant_id', perfil.tenant_id)
+  }
 
-  return NextResponse.json({ ok: true, conversacion_id: convId })
+  return NextResponse.json({ ok: true, conversacion_id: convId, gratis: ventanaAbierta })
 }
