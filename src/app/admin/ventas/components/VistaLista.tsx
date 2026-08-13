@@ -206,6 +206,11 @@ export default function VistaLista({ leads, tenantId, usuarios = [], onLeadPatch
                         <p className="font-medium text-gray-900 truncate max-w-[140px]">
                           {lead.cliente?.nombre ?? 'Sin nombre'}
                         </p>
+                        {!!lead.vinculados?.length && (
+                          <p className="text-[10px] text-purple-600 truncate max-w-[140px]">
+                            🔗 {lead.vinculados.map(v => v.nombre).join(', ')}
+                          </p>
+                        )}
                         {lead.no_leidos_count > 0 && (
                           <span className="text-xs text-green-600 font-semibold">
                             {lead.no_leidos_count} sin leer

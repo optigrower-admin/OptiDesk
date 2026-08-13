@@ -56,6 +56,7 @@ export default function VentasPage() {
           estado_aprobacion_matricula,
           aprobado_matricula_por,
           revision_perdida,
+          vinculado_a_id,
           conversaciones ( id, canal, no_leidos_count )
         `)
         .eq('tenant_id', profile.tenant_id)
@@ -80,7 +81,11 @@ export default function VentasPage() {
         }
       }
 
-      const { data: raw } = await query
+      const { data: rawTodos } = await query
+      // Los clientes vinculados como "contacto secundario" de otro (ej. esposo/a,
+      // padre e hijo) no tienen tarjeta propia — su info se muestra dentro de la
+      // tarjeta del cliente principal al que están vinculados.
+      const raw = (rawTodos ?? []).filter((c) => !(c as Record<string, unknown>).vinculado_a_id)
 
       const ids = (raw ?? []).map((c) => c.id as string)
       const idsEnEspera = (raw ?? [])
@@ -100,9 +105,10 @@ export default function VentasPage() {
       const creditoMap: Record<string, { aprobada: string | null; rechazadas: string[] }> = {}
       const creditoPorEntidadMap: Record<string, Record<string, string>> = {}
       const colaboradoresMap: Record<string, { id: string; nombre: string }[]> = {}
+      const vinculadosMap: Record<string, { id: string; nombre: string | null; celular: string | null }[]> = {}
 
       if (ids.length > 0) {
-        const [etiquetasRows, creditoResult, alistamientoIds, visibilidadRows] = await Promise.all([
+        const [etiquetasRows, creditoResult, alistamientoIds, visibilidadRows, vinculadosRows] = await Promise.all([
           // 1. Etiquetas
           (async () => {
             try {
@@ -185,6 +191,18 @@ export default function VentasPage() {
               return data ?? []
             } catch { return [] }
           })(),
+
+          // 5. Contactos vinculados (esposos, padre e hijo, etc.) — se muestran
+          // dentro de la tarjeta del cliente principal, no como tarjeta propia.
+          (async () => {
+            try {
+              const { data } = await supabase.from('clientes')
+                .select('id, nombre, celular, vinculado_a_id')
+                .eq('tenant_id', profile.tenant_id)
+                .in('vinculado_a_id', ids)
+              return data ?? []
+            } catch { return [] }
+          })(),
         ])
 
         // Aplicar resultados
@@ -201,6 +219,10 @@ export default function VentasPage() {
           if (!u?.nombre) continue
           if (!colaboradoresMap[row.cliente_id]) colaboradoresMap[row.cliente_id] = []
           colaboradoresMap[row.cliente_id].push({ id: u.id, nombre: u.nombre })
+        }
+        for (const row of (vinculadosRows as unknown as { id: string; nombre: string | null; celular: string | null; vinculado_a_id: string }[])) {
+          if (!vinculadosMap[row.vinculado_a_id]) vinculadosMap[row.vinculado_a_id] = []
+          vinculadosMap[row.vinculado_a_id].push({ id: row.id, nombre: row.nombre, celular: row.celular })
         }
       }
 
@@ -241,6 +263,7 @@ export default function VentasPage() {
           aprobadoMatriculaPor: (cr.aprobado_matricula_por ?? null) as string | null,
           revisionPerdida: (cr.revision_perdida ?? null) as 'falta_revision' | 'revisado' | null,
           colaboradores: colaboradoresMap[c.id as string] ?? [],
+          vinculados: vinculadosMap[c.id as string] ?? [],
           tienePlaca: (ETAPAS_NECESITAN_PLACA as EtapaVenta[]).includes(c.etapa_venta as EtapaVenta)
             ? !!(cr.placa)
             : undefined,

@@ -33,6 +33,7 @@ export type LeadData = {
   aprobadoMatriculaPor?: string | null
   revisionPerdida?: 'falta_revision' | 'revisado' | null
   colaboradores?: { id: string; nombre: string }[]
+  vinculados?: { id: string; nombre: string | null; celular: string | null }[]
   tienePlaca?: boolean
   numero_carta_negociacion?: string | null
   numero_factura?: string | null
@@ -242,9 +243,16 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo }
           ) : (
             <span className="flex-shrink-0 text-amber-400 leading-none text-[13px]" title="Datos incompletos (nombre, apellido, cédula, celular o correo)">⚠</span>
           )}
-          <p className="font-semibold text-sm text-gray-900 leading-tight truncate">
-            {lead.cliente?.nombre ?? 'Sin nombre'}
-          </p>
+          <div className="min-w-0">
+            <p className="font-semibold text-sm text-gray-900 leading-tight truncate">
+              {lead.cliente?.nombre ?? 'Sin nombre'}
+            </p>
+            {!!lead.vinculados?.length && (
+              <p className="text-[10px] text-purple-600 truncate" title={`También: ${lead.vinculados.map(v => v.nombre).join(', ')}`}>
+                🔗 {lead.vinculados.map(v => v.nombre).join(', ')}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {diasSinMovimiento !== null && diasSinMovimiento >= 0 && (() => {

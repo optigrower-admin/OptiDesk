@@ -133,9 +133,13 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [ordenes, setOrdenes]           = useState<Orden[]>([])
   const [usuarios, setUsuarios]         = useState<{ id: string; nombre: string }[]>([])
   const [colaboradores, setColaboradores] = useState<{ id: string; nombre: string }[]>([])
-  // Vincular con otro cliente (ej. esposos, padre e hijo) — vinculo_a_id se guarda
-  // de un solo lado; se resuelve en ambos sentidos al cargar (directo o reverso).
-  const [vinculado, setVinculado] = useState<{ id: string; nombre: string | null; celular: string | null; direccion: 'directo' | 'reverso' } | null>(null)
+  // Vincular contacto familiar (ej. esposos, padre e hijo) — DISTINTO de "Vincular a
+  // otro cliente" (que fusiona y borra el origen). Acá ambos clientes se conservan
+  // completos; el familiar solo deja de tener tarjeta propia en el pipeline y se
+  // muestra dentro de la tarjeta de este cliente. vinculado_a_id vive en la fila del
+  // familiar (secundario), apuntando a este cliente (principal).
+  const [familiaresVinculados, setFamiliaresVinculados] = useState<{ id: string; nombre: string | null; celular: string | null }[]>([])
+  const [esFamiliarSecundarioDe, setEsFamiliarSecundarioDe] = useState<{ id: string; nombre: string | null } | null>(null)
   const [buscandoVinculo, setBuscandoVinculo] = useState(false)
   const [queryVinculo, setQueryVinculo] = useState('')
   const [resultadosVinculo, setResultadosVinculo] = useState<{ id: string; nombre: string | null; celular: string | null }[]>([])
@@ -326,7 +330,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const enEtapaCarta           = !!reglaCarta
 
   const cargar = useCallback(async () => {
-    const [{ data: msgs }, { data: ords }, { data: us }, { data: cliente }, { data: etapasHist }, { data: colab }, { data: vinculoDirecto }, { data: vinculoReverso }] = await Promise.all([
+    const [{ data: msgs }, { data: ords }, { data: us }, { data: cliente }, { data: etapasHist }, { data: colab }, { data: propiaFila }, { data: familiares }] = await Promise.all([
       convActivaId
         ? supabase.from('mensajes')
             .select('id,direccion,tipo,contenido,created_at,estado_envio,enviado_por,usuarios(nombre,email,rol)')
@@ -342,8 +346,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         .order('created_at', { ascending: false })
         .limit(20),
       supabase.from('clientes_visibilidad').select('usuario_id, usuarios(id, nombre)').eq('cliente_id', lead.id),
-      supabase.from('clientes').select('vinculado_a_id, clientes_vinculado:clientes!clientes_vinculado_a_id_fkey(id, nombre, celular)').eq('id', lead.id).single(),
-      supabase.from('clientes').select('id, nombre, celular').eq('vinculado_a_id', lead.id).maybeSingle(),
+      supabase.from('clientes').select('vinculado_a_id, clientes_principal:clientes!clientes_vinculado_a_id_fkey(id, nombre)').eq('id', lead.id).single(),
+      supabase.from('clientes').select('id, nombre, celular').eq('vinculado_a_id', lead.id),
     ])
     setMensajes((msgs ?? []) as unknown as Mensaje[])
     setOrdenes((ords ?? []) as Orden[])
@@ -360,14 +364,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setFechaMatricula(cliente?.fecha_matricula ?? null)
     setFechaCarta(cliente?.fecha_carta_negociacion ?? null)
     setHistorialEtapas((etapasHist ?? []) as EtapaMovimiento[])
-    const cv = Array.isArray(vinculoDirecto?.clientes_vinculado) ? vinculoDirecto.clientes_vinculado[0] : vinculoDirecto?.clientes_vinculado
-    if (cv) {
-      setVinculado({ id: cv.id, nombre: cv.nombre, celular: cv.celular, direccion: 'directo' })
-    } else if (vinculoReverso) {
-      setVinculado({ id: vinculoReverso.id, nombre: vinculoReverso.nombre, celular: vinculoReverso.celular, direccion: 'reverso' })
-    } else {
-      setVinculado(null)
-    }
+    const principal = Array.isArray(propiaFila?.clientes_principal) ? propiaFila.clientes_principal[0] : propiaFila?.clientes_principal
+    setEsFamiliarSecundarioDe(principal ? { id: principal.id, nombre: principal.nombre } : null)
+    setFamiliaresVinculados((familiares ?? []) as { id: string; nombre: string | null; celular: string | null }[])
   }, [lead.id, convActivaId, tenantId])
 
   useEffect(() => { cargar() }, [cargar])
@@ -563,7 +562,10 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     }
   }
 
-  // ── Vincular con otro cliente (esposos, padre e hijo, etc.) ────────────────
+  // ── Vincular contacto familiar (esposos, padre e hijo, etc.) ────────────────
+  // El familiar que se busca y selecciona pasa a ser el SECUNDARIO: su fila
+  // queda con vinculado_a_id apuntando a este cliente (el principal), y deja de
+  // tener tarjeta propia en el pipeline — su info se ve dentro de esta ficha.
   async function buscarParaVincular(q: string) {
     setQueryVinculo(q)
     if (q.trim().length < 2) { setResultadosVinculo([]); return }
@@ -571,18 +573,19 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       .select('id, nombre, celular')
       .eq('tenant_id', tenantId)
       .neq('id', lead.id)
+      .is('vinculado_a_id', null)
       .or(`nombre.ilike.%${q.trim()}%,celular.ilike.%${q.trim()}%`)
       .limit(8)
     setResultadosVinculo((data ?? []) as { id: string; nombre: string | null; celular: string | null }[])
   }
 
-  async function vincularCon(otro: { id: string; nombre: string | null; celular: string | null }) {
+  async function vincularFamiliar(otro: { id: string; nombre: string | null; celular: string | null }) {
     setVinculando(true)
     try {
-      const { error } = await supabase.from('clientes').update({ vinculado_a_id: otro.id }).eq('id', lead.id)
+      const { error } = await supabase.from('clientes').update({ vinculado_a_id: lead.id }).eq('id', otro.id)
       if (error) { alert(`No se pudo vincular: ${error.message}`); return }
-      await logCambio('vinculado', 'Sin vincular', otro.nombre ?? 'Cliente')
-      setVinculado({ id: otro.id, nombre: otro.nombre, celular: otro.celular, direccion: 'directo' })
+      await logCambio('familiar_vinculado', 'Sin vincular', otro.nombre ?? 'Cliente')
+      setFamiliaresVinculados(prev => [...prev, otro])
       setBuscandoVinculo(false)
       setQueryVinculo('')
       setResultadosVinculo([])
@@ -592,17 +595,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     }
   }
 
-  async function desvincular() {
-    if (!vinculado) return
-    if (!confirm(`¿Quitar el vínculo con ${vinculado.nombre ?? 'este cliente'}?`)) return
+  async function desvincularFamiliar(familiar: { id: string; nombre: string | null }) {
+    if (!confirm(`¿Quitar a ${familiar.nombre ?? 'este contacto'} de esta tarjeta? Volverá a aparecer como tarjeta propia en el pipeline.`)) return
     setVinculando(true)
     try {
-      // Se guarda de un solo lado — hay que limpiar la fila que realmente tiene el FK.
-      const idAActualizar = vinculado.direccion === 'directo' ? lead.id : vinculado.id
-      const { error } = await supabase.from('clientes').update({ vinculado_a_id: null }).eq('id', idAActualizar)
+      const { error } = await supabase.from('clientes').update({ vinculado_a_id: null }).eq('id', familiar.id)
       if (error) { alert(`No se pudo desvincular: ${error.message}`); return }
-      await logCambio('vinculado', vinculado.nombre ?? 'Cliente', 'Sin vincular')
-      setVinculado(null)
+      await logCambio('familiar_vinculado', familiar.nombre ?? 'Cliente', 'Sin vincular')
+      setFamiliaresVinculados(prev => prev.filter(f => f.id !== familiar.id))
       mostrarGuardado()
     } finally {
       setVinculando(false)
@@ -1196,41 +1196,52 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 </div>
               )}
 
-              {/* Vincular con otro cliente (esposos, padre e hijo, etc.) */}
+              {/* Vincular contacto familiar (esposos, padre e hijo, etc.) */}
               <div>
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Vinculado con</label>
-                {vinculado ? (
-                  <div className="flex items-center gap-1.5 bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5">
-                    <span className="text-xs font-semibold text-slate-100 flex-1 truncate">{vinculado.nombre ?? 'Cliente'}</span>
-                    {esGerencia && (
-                      <button onClick={desvincular} disabled={vinculando} className="text-slate-500 hover:text-red-400 flex-shrink-0" title="Quitar vínculo">
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Familiar vinculado</label>
+                {esFamiliarSecundarioDe ? (
+                  <p className="text-xs text-slate-400 bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5">
+                    Vinculado dentro de la tarjeta de <span className="text-slate-200 font-semibold">{esFamiliarSecundarioDe.nombre ?? 'otro cliente'}</span>
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {familiaresVinculados.map(f => (
+                      <div key={f.id} className="flex items-center gap-1.5 bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5">
+                        <span className="text-xs font-semibold text-slate-100 flex-1 truncate">
+                          {f.nombre ?? 'Cliente'}{f.celular ? <span className="text-slate-500 font-normal"> · {f.celular}</span> : null}
+                        </span>
+                        {esGerencia && (
+                          <button onClick={() => desvincularFamiliar(f)} disabled={vinculando} className="text-slate-500 hover:text-red-400 flex-shrink-0" title="Quitar vínculo">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {buscandoVinculo ? (
+                      <div className="space-y-1">
+                        <input autoFocus value={queryVinculo} onChange={e => buscarParaVincular(e.target.value)}
+                          placeholder="Buscar por nombre o celular..."
+                          className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none" />
+                        {resultadosVinculo.length > 0 && (
+                          <div className="bg-[#232f47] border border-[#2a3550] rounded-lg overflow-hidden max-h-32 overflow-y-auto">
+                            {resultadosVinculo.map(r => (
+                              <button key={r.id} disabled={vinculando} onClick={() => vincularFamiliar(r)}
+                                className="w-full text-left px-2 py-1.5 text-xs text-slate-200 hover:bg-[#2a3550] transition-colors disabled:opacity-50">
+                                {r.nombre ?? 'Sin nombre'} {r.celular ? <span className="text-slate-500">· {r.celular}</span> : null}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <button onClick={() => { setBuscandoVinculo(false); setQueryVinculo(''); setResultadosVinculo([]) }}
+                          className="text-[10px] text-slate-500 hover:text-slate-300">Cancelar</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setBuscandoVinculo(true)}
+                        className="text-xs text-blue-400 hover:text-blue-300 border border-dashed border-[#2a3550] hover:border-blue-400 rounded-lg px-2 py-1.5 w-full text-left transition-colors">
+                        👪 Vincular familiar
                       </button>
                     )}
                   </div>
-                ) : buscandoVinculo ? (
-                  <div className="space-y-1">
-                    <input autoFocus value={queryVinculo} onChange={e => buscarParaVincular(e.target.value)}
-                      placeholder="Buscar por nombre o celular..."
-                      className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none" />
-                    {resultadosVinculo.length > 0 && (
-                      <div className="bg-[#232f47] border border-[#2a3550] rounded-lg overflow-hidden max-h-32 overflow-y-auto">
-                        {resultadosVinculo.map(r => (
-                          <button key={r.id} disabled={vinculando} onClick={() => vincularCon(r)}
-                            className="w-full text-left px-2 py-1.5 text-xs text-slate-200 hover:bg-[#2a3550] transition-colors disabled:opacity-50">
-                            {r.nombre ?? 'Sin nombre'} {r.celular ? <span className="text-slate-500">· {r.celular}</span> : null}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <button onClick={() => { setBuscandoVinculo(false); setQueryVinculo(''); setResultadosVinculo([]) }}
-                      className="text-[10px] text-slate-500 hover:text-slate-300">Cancelar</button>
-                  </div>
-                ) : (
-                  <button onClick={() => setBuscandoVinculo(true)}
-                    className="text-xs text-blue-400 hover:text-blue-300 border border-dashed border-[#2a3550] hover:border-blue-400 rounded-lg px-2 py-1.5 w-full text-left transition-colors">
-                    🔗 Vincular cliente
-                  </button>
                 )}
               </div>
 
@@ -2114,41 +2125,52 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     </div>
                   )}
 
-                  {/* Vincular con otro cliente (esposos, padre e hijo, etc.) */}
+                  {/* Vincular contacto familiar (esposos, padre e hijo, etc.) */}
                   <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Vinculado con</label>
-                    {vinculado ? (
-                      <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2">
-                        <span className="text-sm font-semibold text-gray-800 flex-1 truncate">{vinculado.nombre ?? 'Cliente'}</span>
-                        {esGerencia && (
-                          <button onClick={desvincular} disabled={vinculando} className="text-gray-400 hover:text-red-500 flex-shrink-0" title="Quitar vínculo">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Familiar vinculado</label>
+                    {esFamiliarSecundarioDe ? (
+                      <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                        Vinculado dentro de la tarjeta de <span className="text-gray-800 font-semibold">{esFamiliarSecundarioDe.nombre ?? 'otro cliente'}</span>
+                      </p>
+                    ) : (
+                      <div className="space-y-1">
+                        {familiaresVinculados.map(f => (
+                          <div key={f.id} className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2">
+                            <span className="text-sm font-semibold text-gray-800 flex-1 truncate">
+                              {f.nombre ?? 'Cliente'}{f.celular ? <span className="text-gray-400 font-normal"> · {f.celular}</span> : null}
+                            </span>
+                            {esGerencia && (
+                              <button onClick={() => desvincularFamiliar(f)} disabled={vinculando} className="text-gray-400 hover:text-red-500 flex-shrink-0" title="Quitar vínculo">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {buscandoVinculo ? (
+                          <div className="space-y-1">
+                            <input autoFocus value={queryVinculo} onChange={e => buscarParaVincular(e.target.value)}
+                              placeholder="Buscar por nombre o celular..."
+                              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none" />
+                            {resultadosVinculo.length > 0 && (
+                              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden max-h-32 overflow-y-auto shadow-sm">
+                                {resultadosVinculo.map(r => (
+                                  <button key={r.id} disabled={vinculando} onClick={() => vincularFamiliar(r)}
+                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
+                                    {r.nombre ?? 'Sin nombre'} {r.celular ? <span className="text-gray-400">· {r.celular}</span> : null}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <button onClick={() => { setBuscandoVinculo(false); setQueryVinculo(''); setResultadosVinculo([]) }}
+                              className="text-xs text-gray-400 hover:text-gray-600">Cancelar</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setBuscandoVinculo(true)}
+                            className="text-sm text-blue-600 hover:text-blue-800 border border-dashed border-gray-300 hover:border-blue-400 rounded-lg px-3 py-2 w-full text-left transition-colors">
+                            👪 Vincular familiar
                           </button>
                         )}
                       </div>
-                    ) : buscandoVinculo ? (
-                      <div className="space-y-1">
-                        <input autoFocus value={queryVinculo} onChange={e => buscarParaVincular(e.target.value)}
-                          placeholder="Buscar por nombre o celular..."
-                          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none" />
-                        {resultadosVinculo.length > 0 && (
-                          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden max-h-32 overflow-y-auto shadow-sm">
-                            {resultadosVinculo.map(r => (
-                              <button key={r.id} disabled={vinculando} onClick={() => vincularCon(r)}
-                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
-                                {r.nombre ?? 'Sin nombre'} {r.celular ? <span className="text-gray-400">· {r.celular}</span> : null}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        <button onClick={() => { setBuscandoVinculo(false); setQueryVinculo(''); setResultadosVinculo([]) }}
-                          className="text-xs text-gray-400 hover:text-gray-600">Cancelar</button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setBuscandoVinculo(true)}
-                        className="text-sm text-blue-600 hover:text-blue-800 border border-dashed border-gray-300 hover:border-blue-400 rounded-lg px-3 py-2 w-full text-left transition-colors">
-                        🔗 Vincular cliente
-                      </button>
                     )}
                   </div>
 
