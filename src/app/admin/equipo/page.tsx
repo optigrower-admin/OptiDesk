@@ -56,7 +56,7 @@ const GRUPOS_ADMIN: GrupoDef[] = [
     secciones: [
       { key: 'dashboard_servicio_tecnico', label: 'Dashboard Servicio Técnico', defaultOrden: 5, soloRoles: ['gerencia', 'dueno'] },
       { key: 'dashboard_repuestos',        label: 'Dashboard Repuestos',        defaultOrden: 6, soloRoles: ['gerencia', 'dueno'] },
-      { key: 'dashboard_ventas_vehiculos', label: 'Dashboard Ventas Vehículos', defaultOrden: 7, soloRoles: ['gerencia', 'dueno', 'freelancer'] },
+      { key: 'dashboard_ventas_vehiculos', label: 'Dashboard Ventas Vehículos', defaultOrden: 7, soloRoles: ['gerencia', 'dueno', 'freelancer', 'asesor_comercial'] },
     ],
   },
   {
@@ -147,24 +147,17 @@ const SECCIONES_FREELANCER: SeccionDef[] = [
   { key: 'mi_uso',                      label: 'Mi Uso',                     defaultOrden: 81 },
 ]
 
-// Asesor Comercial: igual que Freelancer pero sin Comisiones (todavía no tiene
-// su propio módulo de comisiones) — solo Seguimiento Ventas, Dashboard Ventas
-// Vehículos y Lista de Motos. Clientes acotados a los suyos (asignados o con
-// visibilidad compartida) — ver migration_v159_rol_asesor_comercial.sql.
-const SECCIONES_ASESOR_COMERCIAL: SeccionDef[] = [
-  { key: 'ventas',                      label: 'Seguimiento Ventas',         defaultOrden: 55 },
-  { key: 'dashboard_ventas_vehiculos',  label: 'Dashboard Ventas Vehículos', defaultOrden: 7  },
-  { key: 'lista_motos',                 label: 'Lista de Motos',             defaultOrden: 57 },
-  { key: 'mi_uso',                      label: 'Mi Uso',                     defaultOrden: 81 },
-]
-
+// Asesor Comercial: por defecto acotado a Ventas (ver migration_v159), pero
+// a diferencia de Freelancer se le muestra el árbol COMPLETO de secciones
+// (igual que Admin/Gerencia) para que se pueda habilitar/deshabilitar
+// cualquier sección para este rol desde acá, no solo un set fijo.
 const SECCIONES_POR_ROL: Record<Rol, SeccionDef[]> = {
   gerencia:   SECCIONES_ADMIN,
   admin:      SECCIONES_ADMIN,
   mecanico:   SECCIONES_MECANICO,
   dueno:      SECCIONES_ADMIN,
   freelancer: SECCIONES_FREELANCER,
-  asesor_comercial: SECCIONES_ASESOR_COMERCIAL,
+  asesor_comercial: SECCIONES_ADMIN,
 }
 
 const ROLES_ORDEN: Rol[] = ['gerencia', 'dueno', 'admin', 'mecanico', 'freelancer', 'asesor_comercial']
@@ -795,7 +788,7 @@ export default function EquipoPage() {
           {ROLES_ORDEN.map((rol) => {
             const abierto = expandidoRol === rol
             const conteoUsuarios = usuarios.filter((u) => u.rol === rol).length
-            const esListaPlana = rol === 'mecanico' || rol === 'freelancer' || rol === 'asesor_comercial'
+            const esListaPlana = rol === 'mecanico' || rol === 'freelancer'
             const conteoSecciones = !esListaPlana
               ? SECCIONES_ADMIN.filter(s => seccionVisibleParaRol(s, rol)).length
               : SECCIONES_POR_ROL[rol].length

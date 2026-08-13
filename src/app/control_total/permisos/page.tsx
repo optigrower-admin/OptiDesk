@@ -73,19 +73,13 @@ const SECCIONES_FREELANCER: SeccionDef[] = [
   { key: 'lista_motos',                label: 'Lista de Motos',             descripcion: 'Lista de precios imprimible',                              defaultOrden: 57 },
 ]
 
-const SECCIONES_ASESOR_COMERCIAL: SeccionDef[] = [
-  { key: 'ventas',                     label: 'Seguimiento Ventas',         descripcion: 'Pipeline, Resumen y Actividades (acotado a sus clientes)', defaultOrden: 55 },
-  { key: 'dashboard_ventas_vehiculos', label: 'Dashboard Ventas Vehículos', descripcion: 'Solo sus propios clientes',                                defaultOrden: 7  },
-  { key: 'lista_motos',                label: 'Lista de Motos',             descripcion: 'Lista de precios imprimible',                              defaultOrden: 57 },
-]
-
 const SECCIONES_POR_ROL: Record<Rol, SeccionDef[]> = {
   gerencia:   SECCIONES_ADMIN,
   admin:      SECCIONES_ADMIN,
   dueno:      SECCIONES_ADMIN,
   mecanico:   SECCIONES_MECANICO,
   freelancer: SECCIONES_FREELANCER,
-  asesor_comercial: SECCIONES_ASESOR_COMERCIAL,
+  asesor_comercial: SECCIONES_ADMIN,
 }
 
 const ROL_TABS: { value: Rol; label: string; color: string }[] = [
@@ -253,7 +247,7 @@ export default function PermisosPage() {
           </p>
         </div>
 
-        {selectedRol !== 'mecanico' && selectedRol !== 'freelancer' && selectedRol !== 'asesor_comercial' ? (
+        {selectedRol !== 'mecanico' && selectedRol !== 'freelancer' ? (
           <>
             {GRUPOS_ADMIN.map((grupo) => {
               const secsGrupo = grupo.secciones.filter(s => selectedRol === 'gerencia' || !s.soloGerencia)
