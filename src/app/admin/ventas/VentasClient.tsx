@@ -33,6 +33,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const { profile } = useAuth()
   const rolNorm = (profile?.rol ?? '').toLowerCase().replace('ñ', 'n')
   const esFreelancer = rolNorm === 'freelancer'
+  const esGerencia = rolNorm === 'gerencia' || rolNorm === 'dueno' || rolNorm === 'control_total'
   const supabase = createClient()
   const etapasPipeline = useEtapasPipeline(tenantId)
   const [tab, setTab] = useState<Tab>('kanban')
@@ -342,8 +343,8 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         </div>
       )}
 
-      {/* Filtro por visibilidad compartida (multi-select) */}
-      {usuarios.length > 1 && (
+      {/* Filtro por visibilidad compartida (multi-select) — solo gerencia/dueño */}
+      {esGerencia && usuarios.length > 1 && (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="text-xs text-gray-500 font-medium">Visible para:</span>
           <button
