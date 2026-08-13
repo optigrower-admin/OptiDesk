@@ -574,7 +574,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       .eq('tenant_id', tenantId)
       .neq('id', lead.id)
       .is('vinculado_a_id', null)
-      .or(`nombre.ilike.%${q.trim()}%,celular.ilike.%${q.trim()}%`)
+      .or(`nombre.ilike.%${q.trim()}%,celular.ilike.%${q.trim()}%,cedula.ilike.%${q.trim()}%`)
       .limit(8)
     setResultadosVinculo((data ?? []) as { id: string; nombre: string | null; celular: string | null }[])
   }
@@ -1220,7 +1220,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     {buscandoVinculo ? (
                       <div className="space-y-1">
                         <input autoFocus value={queryVinculo} onChange={e => buscarParaVincular(e.target.value)}
-                          placeholder="Buscar por nombre o celular..."
+                          placeholder="Buscar por nombre, cédula o celular..."
                           className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 placeholder:text-slate-500 focus:outline-none" />
                         {resultadosVinculo.length > 0 && (
                           <div className="bg-[#232f47] border border-[#2a3550] rounded-lg overflow-hidden max-h-32 overflow-y-auto">
@@ -2149,7 +2149,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                         {buscandoVinculo ? (
                           <div className="space-y-1">
                             <input autoFocus value={queryVinculo} onChange={e => buscarParaVincular(e.target.value)}
-                              placeholder="Buscar por nombre o celular..."
+                              placeholder="Buscar por nombre, cédula o celular..."
                               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none" />
                             {resultadosVinculo.length > 0 && (
                               <div className="bg-white border border-gray-200 rounded-lg overflow-hidden max-h-32 overflow-y-auto shadow-sm">
