@@ -38,7 +38,9 @@ const GRUPOS_ADMIN: GrupoDef[] = [
     key: 'ventas',
     label: 'Ventas',
     secciones: [
-      { key: 'ventas',              label: 'Seguimiento Ventas',   descripcion: 'Seguimiento de clientes y ventas de motos', defaultOrden: 55 },
+      { key: 'ventas_resumen',      label: 'Resumen Ventas',       descripcion: 'Resumen y métricas del pipeline', defaultOrden: 54 },
+      { key: 'ventas',              label: 'Pipeline - Seguimiento Clientes', descripcion: 'Seguimiento de clientes y ventas de motos', defaultOrden: 55 },
+      { key: 'ventas_actividades',  label: 'Seguimiento Actividades', descripcion: 'Actividades pendientes del pipeline', defaultOrden: 56 },
       { key: 'lista_motos',         label: 'Lista de Motos',       descripcion: 'Lista de precios imprimible', defaultOrden: 57 },
       { key: 'inventario_motos',    label: 'Inventario de Motos',  descripcion: 'Inventario de motos disponibles', defaultOrden: 57.5 },
       { key: 'config_ventas',       label: 'Config Ventas',        descripcion: 'Catálogos administrables de Seguimiento Ventas', defaultOrden: 56, soloGerencia: true },
@@ -98,7 +100,9 @@ const SECCIONES_MECANICO: SeccionDef[] = [
 ]
 
 const SECCIONES_FREELANCER: SeccionDef[] = [
-  { key: 'ventas',                     label: 'Seguimiento Ventas',         descripcion: 'Pipeline, Resumen y Actividades (acotado a sus clientes)', defaultOrden: 55 },
+  { key: 'ventas',                     label: 'Pipeline - Seguimiento Clientes', descripcion: 'Acotado a sus clientes',                              defaultOrden: 55 },
+  { key: 'ventas_resumen',             label: 'Resumen Ventas',             descripcion: 'Resumen y métricas del pipeline',                          defaultOrden: 54 },
+  { key: 'ventas_actividades',         label: 'Seguimiento Actividades',    descripcion: 'Actividades pendientes del pipeline',                      defaultOrden: 56 },
   { key: 'dashboard_ventas_vehiculos', label: 'Dashboard Ventas Vehículos', descripcion: 'Solo sus propios clientes',                                defaultOrden: 7  },
   { key: 'lista_motos',                label: 'Lista de Motos',             descripcion: 'Lista de precios imprimible',                              defaultOrden: 57 },
 ]
