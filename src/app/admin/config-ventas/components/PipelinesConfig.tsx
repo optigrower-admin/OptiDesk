@@ -280,9 +280,10 @@ function ReglasEtapaConfig({ etapaId }: { etapaId: string }) {
 // Roles que a partir de cierta etapa quedan en solo-lectura para esos clientes
 // (siguen viendo la tarjeta/ficha, pero no pueden cambiar etapa ni editar campos).
 
-type RolBloqueo = 'mecanico' | 'admin' | 'gerencia' | 'dueno' | 'freelancer'
+type RolBloqueo = 'mecanico' | 'admin' | 'gerencia' | 'dueno' | 'freelancer' | 'asesor_comercial'
 const ROLES_BLOQUEO: { value: RolBloqueo; label: string }[] = [
   { value: 'freelancer', label: 'Freelancer' },
+  { value: 'asesor_comercial', label: 'Asesor Comercial' },
   { value: 'mecanico',   label: 'Profesional' },
   { value: 'admin',      label: 'Administración' },
   { value: 'gerencia',   label: 'Gerencia' },

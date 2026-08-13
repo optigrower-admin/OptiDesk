@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const ROLES_VALIDOS = ['mecanico', 'admin', 'gerencia', 'dueno', 'freelancer'] as const
+const ROLES_VALIDOS = ['mecanico', 'admin', 'gerencia', 'dueno', 'freelancer', 'asesor_comercial'] as const
 
 async function getTenantId(supabase: ReturnType<typeof createClient>) {
   const { data: { user } } = await supabase.auth.getUser()

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button'
 import UsoEquipoTab from './components/UsoEquipoTab'
 
 type Tab = 'integrantes' | 'secciones' | 'uso'
-type Rol = 'gerencia' | 'admin' | 'mecanico' | 'dueno' | 'freelancer'
+type Rol = 'gerencia' | 'admin' | 'mecanico' | 'dueno' | 'freelancer' | 'asesor_comercial'
 
 interface UsuarioEquipo {
   id: string
@@ -38,6 +38,7 @@ const ROL_LABEL: Record<Rol, string> = {
   mecanico:   'Profesional',
   dueno:      'Dueño',
   freelancer: 'Freelancer',
+  asesor_comercial: 'Asesor Comercial',
 }
 const ROL_COLOR: Record<Rol, string> = {
   gerencia:   'bg-green-100 text-green-700 border border-green-200',
@@ -45,6 +46,7 @@ const ROL_COLOR: Record<Rol, string> = {
   mecanico:   'bg-blue-100 text-blue-700 border border-blue-200',
   dueno:      'bg-emerald-100 text-emerald-700 border border-emerald-200',
   freelancer: 'bg-purple-100 text-purple-700 border border-purple-200',
+  asesor_comercial: 'bg-pink-100 text-pink-700 border border-pink-200',
 }
 
 const GRUPOS_ADMIN: GrupoDef[] = [
@@ -145,15 +147,27 @@ const SECCIONES_FREELANCER: SeccionDef[] = [
   { key: 'mi_uso',                      label: 'Mi Uso',                     defaultOrden: 81 },
 ]
 
+// Asesor Comercial: igual que Freelancer pero sin Comisiones (todavía no tiene
+// su propio módulo de comisiones) — solo Seguimiento Ventas, Dashboard Ventas
+// Vehículos y Lista de Motos. Clientes acotados a los suyos (asignados o con
+// visibilidad compartida) — ver migration_v159_rol_asesor_comercial.sql.
+const SECCIONES_ASESOR_COMERCIAL: SeccionDef[] = [
+  { key: 'ventas',                      label: 'Seguimiento Ventas',         defaultOrden: 55 },
+  { key: 'dashboard_ventas_vehiculos',  label: 'Dashboard Ventas Vehículos', defaultOrden: 7  },
+  { key: 'lista_motos',                 label: 'Lista de Motos',             defaultOrden: 57 },
+  { key: 'mi_uso',                      label: 'Mi Uso',                     defaultOrden: 81 },
+]
+
 const SECCIONES_POR_ROL: Record<Rol, SeccionDef[]> = {
   gerencia:   SECCIONES_ADMIN,
   admin:      SECCIONES_ADMIN,
   mecanico:   SECCIONES_MECANICO,
   dueno:      SECCIONES_ADMIN,
   freelancer: SECCIONES_FREELANCER,
+  asesor_comercial: SECCIONES_ASESOR_COMERCIAL,
 }
 
-const ROLES_ORDEN: Rol[] = ['gerencia', 'dueno', 'admin', 'mecanico', 'freelancer']
+const ROLES_ORDEN: Rol[] = ['gerencia', 'dueno', 'admin', 'mecanico', 'freelancer', 'asesor_comercial']
 
 export default function EquipoPage() {
   const { profile } = useAuth()
@@ -528,6 +542,7 @@ export default function EquipoPage() {
             <option value="gerencia">Gerencia</option>
             <option value="dueno">Dueño</option>
             <option value="freelancer">Freelancer</option>
+            <option value="asesor_comercial">Asesor Comercial</option>
           </select>
           <div className="flex gap-2 pt-2">
             <Button
@@ -780,7 +795,7 @@ export default function EquipoPage() {
           {ROLES_ORDEN.map((rol) => {
             const abierto = expandidoRol === rol
             const conteoUsuarios = usuarios.filter((u) => u.rol === rol).length
-            const esListaPlana = rol === 'mecanico' || rol === 'freelancer'
+            const esListaPlana = rol === 'mecanico' || rol === 'freelancer' || rol === 'asesor_comercial'
             const conteoSecciones = !esListaPlana
               ? SECCIONES_ADMIN.filter(s => seccionVisibleParaRol(s, rol)).length
               : SECCIONES_POR_ROL[rol].length

@@ -7,7 +7,7 @@ interface UsuarioProfile {
   id: string
   nombre: string
   email: string
-  rol: 'mecanico' | 'admin' | 'gerencia' | 'control_total' | 'dueno' | 'freelancer'
+  rol: 'mecanico' | 'admin' | 'gerencia' | 'control_total' | 'dueno' | 'freelancer' | 'asesor_comercial'
   tenant_id: string
   sandbox_tenant_id: string | null
   pin: string | null

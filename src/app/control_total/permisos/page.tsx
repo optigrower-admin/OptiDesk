@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface Tenant { id: string; nombre: string }
-type Rol = 'gerencia' | 'admin' | 'mecanico' | 'dueno' | 'freelancer'
+type Rol = 'gerencia' | 'admin' | 'mecanico' | 'dueno' | 'freelancer' | 'asesor_comercial'
 
 interface SeccionDef { key: string; label: string; descripcion: string; defaultOrden: number; soloGerencia?: boolean }
 interface GrupoDef { key: string; label: string; secciones: SeccionDef[] }
@@ -73,12 +73,19 @@ const SECCIONES_FREELANCER: SeccionDef[] = [
   { key: 'lista_motos',                label: 'Lista de Motos',             descripcion: 'Lista de precios imprimible',                              defaultOrden: 57 },
 ]
 
+const SECCIONES_ASESOR_COMERCIAL: SeccionDef[] = [
+  { key: 'ventas',                     label: 'Seguimiento Ventas',         descripcion: 'Pipeline, Resumen y Actividades (acotado a sus clientes)', defaultOrden: 55 },
+  { key: 'dashboard_ventas_vehiculos', label: 'Dashboard Ventas Vehículos', descripcion: 'Solo sus propios clientes',                                defaultOrden: 7  },
+  { key: 'lista_motos',                label: 'Lista de Motos',             descripcion: 'Lista de precios imprimible',                              defaultOrden: 57 },
+]
+
 const SECCIONES_POR_ROL: Record<Rol, SeccionDef[]> = {
   gerencia:   SECCIONES_ADMIN,
   admin:      SECCIONES_ADMIN,
   dueno:      SECCIONES_ADMIN,
   mecanico:   SECCIONES_MECANICO,
   freelancer: SECCIONES_FREELANCER,
+  asesor_comercial: SECCIONES_ASESOR_COMERCIAL,
 }
 
 const ROL_TABS: { value: Rol; label: string; color: string }[] = [
@@ -87,6 +94,7 @@ const ROL_TABS: { value: Rol; label: string; color: string }[] = [
   { value: 'admin',      label: 'Administración', color: 'bg-amber-500'  },
   { value: 'mecanico',   label: 'Profesional',    color: 'bg-blue-600'   },
   { value: 'freelancer', label: 'Freelancer',     color: 'bg-purple-600' },
+  { value: 'asesor_comercial', label: 'Asesor Comercial', color: 'bg-pink-600' },
 ]
 
 export default function PermisosPage() {
@@ -245,7 +253,7 @@ export default function PermisosPage() {
           </p>
         </div>
 
-        {selectedRol !== 'mecanico' && selectedRol !== 'freelancer' ? (
+        {selectedRol !== 'mecanico' && selectedRol !== 'freelancer' && selectedRol !== 'asesor_comercial' ? (
           <>
             {GRUPOS_ADMIN.map((grupo) => {
               const secsGrupo = grupo.secciones.filter(s => selectedRol === 'gerencia' || !s.soloGerencia)

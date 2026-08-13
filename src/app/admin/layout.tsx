@@ -15,7 +15,7 @@ type NavItem = {
   label: string
   seccion: string | null
   soloGerencia: boolean
-  rolesPermitidos?: ('gerencia' | 'dueno' | 'freelancer' | 'admin' | 'control_total')[]
+  rolesPermitidos?: ('gerencia' | 'dueno' | 'freelancer' | 'asesor_comercial' | 'admin' | 'control_total')[]
   defaultOrden: number
   external?: boolean
   exactMatch?: boolean
@@ -34,7 +34,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/admin/dashboard/servicio-tecnico',   label: 'Servicio Técnico', seccion: 'dashboard_servicio_tecnico',   soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 5 },
       { href: '/admin/dashboard/repuestos',          label: 'Repuestos',        seccion: 'dashboard_repuestos',          soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno'], defaultOrden: 6 },
-      { href: '/admin/dashboard/ventas-vehiculos',   label: 'Ventas Vehículos', seccion: 'dashboard_ventas_vehiculos',   soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno', 'freelancer'], defaultOrden: 7 },
+      { href: '/admin/dashboard/ventas-vehiculos',   label: 'Ventas Vehículos', seccion: 'dashboard_ventas_vehiculos',   soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno', 'freelancer', 'asesor_comercial'], defaultOrden: 7 },
       { href: '/admin/dashboard/constructor',        label: 'Medidas y Variables', seccion: 'dashboard_constructor',     soloGerencia: false, rolesPermitidos: ['gerencia', 'dueno', 'control_total', 'admin'], defaultOrden: 8 },
     ],
   },
@@ -544,7 +544,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     items
       .filter(i => {
         if (i.soloGerencia && !['gerencia', 'dueno', 'control_total'].includes(profile?.rol ?? '')) return false
-        if (i.rolesPermitidos && !i.rolesPermitidos.includes(profile?.rol as 'gerencia' | 'dueno' | 'freelancer' | 'admin' | 'control_total')) return false
+        if (i.rolesPermitidos && !i.rolesPermitidos.includes(profile?.rol as 'gerencia' | 'dueno' | 'freelancer' | 'asesor_comercial' | 'admin' | 'control_total')) return false
         return i.seccion === null || tienePermiso(i.seccion)
       })
       .sort((a, b) => {
@@ -713,7 +713,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="px-3 py-2">
             <p className="text-xs font-medium text-gray-900 truncate">{profile?.nombre}</p>
             <p className="text-xs text-gray-500 truncate">
-              {profile?.rol === 'gerencia' ? 'Gerencia' : profile?.rol === 'dueno' ? 'Dueño' : profile?.rol === 'freelancer' ? 'Freelancer' : profile?.rol === 'mecanico' ? 'Profesional' : 'Administración'}
+              {profile?.rol === 'gerencia' ? 'Gerencia' : profile?.rol === 'dueno' ? 'Dueño' : profile?.rol === 'freelancer' ? 'Freelancer' : profile?.rol === 'asesor_comercial' ? 'Asesor Comercial' : profile?.rol === 'mecanico' ? 'Profesional' : 'Administración'}
             </p>
           </div>
 

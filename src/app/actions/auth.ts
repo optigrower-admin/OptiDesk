@@ -10,6 +10,7 @@ const ROL_RUTAS: Record<string, string> = {
   admin: '/admin/ordenes',
   dueno: '/admin/dashboard/servicio-tecnico',
   freelancer: '/admin/ventas',
+  asesor_comercial: '/admin/ventas',
   mecanico: '/mecanico',
 }
 
