@@ -7,11 +7,12 @@ interface Props {
   clienteId: string
   tenantId: string
   usuarioId: string
+  onChange?: () => void
 }
 
 type Usuario = { id: string; nombre: string; rol: string }
 
-export default function VisibilidadTab({ clienteId, tenantId, usuarioId }: Props) {
+export default function VisibilidadTab({ clienteId, tenantId, usuarioId, onChange }: Props) {
   const supabase = createClient()
   const [usuarios, setUsuarios]   = useState<Usuario[]>([])
   const [compartidoCon, setCompartidoCon] = useState<Set<string>>(new Set())
@@ -44,6 +45,7 @@ export default function VisibilidadTab({ clienteId, tenantId, usuarioId }: Props
       })
     }
     cargar()
+    onChange?.()
   }
 
   if (loading) return <p className="text-sm text-gray-400 text-center py-8">Cargando...</p>

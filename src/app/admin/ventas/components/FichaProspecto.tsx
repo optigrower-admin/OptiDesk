@@ -132,6 +132,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const [mensajes, setMensajes]         = useState<Mensaje[]>([])
   const [ordenes, setOrdenes]           = useState<Orden[]>([])
   const [usuarios, setUsuarios]         = useState<{ id: string; nombre: string }[]>([])
+  const [colaboradores, setColaboradores] = useState<{ id: string; nombre: string }[]>([])
   const [input, setInput]               = useState('')
   const [tipoMsg, setTipoMsg]           = useState<'mensaje' | 'nota'>('mensaje')
   const [sending, setSending]           = useState(false)
@@ -318,7 +319,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const enEtapaCarta           = !!reglaCarta
 
   const cargar = useCallback(async () => {
-    const [{ data: msgs }, { data: ords }, { data: us }, { data: cliente }, { data: etapasHist }] = await Promise.all([
+    const [{ data: msgs }, { data: ords }, { data: us }, { data: cliente }, { data: etapasHist }, { data: colab }] = await Promise.all([
       convActivaId
         ? supabase.from('mensajes')
             .select('id,direccion,tipo,contenido,created_at,estado_envio,enviado_por,usuarios(nombre,email,rol)')
@@ -333,10 +334,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
         .eq('cliente_id', lead.id)
         .order('created_at', { ascending: false })
         .limit(20),
+      supabase.from('clientes_visibilidad').select('usuario_id, usuarios(id, nombre)').eq('cliente_id', lead.id),
     ])
     setMensajes((msgs ?? []) as unknown as Mensaje[])
     setOrdenes((ords ?? []) as Orden[])
     setUsuarios((us ?? []) as { id: string; nombre: string }[])
+    setColaboradores(((colab ?? []) as { usuario_id: string; usuarios: { id: string; nombre: string } | { id: string; nombre: string }[] | null }[])
+      .map(c => Array.isArray(c.usuarios) ? c.usuarios[0] : c.usuarios)
+      .filter((u): u is { id: string; nombre: string } => !!u))
     setAssignedTo(cliente?.assigned_to ?? '')
     setClienteRegistradoEn(cliente?.created_at ?? null)
     setFechaVenta(cliente?.fecha_cierre ?? null)
@@ -1114,6 +1119,20 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 )}
               </div>
 
+              {/* Colaborando — quién más tiene visibilidad (solo lectura; se edita en la pestaña Visibilidad) */}
+              {colaboradores.length > 0 && (
+                <div>
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Colaborando</label>
+                  <div className="flex flex-wrap gap-1">
+                    {colaboradores.map(c => (
+                      <span key={c.id} className="text-xs bg-[#232f47] border border-[#2a3550] text-slate-200 rounded-full px-2 py-0.5">
+                        {c.nombre}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Origen */}
               <div>
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Origen</label>
@@ -1890,7 +1909,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               {tabDer === 'archivos'   && <ArchivosTab clienteId={lead.id} />}
               {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={lead.cliente_email} refreshSignal={agendaVersion} />}
               {tabDer === 'historial'  && <HistorialTab clienteId={lead.id} />}
-              {tabDer === 'visibilidad' && esGerencia && <VisibilidadTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
+              {tabDer === 'visibilidad' && esGerencia && <VisibilidadTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} onChange={cargar} />}
 
               {tabDer === 'gestion' && (
                 <div className="space-y-4">
@@ -1979,6 +1998,20 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                       <p className="text-sm text-gray-700 py-1">{usuarios.find(u => u.id === assignedTo)?.nombre ?? 'Sin asignar'}</p>
                     )}
                   </div>
+
+                  {/* Colaborando — quién más tiene visibilidad (solo lectura; se edita en la pestaña Visibilidad) */}
+                  {colaboradores.length > 0 && (
+                    <div>
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Colaborando</label>
+                      <div className="flex flex-wrap gap-1">
+                        {colaboradores.map(c => (
+                          <span key={c.id} className="text-xs bg-gray-100 border border-gray-200 text-gray-700 rounded-full px-2 py-0.5">
+                            {c.nombre}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Origen</label>
