@@ -34,7 +34,7 @@ function nextEtapa(etapas: EtapaDinamica[], etapaActual: string): string | null 
 
 // ─── KanbanColumn ──────────────────────────────────────────────────────────────
 
-function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuarioId, onQuickDone, onQuickNote, onQuickReminder, onQuickNext, grupoBg }: {
+function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuarioId, onQuickDone, onQuickNote, onQuickReminder, onQuickNext, grupoBg, sinSeguimientoIds }: {
   etapaConfig: EtapaDinamica
   leads: LeadData[]
   onOpen: (id: string) => void
@@ -46,6 +46,7 @@ function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuar
   onQuickReminder: (id: string, nota: string, fecha: string) => void
   onQuickNext: (id: string) => void
   grupoBg?: string
+  sinSeguimientoIds?: Set<string>
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: etapaConfig.id })
   return (
@@ -78,6 +79,7 @@ function KanbanColumn({ etapaConfig, leads, onOpen, usuariosMap, tenantId, usuar
               etapaInfo={etapaConfig}
               tenantId={tenantId}
               usuarioId={usuarioId}
+              sinSeguimiento={sinSeguimientoIds?.has(lead.id)}
             />
           ))}
         </SortableContext>
@@ -128,11 +130,12 @@ interface Props {
   onLeadPatch?: (id: string, patch: Record<string, unknown>) => void
   onLeadRemove?: (id: string) => void
   etapasPipeline: EtapasPipelineData
+  sinSeguimientoIds?: Set<string>
 }
 
 // ─── Componente principal ──────────────────────────────────────────────────────
 
-export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId, tabsSlot, onLeadPatch, onLeadRemove, etapasPipeline }: Props) {
+export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = [], abrirClienteId, tabsSlot, onLeadPatch, onLeadRemove, etapasPipeline, sinSeguimientoIds }: Props) {
   const supabase = createClient()
   const { profile } = useAuth()
   const rolNorm = (profile?.rol ?? '').toLowerCase().replace('ñ', 'n')
@@ -579,6 +582,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
                       onOpen={setFichaId}
                       usuariosMap={usuariosMap}
                       grupoBg={grupo.bg}
+                      sinSeguimientoIds={sinSeguimientoIds}
                       {...colCallbacks}
                     />
                   ))}

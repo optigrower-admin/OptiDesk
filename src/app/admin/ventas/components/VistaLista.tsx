@@ -14,6 +14,7 @@ interface Props {
   usuarios?: { id: string; nombre: string }[]
   onLeadPatch?: (id: string, patch: Record<string, unknown>) => void
   onLeadRemove?: (id: string) => void
+  sinSeguimientoIds?: Set<string>
 }
 
 type Orden = 'nombre' | 'etapa' | 'valor' | 'seguimiento'
@@ -25,7 +26,7 @@ const CANAL_BADGE: Record<string, string> = {
   manual:    'bg-gray-100 text-gray-600',
 }
 
-export default function VistaLista({ leads, tenantId, usuarios = [], onLeadPatch, onLeadRemove }: Props) {
+export default function VistaLista({ leads, tenantId, usuarios = [], onLeadPatch, onLeadRemove, sinSeguimientoIds }: Props) {
   const etapasPipeline = useEtapasPipeline(tenantId)
   const usuariosMap = useMemo(() => Object.fromEntries(usuarios.map(u => [u.id, u.nombre])), [usuarios])
   const [fichaId, setFichaId]         = useState<string | null>(null)
@@ -187,16 +188,17 @@ export default function VistaLista({ leads, tenantId, usuarios = [], onLeadPatch
             {filtrados.map((lead, i) => {
               const etapaConfig = ETAPA_MAP[lead.etapa_venta]
               const seguim      = estadoSeguimiento(lead.proxima_accion_fecha)
+              const sinSeguim   = sinSeguimientoIds?.has(lead.id) ?? false
 
               return (
                 <tr key={lead.id}
                   onClick={() => setFichaId(lead.id)}
                   className={`border-b border-gray-100 cursor-pointer transition-colors hover:bg-blue-50 ${
-                    i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                    sinSeguim ? 'bg-red-50 animate-pulse' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                   }`}
                 >
                   {/* Prospecto */}
-                  <td className="px-4 py-3">
+                  <td className={`px-4 py-3 ${sinSeguim ? 'border-l-4 border-l-red-600' : ''}`}>
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0"
                         style={{ background: etapaConfig.color }}>
@@ -206,6 +208,9 @@ export default function VistaLista({ leads, tenantId, usuarios = [], onLeadPatch
                         <p className="font-medium text-gray-900 truncate max-w-[140px]">
                           {lead.cliente?.nombre ?? 'Sin nombre'}
                         </p>
+                        {sinSeguim && (
+                          <p className="text-[10px] font-bold text-red-600">🚨 Sin seguimiento</p>
+                        )}
                         {!!lead.vinculados?.length && (
                           <p className="text-[10px] text-purple-600 truncate max-w-[140px]">
                             🔗 {lead.vinculados.map(v => v.nombre).join(', ')}

@@ -12,6 +12,7 @@ import { ImportadorExcel } from '@/components/ImportadorExcel'
 import { importarSeguimientoVentas, previsualizarSeguimientoVentas } from '@/lib/bulkImport'
 import WhatsAppCreditoModal from './components/WhatsAppCreditoModal'
 import NuevoClienteForm from './components/NuevoClienteForm'
+import { estaSinSeguimiento, type ReglaRecordatorioAuto } from '@/lib/ventas/pipeline'
 
 type Tab = 'kanban' | 'bandeja' | 'hoy' | 'lista'
 
@@ -42,6 +43,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [usuariosFiltro, setUsuariosFiltro] = useState<Set<string>>(new Set())
   const [visibilidadFiltro, setVisibilidadFiltro] = useState<Set<string>>(new Set())
   const [entidadesCredito, setEntidadesCredito] = useState<EntidadFiltro[]>([])
+  const [reglasSeguimiento, setReglasSeguimiento] = useState<ReglaRecordatorioAuto[]>([])
   const [creditoFiltro, setCreditoFiltro] = useState<Record<string, Set<string>>>({})
   const [creditoPanelOpen, setCreditoPanelOpen] = useState(false)
   const [abrirClienteId, setAbrirClienteId] = useState<string | null>(null)
@@ -168,6 +170,19 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
 
+  // Umbrales de "Recordatorios automáticos" (Config Ventas) — mismos criterios
+  // que usa el cron para decidir cuándo un cliente lleva demasiado sin movimiento.
+  useEffect(() => {
+    supabase
+      .from('tipos_recordatorio_automatico')
+      .select('tipo, activo, dias_umbral')
+      .eq('tenant_id', tenantId)
+      .then(({ data }) => {
+        setReglasSeguimiento((data ?? []) as ReglaRecordatorioAuto[])
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId])
+
   const toggleCreditoEstado = useCallback((entidadId: string, estado: string) => {
     setCreditoFiltro(prev => {
       const next = { ...prev }
@@ -258,7 +273,19 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
     return lista
   }, [leadsState, usuariosFiltro, visibilidadFiltro, busqueda, idsExtraSearch, fechaDesde, fechaHasta, creditoFiltro])
 
-  const sinSeguim = activos.filter(l => !l.proxima_accion_fecha).length
+  // "Sin seguimiento" = clientes que superaron el umbral de días sin movimiento
+  // configurado en Config Ventas → Recordatorios automáticos (mismo criterio que
+  // el cron que genera esos recordatorios), no simplemente "sin próxima acción".
+  const sinSeguimientoIds = useMemo(() => {
+    const ids = new Set<string>()
+    if (reglasSeguimiento.length === 0) return ids
+    for (const l of leadsState) {
+      if (estaSinSeguimiento(l.etapa_venta, l.forma_pago, l.updated_at, reglasSeguimiento)) ids.add(l.id)
+    }
+    return ids
+  }, [leadsState, reglasSeguimiento])
+
+  const sinSeguim = activos.filter(l => sinSeguimientoIds.has(l.id)).length
 
   return (
     <div className="p-5">
@@ -272,7 +299,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
           <p className="text-sm text-gray-500 mt-0.5">
             {activos.length} clientes activos
             {sinSeguim > 0 && (
-              <span className="ml-2 text-amber-600 font-medium">
+              <span className="ml-2 text-red-600 font-bold animate-pulse">
                 · ⚠️ {sinSeguim} sin seguimiento
               </span>
             )}
@@ -505,7 +532,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
 
       {/* Content */}
       {tab === 'kanban' && (
-        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} tabsSlot={pipelineTabsSlot} onLeadPatch={patchLead} onLeadRemove={removeLead} etapasPipeline={etapasPipeline} />
+        <PipelineKanban leadsIniciales={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} abrirClienteId={abrirClienteId ?? undefined} tabsSlot={pipelineTabsSlot} onLeadPatch={patchLead} onLeadRemove={removeLead} etapasPipeline={etapasPipeline} sinSeguimientoIds={sinSeguimientoIds} />
       )}
       {tab === 'bandeja' && !esFreelancer && (
         <VistaBandeja leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} onLeadPatch={patchLead} onLeadRemove={removeLead} />
@@ -514,7 +541,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         <VistaHoy leads={leadsFiltrados} tenantId={tenantId} onLeadPatch={patchLead} onLeadRemove={removeLead} />
       )}
       {tab === 'lista' && (
-        <VistaLista leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} onLeadPatch={patchLead} onLeadRemove={removeLead} />
+        <VistaLista leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} onLeadPatch={patchLead} onLeadRemove={removeLead} sinSeguimientoIds={sinSeguimientoIds} />
       )}
     </div>
   )

@@ -45,6 +45,7 @@ export type LeadData = {
   flujo_nombre?: string | null
   updated_at?: string | null
   created_at?: string | null
+  forma_pago?: string | null
 }
 
 const CANAL_BADGE: Record<string, { label: string; cls: string; icon: string }> = {
@@ -81,9 +82,10 @@ interface Props {
   tenantId?: string
   usuarioId?: string
   etapaInfo?: EtapaDinamica
+  sinSeguimiento?: boolean
 }
 
-export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo }: Props) {
+export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, sinSeguimiento }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: lead.id })
 
   const style = {
@@ -133,7 +135,9 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo }
       {...listeners}
       onClick={onClick}
       className={`rounded-xl border shadow-sm p-3 cursor-pointer select-none transition-shadow hover:shadow-md ${
-        necesitaAlistamiento || necesitaPlaca
+        sinSeguimiento
+          ? 'bg-red-50 border-red-500 border-l-4 border-l-red-600 animate-pulse'
+          : necesitaAlistamiento || necesitaPlaca
           ? 'bg-red-50 border-red-400 border-l-4 border-l-red-600'
           : necesitaFechaEntrega
             ? 'bg-orange-50 border-orange-300 border-l-4 border-l-orange-500'
@@ -173,6 +177,13 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo }
           {lead.flujo_nombre && (
             <span className="text-[10px] text-blue-600 font-medium truncate max-w-[120px]">{lead.flujo_nombre}</span>
           )}
+        </div>
+      )}
+
+      {/* Banner SIN SEGUIMIENTO — cliente pasó el umbral de días sin movimiento configurado en Config Ventas */}
+      {sinSeguimiento && (
+        <div className="bg-red-600 text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5 animate-pulse">
+          🚨 SIN SEGUIMIENTO{diasSinMovimiento !== null ? ` · ${diasSinMovimiento}D` : ''}
         </div>
       )}
 

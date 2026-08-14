@@ -57,6 +57,7 @@ export default function VentasPage() {
           aprobado_matricula_por,
           revision_perdida,
           vinculado_a_id,
+          forma_pago,
           conversaciones ( id, canal, no_leidos_count )
         `)
         .eq('tenant_id', profile.tenant_id)
@@ -276,6 +277,7 @@ export default function VentasPage() {
           automatizado: cr.automatizado === true,
           updated_at: (cr.updated_at ?? null) as string | null,
           created_at: (cr.created_at ?? null) as string | null,
+          forma_pago: (cr.forma_pago ?? null) as string | null,
         }
       })
 

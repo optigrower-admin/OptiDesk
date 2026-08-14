@@ -143,6 +143,51 @@ export function tiempoSinResponder(fecha: string | null): { minutos: number; tex
   return { minutos, texto, urgente }
 }
 
+// ─── "Sin seguimiento" — mismos criterios que el cron de Recordatorios automáticos
+// (src/app/api/cron/recordatorios/route.ts) para que el aviso en pantalla coincida
+// exactamente con lo que genera el recordatorio automático.
+export type ReglaRecordatorioAuto = { tipo: string; activo: boolean; dias_umbral: number }
+
+const ETAPAS_CLIENTE_SIN_MOVIMIENTO = ['nuevo', 'con_interes', 'con_objecion', 'seguimiento', 'buscando_credito', 'calificado']
+const ETAPAS_ENTREGA_PENDIENTE = ['en_matricula', 'alistamiento', 'espera_entrega']
+
+export function diasSinMovimientoDe(updatedAt: string | null | undefined): number | null {
+  if (!updatedAt) return null
+  return Math.floor((Date.now() - new Date(updatedAt).getTime()) / 86_400_000)
+}
+
+// Devuelve el umbral (en días) más exigente entre las reglas activas que apliquen
+// a este cliente según su etapa/forma de pago, o null si ninguna regla aplica.
+export function umbralSinSeguimiento(
+  etapa: string,
+  formaPago: string | null | undefined,
+  reglas: ReglaRecordatorioAuto[],
+): number | null {
+  let umbral: number | null = null
+  for (const r of reglas) {
+    if (!r.activo) continue
+    let aplica = false
+    if (r.tipo === 'credito_sin_iniciar') aplica = formaPago === 'credito'
+    else if (r.tipo === 'entrega_moto_pendiente') aplica = ETAPAS_ENTREGA_PENDIENTE.includes(etapa)
+    else if (r.tipo === 'cliente_sin_movimiento') aplica = ETAPAS_CLIENTE_SIN_MOVIMIENTO.includes(etapa)
+    if (aplica && (umbral === null || r.dias_umbral < umbral)) umbral = r.dias_umbral
+  }
+  return umbral
+}
+
+// true si el cliente ya superó el umbral configurado sin movimiento (clientes.updated_at).
+export function estaSinSeguimiento(
+  etapa: string,
+  formaPago: string | null | undefined,
+  updatedAt: string | null | undefined,
+  reglas: ReglaRecordatorioAuto[],
+): boolean {
+  const umbral = umbralSinSeguimiento(etapa, formaPago, reglas)
+  if (umbral === null) return false
+  const dias = diasSinMovimientoDe(updatedAt)
+  return dias !== null && dias >= umbral
+}
+
 export function estadoSeguimiento(proxFecha: string | null): 'vencido' | 'hoy' | 'futuro' | 'sin_accion' {
   if (!proxFecha) return 'sin_accion'
   const ahora = new Date()
