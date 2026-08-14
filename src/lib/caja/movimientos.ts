@@ -155,6 +155,7 @@ export async function construirMovimientos(
   const estadoPorOrden = new Map<string, string>()
   const estadoPagoPorOrden = new Map<string, string>()
   const ordenInfoPorOrden = new Map<string, { numero: number; placa: string; cliente: string }>()
+  const ultimoMetodoPorOrden = new Map<string, { id: string | null; nombre: string | null }>()
 
   // Ítems/lavados completos (no solo orden_id+costo) de las órdenes con costo,
   // sin filtrar por fecha — hacen falta para poder mostrar en el período
@@ -171,7 +172,7 @@ export async function construirMovimientos(
       supabase.from('lava_moto_ordenes').select('orden_id, costo_unitario, cantidad').in('orden_id', ordenIds),
       supabase.from('lava_moto_ordenes').select('id, orden_id, costo_unitario, precio_venta_unitario, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
         .eq('ordenes.tenant_id', tenantId).gt('costo_unitario', 0).in('orden_id', ordenIds),
-      supabase.from('pagos_proveedor').select('orden_id, monto, fecha').in('orden_id', ordenIds).eq('tenant_id', tenantId),
+      supabase.from('pagos_proveedor').select('orden_id, monto, fecha, metodo_pago_id, metodos_pago(nombre)').in('orden_id', ordenIds).eq('tenant_id', tenantId),
       supabase.from('ordenes').select('id, gestiona_pago_proveedor, estado, estado_pago, numero, placa, cliente').in('id', ordenIds),
     ])
     costosExtTodos = (r1b.data ?? []) as unknown as NonNullable<typeof costosExt>
@@ -182,13 +183,18 @@ export async function construirMovimientos(
     for (const lm of (r2.data ?? []) as { orden_id: string; costo_unitario: number; cantidad: number }[]) {
       totalCostoPorOrden.set(lm.orden_id, (totalCostoPorOrden.get(lm.orden_id) ?? 0) + lm.costo_unitario * lm.cantidad)
     }
-    for (const pp of (r3.data ?? []) as { orden_id: string; monto: number; fecha: string }[]) {
+    for (const pp of (r3.data ?? []) as unknown as { orden_id: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null }[]) {
       totalPagadoPorOrden.set(pp.orden_id, (totalPagadoPorOrden.get(pp.orden_id) ?? 0) + pp.monto)
       // Fecha del último pago a proveedor de la orden — el gasto de Caja debe
       // quedar registrado el día que el dinero realmente salió (se pagó al
-      // proveedor), no el día que el repuesto se agregó a la orden.
+      // proveedor), no el día que el repuesto se agregó a la orden. El exceso
+      // (si lo hay) se le atribuye al método de este último pago — es la
+      // cuenta de la que más probablemente salió el dinero de más.
       const actual = ultimaFechaPagoPorOrden.get(pp.orden_id)
-      if (!actual || pp.fecha > actual) ultimaFechaPagoPorOrden.set(pp.orden_id, pp.fecha)
+      if (!actual || pp.fecha > actual) {
+        ultimaFechaPagoPorOrden.set(pp.orden_id, pp.fecha)
+        ultimoMetodoPorOrden.set(pp.orden_id, { id: pp.metodo_pago_id, nombre: pp.metodos_pago?.nombre ?? null })
+      }
     }
     for (const ord of (r4.data ?? []) as { id: string; gestiona_pago_proveedor: boolean; estado: string; estado_pago: string; numero: number; placa: string; cliente: string }[]) {
       if (ord.gestiona_pago_proveedor) ordenesConGestion.add(ord.id)
@@ -446,6 +452,7 @@ export async function construirMovimientos(
     if (desdeISO && fechaPago < desdeISO) continue
     if (hastaISO && fechaPago > hastaISO) continue
     const info = ordenInfoPorOrden.get(ordenId) ?? null
+    const metodo = ultimoMetodoPorOrden.get(ordenId)
     lista.push({
       id: `excesoprov_${ordenId}`,
       rawId: ordenId,
@@ -455,8 +462,11 @@ export async function construirMovimientos(
       nombre: info?.cliente ?? null,
       codigo: info?.placa ?? null,
       monto: -exceso,
-      metodoPagoId: null,
-      metodoPago: null,
+      // Se le atribuye al método del último pago a proveedor registrado; si por
+      // algún motivo no quedó especificado, se asume Efectivo (el dinero salió
+      // de algún lado, no puede quedar como "sin método").
+      metodoPagoId: metodo?.id ?? null,
+      metodoPago: metodo?.nombre ?? 'Efectivo',
       cuentaEspecial: null,
       grupo: grupoOrden(info),
     })

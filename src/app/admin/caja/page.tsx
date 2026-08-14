@@ -1755,7 +1755,9 @@ export default function CajaPage() {
                 <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
               )}
               {!loading && filtrados.map((m, i) => (
-                <tr key={m.id} className={`border-b border-gray-100 ${m.categoria === 'ajuste' ? 'bg-gray-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                <tr key={m.id} className={`border-b border-gray-100 ${
+                  m.categoria === 'exceso_proveedor' ? 'bg-red-50' : m.categoria === 'ajuste' ? 'bg-gray-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                }`}>
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                     {new Date(m.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </td>
@@ -1855,7 +1857,9 @@ export default function CajaPage() {
                 <tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">Sin movimientos en este período</td></tr>
               )}
               {!loading && filasPorMetodo.map((f, i) => (
-                <tr key={f.key} className={`border-b border-gray-100 ${f.categoria === 'ajuste' ? 'bg-gray-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                <tr key={f.key} className={`border-b border-gray-100 ${
+                  f.categoria === 'exceso_proveedor' ? 'bg-red-50' : f.categoria === 'ajuste' ? 'bg-gray-100' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                }`}>
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                     {new Date(f.fecha).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </td>
