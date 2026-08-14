@@ -3732,10 +3732,13 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                 </div>
               )}
 
-              {/* Formulario nuevo pago a proveedor */}
-              {!proveedorPagadoCompleto && (
-                <div className="space-y-2 border-t border-amber-100 pt-3">
-                  <p className="text-xs font-medium text-gray-600">Registrar pago a proveedor</p>
+              {/* Formulario nuevo pago a proveedor — se deja disponible incluso con el
+                  proveedor ya pagado completo, porque a veces surge un pago adicional
+                  (ej. un cobro extra del proveedor) que no estaba en el costo original. */}
+              <div className="space-y-2 border-t border-amber-100 pt-3">
+                  <p className="text-xs font-medium text-gray-600">
+                    {proveedorPagadoCompleto ? 'Registrar pago adicional a proveedor' : 'Registrar pago a proveedor'}
+                  </p>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -3770,8 +3773,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                   {pagoProvError && (
                     <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{pagoProvError}</p>
                   )}
-                </div>
-              )}
+              </div>
             </div>
           )}
 
