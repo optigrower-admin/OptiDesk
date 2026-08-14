@@ -192,7 +192,22 @@ export default function WhatsAppCreditoModal({ leads, onClose }: Props) {
     setEntidadAplicada(entidadDraft)
     setCamposAplicados(new Set(camposDraft))
     const lista = calcularLista(leads, etapasDraft, estadoDraft, entidadDraft, camposDraft, freshMap)
-    setSeleccionados(prev => new Set([...prev, ...lista.map(l => l.id)]))
+    setSeleccionados(prev => {
+      const next = new Set([...prev, ...lista.map(l => l.id)])
+      // "Con datos" es un requisito duro: si está activo, saca de la selección
+      // a cualquier cliente que no lo cumpla, sin importar de qué filtro haya
+      // quedado seleccionado antes (evita que sigan colándose clientes sin
+      // cédula/correo/etc. en la lista final por selecciones previas).
+      if (camposDraft.size > 0) {
+        for (const id of [...next]) {
+          const lead = leads.find(l => l.id === id)
+          if (!lead || ![...camposDraft].every(c => tieneCampo(lead, c, freshMap[id]))) {
+            next.delete(id)
+          }
+        }
+      }
+      return next
+    })
   }
 
   function toggle(id: string) {
