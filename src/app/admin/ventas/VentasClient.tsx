@@ -217,7 +217,12 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const leadsFiltrados = useMemo(() => {
     let lista = usuariosFiltro.size > 0 ? leadsState.filter(l => usuariosFiltro.has(l.assigned_to ?? '')) : leadsState
     if (visibilidadFiltro.size > 0) {
-      lista = lista.filter(l => l.colaboradores?.some(c => visibilidadFiltro.has(c.id)))
+      // "Visible para" = el asesor asignado (siempre lo ve por defecto) O alguien
+      // con quien se compartió visibilidad explícita (clientes_visibilidad).
+      lista = lista.filter(l =>
+        visibilidadFiltro.has(l.assigned_to ?? '') ||
+        l.colaboradores?.some(c => visibilidadFiltro.has(c.id))
+      )
     }
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase().trim()
