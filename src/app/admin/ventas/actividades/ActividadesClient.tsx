@@ -20,9 +20,8 @@ type ClienteResumen = {
 
 type Actividad = {
   id: string
-  tipo: 'recordatorio' | 'paso'
   descripcion: string
-  fecha: string | null
+  fecha: string
   completado: boolean
   clienteId: string
   clienteNombre: string
@@ -34,6 +33,8 @@ type Actividad = {
   asignadoId: string | null
   asignadoNombre: string | null
 }
+
+type UsuarioSimple = { id: string; nombre: string | null }
 
 interface Props {
   tenantId: string
@@ -223,11 +224,20 @@ function FilaActividad({
 // ─── Principal ────────────────────────────────────────────────────────────────
 export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
   const supabase = createClient()
+  const rolNorm = (rol ?? '').toLowerCase().replace('ñ', 'n')
+  const esPrivilegiado = rolNorm === 'gerencia' || rolNorm === 'control_total' || rolNorm === 'dueno'
+
   const [actividades, setActividades] = useState<Actividad[]>([])
+  const [usuariosEquipo, setUsuariosEquipo] = useState<UsuarioSimple[]>([])
+  const [visibilidadMap, setVisibilidadMap] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState<Vista>('lista')
   const [filtro, setFiltro] = useState<Filtro>('pendientes')
-  const [soloMias, setSoloMias] = useState(false)
+  // Solo para gerencia/dueño/control_total: filtrar por asesor asignado o por
+  // visualización compartida de cualquier usuario. Los demás roles siempre ven
+  // únicamente lo suyo (asignado + compartido con ellos), acotado ya en la consulta.
+  const [asignadoFiltro, setAsignadoFiltro] = useState<Set<string>>(new Set())
+  const [visibleFiltro, setVisibleFiltro] = useState<Set<string>>(new Set())
   const [busqueda, setBusqueda] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -250,8 +260,7 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
       .eq('tenant_id', tenantId)
       .eq('en_seguimiento_ventas', true)
 
-    const rolNorm = (rol ?? '').toLowerCase().replace('ñ', 'n')
-    if (rolNorm !== 'gerencia' && rolNorm !== 'control_total' && rolNorm !== 'dueno') {
+    if (!esPrivilegiado) {
       const { data: compartidos } = await supabase
         .from('clientes_visibilidad').select('cliente_id').eq('usuario_id', usuarioId)
       const idsCompartidos = (compartidos ?? []).map(c => c.cliente_id)
@@ -262,15 +271,16 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
 
     const { data: clientes } = await clientesQuery
 
-    if (!clientes || clientes.length === 0) { setActividades([]); setLoading(false); return }
+    if (!clientes || clientes.length === 0) { setActividades([]); setVisibilidadMap({}); setLoading(false); return }
 
-    // 2. Usuarios para nombres de asesores
+    // 2. Usuarios para nombres de asesores (y para los selectores de Asignado/Visualización de gerencia)
     const { data: usuarios } = await supabase
       .from('usuarios')
       .select('id, nombre')
       .eq('tenant_id', tenantId)
 
     const usuarioMap = new Map((usuarios ?? []).map(u => [u.id as string, u.nombre as string]))
+    setUsuariosEquipo((usuarios ?? []).map(u => ({ id: u.id as string, nombre: u.nombre as string | null })))
 
     const clienteMap = new Map<string, ClienteResumen>()
     for (const c of clientes) {
@@ -292,17 +302,27 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
 
     const ids = [...clienteMap.keys()]
 
-    // 3. Recordatorios y pasos en paralelo
-    const [{ data: recs }, { data: pasos }] = await Promise.all([
+    // 3. Recordatorios (agenda) y visibilidad compartida por cliente, en paralelo.
+    // Los "pasos" legados (clientes_pasos, sin fecha) ya no se crean desde la ficha
+    // — todo lo nuevo pasa por recordatorios, que siempre exige fecha — así que no
+    // se muestran aquí para no ensuciar la agenda con pendientes sin fecha.
+    const [{ data: recs }, { data: vis }] = await Promise.all([
       supabase.from('recordatorios')
         .select('id, nota, fecha_recordatorio, completado, cliente_id')
         .in('cliente_id', ids)
         .order('fecha_recordatorio', { ascending: true }),
-      supabase.from('clientes_pasos')
-        .select('id, descripcion, completado, orden, cliente_id')
-        .in('cliente_id', ids)
-        .order('orden', { ascending: true }),
+      supabase.from('clientes_visibilidad')
+        .select('cliente_id, usuario_id')
+        .in('cliente_id', ids),
     ])
+
+    const visMap: Record<string, string[]> = {}
+    for (const v of vis ?? []) {
+      const cid = v.cliente_id as string
+      if (!visMap[cid]) visMap[cid] = []
+      visMap[cid].push(v.usuario_id as string)
+    }
+    setVisibilidadMap(visMap)
 
     // El "asesor" de una acción es el asesor del CLIENTE (clientes.assigned_to), no
     // necesariamente quien creó/registró el recordatorio (recordatorios.asignado_a) —
@@ -313,7 +333,6 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
       const asignadoRecId = c?.assigned_to ?? null
       return {
         id: `rec-${r.id}`,
-        tipo: 'recordatorio',
         descripcion: r.nota ?? '(sin nota)',
         fecha: r.fecha_recordatorio as string,
         completado: !!r.completado,
@@ -329,63 +348,51 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
       }
     })
 
-    const actsPaso: Actividad[] = (pasos ?? []).map(p => {
-      const c = clienteMap.get(p.cliente_id as string)
-      return {
-        id: `paso-${p.id}`,
-        tipo: 'paso',
-        descripcion: p.descripcion as string,
-        fecha: null,
-        completado: !!p.completado,
-        clienteId: p.cliente_id as string,
-        clienteNombre: c?.nombre ?? 'Cliente',
-        clienteCelular: c?.celular ?? null,
-        clienteCedula: c?.cedula ?? null,
-        clientePlaca: c?.placa ?? null,
-        clienteFactura: c?.numero_factura ?? null,
-        clienteMoto: c?.moto ?? null,
-        asignadoId: c?.assigned_to ?? null,
-        asignadoNombre: c?.assigned_to ? (usuarioMap.get(c.assigned_to) ?? null) : null,
-      }
-    })
-
-    setActividades([...actsRec, ...actsPaso])
+    setActividades(actsRec)
     setLoading(false)
-  }, [tenantId, supabase])
+  }, [tenantId, supabase, usuarioId, esPrivilegiado])
 
   useEffect(() => { cargar() }, [cargar])
 
   async function toggleActividad(act: Actividad) {
     setSaving(true)
     const nuevoEstado = !act.completado
-    const rawId = act.id.replace(/^(rec|paso)-/, '')
+    const rawId = act.id.replace(/^rec-/, '')
 
-    if (act.tipo === 'recordatorio') {
-      await supabase.from('recordatorios').update({
-        completado: nuevoEstado,
-        completado_at: nuevoEstado ? new Date().toISOString() : null,
-      }).eq('id', rawId)
-      // Sincronizar proxima_accion en el cliente
-      if (nuevoEstado) {
-        const { data: prox } = await supabase.from('recordatorios')
-          .select('nota, fecha_recordatorio')
-          .eq('cliente_id', act.clienteId).eq('completado', false)
-          .order('fecha_recordatorio', { ascending: true }).limit(1).maybeSingle()
-        await supabase.from('clientes').update({
-          proxima_accion: prox?.nota ?? null,
-          proxima_accion_fecha: prox?.fecha_recordatorio ?? null,
-        }).eq('id', act.clienteId)
-      }
-    } else {
-      await supabase.from('clientes_pasos').update({
-        completado: nuevoEstado,
-        completado_por: nuevoEstado ? usuarioId : null,
-        completado_at: nuevoEstado ? new Date().toISOString() : null,
-      }).eq('id', rawId)
+    await supabase.from('recordatorios').update({
+      completado: nuevoEstado,
+      completado_at: nuevoEstado ? new Date().toISOString() : null,
+    }).eq('id', rawId)
+    // Sincronizar proxima_accion en el cliente
+    if (nuevoEstado) {
+      const { data: prox } = await supabase.from('recordatorios')
+        .select('nota, fecha_recordatorio')
+        .eq('cliente_id', act.clienteId).eq('completado', false)
+        .order('fecha_recordatorio', { ascending: true }).limit(1).maybeSingle()
+      await supabase.from('clientes').update({
+        proxima_accion: prox?.nota ?? null,
+        proxima_accion_fecha: prox?.fecha_recordatorio ?? null,
+      }).eq('id', act.clienteId)
     }
 
     setActividades(prev => prev.map(a => a.id === act.id ? { ...a, completado: nuevoEstado } : a))
     setSaving(false)
+  }
+
+  function toggleAsignado(id: string) {
+    setAsignadoFiltro(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleVisible(id: string) {
+    setVisibleFiltro(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
   }
 
   // ─── Búsqueda y filtro ────────────────────────────────────────────────────
@@ -393,7 +400,19 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
     let lista = actividades
     if (filtro === 'pendientes') lista = lista.filter(a => !a.completado)
     if (filtro === 'completadas') lista = lista.filter(a => a.completado)
-    if (soloMias) lista = lista.filter(a => a.asignadoId === usuarioId)
+    if (esPrivilegiado) {
+      if (asignadoFiltro.size > 0) {
+        lista = lista.filter(a => !!a.asignadoId && asignadoFiltro.has(a.asignadoId))
+      }
+      if (visibleFiltro.size > 0) {
+        // El asesor asignado siempre "ve" su propio cliente, además de quienes
+        // tengan visualización compartida explícita (clientes_visibilidad).
+        lista = lista.filter(a =>
+          (!!a.asignadoId && visibleFiltro.has(a.asignadoId)) ||
+          (visibilidadMap[a.clienteId]?.some(id => visibleFiltro.has(id)) ?? false)
+        )
+      }
+    }
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase().trim()
       lista = lista.filter(a =>
@@ -407,36 +426,33 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
       )
     }
     return lista
-  }, [actividades, filtro, soloMias, usuarioId, busqueda])
+  }, [actividades, filtro, esPrivilegiado, asignadoFiltro, visibleFiltro, visibilidadMap, busqueda])
 
   // ─── Lista agrupada ────────────────────────────────────────────────────────
+  // "Vencidas" siempre se muestra primero, incluso vacía (con un mensaje de
+  // ánimo) — es lo más urgente y el usuario debe verlo de un vistazo sin tener
+  // que buscarlo. El resto de grupos solo aparece si tiene actividades.
   const grupos = useMemo(() => {
-    const conFecha = filtradas.filter(a => a.fecha)
-    const sinFecha = filtradas.filter(a => !a.fecha)
-    const vencidas = conFecha.filter(a => !a.completado && esVencida(a.fecha!))
-      .sort((a, b) => a.fecha!.localeCompare(b.fecha!))
-    const hoyActs = conFecha.filter(a => soloFecha(a.fecha!) === hoy())
-    const semana = conFecha.filter(a => soloFecha(a.fecha!) > hoy() && estaSemanaDe(a.fecha!))
-    const despues = conFecha.filter(a => {
-      const sf = soloFecha(a.fecha!)
-      return sf > hoy() && !estaSemanaDe(a.fecha!)
-    })
-    const completadasConFecha = conFecha.filter(a => a.completado)
-    return [
-      { label: '⏰ Vencidas', items: vencidas, accent: 'text-red-600' },
-      { label: '📅 Hoy', items: hoyActs, accent: 'text-blue-700' },
-      { label: '📆 Esta semana', items: semana, accent: 'text-indigo-600' },
-      { label: '🗓 Más adelante', items: despues, accent: 'text-gray-600' },
-      { label: '✅ Sin fecha (pasos)', items: sinFecha.filter(a => !a.completado), accent: 'text-purple-600' },
-      { label: '✓ Completadas', items: [...completadasConFecha, ...sinFecha.filter(a => a.completado)], accent: 'text-gray-400' },
-    ].filter(g => g.items.length > 0)
-  }, [filtradas])
+    const vencidas = filtradas.filter(a => !a.completado && esVencida(a.fecha))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    const hoyActs = filtradas.filter(a => !a.completado && soloFecha(a.fecha) === hoy())
+    const semana = filtradas.filter(a => !a.completado && soloFecha(a.fecha) > hoy() && estaSemanaDe(a.fecha))
+    const despues = filtradas.filter(a => !a.completado && soloFecha(a.fecha) > hoy() && !estaSemanaDe(a.fecha))
+    const completadas = filtradas.filter(a => a.completado)
+    const out = [
+      { label: '⏰ Vencidas', items: vencidas, accent: 'text-red-600', siempreVisible: filtro !== 'completadas' },
+      { label: '📅 Hoy', items: hoyActs, accent: 'text-blue-700', siempreVisible: false },
+      { label: '📆 Esta semana', items: semana, accent: 'text-indigo-600', siempreVisible: false },
+      { label: '🗓 Más adelante', items: despues, accent: 'text-gray-600', siempreVisible: false },
+      { label: '✓ Completadas', items: completadas, accent: 'text-gray-400', siempreVisible: false },
+    ]
+    return out.filter(g => g.items.length > 0 || g.siempreVisible)
+  }, [filtradas, filtro])
 
   // ─── Calendario: actividades por día ──────────────────────────────────────
   const actividadesPorDia = useMemo(() => {
     const map = new Map<string, Actividad[]>()
     for (const a of filtradas) {
-      if (!a.fecha) continue
       const key = soloFecha(a.fecha)
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(a)
@@ -496,7 +512,7 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
       </div>
 
       {/* Buscador + filtro */}
-      <div className="flex gap-3 mb-4 flex-wrap items-center">
+      <div className="flex gap-3 mb-2 flex-wrap items-center">
         <div className="relative flex-1 min-w-52 max-w-sm">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
           <input
@@ -532,17 +548,71 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
             </button>
           ))}
         </div>
+      </div>
 
-        <button
-          onClick={() => setSoloMias(v => !v)}
-          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
-            soloMias
-              ? 'bg-purple-700 text-white border-purple-700'
-              : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400'
-          }`}
-        >
-          {soloMias ? '👤 Solo las mías' : '👥 Asesor: Todos'}
-        </button>
+      {/* Asignado / Visualización — gerencia y dueño ven todo y pueden filtrar
+          por cualquier persona; el resto de roles siempre ve solo lo suyo. */}
+      <div className="flex gap-3 mb-4 flex-wrap items-center">
+        {esPrivilegiado ? (
+          <>
+            <div className="flex gap-1.5 flex-wrap items-center">
+              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Asignado a:</span>
+              <button
+                onClick={() => setAsignadoFiltro(new Set())}
+                className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                  asignadoFiltro.size === 0
+                    ? 'bg-blue-700 text-white border-blue-700'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'
+                }`}>
+                Todos
+              </button>
+              {usuariosEquipo.map(u => (
+                <button
+                  key={u.id}
+                  onClick={() => toggleAsignado(u.id)}
+                  className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                    asignadoFiltro.has(u.id)
+                      ? 'bg-blue-700 text-white border-blue-700'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'
+                  }`}>
+                  {u.nombre ?? 'Usuario'}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-1.5 flex-wrap items-center">
+              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Visualización:</span>
+              <button
+                onClick={() => setVisibleFiltro(new Set())}
+                className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                  visibleFiltro.size === 0
+                    ? 'bg-purple-700 text-white border-purple-700'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-purple-400'
+                }`}>
+                Todos
+              </button>
+              {usuariosEquipo.map(u => (
+                <button
+                  key={u.id}
+                  onClick={() => toggleVisible(u.id)}
+                  className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                    visibleFiltro.has(u.id)
+                      ? 'bg-purple-700 text-white border-purple-700'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-purple-400'
+                  }`}>
+                  {u.nombre ?? 'Usuario'}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <button
+            onClick={() => { setAsignadoFiltro(new Set()); setVisibleFiltro(new Set()) }}
+            className="px-3 py-1.5 rounded-xl text-xs font-semibold border bg-purple-50 text-purple-700 border-purple-200"
+          >
+            👤 Mis asignados y mis visualizaciones
+          </button>
+        )}
       </div>
 
       {loading && (
@@ -551,7 +621,9 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
 
       {!loading && filtradas.length === 0 && (
         <div className="text-center py-16 text-gray-400 text-sm">
-          {busqueda.trim() ? 'Sin resultados para esa búsqueda.' : filtro === 'pendientes' ? 'Sin actividades pendientes.' : 'Sin actividades.'}
+          {busqueda.trim()
+            ? 'Sin resultados para esa búsqueda.'
+            : filtro === 'pendientes' ? '¡Estás al día! 🎊 No tienes actividades pendientes.' : 'Sin actividades.'}
         </div>
       )}
 
@@ -561,11 +633,17 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
           {grupos.map(g => (
             <div key={g.label}>
               <p className={`text-xs font-semibold uppercase tracking-wide mb-2 ${g.accent}`}>{g.label}</p>
-              <div className="space-y-2">
-                {g.items.map(act => (
-                  <FilaActividad key={act.id} act={act} onToggle={toggleActividad} saving={saving} />
-                ))}
-              </div>
+              {g.items.length === 0 ? (
+                <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-3 font-semibold text-center">
+                  ¡Estás al día! 🎊
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {g.items.map(act => (
+                    <FilaActividad key={act.id} act={act} onToggle={toggleActividad} saving={saving} />
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -599,10 +677,6 @@ export default function ActividadesClient({ tenantId, usuarioId, rol }: Props) {
               diaSeleccionado={diaSeleccionado}
               onSelectDia={setDiaSeleccionado}
             />
-
-            <p className="text-xs text-gray-400 mt-2 text-center">
-              Solo los recordatorios aparecen en el calendario (tienen fecha). Los pasos sin fecha están en la vista Lista.
-            </p>
           </div>
 
           {/* Panel lateral del día */}
