@@ -8,6 +8,10 @@ interface Props {
   usuarioId: string
   clienteEmail?: string | null
   refreshSignal?: number
+  // Se dispara cuando esta pestaña toca clientes.updated_at (agregar, completar,
+  // reprogramar, etc.) para que la tarjeta/fila en Kanban o Lista se actualice al
+  // instante (badge de días sin movimiento / "sin seguimiento") sin refrescar.
+  onMovimiento?: () => void
 }
 
 type PasoItem = { source: 'paso'; id: string; texto: string; completado: boolean; fecha: null }
@@ -20,7 +24,7 @@ function fmt(d: string) {
   })
 }
 
-export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail, refreshSignal }: Props) {
+export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail, refreshSignal, onMovimiento }: Props) {
   const supabase = createClient()
   const [items, setItems]   = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
@@ -75,6 +79,7 @@ export default function PasosTab({ clienteId, tenantId, usuarioId, clienteEmail,
       proxima_accion:       prox?.nota ?? null,
       proxima_accion_fecha: prox?.fecha_recordatorio ?? null,
     }).eq('id', clienteId)
+    onMovimiento?.()
   }
 
   async function agregar() {

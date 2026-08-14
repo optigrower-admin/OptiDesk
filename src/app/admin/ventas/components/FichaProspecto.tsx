@@ -58,12 +58,14 @@ type Orden = {
   descripcion_problema: string | null
 }
 
+type LeadPatch = { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_carta_negociacion?: string | null; numero_factura?: string | null; fecha_entrega?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[]; estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'; aprobadoMatriculaPor?: string | null; revisionPerdida?: 'falta_revision' | 'revisado' | null; updated_at?: string | null }
+
 interface Props {
   lead: LeadData
   tenantId: string
   onClose: () => void
   onEtapaChange: (id: string, etapa: EtapaVenta) => void
-  onLeadUpdate?: (id: string, updates: { proxima_accion?: string | null; proxima_accion_fecha?: string | null; nombre?: string; nombre_pendiente_aprobacion?: boolean | null; etiquetas?: Etiqueta[]; placa?: string | null; celular?: string | null; numero_carta_negociacion?: string | null; numero_factura?: string | null; fecha_entrega?: string | null; assigned_to?: string | null; alistamientoOrdenId?: string | null; creditoAprobadoEntidad?: string | null; creditoRechazadoEntidades?: string[]; estadoAprobacionMatricula?: 'pendiente' | 'aprobado' | 'rechazado'; aprobadoMatriculaPor?: string | null; revisionPerdida?: 'falta_revision' | 'revisado' | null }) => void
+  onLeadUpdate?: (id: string, updates: LeadPatch) => void
   onLeadDelete?: (id: string) => void
   etapasPipeline: { etapas: EtapaDinamica[]; etapaMap: Record<string, EtapaDinamica> }
 }
@@ -128,6 +130,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   // cliente (ej. Freelancer desde "Aprobados para Matricular" en adelante) — sigue
   // viendo la ficha, pero no puede modificar nada mientras el cliente esté ahí.
   const etapaClienteBloqueada = etapasPipeline.etapaMap[lead.etapa_venta]?.rolesBloqueados?.includes(rolNorm) ?? false
+
+  // Toda edición del cliente (nombre, celular, recordatorios, crédito, etc.) toca
+  // clientes.updated_at en la base de datos — este wrapper lo refleja de inmediato
+  // en el estado local (Kanban/Lista) para que el badge de "sin seguimiento" y los
+  // días sin movimiento se vean al instante, sin esperar un refresco de página.
+  const patch = useCallback((updates: LeadPatch) => {
+    onLeadUpdate?.(lead.id, { ...updates, updated_at: new Date().toISOString() })
+  }, [lead.id, onLeadUpdate])
 
   const [mensajes, setMensajes]         = useState<Mensaje[]>([])
   const [ordenes, setOrdenes]           = useState<Orden[]>([])
@@ -520,7 +530,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       })
       if (res.ok) {
         mostrarGuardado()
-        onLeadUpdate?.(lead.id, { assigned_to: newId || null })
+        patch({ assigned_to: newId || null })
         const newNombre = usuarios.find(u => u.id === newId)?.nombre ?? 'Sin asignar'
         await logCambio('asignado_a', prevNombre, newNombre)
       }
@@ -555,7 +565,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       await logCambio('revision_perdida', 'Falta revisión', 'Revisado')
       setRevisionPerdida('revisado')
       setRevisadoPerdidaPorNombre(profile?.nombre ?? null)
-      onLeadUpdate?.(lead.id, { revisionPerdida: 'revisado' })
+      patch({ revisionPerdida: 'revisado' })
       mostrarGuardado()
     } finally {
       setSavingRevisionPerdida(false)
@@ -649,7 +659,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     await supabase.from('clientes')
       .update({ nombre, nombre_pendiente_aprobacion: false })
       .eq('id', lead.cliente.id)
-    onLeadUpdate?.(lead.id, { nombre, nombre_pendiente_aprobacion: false })
+    patch({ nombre, nombre_pendiente_aprobacion: false })
     setEditandoNombre(false)
     setSavingNombre(false)
   }
@@ -667,7 +677,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     } else {
       await logCambio('celular', celularActual || null, cel)
       setCelularActual(cel)
-      onLeadUpdate?.(lead.id, { celular: cel })
+      patch({ celular: cel })
       mostrarGuardado()
     }
     setSavingCelular(false)
@@ -693,7 +703,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       setCartaInput(carta)
       setFechaCarta(nuevaFechaCarta)
       setEditandoCarta(false)
-      onLeadUpdate?.(lead.id, { numero_carta_negociacion: carta })
+      patch({ numero_carta_negociacion: carta })
       mostrarGuardado()
     }
     setSavingCarta(false)
@@ -715,7 +725,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       setPlacaActual(pl)
       setPlacaInput(pl)
       setEditandoPlaca(false)
-      onLeadUpdate?.(lead.id, { placa: pl })
+      patch({ placa: pl })
       mostrarGuardado()
     }
     setSavingPlaca(false)
@@ -737,7 +747,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       setFacturaActual(fac)
       setFacturaInput(fac)
       setEditandoFactura(false)
-      onLeadUpdate?.(lead.id, { numero_factura: fac })
+      patch({ numero_factura: fac })
       mostrarGuardado()
     }
     setSavingFactura(false)
@@ -759,7 +769,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       setFechaEntregaActual(fecha)
       setFechaEntregaInput(fecha)
       setEditandoFechaEntrega(false)
-      onLeadUpdate?.(lead.id, { fecha_entrega: fecha })
+      patch({ fecha_entrega: fecha })
       mostrarGuardado()
     }
     setSavingFechaEntrega(false)
@@ -801,7 +811,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
     await supabase.from('clientes').update({ alistamiento_orden_id: ordenId }).eq('id', lead.id).eq('tenant_id', tenantId)
     setAlistamientoOrdenId(ordenId)
-    onLeadUpdate?.(lead.id, { alistamientoOrdenId: ordenId })
+    patch({ alistamientoOrdenId: ordenId })
     setBuscarOrdenOpen(false); setBusquedaOrden(''); setOrdenesBusqueda([])
   }
 
@@ -811,7 +821,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     setAlistamientoOrdenId(null)
     setOrdenesUMALoaded(false)
     setEditandoAlistamiento(false)
-    onLeadUpdate?.(lead.id, { alistamientoOrdenId: null })
+    patch({ alistamientoOrdenId: null })
   }
 
   const actualizarAprobacion = async (status: 'pendiente' | 'aprobado' | 'rechazado') => {
@@ -833,7 +843,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       }
       setAprobacionStatus(status)
       setAprobadoMatriculaPor(por)
-      onLeadUpdate?.(lead.id, { estadoAprobacionMatricula: status, aprobadoMatriculaPor: por })
+      patch({ estadoAprobacionMatricula: status, aprobadoMatriculaPor: por })
       mostrarGuardado()
     } catch (e) {
       alert(`Error al guardar: ${e instanceof Error ? e.message : 'Error desconocido'}`)
@@ -872,8 +882,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     const nuevaAccion = prox?.nota ?? null
     const nuevaFecha  = prox?.fecha_recordatorio ?? null
     await supabase.from('clientes').update({ proxima_accion: nuevaAccion, proxima_accion_fecha: nuevaFecha }).eq('id', lead.id)
-    onLeadUpdate?.(lead.id, { proxima_accion: nuevaAccion, proxima_accion_fecha: nuevaFecha })
-  }, [lead.id, supabase, onLeadUpdate])
+    patch({ proxima_accion: nuevaAccion, proxima_accion_fecha: nuevaFecha })
+  }, [lead.id, supabase, patch])
 
   const guardarProximaAccionPanel = async () => {
     if (etapaClienteBloqueada) { setBloqueoMsg('No tienes permiso para modificar este cliente en su etapa actual.'); return }
@@ -1057,7 +1067,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
             tenantId={tenantId}
             clienteId={lead.id}
             etiquetasIniciales={lead.etiquetas}
-            onChange={etiquetas => onLeadUpdate?.(lead.id, { etiquetas })}
+            onChange={etiquetas => patch({ etiquetas })}
           />
         </div>
 
@@ -1973,8 +1983,8 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     clienteId={lead.id}
                     tenantId={tenantId}
                     usuarioId={profile?.id ?? ''}
-                    onProximaAccionChange={(proxAccion, proxFecha) => onLeadUpdate?.(lead.id, { proxima_accion: proxAccion, proxima_accion_fecha: proxFecha })}
-                    onCreditoChange={(aprobada, rechazadas) => onLeadUpdate?.(lead.id, { creditoAprobadoEntidad: aprobada, creditoRechazadoEntidades: rechazadas })}
+                    onProximaAccionChange={(proxAccion, proxFecha) => patch({ proxima_accion: proxAccion, proxima_accion_fecha: proxFecha })}
+                    onCreditoChange={(aprobada, rechazadas) => patch({ creditoAprobadoEntidad: aprobada, creditoRechazadoEntidades: rechazadas })}
                   />
 
                   {ordenes.length > 0 && (
@@ -2012,14 +2022,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               )}
 
               {tabDer === 'datos'      && <DatosClienteTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''}
-                onClienteUpdate={({ nombre, celular }) => onLeadUpdate?.(lead.id, {
+                onClienteUpdate={({ nombre, celular }) => patch({
                   ...(nombre  ? { nombre }  : {}),
                   ...(celular ? { celular } : {}),
                 })} />}
               {tabDer === 'motos'      && <MotosInteresTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'cotizacion' && <CotizacionTab clienteId={lead.id} tenantId={tenantId} clienteNombre={lead.cliente?.nombre ?? ''} clienteCelular={lead.cliente?.celular ?? ''} />}
               {tabDer === 'archivos'   && <ArchivosTab clienteId={lead.id} />}
-              {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={lead.cliente_email} refreshSignal={agendaVersion} />}
+              {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={lead.cliente_email} refreshSignal={agendaVersion} onMovimiento={() => patch({})} />}
               {tabDer === 'historial'  && <HistorialTab clienteId={lead.id} />}
               {tabDer === 'visibilidad' && esGerencia && <VisibilidadTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} onChange={cargar} />}
 

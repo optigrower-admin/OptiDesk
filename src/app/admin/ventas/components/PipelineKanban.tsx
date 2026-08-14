@@ -193,8 +193,9 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
   const fichaLead   = fichaId  ? leads.find(l => l.id === fichaId)  ?? null : null
 
   function moverLead(id: string, nuevaEtapa: string) {
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, etapa_venta: nuevaEtapa as EtapaVenta } : l))
-    onLeadPatch?.(id, { etapa_venta: nuevaEtapa })
+    const ahora = new Date().toISOString()
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, etapa_venta: nuevaEtapa as EtapaVenta, updated_at: ahora } : l))
+    onLeadPatch?.(id, { etapa_venta: nuevaEtapa, updated_at: ahora })
   }
 
   async function persistirEtapa(id: string, etapa: string, motivoPerdida?: string, detallePerdida?: string) {
