@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
     border?: string
     direccion?: 'arriba' | 'abajo'
     rol?: string
+    usuario_id?: string
     oculto?: boolean
   } & EtapaFlags
 
@@ -269,6 +270,18 @@ export async function POST(req: NextRequest) {
     if (body.oculto) actuales.add(body.rol); else actuales.delete(body.rol)
     const { error } = await admin.from('etapas_pipeline')
       .update({ roles_ocultos: Array.from(actuales) }).eq('id', body.etapa_id).eq('tenant_id', tenantId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  }
+
+  if (accion === 'set_etapa_oculta_usuario') {
+    if (!body.etapa_id || !body.usuario_id) return NextResponse.json({ error: 'Faltan campos' }, { status: 400 })
+    const { data: et } = await admin.from('etapas_pipeline').select('usuarios_ocultos').eq('id', body.etapa_id).eq('tenant_id', tenantId).single()
+    if (!et) return NextResponse.json({ error: 'Etapa no encontrada' }, { status: 404 })
+    const actuales = new Set((et.usuarios_ocultos as string[] | null) ?? [])
+    if (body.oculto) actuales.add(body.usuario_id); else actuales.delete(body.usuario_id)
+    const { error } = await admin.from('etapas_pipeline')
+      .update({ usuarios_ocultos: Array.from(actuales) }).eq('id', body.etapa_id).eq('tenant_id', tenantId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })
   }

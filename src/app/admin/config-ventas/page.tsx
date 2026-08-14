@@ -1596,7 +1596,7 @@ export default function ConfigVentasPage() {
 
       {/* ── Etiquetas de cliente ── */}
       <SeccionColapsable titulo="Pipelines y Etapas (beta)" icono="🧭" defaultOpen={false}>
-        <PipelinesConfig />
+        <PipelinesConfig usuarios={usuariosEquipo} />
       </SeccionColapsable>
 
       <SeccionColapsable titulo="Automatizaciones de Pipeline (beta)" icono="🔀" defaultOpen={false}>

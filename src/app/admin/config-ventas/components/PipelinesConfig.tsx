@@ -17,6 +17,7 @@ type Etapa = {
   es_matricula: boolean
   es_auxiliar: boolean
   roles_ocultos: string[] | null
+  usuarios_ocultos: string[] | null
 }
 
 type Grupo = { id: string; clave: string; nombre: string; color: string; orden: number; etapas: Etapa[] }
@@ -393,7 +394,41 @@ function OcultarEtapaRolConfig({ rolesOcultos, busy, onToggle }: {
   )
 }
 
-export default function PipelinesConfig() {
+type UsuarioSimple = { id: string; nombre: string | null; email: string | null }
+
+function OcultarEtapaUsuarioConfig({ usuarios, usuariosOcultos, busy, onToggle }: {
+  usuarios: UsuarioSimple[]
+  usuariosOcultos: string[] | null
+  busy: boolean
+  onToggle: (usuarioId: string, oculto: boolean) => void
+}) {
+  if (usuarios.length === 0) return null
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 space-y-1.5">
+      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+        Ocultar esta columna para usuarios específicos
+      </p>
+      <p className="text-[10px] text-gray-400 -mt-1">
+        Además del control por rol de arriba, puedes ocultarle esta columna a una persona puntual (los clientes que ya estén en ella tampoco se le muestran).
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {usuarios.map(u => {
+          const oculto = (usuariosOcultos ?? []).includes(u.id)
+          return (
+            <button key={u.id} disabled={busy} onClick={() => onToggle(u.id, !oculto)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors disabled:opacity-50 ${
+                oculto ? 'bg-gray-700 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'
+              }`}>
+              {oculto ? '🚫 ' : ''}{u.nombre || u.email || 'Usuario'}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export default function PipelinesConfig({ usuarios = [] }: { usuarios?: UsuarioSimple[] }) {
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
@@ -605,6 +640,12 @@ export default function PipelinesConfig() {
                             rolesOcultos={e.roles_ocultos}
                             busy={busy}
                             onToggle={(rol, oculto) => accionar(() => llamar({ accion: 'set_etapa_oculta', etapa_id: e.id, rol, oculto }))}
+                          />
+                          <OcultarEtapaUsuarioConfig
+                            usuarios={usuarios}
+                            usuariosOcultos={e.usuarios_ocultos}
+                            busy={busy}
+                            onToggle={(usuario_id, oculto) => accionar(() => llamar({ accion: 'set_etapa_oculta_usuario', etapa_id: e.id, usuario_id, oculto }))}
                           />
                         </div>
                       ) : (

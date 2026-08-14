@@ -49,6 +49,7 @@ export interface EtapaDinamica {
   reglas: ReglaEtapa[]
   rolesBloqueados: string[] // roles que ya no pueden editar/mover clientes en esta etapa
   rolesOcultos: string[] // roles a los que esta columna no se les muestra en el Kanban
+  usuariosOcultos: string[] // usuarios específicos a los que esta columna no se les muestra en el Kanban
 }
 
 export interface GrupoDinamico {
@@ -79,6 +80,7 @@ interface RowEtapa {
   requiere_celular: boolean; requiere_placa: boolean; requiere_fecha_entrega: boolean
   requiere_carta_negociacion: boolean; requiere_factura: boolean; requiere_aprobacion_gerencia: boolean
   roles_ocultos: string[] | null
+  usuarios_ocultos: string[] | null
 }
 
 export function useEtapasPipeline(tenantId: string | undefined) {
@@ -127,6 +129,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
           reglas: reglasRaw.filter(r => r.etapa_id === e.id).sort((a, b) => a.orden - b.orden),
           rolesBloqueados: bloqueosRaw.filter(b => b.etapa_id === e.id).map(b => b.rol),
           rolesOcultos: e.roles_ocultos ?? [],
+          usuariosOcultos: e.usuarios_ocultos ?? [],
         }
       })
 
