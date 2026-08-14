@@ -48,6 +48,7 @@ const CATEGORIA_BADGE: Record<Categoria, string> = {
   costo_externo:   'bg-amber-100 text-amber-700',
   costo_lavado:    'bg-teal-200 text-teal-800',
   pago_proveedor:  'bg-amber-200 text-amber-800',
+  exceso_proveedor: 'bg-red-100 text-red-700',
   gasto:           'bg-red-100 text-red-700',
   ajuste:          'bg-gray-700 text-white',
   porta_placas:    'bg-orange-100 text-orange-700',
@@ -1209,7 +1210,7 @@ export default function CajaPage() {
           case 'porta_placas':      return m.categoria === 'porta_placas'
           case 'ingreso_caja':      return m.categoria === 'ingreso_manual' && !esTransfer
           case 'gastos_caja':       return m.categoria === 'gasto' && !esTransfer
-          case 'costos_externos':   return m.categoria === 'costo_externo' || m.categoria === 'pago_proveedor'
+          case 'costos_externos':   return m.categoria === 'costo_externo' || m.categoria === 'pago_proveedor' || m.categoria === 'exceso_proveedor'
           case 'costos_lavado':     return m.categoria === 'costo_lavado'
           case 'transferencias':    return esTransfer
           case 'ajuste_caja':       return m.categoria === 'ajuste' && !esTransfer

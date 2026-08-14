@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // cierre diario (cliente admin) — por eso vive en /lib en vez de en la page,
 // y por eso recibe el cliente de Supabase como parámetro en vez de crearlo.
 
-export type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'pago_proveedor' | 'gasto' | 'ajuste' | 'porta_placas' | 'pago_colaborador'
+export type Categoria = 'ingreso_st' | 'ingreso_venta' | 'ingreso_insumo' | 'ingreso_lavado' | 'ingreso_externo' | 'ingreso_manual' | 'costo_externo' | 'costo_lavado' | 'pago_proveedor' | 'exceso_proveedor' | 'gasto' | 'ajuste' | 'porta_placas' | 'pago_colaborador'
 
 export interface Movimiento {
   id: string
@@ -31,13 +31,14 @@ export const CATEGORIA_LABEL: Record<Categoria, string> = {
   costo_externo:   'Costo repuestos Externos/Terceros',
   costo_lavado:    'Costo Servicio de Lavado',
   pago_proveedor:  'Pago proveedor (provisional)',
+  exceso_proveedor: 'Exceso pago proveedor',
   gasto:           'Gastos de Caja',
   ajuste:          'Ajuste de Caja',
   porta_placas:    'Porta Placas',
   pago_colaborador: 'Pago Colaborador',
 }
 
-export const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_manual', 'gasto', 'costo_lavado', 'costo_externo', 'pago_proveedor', 'ajuste', 'pago_colaborador']
+export const CATEGORIAS_CON_CUENTA: Categoria[] = ['ingreso_st', 'ingreso_venta', 'ingreso_manual', 'gasto', 'costo_lavado', 'costo_externo', 'pago_proveedor', 'exceso_proveedor', 'ajuste', 'pago_colaborador']
 
 // "Caja fuerte" no es un método de pago del catálogo, es una cuenta independiente
 // donde Gerencia/Dueño guardan parte del dinero. Se alimenta de las transferencias
@@ -153,6 +154,7 @@ export async function construirMovimientos(
   const ordenesConGestion = new Set<string>()
   const estadoPorOrden = new Map<string, string>()
   const estadoPagoPorOrden = new Map<string, string>()
+  const ordenInfoPorOrden = new Map<string, { numero: number; placa: string; cliente: string }>()
 
   // Ítems/lavados completos (no solo orden_id+costo) de las órdenes con costo,
   // sin filtrar por fecha — hacen falta para poder mostrar en el período
@@ -170,7 +172,7 @@ export async function construirMovimientos(
       supabase.from('lava_moto_ordenes').select('id, orden_id, costo_unitario, precio_venta_unitario, cantidad, created_at, metodo_pago_id, metodos_pago(nombre), ordenes!inner(tenant_id, numero, placa, cliente, tipo_orden)')
         .eq('ordenes.tenant_id', tenantId).gt('costo_unitario', 0).in('orden_id', ordenIds),
       supabase.from('pagos_proveedor').select('orden_id, monto, fecha').in('orden_id', ordenIds).eq('tenant_id', tenantId),
-      supabase.from('ordenes').select('id, gestiona_pago_proveedor, estado, estado_pago').in('id', ordenIds),
+      supabase.from('ordenes').select('id, gestiona_pago_proveedor, estado, estado_pago, numero, placa, cliente').in('id', ordenIds),
     ])
     costosExtTodos = (r1b.data ?? []) as unknown as NonNullable<typeof costosExt>
     lavadosTodos = (r2b.data ?? []) as unknown as NonNullable<typeof lavados>
@@ -188,10 +190,11 @@ export async function construirMovimientos(
       const actual = ultimaFechaPagoPorOrden.get(pp.orden_id)
       if (!actual || pp.fecha > actual) ultimaFechaPagoPorOrden.set(pp.orden_id, pp.fecha)
     }
-    for (const ord of (r4.data ?? []) as { id: string; gestiona_pago_proveedor: boolean; estado: string; estado_pago: string }[]) {
+    for (const ord of (r4.data ?? []) as { id: string; gestiona_pago_proveedor: boolean; estado: string; estado_pago: string; numero: number; placa: string; cliente: string }[]) {
       if (ord.gestiona_pago_proveedor) ordenesConGestion.add(ord.id)
       estadoPorOrden.set(ord.id, ord.estado ?? '')
       estadoPagoPorOrden.set(ord.id, ord.estado_pago ?? '')
+      ordenInfoPorOrden.set(ord.id, { numero: ord.numero, placa: ord.placa, cliente: ord.cliente })
     }
   }
 
@@ -424,6 +427,38 @@ export async function construirMovimientos(
       metodoPago: pp.metodos_pago?.nombre ?? null,
       cuentaEspecial: null,
       grupo: grupoOrden(ord),
+    })
+  }
+
+  // Si en total se le pagó al proveedor más de lo que costaban los repuestos/lavado
+  // registrados por ítem (ej. el proveedor cobró más de lo negociado), ese exceso
+  // se muestra como una fila aparte "Exceso pago proveedor" — así no se altera el
+  // costo por ítem ya mostrado, pero el total en Caja sigue cuadrando con lo que
+  // realmente salió de caja.
+  for (const ordenId of ordenIdsConCosto) {
+    if (!mostrarItemsPorSeparado(ordenId)) continue
+    const costo = totalCostoPorOrden.get(ordenId) ?? 0
+    const pagado = totalPagadoPorOrden.get(ordenId) ?? 0
+    const exceso = pagado - costo
+    if (exceso <= 0) continue
+    const fechaPago = ultimaFechaPagoPorOrden.get(ordenId)
+    if (!fechaPago) continue
+    if (desdeISO && fechaPago < desdeISO) continue
+    if (hastaISO && fechaPago > hastaISO) continue
+    const info = ordenInfoPorOrden.get(ordenId) ?? null
+    lista.push({
+      id: `excesoprov_${ordenId}`,
+      rawId: ordenId,
+      fecha: fechaPago,
+      categoria: 'exceso_proveedor',
+      concepto: `Exceso pago proveedor · Orden #${info?.numero ?? '—'} (${info?.placa ?? '—'}) · ${info?.cliente ?? 'Cliente'}`,
+      nombre: info?.cliente ?? null,
+      codigo: info?.placa ?? null,
+      monto: -exceso,
+      metodoPagoId: null,
+      metodoPago: null,
+      cuentaEspecial: null,
+      grupo: grupoOrden(info),
     })
   }
 
