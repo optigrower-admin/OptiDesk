@@ -107,9 +107,9 @@ function PanelCRM({ lead, tenantId, usuarios, onLeadUpdate }: {
   async function guardarNota() {
     if (!nota.trim() || !profile?.id || !lead.cliente?.id) return
     setSaving(true)
-    await supabase.from('comentarios').insert({
+    await supabase.from('comentarios_cliente').insert({
       cliente_id: lead.cliente.id, tenant_id: tenantId,
-      usuario_id: profile.id, contenido: nota.trim(), tipo: 'nota_interna',
+      autor_id: profile.id, texto: nota.trim(),
     })
     setNota(''); setSaving(false); toast()
   }

@@ -12,9 +12,10 @@ import { ImportadorExcel } from '@/components/ImportadorExcel'
 import { importarSeguimientoVentas, previsualizarSeguimientoVentas } from '@/lib/bulkImport'
 import WhatsAppCreditoModal from './components/WhatsAppCreditoModal'
 import NuevoClienteForm from './components/NuevoClienteForm'
+import VistaActividad from './components/VistaActividad'
 import { estaSinSeguimiento, type ReglaRecordatorioAuto } from '@/lib/ventas/pipeline'
 
-type Tab = 'kanban' | 'bandeja' | 'hoy' | 'lista'
+type Tab = 'kanban' | 'bandeja' | 'hoy' | 'lista' | 'actividad'
 
 interface Props {
   leadsIniciales: LeadData[]
@@ -206,16 +207,14 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
     setBuscandoExtra(true)
     const timer = setTimeout(async () => {
       try {
-        const [{ data: comCliente }, { data: comGeneral }, { data: reminders }, { data: pasos }, { data: perdidos }] = await Promise.all([
+        const [{ data: comCliente }, { data: reminders }, { data: pasos }, { data: perdidos }] = await Promise.all([
           supabase.from('comentarios_cliente').select('cliente_id').eq('tenant_id', tenantId).ilike('texto', `%${q}%`),
-          supabase.from('comentarios').select('cliente_id').eq('tenant_id', tenantId).ilike('contenido', `%${q}%`),
           supabase.from('recordatorios').select('cliente_id').eq('tenant_id', tenantId).ilike('nota', `%${q}%`),
           supabase.from('clientes_pasos').select('cliente_id').eq('tenant_id', tenantId).ilike('descripcion', `%${q}%`),
           supabase.from('clientes').select('id').eq('tenant_id', tenantId).ilike('motivo_perdida', `%${q}%`),
         ])
         const ids = new Set<string>()
         for (const r of comCliente  ?? []) if (r.cliente_id) ids.add(r.cliente_id as string)
-        for (const r of comGeneral  ?? []) if (r.cliente_id) ids.add(r.cliente_id as string)
         for (const r of reminders   ?? []) if (r.cliente_id) ids.add(r.cliente_id as string)
         for (const r of pasos       ?? []) if (r.cliente_id) ids.add(r.cliente_id as string)
         for (const r of perdidos   ?? []) if (r.id) ids.add(r.id as string)
@@ -339,6 +338,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
               ...(esFreelancer ? [] : [{ id: 'bandeja' as Tab, label: '📥 Bandeja' }]),
               { id: 'hoy',     label: 'Prospectos' },
               { id: 'lista',   label: 'Lista' },
+              ...(esGerencia ? [{ id: 'actividad' as Tab, label: '🕐 Actividad' }] : []),
             ] as { id: Tab; label: string }[]).map(t => (
               <button
                 key={t.id}
@@ -557,6 +557,14 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       )}
       {tab === 'lista' && (
         <VistaLista leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} onLeadPatch={patchLead} onLeadRemove={removeLead} sinSeguimientoIds={sinSeguimientoIds} />
+      )}
+      {tab === 'actividad' && esGerencia && (
+        <VistaActividad
+          leads={leadsState}
+          tenantId={tenantId}
+          etapaMap={etapasPipeline.etapaMap}
+          onAbrirCliente={id => { setTab('kanban'); setAbrirClienteId(id) }}
+        />
       )}
     </div>
   )

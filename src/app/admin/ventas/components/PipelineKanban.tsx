@@ -335,12 +335,11 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     if (!text.trim() || !profile?.id) return
     const lead = leads.find(l => l.id === leadId)
     if (!lead?.cliente?.id) return
-    await supabase.from('comentarios').insert({
+    await supabase.from('comentarios_cliente').insert({
       cliente_id: lead.cliente.id,
       tenant_id: tenantId,
-      usuario_id: profile.id,
-      contenido: text.trim(),
-      tipo: 'nota_interna',
+      autor_id: profile.id,
+      texto: text.trim(),
     })
   }
 

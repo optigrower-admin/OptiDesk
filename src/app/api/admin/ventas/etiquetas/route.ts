@@ -97,6 +97,10 @@ export async function POST(req: NextRequest) {
       { cliente_id, etiqueta_id: etiqueta!.id, tenant_id: perfil.tenant_id },
       { onConflict: 'cliente_id,etiqueta_id' }
     )
+    await supabase.from('historial_cambios_cliente').insert({
+      cliente_id, tenant_id: perfil.tenant_id, usuario_id: perfil.id,
+      campo: 'etiqueta', valor_anterior: null, valor_nuevo: `+ ${etiqueta!.nombre}`,
+    })
 
     return NextResponse.json({ ok: true, etiqueta })
   }
@@ -108,16 +112,26 @@ export async function POST(req: NextRequest) {
       { cliente_id, etiqueta_id, tenant_id: perfil.tenant_id },
       { onConflict: 'cliente_id,etiqueta_id' }
     )
+    const { data: et } = await admin.from('etiquetas_venta').select('nombre').eq('id', etiqueta_id).maybeSingle()
+    await supabase.from('historial_cambios_cliente').insert({
+      cliente_id, tenant_id: perfil.tenant_id, usuario_id: perfil.id,
+      campo: 'etiqueta', valor_anterior: null, valor_nuevo: `+ ${et?.nombre ?? 'etiqueta'}`,
+    })
     return NextResponse.json({ ok: true })
   }
 
   if (accion === 'quitar') {
     if (!etiqueta_id || !cliente_id)
       return NextResponse.json({ error: 'Faltan campos' }, { status: 400 })
+    const { data: et } = await admin.from('etiquetas_venta').select('nombre').eq('id', etiqueta_id).maybeSingle()
     await admin.from('clientes_etiquetas')
       .delete()
       .eq('cliente_id', cliente_id)
       .eq('etiqueta_id', etiqueta_id)
+    await supabase.from('historial_cambios_cliente').insert({
+      cliente_id, tenant_id: perfil.tenant_id, usuario_id: perfil.id,
+      campo: 'etiqueta', valor_anterior: et?.nombre ?? 'etiqueta', valor_nuevo: '— quitada',
+    })
     return NextResponse.json({ ok: true })
   }
 
