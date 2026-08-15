@@ -234,8 +234,23 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   )
 
   const leadsFiltrados = useMemo(() => {
-    let lista = usuariosFiltro.size > 0 ? leadsState.filter(l => usuariosFiltro.has(l.assigned_to ?? '')) : leadsState
-    if (visibilidadFiltro.size > 0) {
+    let lista = leadsState
+    if (usuariosFiltro.size > 0 && visibilidadFiltro.size > 0) {
+      // Combo explícito: asignado a alguno de "Asesor" Y compartido (o asignado)
+      // con alguno de "Visible para" — ej. "Asesor: Juan Pablo" + "Visible para:
+      // Yazmin" = todo lo asignado a Juan Pablo que además comparte con Yazmin.
+      lista = lista.filter(l =>
+        usuariosFiltro.has(l.assigned_to ?? '') &&
+        (visibilidadFiltro.has(l.assigned_to ?? '') || l.colaboradores?.some(c => visibilidadFiltro.has(c.id)))
+      )
+    } else if (usuariosFiltro.size > 0) {
+      // Solo "Asesor": todo lo de esa persona — lo asignado a ella Y lo que
+      // tiene compartido (visualización), no solo lo estrictamente asignado.
+      lista = lista.filter(l =>
+        usuariosFiltro.has(l.assigned_to ?? '') ||
+        l.colaboradores?.some(c => usuariosFiltro.has(c.id))
+      )
+    } else if (visibilidadFiltro.size > 0) {
       // "Visible para" = el asesor asignado (siempre lo ve por defecto) O alguien
       // con quien se compartió visibilidad explícita (clientes_visibilidad).
       lista = lista.filter(l =>
