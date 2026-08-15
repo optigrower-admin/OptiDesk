@@ -1094,7 +1094,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               </div>
 
               {/* Fecha de venta — solo aparece en etapa vendida/perdida, editable por gerencia */}
-              {(!!fechaVenta || etapasPipeline.etapaMap[etapa]?.es_ganado || etapasPipeline.etapaMap[etapa]?.es_perdido) && (
+              {!etapasPipeline.etapaMap[etapa]?.es_perdido && (!!fechaVenta || etapasPipeline.etapaMap[etapa]?.es_ganado) && (
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fecha de venta</label>
@@ -1146,7 +1146,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               )}
 
               {/* Fecha de matrícula — aparece en etapa matrícula (o posterior si ya se guardó) */}
-              {(!!fechaMatricula || etapasPipeline.etapaMap[etapa]?.es_matricula) && (
+              {!etapasPipeline.etapaMap[etapa]?.es_perdido && (!!fechaMatricula || etapasPipeline.etapaMap[etapa]?.es_matricula) && (
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fecha de matrícula</label>
@@ -2044,7 +2044,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     </select>
                   </div>
 
-                  {(!!fechaVenta || etapasPipeline.etapaMap[etapa]?.es_ganado || etapasPipeline.etapaMap[etapa]?.es_perdido) && (
+                  {!etapasPipeline.etapaMap[etapa]?.es_perdido && (!!fechaVenta || etapasPipeline.etapaMap[etapa]?.es_ganado) && (
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Fecha de venta</label>
@@ -2076,7 +2076,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     </div>
                   )}
 
-                  {(!!fechaMatricula || etapasPipeline.etapaMap[etapa]?.es_matricula) && (
+                  {!etapasPipeline.etapaMap[etapa]?.es_perdido && (!!fechaMatricula || etapasPipeline.etapaMap[etapa]?.es_matricula) && (
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Fecha de matrícula</label>
