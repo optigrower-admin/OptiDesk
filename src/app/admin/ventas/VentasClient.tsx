@@ -338,7 +338,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
               ...(esFreelancer ? [] : [{ id: 'bandeja' as Tab, label: '📥 Bandeja' }]),
               { id: 'hoy',     label: 'Prospectos' },
               { id: 'lista',   label: 'Lista' },
-              ...(esGerencia ? [{ id: 'actividad' as Tab, label: '🕐 Actividad' }] : []),
+              { id: 'actividad', label: '🕐 Actividad' },
             ] as { id: Tab; label: string }[]).map(t => (
               <button
                 key={t.id}
@@ -558,7 +558,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       {tab === 'lista' && (
         <VistaLista leads={leadsFiltrados} tenantId={tenantId} usuarios={usuarios} onLeadPatch={patchLead} onLeadRemove={removeLead} sinSeguimientoIds={sinSeguimientoIds} />
       )}
-      {tab === 'actividad' && esGerencia && (
+      {tab === 'actividad' && (
         <VistaActividad
           leads={leadsState}
           tenantId={tenantId}
