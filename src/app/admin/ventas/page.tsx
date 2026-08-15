@@ -288,9 +288,20 @@ export default function VentasPage() {
 
     cargar()
 
-    // Escuchar cambios en clientes en seguimiento (INSERT + UPDATE desde webhook)
-    // IMPORTANTE: La tabla clientes debe estar en supabase_realtime (migration_v80).
-    // Condición permisiva: recargar siempre que un cliente esté (o pase a estar) en seguimiento.
+    // Recarga "en vivo" con un pequeño debounce: cuando llegan varios eventos
+    // seguidos (ej. una importación masiva o varios clientes moviéndose casi
+    // a la vez), se agrupan en una sola recarga en vez de disparar una por
+    // cada evento — evita parpadeos y peticiones redundantes.
+    let debounceId: ReturnType<typeof setTimeout> | null = null
+    function cargarDebounced() {
+      if (debounceId) clearTimeout(debounceId)
+      debounceId = setTimeout(() => { cargar() }, 600)
+    }
+
+    // Escuchar cambios en clientes en seguimiento (de cualquier usuario, no solo
+    // los propios) para que Kanban/Lista/Actividad se actualicen solos, sin que
+    // nadie tenga que refrescar la página. IMPORTANTE: la tabla clientes debe
+    // estar en supabase_realtime (migration_v80).
     const channel = supabase
       .channel(`ventas-nuevos-${profile.tenant_id}`)
       .on(
@@ -303,7 +314,7 @@ export default function VentasPage() {
         },
         (payload) => {
           const row = payload.new as Record<string, unknown>
-          if (row.en_seguimiento_ventas) cargar()
+          if (row.en_seguimiento_ventas) cargarDebounced()
         }
       )
       .on(
@@ -317,20 +328,32 @@ export default function VentasPage() {
         (payload) => {
           const row = payload.new as Record<string, unknown>
           const old = payload.old as Record<string, unknown>
-          // Solo recargar cuando un cliente ENTRA a seguimiento (INSERT silencioso o cambio de flag)
-          // NO recargar en etapaCambio: ese evento lo dispara el propio usuario al mover tarjetas
-          if (row.en_seguimiento_ventas && !old.en_seguimiento_ventas) cargar()
+          // Cualquier cambio en un cliente que esté (o estuviera) en seguimiento
+          // se refleja: entra a seguimiento, sale de seguimiento, cambia de etapa,
+          // se reasigna, se edita un dato, etc. — venga de quien venga.
+          if (row.en_seguimiento_ventas || old.en_seguimiento_ventas) cargarDebounced()
         }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event:  'DELETE',
+          schema: 'public',
+          table:  'clientes',
+          filter: `tenant_id=eq.${profile.tenant_id}`,
+        },
+        () => cargarDebounced()
       )
       .subscribe()
 
-    // Polling de seguridad: recargar silenciosamente cada 3 min para capturar cambios
-    // de otros usuarios (etapas, nuevos leads, etc.) sin interrumpir la UI
+    // Polling de seguridad: recargar silenciosamente cada 3 min por si se
+    // pierde algún evento de Realtime (reconexión, etc.)
     const pollId = setInterval(() => { cargar() }, 180_000)
 
     return () => {
       supabase.removeChannel(channel)
       clearInterval(pollId)
+      if (debounceId) clearTimeout(debounceId)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.tenant_id, profile?.rol, profile?.id])
