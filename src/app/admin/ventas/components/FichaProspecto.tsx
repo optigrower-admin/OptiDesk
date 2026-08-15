@@ -1935,6 +1935,14 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
 
               {tabDer === 'resumen' && (
                 <div className="space-y-4">
+                  <ResumenTab
+                    clienteId={lead.id}
+                    tenantId={tenantId}
+                    usuarioId={profile?.id ?? ''}
+                    onProximaAccionChange={(proxAccion, proxFecha) => patch({ proxima_accion: proxAccion, proxima_accion_fecha: proxFecha })}
+                    onCreditoChange={(aprobada, rechazadas) => patch({ creditoAprobadoEntidad: aprobada, creditoRechazadoEntidades: rechazadas })}
+                  />
+
                   <div className="bg-gray-50 rounded-xl p-3">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Cliente</p>
                     <p className="font-semibold text-gray-900">{lead.cliente?.nombre ?? '—'}</p>
@@ -1978,14 +1986,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   </div>
 
                   <ComentariosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} puedeEditar={esGerencia} />
-
-                  <ResumenTab
-                    clienteId={lead.id}
-                    tenantId={tenantId}
-                    usuarioId={profile?.id ?? ''}
-                    onProximaAccionChange={(proxAccion, proxFecha) => patch({ proxima_accion: proxAccion, proxima_accion_fecha: proxFecha })}
-                    onCreditoChange={(aprobada, rechazadas) => patch({ creditoAprobadoEntidad: aprobada, creditoRechazadoEntidades: rechazadas })}
-                  />
 
                   {ordenes.length > 0 && (
                     <div className="border-t pt-3">
