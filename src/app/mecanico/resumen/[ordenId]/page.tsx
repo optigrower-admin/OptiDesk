@@ -259,6 +259,12 @@ export default function ResumenMecanicoPage() {
     if (res.ok) setMedios((prev) => prev.filter((m) => m.id !== id))
   }
 
+  const handleDeleteMedios = async (ids: string[]) => {
+    const resultados = await Promise.all(ids.map(id => fetch(`/api/media/${id}`, { method: 'DELETE' }).then(r => ({ id, ok: r.ok }))))
+    const eliminados = new Set(resultados.filter(r => r.ok).map(r => r.id))
+    setMedios((prev) => prev.filter((m) => !eliminados.has(m.id)))
+  }
+
   if (loading || !orden) return <div className="p-4 text-center text-gray-400">Cargando...</div>
 
   return (
@@ -627,7 +633,7 @@ export default function ResumenMecanicoPage() {
           )}
         </div>
         <div className="p-3">
-          <MediaGallery medios={medios} onDelete={handleDeleteMedio} />
+          <MediaGallery medios={medios} onDelete={handleDeleteMedio} onDeleteMultiple={handleDeleteMedios} />
         </div>
       </div>
 

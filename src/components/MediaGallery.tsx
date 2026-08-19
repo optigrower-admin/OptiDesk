@@ -49,7 +49,7 @@ function VideoThumb({ src }: { src: string }) {
   )
 }
 
-function ConfirmDeleteModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+function ConfirmDeleteModal({ cantidad, onConfirm, onCancel }: { cantidad: number; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60" onClick={onCancel}>
       <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
@@ -58,7 +58,9 @@ function ConfirmDeleteModal({ onConfirm, onCancel }: { onConfirm: () => void; on
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>
         </div>
-        <h3 className="text-base font-semibold text-gray-900 text-center mb-1">¿Eliminar archivo?</h3>
+        <h3 className="text-base font-semibold text-gray-900 text-center mb-1">
+          {cantidad > 1 ? `¿Eliminar ${cantidad} archivos?` : '¿Eliminar archivo?'}
+        </h3>
         <p className="text-sm text-gray-500 text-center mb-6">Esta acción no se puede deshacer.</p>
         <div className="flex gap-3">
           <button
@@ -89,9 +91,14 @@ interface Medio {
   procesando?: boolean
 }
 
-export function MediaGallery({ medios, onDelete, puedeSubirDrive, onMigrado }: {
+export function MediaGallery({ medios, onDelete, onDeleteMultiple, puedeSubirDrive, onMigrado }: {
   medios: Medio[]
   onDelete?: (id: string) => void
+  /** Si se pasa, el borrado múltiple se hace con una sola llamada (recomendado
+   *  para no disparar N confirmaciones/peticiones cuando el que llama a
+   *  onDelete también muestra su propio diálogo nativo). Si no se pasa, se
+   *  cae de vuelta a llamar onDelete una vez por cada archivo seleccionado. */
+  onDeleteMultiple?: (ids: string[]) => void | Promise<void>
   /** Si es true, los archivos que no están en Drive muestran un botón "Cargar a Drive". */
   puedeSubirDrive?: boolean
   onMigrado?: (id: string, patch: Partial<Medio>) => void
@@ -100,6 +107,39 @@ export function MediaGallery({ medios, onDelete, puedeSubirDrive, onMigrado }: {
   const [confirmDelete, setConfirmDelete] = useState<Medio | null>(null)
   const [migrando, setMigrando] = useState<Set<string>>(new Set())
   const [errorMigrar, setErrorMigrar] = useState<string | null>(null)
+  const [seleccionando, setSeleccionando] = useState(false)
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [eliminandoBulk, setEliminandoBulk] = useState(false)
+
+  function toggleSeleccion(id: string) {
+    setSeleccionados(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function cancelarSeleccion() {
+    setSeleccionando(false)
+    setSeleccionados(new Set())
+  }
+
+  async function confirmarBorradoMultiple() {
+    const ids = [...seleccionados]
+    setEliminandoBulk(true)
+    try {
+      if (onDeleteMultiple) {
+        await onDeleteMultiple(ids)
+      } else {
+        for (const id of ids) onDelete?.(id)
+      }
+    } finally {
+      setEliminandoBulk(false)
+      setConfirmBulkDelete(false)
+      cancelarSeleccion()
+    }
+  }
 
   // Verifica el estado REAL en la base de datos en vez de confiar solo en la
   // respuesta del POST — el servidor puede tardar más que la conexión del
@@ -186,12 +226,44 @@ export function MediaGallery({ medios, onDelete, puedeSubirDrive, onMigrado }: {
       {errorMigrar && (
         <p className="text-xs text-red-600 mb-2">⚠ {errorMigrar}</p>
       )}
+
+      {onDelete && (
+        <div className="flex items-center justify-between mb-2 min-h-[28px]">
+          {seleccionando ? (
+            <>
+              <span className="text-xs font-semibold text-gray-600">
+                {seleccionados.size} seleccionado{seleccionados.size !== 1 ? 's' : ''}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setConfirmBulkDelete(true)}
+                  disabled={seleccionados.size === 0}
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:hover:bg-red-600 transition-colors"
+                >
+                  🗑 Eliminar
+                </button>
+                <button onClick={cancelarSeleccion} className="text-xs font-medium text-gray-500 hover:text-gray-700 px-2 py-1">
+                  Cancelar
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              onClick={() => setSeleccionando(true)}
+              className="ml-auto text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1"
+            >
+              Seleccionar
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {medios.map((medio) => (
           <div key={medio.id} className="relative group aspect-square">
-            {/* Click en miniatura → abre lightbox */}
+            {/* Click en miniatura → abre lightbox (o marca selección si está en modo seleccionar) */}
             <button
-              onClick={() => setViewing(medio)}
+              onClick={() => seleccionando ? toggleSeleccion(medio.id) : setViewing(medio)}
               className="w-full h-full bg-gray-100 rounded-lg overflow-hidden"
               disabled={medio.procesando}
             >
@@ -222,7 +294,22 @@ export function MediaGallery({ medios, onDelete, puedeSubirDrive, onMigrado }: {
               )}
             </button>
 
-            {medio.storage_location === 'drive' ? (
+            {seleccionando && (
+              <div
+                onClick={() => toggleSeleccion(medio.id)}
+                className={`absolute top-1 left-1 w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-colors ${
+                  seleccionados.has(medio.id) ? 'bg-blue-600 border-blue-600' : 'bg-white/80 border-gray-300'
+                }`}
+              >
+                {seleccionados.has(medio.id) && (
+                  <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </div>
+            )}
+
+            {!seleccionando && (medio.storage_location === 'drive' ? (
               <div className="absolute top-1 left-1">
                 <Badge variant="purple">Drive</Badge>
               </div>
@@ -245,9 +332,10 @@ export function MediaGallery({ medios, onDelete, puedeSubirDrive, onMigrado }: {
                   ) : '⚠ Cargar a Drive'}
                 </button>
               </div>
-            ) : null}
+            ) : null)}
 
             {/* Botones acción (aparecen al hover) */}
+            {!seleccionando && (
             <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
               {/* Descarga directa al dispositivo */}
               <a
@@ -273,15 +361,26 @@ export function MediaGallery({ medios, onDelete, puedeSubirDrive, onMigrado }: {
                 </button>
               )}
             </div>
+            )}
           </div>
         ))}
       </div>
 
-      {/* Modal confirmar eliminación */}
+      {/* Modal confirmar eliminación (una sola) */}
       {confirmDelete && onDelete && (
         <ConfirmDeleteModal
+          cantidad={1}
           onConfirm={() => { onDelete(confirmDelete.id); setConfirmDelete(null) }}
           onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {/* Modal confirmar eliminación múltiple */}
+      {confirmBulkDelete && (
+        <ConfirmDeleteModal
+          cantidad={seleccionados.size}
+          onConfirm={confirmarBorradoMultiple}
+          onCancel={() => !eliminandoBulk && setConfirmBulkDelete(false)}
         />
       )}
 

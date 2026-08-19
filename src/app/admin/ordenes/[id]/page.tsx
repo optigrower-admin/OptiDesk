@@ -770,6 +770,14 @@ export default function AdminOrdenDetallePage() {
     setMedios((prev) => prev.filter((m) => m.id !== id))
   }
 
+  // Sin confirm() nativo aquí: MediaGallery ya muestra su propio modal de
+  // confirmación antes de llamar esto, uno solo para todos los seleccionados.
+  const handleDeleteMedios = async (ids: string[]) => {
+    const resultados = await Promise.all(ids.map(id => fetch(`/api/media/${id}`, { method: 'DELETE' }).then(r => ({ id, ok: r.ok }))))
+    const eliminados = new Set(resultados.filter(r => r.ok).map(r => r.id))
+    setMedios((prev) => prev.filter((m) => !eliminados.has(m.id)))
+  }
+
   const handleUploadMedio = async (e: React.ChangeEvent<HTMLInputElement>, tipoForzado?: 'imagen' | 'video') => {
     setUploadingMedio(true)
     setUploadError('')
@@ -2855,7 +2863,7 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                     <button onClick={() => setUploadError('')} className="ml-auto text-red-400 hover:text-red-600 text-xs">✕</button>
                   </div>
                 )}
-                <MediaGallery medios={medios} onDelete={handleDeleteMedio}
+                <MediaGallery medios={medios} onDelete={handleDeleteMedio} onDeleteMultiple={handleDeleteMedios}
                   puedeSubirDrive={['admin', 'gerencia', 'dueno'].includes((profile?.rol ?? '').toLowerCase())}
                   onMigrado={(id, patch) => setMedios(prev => prev.map(m => m.id === id ? { ...m, ...patch } : m))}
                 />
