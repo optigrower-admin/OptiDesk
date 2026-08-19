@@ -209,7 +209,14 @@ export function useEtapasPipeline(tenantId: string | undefined) {
     }
 
     cargar()
-    return () => { cancelado = true }
+
+    // Poll de seguridad: los cambios hechos en Config Ventas (ej. desbloquear
+    // una etapa para un rol) no llegan solos a quienes ya tienen la página
+    // abierta — sin esto, alguien con el Kanban abierto seguiría viendo el
+    // bloqueo viejo hasta refrescar la página a mano.
+    const pollId = setInterval(() => { cargar() }, 120_000)
+
+    return () => { cancelado = true; clearInterval(pollId) }
   }, [tenantId, version])
 
   const etapaMap: Record<string, EtapaDinamica> = Object.fromEntries(etapas.map(e => [e.id, e]))
