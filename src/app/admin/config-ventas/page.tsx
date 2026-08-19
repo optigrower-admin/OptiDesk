@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/ventas/pipeline'
+import { VARIABLES_CORREO } from '@/lib/ventas/variablesCorreo'
 import PipelinesConfig from './components/PipelinesConfig'
 import InventarioMotosConfig from './components/InventarioMotosConfig'
 import ReglasPipelineConfig from './components/ReglasPipelineConfig'
@@ -65,7 +66,7 @@ interface CotizacionInfo {
 }
 
 interface TipoRecordatorio { id: string; tipo: string; activo: boolean; dias_umbral: number }
-interface Plantilla { id: string; nombre: string; asunto: string; cuerpo_html: string; activa: boolean }
+interface Plantilla { id: string; nombre: string; asunto: string; cuerpo_html: string; destinatario: string | null; documentos_adjuntos: string[] | null; activa: boolean }
 
 const TIPO_LABEL: Record<string, string> = {
   credito_sin_iniciar: 'Estudio de crédito sin iniciar',
@@ -569,7 +570,10 @@ export default function ConfigVentasPage() {
   const [motos, setMotos]                 = useState<MotoCat[]>([])
   const [tipos, setTipos]                 = useState<TipoRecordatorio[]>([])
   const [plantillas, setPlantillas]       = useState<Plantilla[]>([])
-  const [nuevaPlantilla, setNuevaPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '' })
+  const [catalogoDocumentos, setCatalogoDocumentos] = useState<string[]>([])
+  const [nuevaPlantilla, setNuevaPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set<string>() })
+  const [editandoPlantillaId, setEditandoPlantillaId] = useState<string | null>(null)
+  const [editandoPlantilla, setEditandoPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set<string>() })
   const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '', instagram: '', facebook: '', tiktok: '', incluye: '', recargoTarjeta: 5 })
   const [savingCotInfo, setSavingCotInfo] = useState(false)
   const [cotInfoOk, setCotInfoOk]         = useState(false)
@@ -615,11 +619,17 @@ export default function ConfigVentasPage() {
     if (cargandoRef.current) return   // evita ejecuciones concurrentes
     cargandoRef.current = true
 
-    const [{ data: ent }, { data: tip }, { data: plant }] = await Promise.all([
+    const [{ data: ent }, { data: tip }, { data: plant }, { data: reglasDocs }] = await Promise.all([
       supabase.from('entidades_financieras').select('id, nombre, activa, orden').eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('tipos_recordatorio_automatico').select('id, tipo, activo, dias_umbral').eq('tenant_id', profile.tenant_id),
-      supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, activa').eq('tenant_id', profile.tenant_id),
+      supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, destinatario, documentos_adjuntos, activa').eq('tenant_id', profile.tenant_id).order('orden'),
+      supabase.from('reglas_etapa').select('documentos_requeridos').eq('campo', 'documento_requerido').eq('activa', true),
     ])
+    const catalogo = new Set<string>()
+    for (const r of reglasDocs ?? []) {
+      for (const d of (r.documentos_requeridos ?? []) as string[]) catalogo.add(d)
+    }
+    setCatalogoDocumentos([...catalogo])
 
     // ── Tenant: queries defensivas separadas por migración ──
     // Base (siempre existe): logo_url y recargo
@@ -990,9 +1000,17 @@ export default function ConfigVentasPage() {
 
   /* ── Plantillas ── */
   async function crearPlantilla() {
-    if (!nuevaPlantilla.nombre.trim() || !nuevaPlantilla.asunto.trim() || !nuevaPlantilla.cuerpo_html.trim() || !profile?.tenant_id) return
-    await supabase.from('plantillas_correo').insert({ tenant_id: profile.tenant_id, ...nuevaPlantilla, created_by: profile.id })
-    setNuevaPlantilla({ nombre: '', asunto: '', cuerpo_html: '' })
+    if (!nuevaPlantilla.nombre.trim() || !nuevaPlantilla.asunto.trim() || !nuevaPlantilla.cuerpo_html.trim() || !nuevaPlantilla.destinatario.trim() || !profile?.tenant_id) return
+    await supabase.from('plantillas_correo').insert({
+      tenant_id: profile.tenant_id,
+      nombre: nuevaPlantilla.nombre,
+      asunto: nuevaPlantilla.asunto,
+      cuerpo_html: nuevaPlantilla.cuerpo_html,
+      destinatario: nuevaPlantilla.destinatario,
+      documentos_adjuntos: [...nuevaPlantilla.documentos_adjuntos],
+      created_by: profile.id,
+    })
+    setNuevaPlantilla({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set() })
     cargar()
   }
   async function togglePlantilla(id: string, activa: boolean) {
@@ -1002,6 +1020,25 @@ export default function ConfigVentasPage() {
   async function eliminarPlantilla(id: string) {
     if (!confirm('¿Eliminar esta plantilla?')) return
     await supabase.from('plantillas_correo').delete().eq('id', id)
+    cargar()
+  }
+  function abrirEditarPlantilla(p: Plantilla) {
+    setEditandoPlantillaId(p.id)
+    setEditandoPlantilla({
+      nombre: p.nombre, asunto: p.asunto, cuerpo_html: p.cuerpo_html,
+      destinatario: p.destinatario ?? '', documentos_adjuntos: new Set(p.documentos_adjuntos ?? []),
+    })
+  }
+  async function guardarEditarPlantilla() {
+    if (!editandoPlantillaId || !editandoPlantilla.nombre.trim() || !editandoPlantilla.asunto.trim() || !editandoPlantilla.cuerpo_html.trim() || !editandoPlantilla.destinatario.trim()) return
+    await supabase.from('plantillas_correo').update({
+      nombre: editandoPlantilla.nombre,
+      asunto: editandoPlantilla.asunto,
+      cuerpo_html: editandoPlantilla.cuerpo_html,
+      destinatario: editandoPlantilla.destinatario,
+      documentos_adjuntos: [...editandoPlantilla.documentos_adjuntos],
+    }).eq('id', editandoPlantillaId)
+    setEditandoPlantillaId(null)
     cargar()
   }
 
@@ -1565,16 +1602,64 @@ export default function ConfigVentasPage() {
       {/* ── Plantillas de correo ── */}
       <SeccionColapsable titulo="Plantillas de correo" icono="✉️" badge={plantillas.length} defaultOpen={false}>
         <div className="p-5">
-          <p className="text-xs text-gray-400 mb-3">Variable disponible: {'{{nombre_cliente}}'}</p>
+          <p className="text-xs text-gray-400 mb-3">
+            Variables disponibles: {VARIABLES_CORREO.map(v => `{${v.clave}}`).join(' ')} — ej: &quot;Solicitud Matrícula ({'{Placa}'})&quot;.
+            Se envían desde el correo de la empresa (Bot Colaboradores → Correo de la empresa).
+          </p>
           <div className="space-y-2 mb-3">
             {plantillas.map(p => (
               <div key={p.id} className={`rounded-lg border px-3 py-2 ${!p.activa ? 'opacity-60' : 'border-gray-200'}`}>
-                <div className="flex items-center gap-2">
-                  <span className="flex-1 text-sm font-semibold text-gray-800">{p.nombre}</span>
-                  <ToggleSwitch activo={p.activa} onChange={() => togglePlantilla(p.id, p.activa)} />
-                  <button onClick={() => eliminarPlantilla(p.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Asunto: {p.asunto}</p>
+                {editandoPlantillaId === p.id ? (
+                  <div className="space-y-1.5">
+                    <input value={editandoPlantilla.nombre} onChange={e => setEditandoPlantilla(v => ({ ...v, nombre: e.target.value }))} placeholder="Nombre interno"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input value={editandoPlantilla.destinatario} onChange={e => setEditandoPlantilla(v => ({ ...v, destinatario: e.target.value }))} placeholder="Destinatario (correo)"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input value={editandoPlantilla.asunto} onChange={e => setEditandoPlantilla(v => ({ ...v, asunto: e.target.value }))} placeholder="Asunto del correo"
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <textarea value={editandoPlantilla.cuerpo_html} onChange={e => setEditandoPlantilla(v => ({ ...v, cuerpo_html: e.target.value }))}
+                      placeholder="Cuerpo del correo" rows={4}
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                    {catalogoDocumentos.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {catalogoDocumentos.map(tipo => {
+                          const activo = editandoPlantilla.documentos_adjuntos.has(tipo)
+                          return (
+                            <button key={tipo} type="button"
+                              onClick={() => setEditandoPlantilla(v => {
+                                const next = new Set(v.documentos_adjuntos)
+                                if (next.has(tipo)) next.delete(tipo); else next.add(tipo)
+                                return { ...v, documentos_adjuntos: next }
+                              })}
+                              className={`px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${
+                                activo ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'
+                              }`}>
+                              {tipo}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                    <div className="flex gap-1.5">
+                      <button onClick={guardarEditarPlantilla} className="flex-1 py-1.5 bg-blue-700 text-white rounded-lg text-xs font-semibold">Guardar</button>
+                      <button onClick={() => setEditandoPlantillaId(null)} className="flex-1 py-1.5 bg-gray-200 rounded-lg text-xs">Cancelar</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="flex-1 text-sm font-semibold text-gray-800">{p.nombre}</span>
+                      <button onClick={() => abrirEditarPlantilla(p)} className="text-blue-600 hover:text-blue-800 text-xs">Editar</button>
+                      <ToggleSwitch activo={p.activa} onChange={() => togglePlantilla(p.id, p.activa)} />
+                      <button onClick={() => eliminarPlantilla(p.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Asunto: {p.asunto}</p>
+                    <p className="text-xs text-gray-400">Para: {p.destinatario || '—'}</p>
+                    {!!p.documentos_adjuntos?.length && (
+                      <p className="text-[11px] text-gray-400 mt-0.5">📎 {p.documentos_adjuntos.join(', ')}</p>
+                    )}
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -1582,11 +1667,36 @@ export default function ConfigVentasPage() {
             <p className="text-sm font-semibold text-gray-700">Nueva plantilla</p>
             <input value={nuevaPlantilla.nombre} onChange={e => setNuevaPlantilla(p => ({ ...p, nombre: e.target.value }))} placeholder="Nombre interno"
               className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={nuevaPlantilla.asunto} onChange={e => setNuevaPlantilla(p => ({ ...p, asunto: e.target.value }))} placeholder="Asunto del correo"
+            <input value={nuevaPlantilla.destinatario} onChange={e => setNuevaPlantilla(p => ({ ...p, destinatario: e.target.value }))} placeholder="Destinatario (correo)"
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input value={nuevaPlantilla.asunto} onChange={e => setNuevaPlantilla(p => ({ ...p, asunto: e.target.value }))} placeholder="Asunto del correo — ej: Solicitud Matrícula ({Placa})"
               className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <textarea value={nuevaPlantilla.cuerpo_html} onChange={e => setNuevaPlantilla(p => ({ ...p, cuerpo_html: e.target.value }))}
-              placeholder="Cuerpo del correo (HTML). ej: Hola {{nombre_cliente}}, ..." rows={4}
+              placeholder="Cuerpo del correo. ej: Hola, adjunto documentos de {Nombre}, placa {Placa}..." rows={4}
               className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            {catalogoDocumentos.length > 0 && (
+              <div>
+                <p className="text-[11px] text-gray-500 mb-1">Documentos a adjuntar por defecto:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {catalogoDocumentos.map(tipo => {
+                    const activo = nuevaPlantilla.documentos_adjuntos.has(tipo)
+                    return (
+                      <button key={tipo} type="button"
+                        onClick={() => setNuevaPlantilla(p => {
+                          const next = new Set(p.documentos_adjuntos)
+                          if (next.has(tipo)) next.delete(tipo); else next.add(tipo)
+                          return { ...p, documentos_adjuntos: next }
+                        })}
+                        className={`px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${
+                          activo ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'
+                        }`}>
+                        {tipo}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             <button onClick={crearPlantilla} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">
               + Crear plantilla
             </button>

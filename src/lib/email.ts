@@ -2,6 +2,8 @@ import nodemailer from 'nodemailer'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { decrypt } from '@/lib/crypto'
 
+export type AdjuntoCorreo = { filename: string; content?: Buffer; path?: string }
+
 /**
  * Envía un correo usando el Gmail que el propio usuario conectó en su perfil
  * (Mi perfil → Conectar mi correo), vía SMTP con contraseña de aplicación.
@@ -40,7 +42,9 @@ export async function sendEmailComoUsuario(usuarioId: string, to: string, subjec
  * A diferencia de sendEmailComoUsuario, no depende de que cada persona conecte
  * su propio Gmail — útil para notificaciones internas como el resumen diario.
  */
-export async function sendEmailComoEmpresa(tenantId: string, to: string, subject: string, html: string) {
+export async function sendEmailComoEmpresa(
+  tenantId: string, to: string, subject: string, html: string, attachments?: AdjuntoCorreo[],
+) {
   const admin = createAdminClient()
   const { data: tenant } = await admin
     .from('tenants')
@@ -64,5 +68,6 @@ export async function sendEmailComoEmpresa(tenantId: string, to: string, subject
     to,
     subject,
     html,
+    attachments,
   })
 }

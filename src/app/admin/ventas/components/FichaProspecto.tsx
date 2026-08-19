@@ -14,6 +14,7 @@ import DatosClienteTab from './ficha/DatosClienteTab'
 import MotosInteresTab from './ficha/MotosInteresTab'
 import PagoTab from './ficha/PagoTab'
 import ArchivosTab from './ficha/ArchivosTab'
+import CorreosTab from './ficha/CorreosTab'
 import ComentariosTab from './ficha/ComentariosTab'
 import PasosTab from './ficha/PasosTab'
 import HistorialTab from './ficha/HistorialTab'
@@ -105,7 +106,7 @@ const ROL_LABEL: Record<string, string> = {
   admin: 'Admin', superadmin: 'SuperAdmin', mecanico: 'Mecánico', gerencia: 'Gerencia', control_total: 'Control total',
 }
 
-type TabDerecha = 'gestion' | 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizacion' | 'archivos' | 'pasos' | 'historial' | 'visibilidad'
+type TabDerecha = 'gestion' | 'resumen' | 'datos' | 'chats' | 'motos' | 'cotizacion' | 'archivos' | 'correos' | 'pasos' | 'historial' | 'visibilidad'
 
 const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'resumen',    label: 'Resumen',    icon: '📋' },
@@ -115,6 +116,7 @@ const TABS: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'motos',      label: 'Vehículos',  icon: '🏍️' },
   { id: 'cotizacion', label: 'Cotización', icon: '📄' },
   { id: 'archivos',   label: 'Archivos',   icon: '📎' },
+  { id: 'correos',    label: 'Correos',    icon: '✉️' },
 ]
 const TABS_GERENCIA: { id: TabDerecha; label: string; icon: string }[] = [
   { id: 'historial',   label: 'Historial',   icon: '📅' },
@@ -2036,6 +2038,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               {tabDer === 'motos'      && <MotosInteresTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} />}
               {tabDer === 'cotizacion' && <CotizacionTab clienteId={lead.id} tenantId={tenantId} clienteNombre={lead.cliente?.nombre ?? ''} clienteCelular={lead.cliente?.celular ?? ''} />}
               {tabDer === 'archivos'   && <ArchivosTab clienteId={lead.id} />}
+              {tabDer === 'correos'    && <CorreosTab clienteId={lead.id} tenantId={tenantId} lead={lead} usuarios={usuarios} />}
               {tabDer === 'pasos'      && <PasosTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} clienteEmail={lead.cliente_email} refreshSignal={agendaVersion} onMovimiento={() => patch({})} />}
               {tabDer === 'historial'  && <HistorialTab clienteId={lead.id} />}
               {tabDer === 'visibilidad' && esGerencia && <VisibilidadTab clienteId={lead.id} tenantId={tenantId} usuarioId={profile?.id ?? ''} onChange={cargar} />}
