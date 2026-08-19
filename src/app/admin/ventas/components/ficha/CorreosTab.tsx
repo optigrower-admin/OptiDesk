@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { VARIABLES_CORREO, reemplazarVariablesCorreo, type DatosVariablesCorreo } from '@/lib/ventas/variablesCorreo'
+import { reemplazarVariablesCorreo, type DatosVariablesCorreo } from '@/lib/ventas/variablesCorreo'
 import type { LeadData } from '../LeadCard'
 
 interface Props {
@@ -42,7 +42,6 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
   const [plantillas, setPlantillas] = useState<Plantilla[]>([])
   const [historial, setHistorial] = useState<CorreoEnviado[]>([])
   const [documentosDisponibles, setDocumentosDisponibles] = useState<Set<string>>(new Set())
-  const [catalogoDocumentos, setCatalogoDocumentos] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [expandidoId, setExpandidoId] = useState<string | null>(null)
 
@@ -56,7 +55,7 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
   const [error, setError] = useState('')
 
   const cargar = useCallback(async () => {
-    const [{ data: plant }, { data: hist }, { data: archs }, { data: reglas }] = await Promise.all([
+    const [{ data: plant }, { data: hist }, { data: archs }] = await Promise.all([
       supabase.from('plantillas_correo')
         .select('id, nombre, asunto, cuerpo_html, destinatario, documentos_adjuntos, bloquear_si_falta_documento')
         .eq('tenant_id', tenantId).eq('activa', true).order('orden'),
@@ -64,16 +63,10 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
         .select('id, destinatario, asunto, cuerpo, adjuntos, estado, error_mensaje, created_at, plantilla_nombre')
         .eq('cliente_id', clienteId).order('created_at', { ascending: false }),
       supabase.from('archivos_cliente').select('tipo_documento').eq('cliente_id', clienteId),
-      supabase.from('reglas_etapa').select('documentos_requeridos').eq('campo', 'documento_requerido').eq('activa', true),
     ])
     setPlantillas((plant ?? []) as Plantilla[])
     setHistorial((hist ?? []) as CorreoEnviado[])
     setDocumentosDisponibles(new Set((archs ?? []).map(a => a.tipo_documento).filter(Boolean) as string[]))
-    const catalogo = new Set<string>()
-    for (const r of reglas ?? []) {
-      for (const d of (r.documentos_requeridos ?? []) as string[]) catalogo.add(d)
-    }
-    setCatalogoDocumentos([...catalogo])
     setLoading(false)
   }, [clienteId, tenantId])
 
@@ -109,16 +102,9 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
   )
   const bloqueadoPorDocumentos = bloqueaSiFalta && faltanDocumentos.length > 0
 
-  function toggleDocumento(tipo: string) {
-    setDocumentosSel(prev => {
-      const next = new Set(prev)
-      if (next.has(tipo)) next.delete(tipo); else next.add(tipo)
-      return next
-    })
-  }
-
   async function enviar() {
     if (!destinatario.trim() || !asunto.trim() || !cuerpo.trim() || enviando || bloqueadoPorDocumentos) return
+    if (!window.confirm(`¿Enviar este correo a ${destinatario}?`)) return
     setEnviando(true)
     setError('')
     try {
@@ -163,55 +149,30 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
           </select>
         )}
 
-        <input value={destinatario} onChange={e => setDestinatario(e.target.value)}
-          placeholder="Destinatario (correo)"
-          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <input value={asunto} onChange={e => setAsunto(e.target.value)}
-          placeholder="Asunto"
-          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <textarea value={cuerpo} onChange={e => setCuerpo(e.target.value)}
-          placeholder="Cuerpo del correo" rows={5}
-          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-
-        {catalogoDocumentos.length > 0 && (
-          <div>
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Documentos a adjuntar</p>
-            <div className="flex flex-wrap gap-1.5">
-              {catalogoDocumentos.map(tipo => {
-                const activo = documentosSel.has(tipo)
-                const disponible = documentosDisponibles.has(tipo)
-                return (
-                  <button key={tipo} type="button" onClick={() => toggleDocumento(tipo)}
-                    title={disponible ? '' : 'Este cliente no tiene un archivo subido de este tipo — no se adjuntará'}
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors ${
-                      activo
-                        ? disponible ? 'bg-blue-700 text-white border-blue-700' : 'bg-amber-500 text-white border-amber-500'
-                        : 'bg-white text-gray-500 border-gray-200 hover:border-blue-400'
-                    }`}>
-                    {activo && !disponible ? '⚠ ' : ''}{tipo}
-                  </button>
-                )
-              })}
-            </div>
+        {plantillaId && (
+          <div className="bg-white border border-gray-200 rounded-lg px-2.5 py-2 space-y-1">
+            <p className="text-xs text-gray-500">Para: <span className="text-gray-800 font-medium">{destinatario || '—'}</span></p>
+            <p className="text-xs text-gray-500">Asunto: <span className="text-gray-800 font-medium">{asunto}</span></p>
+            {documentosSel.size > 0 && (
+              <p className="text-xs text-gray-500">
+                📎 {[...documentosSel].map(d => documentosDisponibles.has(d) ? d : `${d} ⚠`).join(', ')}
+              </p>
+            )}
           </div>
         )}
 
         {bloqueadoPorDocumentos && (
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-            🚫 Esta plantilla bloquea el envío hasta subir: {faltanDocumentos.join(', ')} (pestaña Archivos).
+            🚫 Falta subir: {faltanDocumentos.join(', ')} (pestaña Archivos). Esta plantilla no deja enviar hasta que estén.
           </p>
         )}
 
         {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">{error}</p>}
 
-        <button onClick={enviar} disabled={enviando || !destinatario.trim() || !asunto.trim() || !cuerpo.trim() || bloqueadoPorDocumentos}
+        <button onClick={enviar} disabled={!plantillaId || enviando || !destinatario.trim() || !asunto.trim() || !cuerpo.trim() || bloqueadoPorDocumentos}
           className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors">
           {enviando ? 'Enviando...' : '✉️ Enviar correo'}
         </button>
-
-        <p className="text-[10px] text-gray-400">
-          Variables: {VARIABLES_CORREO.map(v => `{${v.clave}}`).join(' ')}
-        </p>
       </div>
 
       {/* Historial */}
