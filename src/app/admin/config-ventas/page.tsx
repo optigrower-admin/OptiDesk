@@ -66,7 +66,7 @@ interface CotizacionInfo {
 }
 
 interface TipoRecordatorio { id: string; tipo: string; activo: boolean; dias_umbral: number }
-interface Plantilla { id: string; nombre: string; asunto: string; cuerpo_html: string; destinatario: string | null; documentos_adjuntos: string[] | null; activa: boolean }
+interface Plantilla { id: string; nombre: string; asunto: string; cuerpo_html: string; destinatario: string | null; documentos_adjuntos: string[] | null; bloquear_si_falta_documento: boolean; activa: boolean }
 
 const TIPO_LABEL: Record<string, string> = {
   credito_sin_iniciar: 'Estudio de crédito sin iniciar',
@@ -571,9 +571,9 @@ export default function ConfigVentasPage() {
   const [tipos, setTipos]                 = useState<TipoRecordatorio[]>([])
   const [plantillas, setPlantillas]       = useState<Plantilla[]>([])
   const [catalogoDocumentos, setCatalogoDocumentos] = useState<string[]>([])
-  const [nuevaPlantilla, setNuevaPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set<string>() })
+  const [nuevaPlantilla, setNuevaPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set<string>(), bloquear_si_falta_documento: false })
   const [editandoPlantillaId, setEditandoPlantillaId] = useState<string | null>(null)
-  const [editandoPlantilla, setEditandoPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set<string>() })
+  const [editandoPlantilla, setEditandoPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set<string>(), bloquear_si_falta_documento: false })
   const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '', instagram: '', facebook: '', tiktok: '', incluye: '', recargoTarjeta: 5 })
   const [savingCotInfo, setSavingCotInfo] = useState(false)
   const [cotInfoOk, setCotInfoOk]         = useState(false)
@@ -622,7 +622,7 @@ export default function ConfigVentasPage() {
     const [{ data: ent }, { data: tip }, { data: plant }, { data: reglasDocs }] = await Promise.all([
       supabase.from('entidades_financieras').select('id, nombre, activa, orden').eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('tipos_recordatorio_automatico').select('id, tipo, activo, dias_umbral').eq('tenant_id', profile.tenant_id),
-      supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, destinatario, documentos_adjuntos, activa').eq('tenant_id', profile.tenant_id).order('orden'),
+      supabase.from('plantillas_correo').select('id, nombre, asunto, cuerpo_html, destinatario, documentos_adjuntos, bloquear_si_falta_documento, activa').eq('tenant_id', profile.tenant_id).order('orden'),
       supabase.from('reglas_etapa').select('documentos_requeridos').eq('campo', 'documento_requerido').eq('activa', true),
     ])
     const catalogo = new Set<string>()
@@ -1008,9 +1008,10 @@ export default function ConfigVentasPage() {
       cuerpo_html: nuevaPlantilla.cuerpo_html,
       destinatario: nuevaPlantilla.destinatario,
       documentos_adjuntos: [...nuevaPlantilla.documentos_adjuntos],
+      bloquear_si_falta_documento: nuevaPlantilla.bloquear_si_falta_documento,
       created_by: profile.id,
     })
-    setNuevaPlantilla({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set() })
+    setNuevaPlantilla({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set(), bloquear_si_falta_documento: false })
     cargar()
   }
   async function togglePlantilla(id: string, activa: boolean) {
@@ -1027,6 +1028,7 @@ export default function ConfigVentasPage() {
     setEditandoPlantilla({
       nombre: p.nombre, asunto: p.asunto, cuerpo_html: p.cuerpo_html,
       destinatario: p.destinatario ?? '', documentos_adjuntos: new Set(p.documentos_adjuntos ?? []),
+      bloquear_si_falta_documento: p.bloquear_si_falta_documento ?? false,
     })
   }
   async function guardarEditarPlantilla() {
@@ -1037,6 +1039,7 @@ export default function ConfigVentasPage() {
       cuerpo_html: editandoPlantilla.cuerpo_html,
       destinatario: editandoPlantilla.destinatario,
       documentos_adjuntos: [...editandoPlantilla.documentos_adjuntos],
+      bloquear_si_falta_documento: editandoPlantilla.bloquear_si_falta_documento,
     }).eq('id', editandoPlantillaId)
     setEditandoPlantillaId(null)
     cargar()
@@ -1640,6 +1643,11 @@ export default function ConfigVentasPage() {
                         })}
                       </div>
                     )}
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                      <input type="checkbox" checked={editandoPlantilla.bloquear_si_falta_documento}
+                        onChange={e => setEditandoPlantilla(v => ({ ...v, bloquear_si_falta_documento: e.target.checked }))} />
+                      Bloquear el envío si al cliente le falta subir alguno de los documentos marcados arriba
+                    </label>
                     <div className="flex gap-1.5">
                       <button onClick={guardarEditarPlantilla} className="flex-1 py-1.5 bg-blue-700 text-white rounded-lg text-xs font-semibold">Guardar</button>
                       <button onClick={() => setEditandoPlantillaId(null)} className="flex-1 py-1.5 bg-gray-200 rounded-lg text-xs">Cancelar</button>
@@ -1656,7 +1664,10 @@ export default function ConfigVentasPage() {
                     <p className="text-xs text-gray-500 mt-1">Asunto: {p.asunto}</p>
                     <p className="text-xs text-gray-400">Para: {p.destinatario || '—'}</p>
                     {!!p.documentos_adjuntos?.length && (
-                      <p className="text-[11px] text-gray-400 mt-0.5">📎 {p.documentos_adjuntos.join(', ')}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        📎 {p.documentos_adjuntos.join(', ')}
+                        {p.bloquear_si_falta_documento && <span className="text-amber-600 font-semibold"> · bloquea si falta</span>}
+                      </p>
                     )}
                   </>
                 )}
@@ -1697,6 +1708,11 @@ export default function ConfigVentasPage() {
                 </div>
               </div>
             )}
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+              <input type="checkbox" checked={nuevaPlantilla.bloquear_si_falta_documento}
+                onChange={e => setNuevaPlantilla(p => ({ ...p, bloquear_si_falta_documento: e.target.checked }))} />
+              Bloquear el envío si al cliente le falta subir alguno de los documentos marcados arriba
+            </label>
             <button onClick={crearPlantilla} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold">
               + Crear plantilla
             </button>

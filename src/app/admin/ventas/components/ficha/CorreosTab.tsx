@@ -18,6 +18,7 @@ type Plantilla = {
   cuerpo_html: string
   destinatario: string | null
   documentos_adjuntos: string[] | null
+  bloquear_si_falta_documento: boolean
 }
 
 type CorreoEnviado = {
@@ -50,13 +51,14 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
   const [asunto, setAsunto] = useState('')
   const [cuerpo, setCuerpo] = useState('')
   const [documentosSel, setDocumentosSel] = useState<Set<string>>(new Set())
+  const [bloqueaSiFalta, setBloqueaSiFalta] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
 
   const cargar = useCallback(async () => {
     const [{ data: plant }, { data: hist }, { data: archs }, { data: reglas }] = await Promise.all([
       supabase.from('plantillas_correo')
-        .select('id, nombre, asunto, cuerpo_html, destinatario, documentos_adjuntos')
+        .select('id, nombre, asunto, cuerpo_html, destinatario, documentos_adjuntos, bloquear_si_falta_documento')
         .eq('tenant_id', tenantId).eq('activa', true).order('orden'),
       supabase.from('correos_cliente')
         .select('id, destinatario, asunto, cuerpo, adjuntos, estado, error_mensaje, created_at, plantilla_nombre')
@@ -86,18 +88,26 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
     Moto:    lead.moto_interes ?? '',
     Factura: lead.numero_factura ?? '',
     Asesor:  usuarios.find(u => u.id === lead.assigned_to)?.nombre ?? '',
+    'Carta de Negociacion': lead.numero_carta_negociacion ?? '',
   }), [lead, usuarios])
 
   function aplicarPlantilla(id: string) {
     setPlantillaId(id)
     setError('')
     const p = plantillas.find(x => x.id === id)
-    if (!p) { setDestinatario(''); setAsunto(''); setCuerpo(''); setDocumentosSel(new Set()); return }
+    if (!p) { setDestinatario(''); setAsunto(''); setCuerpo(''); setDocumentosSel(new Set()); setBloqueaSiFalta(false); return }
     setDestinatario(p.destinatario ?? '')
     setAsunto(reemplazarVariablesCorreo(p.asunto, datosVariables))
     setCuerpo(reemplazarVariablesCorreo(p.cuerpo_html, datosVariables))
     setDocumentosSel(new Set(p.documentos_adjuntos ?? []))
+    setBloqueaSiFalta(p.bloquear_si_falta_documento)
   }
+
+  const faltanDocumentos = useMemo(
+    () => [...documentosSel].filter(t => !documentosDisponibles.has(t)),
+    [documentosSel, documentosDisponibles]
+  )
+  const bloqueadoPorDocumentos = bloqueaSiFalta && faltanDocumentos.length > 0
 
   function toggleDocumento(tipo: string) {
     setDocumentosSel(prev => {
@@ -108,7 +118,7 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
   }
 
   async function enviar() {
-    if (!destinatario.trim() || !asunto.trim() || !cuerpo.trim() || enviando) return
+    if (!destinatario.trim() || !asunto.trim() || !cuerpo.trim() || enviando || bloqueadoPorDocumentos) return
     setEnviando(true)
     setError('')
     try {
@@ -124,7 +134,7 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'No se pudo enviar el correo')
-      setPlantillaId(''); setDestinatario(''); setAsunto(''); setCuerpo(''); setDocumentosSel(new Set())
+      setPlantillaId(''); setDestinatario(''); setAsunto(''); setCuerpo(''); setDocumentosSel(new Set()); setBloqueaSiFalta(false)
       await cargar()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'No se pudo enviar el correo')
@@ -186,9 +196,15 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
           </div>
         )}
 
+        {bloqueadoPorDocumentos && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            🚫 Esta plantilla bloquea el envío hasta subir: {faltanDocumentos.join(', ')} (pestaña Archivos).
+          </p>
+        )}
+
         {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">{error}</p>}
 
-        <button onClick={enviar} disabled={enviando || !destinatario.trim() || !asunto.trim() || !cuerpo.trim()}
+        <button onClick={enviar} disabled={enviando || !destinatario.trim() || !asunto.trim() || !cuerpo.trim() || bloqueadoPorDocumentos}
           className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors">
           {enviando ? 'Enviando...' : '✉️ Enviar correo'}
         </button>

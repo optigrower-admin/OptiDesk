@@ -37,18 +37,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const admin = createAdminClient()
 
   const { data: plantilla } = plantilla_id
-    ? await admin.from('plantillas_correo').select('nombre').eq('id', plantilla_id).eq('tenant_id', perfil.tenant_id).maybeSingle()
+    ? await admin.from('plantillas_correo').select('nombre, bloquear_si_falta_documento').eq('id', plantilla_id).eq('tenant_id', perfil.tenant_id).maybeSingle()
     : { data: null }
 
   // Resolver adjuntos: el archivo más reciente de cada tipo_documento pedido.
   const attachments: AdjuntoCorreo[] = []
   const nombresAdjuntos: string[] = []
+  const documentosFaltantes: string[] = []
   for (const tipo of documentos_tipos ?? []) {
     const { data: archivo } = await admin.from('archivos_cliente')
       .select('url, nombre_archivo, storage_location')
       .eq('cliente_id', params.id).eq('tenant_id', perfil.tenant_id).eq('tipo_documento', tipo)
       .order('created_at', { ascending: false }).limit(1).maybeSingle()
-    if (!archivo) continue
+    if (!archivo) { documentosFaltantes.push(tipo); continue }
     const filename = archivo.nombre_archivo ?? `${tipo}.pdf`
     if (archivo.storage_location === 'drive') {
       const { data: tenant } = await admin.from('tenants').select('google_refresh_token').eq('id', perfil.tenant_id).single()
@@ -63,6 +64,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       attachments.push({ filename, path: url })
       nombresAdjuntos.push(filename)
     }
+  }
+
+  if (plantilla?.bloquear_si_falta_documento && documentosFaltantes.length > 0) {
+    return NextResponse.json({
+      error: `Falta subir: ${documentosFaltantes.join(', ')} (pestaña Archivos). Esta plantilla bloquea el envío hasta que estén todos.`,
+    }, { status: 400 })
   }
 
   const cuerpoHtml = cuerpo.replace(/\n/g, '<br>')
