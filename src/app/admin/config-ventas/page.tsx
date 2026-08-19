@@ -571,7 +571,7 @@ export default function ConfigVentasPage() {
   const [tipos, setTipos]                 = useState<TipoRecordatorio[]>([])
   const [plantillas, setPlantillas]       = useState<Plantilla[]>([])
   const [catalogoDocumentos, setCatalogoDocumentos] = useState<string[]>([])
-  const [nuevaPlantilla, setNuevaPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set<string>(), bloquear_si_falta_documento: false })
+  const [nuevaPlantilla, setNuevaPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set<string>(), bloquear_si_falta_documento: true })
   const [editandoPlantillaId, setEditandoPlantillaId] = useState<string | null>(null)
   const [editandoPlantilla, setEditandoPlantilla] = useState({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set<string>(), bloquear_si_falta_documento: false })
   const [cotInfo, setCotInfo]             = useState<CotizacionInfo>({ tagline: '', direccion: '', telefono1: '', telefono2: '', email: '', web: '', whatsapp: '', instagram: '', facebook: '', tiktok: '', incluye: '', recargoTarjeta: 5 })
@@ -1011,7 +1011,7 @@ export default function ConfigVentasPage() {
       bloquear_si_falta_documento: nuevaPlantilla.bloquear_si_falta_documento,
       created_by: profile.id,
     })
-    setNuevaPlantilla({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set(), bloquear_si_falta_documento: false })
+    setNuevaPlantilla({ nombre: '', asunto: '', cuerpo_html: '', destinatario: '', documentos_adjuntos: new Set(), bloquear_si_falta_documento: true })
     cargar()
   }
   async function togglePlantilla(id: string, activa: boolean) {
