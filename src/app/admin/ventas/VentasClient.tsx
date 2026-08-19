@@ -40,6 +40,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const etapasPipeline = useEtapasPipeline(tenantId)
   const [tab, setTab] = useState<Tab>('kanban')
   const [nuevoOpen, setNuevoOpen] = useState(false)
+  const [configRefrescada, setConfigRefrescada] = useState(false)
   const [usuarios, setUsuarios] = useState<UsuarioFiltro[]>([])
   const [usuariosFiltro, setUsuariosFiltro] = useState<Set<string>>(new Set())
   const [visibilidadFiltro, setVisibilidadFiltro] = useState<Set<string>>(new Set())
@@ -321,6 +322,14 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
+          {esGerencia && (
+            <button
+              onClick={() => { etapasPipeline.recargar(); setConfigRefrescada(true); setTimeout(() => setConfigRefrescada(false), 2000) }}
+              title="Vuelve a cargar pipelines, etapas, reglas y bloqueos por rol (por si acabas de cambiar algo en Config Ventas)"
+              className="px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-600 border border-gray-200 rounded-lg text-sm font-semibold transition-colors flex-shrink-0">
+              {configRefrescada ? '✓ Actualizado' : '🔄 Refrescar configuración'}
+            </button>
+          )}
           <button onClick={() => setNuevoOpen(true)}
             className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold transition-colors flex-shrink-0">
             + Nuevo cliente
