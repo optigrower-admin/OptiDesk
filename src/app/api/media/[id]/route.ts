@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getSignedDownloadUrl, deleteFromR2 } from '@/lib/r2'
+import { deleteFromDrive } from '@/lib/drive'
 import { registrarAuditoria } from '@/lib/audit'
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -53,6 +54,12 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   if (medio.storage_location === 'r2') {
     try { await deleteFromR2(medio.url) } catch { /* Si ya no existe, continuar */ }
+  } else if (medio.storage_location === 'drive') {
+    // Para archivos en Drive, `medio.url` guarda el File ID de Google.
+    try {
+      const { data: tenant } = await supabase.from('tenants').select('google_refresh_token').eq('id', medio.tenant_id).single()
+      if (tenant?.google_refresh_token) await deleteFromDrive(medio.url, tenant.google_refresh_token)
+    } catch { /* Si ya no existe en Drive, o no hay token configurado, continuar */ }
   }
 
   await supabase.from('medios').delete().eq('id', params.id)
