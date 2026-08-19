@@ -83,7 +83,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     errorMensaje = e instanceof Error ? e.message : 'Error al enviar el correo'
   }
 
-  await admin.from('correos_cliente').insert({
+  // El cliente de servicio (admin) no tiene permisos de escritura sobre
+  // correos_cliente en este proyecto (mismo caso que historial_cambios_cliente) —
+  // se usa el cliente autenticado normal, que sí puede insertar (RLS por tenant).
+  const { error: errorHistorial } = await supabase.from('correos_cliente').insert({
     cliente_id: params.id,
     tenant_id: perfil.tenant_id,
     plantilla_id: plantilla_id ?? null,
@@ -96,6 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     estado,
     error_mensaje: errorMensaje,
   })
+  if (errorHistorial) console.error('[enviar-correo] No se pudo guardar en el historial:', errorHistorial.message)
 
   if (estado === 'error') {
     return NextResponse.json({ error: errorMensaje }, { status: 500 })
