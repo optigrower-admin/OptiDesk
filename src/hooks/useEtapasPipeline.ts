@@ -18,7 +18,7 @@ export interface ReglaEtapa {
   activa: boolean
   orden: number
   documentos_requeridos?: string[] | null   // solo cuando campo === 'documento_requerido'
-  heredada?: boolean   // true si esta regla llegó por cascada desde una etapa anterior (ver useEtapasPipeline)
+  esAnclaAprobacion?: boolean   // true solo en la etapa donde se revisa/aprueba — entrar ahí nunca se bloquea (ver useEtapasPipeline)
 }
 
 export interface EtapaDinamica {
@@ -153,20 +153,28 @@ export function useEtapasPipeline(tenantId: string | undefined) {
         etapasPorPipeline.get(e.pipelineId)!.push(e)
       }
       for (const etapasDelPipeline of etapasPorPipeline.values()) {
-        const anclas = etapasDelPipeline
+        const conRegla = etapasDelPipeline
           .map(e => ({ etapa: e, regla: e.reglas.find(r => r.campo === 'aprobacion_gerencia') }))
           .filter((x): x is { etapa: EtapaDinamica; regla: ReglaEtapa } => !!x.regla)
           .sort((a, b) => a.etapa.orden - b.etapa.orden)
-        if (anclas.length === 0) continue
-        const { etapa: etapaAncla, regla: reglaAncla } = anclas[0]
+        if (conRegla.length === 0) continue
+        const etapaAncla = conRegla[0].etapa
+        // La etapa ancla (la de menor orden con esta regla, sea propia o no)
+        // es donde se hace la revisión — entrar ahí nunca se bloquea, aunque
+        // su propia regla diga bloquea_cambio_etapa=true, porque si no sería
+        // un candado imposible de abrir (no se puede aprobar sin antes entrar).
+        etapaAncla.reglas = etapaAncla.reglas.map(r =>
+          r.campo === 'aprobacion_gerencia' ? { ...r, esAnclaAprobacion: true } : r
+        )
+        // El resto de etapas SÍ deben frenar el avance sin aprobación — ya sea
+        // con su propia regla configurada directamente (se respeta tal cual,
+        // como pasa en este tenant donde cada etapa posterior tiene su copia),
+        // o heredando la de la ancla más cercana hacia atrás si no tienen la suya.
         for (const e of etapasDelPipeline) {
-          if (e.orden <= etapaAncla.orden) continue // la etapa ancla conserva su propia regla tal cual (entrar a ella no se bloquea)
-          if (e.reglas.some(r => r.campo === 'aprobacion_gerencia')) continue // ya tiene la suya propia
-          // Las etapas heredadas siempre bloquean el avance sin aprobación,
-          // sin importar si la regla de la etapa ancla la marcó como "bloquea"
-          // (esa etapa ancla es donde se revisa/aprueba, no debe bloquearse a
-          // sí misma; pero de ahí en adelante sí debe frenar el progreso).
-          e.reglas = [...e.reglas, { ...reglaAncla, bloquea_cambio_etapa: true, heredada: true }]
+          if (e.id === etapaAncla.id) continue
+          if (e.reglas.some(r => r.campo === 'aprobacion_gerencia')) continue // ya tiene la suya propia — se respeta tal cual
+          const aplicable = conRegla.filter(a => a.etapa.orden <= e.orden).sort((a, b) => b.etapa.orden - a.etapa.orden)[0]
+          if (aplicable) e.reglas = [...e.reglas, { ...aplicable.regla, bloquea_cambio_etapa: true }]
         }
       }
 
@@ -207,7 +215,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
         for (const e of etapasDelPipeline) {
           if (e.reglas.some(r => r.campo === 'placa')) continue // regla propia — se respeta tal cual
           const aplicable = anclasPlaca.filter(a => a.etapa.orden <= e.orden).sort((a, b) => b.etapa.orden - a.etapa.orden)[0]
-          if (aplicable) e.reglas = [...e.reglas, { ...aplicable.regla, heredada: true }]
+          if (aplicable) e.reglas = [...e.reglas, aplicable.regla]
         }
       }
 

@@ -246,7 +246,7 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
     // aprobación en sí debe poder recibir el cliente libremente, porque ahí es
     // justo donde salen los botones Pendiente/Aprobado/Rechazado.
     const reglaAprobacionDestino = destino?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
-    if (reglaAprobacionDestino?.bloquea_cambio_etapa && reglaAprobacionDestino.heredada && lead.estadoAprobacionMatricula !== 'aprobado') {
+    if (reglaAprobacionDestino?.bloquea_cambio_etapa && !reglaAprobacionDestino.esAnclaAprobacion && lead.estadoAprobacionMatricula !== 'aprobado') {
       setBloqueoMsg(reglaAprobacionDestino.mensaje_ayuda || 'Debes pedir aprobación para matricular para poder cambiar de etapa')
       return
     }
