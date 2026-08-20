@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import ExtraerPdfModal from './ExtraerPdfModal'
 
 interface Props {
   clienteId: string
@@ -737,6 +738,7 @@ export default function ArchivosTab({ clienteId }: Props) {
   const [modoSeleccion, setModoSeleccion] = useState(false)
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set())
   const [combinando, setCombinando] = useState(false)
+  const [extractorAbierto, setExtractorAbierto] = useState(false)
 
   useEffect(() => {
     setIsMobile('ontouchstart' in window || navigator.maxTouchPoints > 0)
@@ -849,12 +851,25 @@ export default function ArchivosTab({ clienteId }: Props) {
         />
       )}
 
-      <div className="flex items-center justify-between">
+      {extractorAbierto && (
+        <ExtraerPdfModal
+          tiposCatalogo={tiposCatalogo}
+          onClose={() => setExtractorAbierto(false)}
+          onUpload={async (file, tipoDocumento) => { await uploadFile(file, tipoDocumento) }}
+        />
+      )}
+
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Archivos</p>
         {!modoSeleccion ? (
-          <button onClick={() => setModoSeleccion(true)} className="text-xs font-semibold text-blue-600 hover:underline">
-            📎 Combinar en un PDF
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setExtractorAbierto(true)} className="text-xs font-semibold text-blue-600 hover:underline">
+              ✂️ Extraer Hojas PDF
+            </button>
+            <button onClick={() => setModoSeleccion(true)} className="text-xs font-semibold text-blue-600 hover:underline">
+              📎 Combinar en un PDF
+            </button>
+          </div>
         ) : (
           <button onClick={cancelarSeleccion} className="text-xs font-medium text-gray-400 hover:text-gray-600">
             Cancelar
