@@ -244,6 +244,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }, [tenantId])
 
   async function guardarOrigen(valor: string) {
+    if (!esGerencia) return
     if (valor === '__nuevo__') { setOrigenNuevo(true); setOrigenInput(''); return }
     const anterior = origen
     setOrigen(valor)
@@ -252,6 +253,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   }
 
   async function confirmarOrigenNuevo() {
+    if (!esGerencia) return
     const v = origenInput.trim()
     if (!v) return
     const anterior = origen
@@ -1258,15 +1260,15 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 )}
               </div>
 
-              {/* Origen */}
+              {/* Origen — solo gerencia/dueño pueden modificarlo o agregar nuevos */}
               <div>
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Origen</label>
                 {!origenNuevo ? (
-                  <select value={origen} onChange={e => guardarOrigen(e.target.value)}
-                    className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none">
+                  <select value={origen} onChange={e => guardarOrigen(e.target.value)} disabled={!esGerencia}
+                    className="w-full text-xs bg-[#232f47] border border-[#2a3550] rounded-lg px-2 py-1.5 text-slate-100 focus:outline-none disabled:opacity-70 disabled:cursor-default">
                     <option value="">Sin definir</option>
                     {origenes.map(o => <option key={o} value={o}>{o}</option>)}
-                    <option value="__nuevo__">+ Agregar nuevo...</option>
+                    {esGerencia && <option value="__nuevo__">+ Agregar nuevo...</option>}
                   </select>
                 ) : (
                   <div className="flex gap-1">
@@ -2205,11 +2207,11 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Origen</label>
                     {!origenNuevo ? (
-                      <select value={origen} onChange={e => guardarOrigen(e.target.value)}
-                        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none">
+                      <select value={origen} onChange={e => guardarOrigen(e.target.value)} disabled={!esGerencia}
+                        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none disabled:opacity-70 disabled:bg-gray-50 disabled:cursor-default">
                         <option value="">Sin definir</option>
                         {origenes.map(o => <option key={o} value={o}>{o}</option>)}
-                        <option value="__nuevo__">+ Agregar nuevo...</option>
+                        {esGerencia && <option value="__nuevo__">+ Agregar nuevo...</option>}
                       </select>
                     ) : (
                       <div className="flex gap-1.5">

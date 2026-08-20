@@ -16,6 +16,7 @@ export type LeadData = {
   proxima_accion_fecha: string | null
   canal: string                 // canal de la conversación primaria
   lead_source: string | null
+  probabilidad_venta?: number | null
   no_leidos_count: number       // total sumado de todas las conversaciones
   sin_respuesta_asesor_desde: string | null
   assigned_to: string | null

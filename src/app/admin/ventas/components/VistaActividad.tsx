@@ -54,7 +54,6 @@ export default function VistaActividad({ leads, tenantId, etapaMap, onAbrirClien
   const [timelinePorCliente, setTimelinePorCliente] = useState<Record<string, TimelineItem[]>>({})
   const [loading, setLoading] = useState(true)
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
-  const [busqueda, setBusqueda] = useState('')
 
   // Clientes en alcance: todo lo que viene de la pestaña (ya acotado por rol/filtros
   // arriba en VentasClient), menos los que están en una etapa marcada "perdido".
@@ -145,13 +144,11 @@ export default function VistaActividad({ leads, tenantId, etapaMap, onAbrirClien
 
   // Solo clientes con al menos una acción registrada, ordenados por la más reciente.
   const tarjetas = useMemo(() => {
-    const q = busqueda.toLowerCase().trim()
     return clientesEnAlcance
       .map(l => ({ lead: l, timeline: timelinePorCliente[l.id] ?? [] }))
       .filter(t => t.timeline.length > 0)
-      .filter(t => !q || (t.lead.cliente?.nombre ?? '').toLowerCase().includes(q))
       .sort((a, b) => b.timeline[0].fecha.localeCompare(a.timeline[0].fecha))
-  }, [clientesEnAlcance, timelinePorCliente, busqueda])
+  }, [clientesEnAlcance, timelinePorCliente])
 
   function toggleExpandido(id: string) {
     setExpandidos(prev => {
@@ -166,23 +163,14 @@ export default function VistaActividad({ leads, tenantId, etapaMap, onAbrirClien
   return (
     <div>
       <div className="mb-4">
-        <div className="relative max-w-sm">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-          <input
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar cliente..."
-            className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          />
-        </div>
-        <p className="text-xs text-gray-400 mt-2">
+        <p className="text-xs text-gray-400">
           {tarjetas.length} cliente{tarjetas.length !== 1 ? 's' : ''} con actividad registrada — ordenados del cambio más reciente al más viejo.
         </p>
       </div>
 
       {tarjetas.length === 0 && (
         <div className="text-center py-16 text-gray-400 text-sm">
-          {busqueda.trim() ? 'Sin resultados para esa búsqueda.' : 'Sin actividad registrada todavía.'}
+          Sin actividad registrada todavía.
         </div>
       )}
 

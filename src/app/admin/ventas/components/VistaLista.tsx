@@ -30,7 +30,6 @@ export default function VistaLista({ leads, tenantId, usuarios = [], onLeadPatch
   const etapasPipeline = useEtapasPipeline(tenantId)
   const usuariosMap = useMemo(() => Object.fromEntries(usuarios.map(u => [u.id, u.nombre])), [usuarios])
   const [fichaId, setFichaId]         = useState<string | null>(null)
-  const [busqueda, setBusqueda]       = useState('')
   const [etapaFiltro, setEtapaFiltro] = useState<EtapaVenta | 'todas' | 'activas'>('activas')
   const [canalFiltro, setCanalFiltro] = useState<string>('todos')
   const [ordenPor, setOrdenPor]       = useState<Orden>('seguimiento')
@@ -65,15 +64,6 @@ export default function VistaLista({ leads, tenantId, usuarios = [], onLeadPatch
   const filtrados = useMemo(() => {
     let r = leadsLocal
 
-    if (busqueda) {
-      const q = busqueda.toLowerCase()
-      r = r.filter(l =>
-        (l.cliente?.nombre ?? '').toLowerCase().includes(q) ||
-        (l.cliente?.celular ?? '').includes(q) ||
-        (l.moto_interes ?? '').toLowerCase().includes(q)
-      )
-    }
-
     if (etapaFiltro === 'activas') {
       r = r.filter(l => !ETAPAS_CERRADAS.includes(l.etapa_venta))
     } else if (etapaFiltro !== 'todas') {
@@ -104,7 +94,7 @@ export default function VistaLista({ leads, tenantId, usuarios = [], onLeadPatch
     })
 
     return r
-  }, [leadsLocal, busqueda, etapaFiltro, canalFiltro, ordenPor, asc])
+  }, [leadsLocal, etapaFiltro, canalFiltro, ordenPor, asc])
 
   function toggleOrden(campo: Orden) {
     if (ordenPor === campo) setAsc(p => !p)
@@ -127,13 +117,6 @@ export default function VistaLista({ leads, tenantId, usuarios = [], onLeadPatch
     <>
       {/* Filtros */}
       <div className="flex flex-wrap gap-2 mb-4">
-        <input
-          type="text"
-          value={busqueda}
-          onChange={e => setBusqueda(e.target.value)}
-          placeholder="Buscar nombre, celular, moto..."
-          className="flex-1 min-w-48 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
         <select
           value={etapaFiltro}
           onChange={e => setEtapaFiltro(e.target.value as EtapaVenta | 'todas' | 'activas')}

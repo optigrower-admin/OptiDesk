@@ -32,6 +32,15 @@ function resumenSeleccion(filtro: Set<string>, usuarios: UsuarioFiltro[]): strin
   return `${nombres.slice(0, 2).join(', ')} +${nombres.length - 2}`
 }
 
+type Temperatura = '' | 'frio' | 'tibio' | 'caliente'
+function temperaturaDeProbabilidad(p: number | null): Temperatura {
+  if (p === null) return ''
+  if (p >= 70) return 'caliente'
+  if (p >= 40) return 'tibio'
+  return 'frio'
+}
+const TEMPERATURA_LABEL: Record<Exclude<Temperatura, ''>, string> = { frio: '🔵 Frío', tibio: '🟡 Tibio', caliente: '🔴 Caliente' }
+
 const ESTADO_CREDITO_OPCIONES: { key: string; label: string }[] = [
   { key: 'sin_iniciar', label: 'Sin iniciar' },
   { key: 'en_estudio', label: 'En estudio' },
@@ -58,6 +67,10 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [reglasSeguimiento, setReglasSeguimiento] = useState<ReglaRecordatorioAuto[]>([])
   const [creditoFiltro, setCreditoFiltro] = useState<Record<string, Set<string>>>({})
   const [creditoPanelOpen, setCreditoPanelOpen] = useState(false)
+  const [temperaturaFiltro, setTemperaturaFiltro] = useState<Set<'frio' | 'tibio' | 'caliente'>>(new Set())
+  const [temperaturaFiltroAbierto, setTemperaturaFiltroAbierto] = useState(false)
+  const [origenFiltro, setOrigenFiltro] = useState<Set<string>>(new Set())
+  const [origenFiltroAbierto, setOrigenFiltroAbierto] = useState(false)
   const [abrirClienteId, setAbrirClienteId] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
   const [fechaDesde, setFechaDesde] = useState('')
@@ -243,6 +256,11 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
     [leadsState, etapasPipeline.etapaMap]
   )
 
+  const origenesDisponibles = useMemo(
+    () => Array.from(new Set(leadsState.map(l => l.lead_source).filter((o): o is string => !!o))).sort(),
+    [leadsState]
+  )
+
   const leadsFiltrados = useMemo(() => {
     let lista = leadsState
     if (usuariosFiltro.size > 0 && visibilidadFiltro.size > 0) {
@@ -301,8 +319,17 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         return creditoFiltro[entidadId].has(estadoCliente)
       }))
     }
+    if (temperaturaFiltro.size > 0) {
+      lista = lista.filter(l => {
+        const t = temperaturaDeProbabilidad(l.probabilidad_venta ?? null)
+        return t !== '' && temperaturaFiltro.has(t)
+      })
+    }
+    if (origenFiltro.size > 0) {
+      lista = lista.filter(l => origenFiltro.has(l.lead_source ?? ''))
+    }
     return lista
-  }, [leadsState, usuariosFiltro, visibilidadFiltro, busqueda, idsExtraSearch, fechaDesde, fechaHasta, creditoFiltro])
+  }, [leadsState, usuariosFiltro, visibilidadFiltro, busqueda, idsExtraSearch, fechaDesde, fechaHasta, creditoFiltro, temperaturaFiltro, origenFiltro])
 
   // "Sin seguimiento" = clientes que superaron el umbral de días sin movimiento
   // configurado en Config Ventas → Recordatorios automáticos (mismo criterio que
@@ -429,6 +456,46 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
             </svg>
           </button>
         )}
+
+        <button
+          onClick={() => setTemperaturaFiltroAbierto(o => !o)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+            temperaturaFiltro.size > 0
+              ? 'bg-amber-50 text-amber-700 border-amber-200'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-amber-400 hover:text-amber-700'
+          }`}
+        >
+          Temperatura
+          {temperaturaFiltro.size > 0 && (
+            <span className="bg-amber-600 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+              {temperaturaFiltro.size}
+            </span>
+          )}
+          <svg className={`w-3 h-3 transition-transform ${temperaturaFiltroAbierto ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {origenesDisponibles.length > 0 && (
+          <button
+            onClick={() => setOrigenFiltroAbierto(o => !o)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
+              origenFiltro.size > 0
+                ? 'bg-teal-50 text-teal-700 border-teal-200'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-teal-400 hover:text-teal-700'
+            }`}
+          >
+            Origen
+            {origenFiltro.size > 0 && (
+              <span className="bg-teal-600 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                {origenFiltro.size}
+              </span>
+            )}
+            <svg className={`w-3 h-3 transition-transform ${origenFiltroAbierto ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Paneles desplegados — aparecen debajo de la fila, uno por uno */}
@@ -537,6 +604,78 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         </div>
       )}
 
+      {temperaturaFiltroAbierto && (
+        <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+          <button
+            onClick={() => setTemperaturaFiltro(new Set())}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+              temperaturaFiltro.size === 0
+                ? 'bg-amber-700 text-white border-amber-700'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-amber-400 hover:text-amber-700'
+            }`}
+          >
+            Todos
+          </button>
+          {(['frio', 'tibio', 'caliente'] as const).map(t => {
+            const activo = temperaturaFiltro.has(t)
+            return (
+              <button
+                key={t}
+                onClick={() => setTemperaturaFiltro(prev => {
+                  const next = new Set(prev)
+                  if (next.has(t)) next.delete(t)
+                  else next.add(t)
+                  return next
+                })}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                  activo
+                    ? 'bg-amber-700 text-white border-amber-700'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-amber-400 hover:text-amber-700'
+                }`}
+              >
+                {TEMPERATURA_LABEL[t]}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {origenesDisponibles.length > 0 && origenFiltroAbierto && (
+        <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+          <button
+            onClick={() => setOrigenFiltro(new Set())}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+              origenFiltro.size === 0
+                ? 'bg-teal-700 text-white border-teal-700'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-teal-400 hover:text-teal-700'
+            }`}
+          >
+            Todos
+          </button>
+          {origenesDisponibles.map(o => {
+            const activo = origenFiltro.has(o)
+            return (
+              <button
+                key={o}
+                onClick={() => setOrigenFiltro(prev => {
+                  const next = new Set(prev)
+                  if (next.has(o)) next.delete(o)
+                  else next.add(o)
+                  return next
+                })}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                  activo
+                    ? 'bg-teal-700 text-white border-teal-700'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-teal-400 hover:text-teal-700'
+                }`}
+              >
+                {o}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Buscador */}
       {tab !== 'bandeja' && (
         <div className="mb-4">
@@ -608,7 +747,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
       )}
       {tab === 'actividad' && (
         <VistaActividad
-          leads={leadsState}
+          leads={leadsFiltrados}
           tenantId={tenantId}
           etapaMap={etapasPipeline.etapaMap}
           onAbrirCliente={id => { setTab('kanban'); setAbrirClienteId(id) }}
