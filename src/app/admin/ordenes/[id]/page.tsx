@@ -3136,8 +3136,10 @@ ${lavaMotoOrdenes.length > 0 ? `${(repuestosItems.length > 0 || manoObraItems.le
                           <div className="flex flex-col gap-0.5">
                             <Badge variant={tipoColor}>{tipoLabel}</Badge>
                             {refCode !== '—' && <span className="text-xs font-mono font-semibold text-gray-600 leading-none">{refCode}</span>}
-                            {gestionaProveedor && !proveedorPagadoCompleto && item.origen === 'externo' && (
-                              <span className="text-xs text-amber-600 font-medium">⏳ prov. pendiente</span>
+                            {gestionaProveedor && item.origen === 'externo' && (
+                              proveedorPagadoCompleto
+                                ? <span className="text-xs text-green-600 font-medium">✓ Pagado</span>
+                                : <span className="text-xs text-amber-600 font-medium">⏳ prov. pendiente</span>
                             )}
                           </div>
                         </td>

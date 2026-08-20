@@ -30,7 +30,7 @@ export const CATEGORIA_LABEL: Record<Categoria, string> = {
   ingreso_manual:  'Ingreso a Caja',
   costo_externo:   'Costo repuestos Externos/Terceros',
   costo_lavado:    'Costo Servicio de Lavado',
-  pago_proveedor:  'Pago proveedor (provisional)',
+  pago_proveedor:  'Pago proveedor',
   exceso_proveedor: 'Exceso pago proveedor',
   gasto:           'Gastos de Caja',
   ajuste:          'Ajuste de Caja',
@@ -152,8 +152,6 @@ export async function construirMovimientos(
   const totalPagadoPorOrden = new Map<string, number>()
   const ultimaFechaPagoPorOrden = new Map<string, string>()
   const ordenesConGestion = new Set<string>()
-  const estadoPorOrden = new Map<string, string>()
-  const estadoPagoPorOrden = new Map<string, string>()
   const ordenInfoPorOrden = new Map<string, { numero: number; placa: string; cliente: string }>()
   const ultimoMetodoPorOrden = new Map<string, { id: string | null; nombre: string | null }>()
 
@@ -196,31 +194,20 @@ export async function construirMovimientos(
         ultimoMetodoPorOrden.set(pp.orden_id, { id: pp.metodo_pago_id, nombre: pp.metodos_pago?.nombre ?? null })
       }
     }
-    for (const ord of (r4.data ?? []) as { id: string; gestiona_pago_proveedor: boolean; estado: string; estado_pago: string; numero: number; placa: string; cliente: string }[]) {
+    for (const ord of (r4.data ?? []) as { id: string; gestiona_pago_proveedor: boolean; numero: number; placa: string; cliente: string }[]) {
       if (ord.gestiona_pago_proveedor) ordenesConGestion.add(ord.id)
-      estadoPorOrden.set(ord.id, ord.estado ?? '')
-      estadoPagoPorOrden.set(ord.id, ord.estado_pago ?? '')
       ordenInfoPorOrden.set(ord.id, { numero: ord.numero, placa: ord.placa, cliente: ord.cliente })
     }
   }
 
-  function esProveedorPagado(ordenId: string): boolean {
-    if (!ordenesConGestion.has(ordenId)) return true  // orden antigua: comportamiento previo
-    const costo = totalCostoPorOrden.get(ordenId) ?? 0
-    if (costo === 0) return true
-    return (totalPagadoPorOrden.get(ordenId) ?? 0) >= costo
-  }
-
-  // Mostrar ítems individuales solo cuando la orden está cerrada completamente:
-  // finalizada + cliente pagado 100% + proveedor pagado 100%.
-  // En cualquier otro caso, mostrar filas de pagos_proveedor (una por abono).
+  // En órdenes que gestionan pago a proveedor, el gasto en Caja SIEMPRE se
+  // muestra como cada abono real (fila "Pago proveedor", con su fecha y
+  // método reales) — nunca se junta todo en la fecha del último pago. Se
+  // pierde el detalle de a qué repuesto/lavado corresponde cada peso, pero
+  // Caja queda exacta a como salió el dinero. Las órdenes antiguas (sin esta
+  // gestión) siguen mostrando el costo por ítem, como siempre.
   function mostrarItemsPorSeparado(ordenId: string): boolean {
-    if (!ordenesConGestion.has(ordenId)) return true  // orden antigua: siempre por ítem
-    const estado = estadoPorOrden.get(ordenId) ?? ''
-    const estadoPago = estadoPagoPorOrden.get(ordenId) ?? ''
-    const finalizado = estado === 'listo' || estado === 'pagado'
-    const clientePagado = estadoPago === 'pagado'
-    return finalizado && clientePagado && esProveedorPagado(ordenId)
+    return !ordenesConGestion.has(ordenId)
   }
 
   // Una venta directa de repuestos puede recibir su pago desde la pantalla
@@ -415,8 +402,9 @@ export async function construirMovimientos(
     })
   }
 
-  // Pagos a proveedor en el período: aparecen como provisional cuando el proveedor
-  // no está pagado al 100%, o se omiten cuando ya aparecen los ítems individuales.
+  // Pagos a proveedor en el período: cada abono aparece como su propia salida
+  // de Caja en su fecha real (nunca se omiten en órdenes con gestión de pago
+  // a proveedor — ver mostrarItemsPorSeparado).
   for (const pp of (pagosProvPeriodo ?? []) as unknown as { id: string; orden_id: string; monto: number; fecha: string; metodo_pago_id: string | null; metodos_pago: { nombre: string } | null; ordenes: { numero: number; placa: string; cliente: string } | null }[]) {
     if (mostrarItemsPorSeparado(pp.orden_id)) continue
     const ord = pp.ordenes
