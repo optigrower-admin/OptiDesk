@@ -10,6 +10,7 @@ interface Props {
   lead: LeadData
   usuarios: { id: string; nombre: string }[]
   esGerencia?: boolean
+  requiereAprobacion?: boolean
 }
 
 type Plantilla = {
@@ -38,7 +39,7 @@ function fmtFechaHora(iso: string) {
   return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-export default function CorreosTab({ clienteId, tenantId, lead, usuarios, esGerencia }: Props) {
+export default function CorreosTab({ clienteId, tenantId, lead, usuarios, esGerencia, requiereAprobacion }: Props) {
   const supabase = createClient()
   const [plantillas, setPlantillas] = useState<Plantilla[]>([])
   const [historial, setHistorial] = useState<CorreoEnviado[]>([])
@@ -120,6 +121,11 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios, esGere
     return Array.from(claves)
   }, [plantillaActual, datosVariables])
   const bloqueadoPorVariables = variablesFaltantes.length > 0
+
+  // Mientras la matrícula no esté aprobada, no se puede enviar ningún correo
+  // de plantilla a este cliente (solo aplica si su etapa tiene esa regla).
+  const bloqueadoPorAprobacion = !!requiereAprobacion && lead.estadoAprobacionMatricula !== 'aprobado'
+
   const [borrandoId, setBorrandoId] = useState<string | null>(null)
 
   async function borrarCorreo(id: string) {
@@ -133,7 +139,7 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios, esGere
   }
 
   async function enviar() {
-    if (!destinatario.trim() || !asunto.trim() || !cuerpo.trim() || enviando || bloqueadoPorDocumentos || bloqueadoPorVariables) return
+    if (!destinatario.trim() || !asunto.trim() || !cuerpo.trim() || enviando || bloqueadoPorDocumentos || bloqueadoPorVariables || bloqueadoPorAprobacion) return
     if (!window.confirm(`¿Enviar este correo a ${destinatario}?`)) return
     setEnviando(true)
     setError('')
@@ -167,7 +173,11 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios, esGere
       <div className="bg-gray-50 rounded-xl p-3 space-y-2">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Enviar correo</p>
 
-        {plantillas.length === 0 ? (
+        {bloqueadoPorAprobacion ? (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            🚫 Este cliente necesita aprobación para matricular antes de poder enviarle correos. Apruébala en la pestaña Resumen.
+          </p>
+        ) : plantillas.length === 0 ? (
           <p className="text-xs text-gray-400">
             No hay plantillas de correo activas — créalas en Config Ventas → Plantillas de correo.
           </p>
@@ -205,7 +215,7 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios, esGere
 
         {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">{error}</p>}
 
-        <button onClick={enviar} disabled={!plantillaId || enviando || !destinatario.trim() || !asunto.trim() || !cuerpo.trim() || bloqueadoPorDocumentos || bloqueadoPorVariables}
+        <button onClick={enviar} disabled={!plantillaId || enviando || !destinatario.trim() || !asunto.trim() || !cuerpo.trim() || bloqueadoPorDocumentos || bloqueadoPorVariables || bloqueadoPorAprobacion}
           className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors">
           {enviando ? 'Enviando...' : '✉️ Enviar correo'}
         </button>
