@@ -345,9 +345,6 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
   const enEtapaFactura         = !!reglaFactura
   const enEtapaFechaEntrega    = !!reglaFechaEntrega
   const enEtapaCarta           = !!reglaCarta
-  const ordenEtapaActual       = etapasPipeline.etapaMap[etapa]?.orden ?? -1
-  const ordenEntregada         = etapasPipeline.etapaMap['entregada' as EtapaVenta]?.orden ?? Infinity
-  const enEtapaEntregadaOMas   = ordenEtapaActual >= ordenEntregada
 
   const cargar = useCallback(async () => {
     const [{ data: msgs }, { data: ords }, { data: us }, { data: cliente }, { data: etapasHist }, { data: colab }, { data: propiaFila }, { data: familiares }] = await Promise.all([
@@ -1105,7 +1102,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
               </div>
 
               {/* Fecha de venta — solo aparece en etapa vendida/perdida, editable por gerencia */}
-              {!etapasPipeline.etapaMap[etapa]?.es_perdido && (!!fechaVenta || enEtapaEntregadaOMas) && (
+              {!etapasPipeline.etapaMap[etapa]?.es_perdido && (!!fechaVenta || etapasPipeline.etapaMap[etapa]?.es_ganado) && (
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Fecha de venta</label>
@@ -1645,7 +1642,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                       fechaEntregaActual ? 'bg-teal-50 border-teal-200 text-teal-800' : 'bg-orange-50 border-orange-200 text-orange-700'
                     }`}>
                       {fechaEntregaActual
-                        ? `📅 ${new Date(fechaEntregaActual + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                        ? `📅 ENTREGA: ${new Date(fechaEntregaActual + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}`
                         : `⚠ ${reglaFechaEntrega?.etiqueta ?? 'Sin fecha entrega'}`}
                       {esGerencia && fechaEntregaActual && (
                         <button onClick={() => setEditandoFechaEntrega(true)} className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[11px]">✏️</button>
@@ -2088,7 +2085,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     </select>
                   </div>
 
-                  {!etapasPipeline.etapaMap[etapa]?.es_perdido && (!!fechaVenta || enEtapaEntregadaOMas) && (
+                  {!etapasPipeline.etapaMap[etapa]?.es_perdido && (!!fechaVenta || etapasPipeline.etapaMap[etapa]?.es_ganado) && (
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">Fecha de venta</label>
