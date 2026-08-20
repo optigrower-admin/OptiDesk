@@ -1657,7 +1657,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                         placeholder="Ej: 00123"
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        className="flex-1 border border-orange-300 bg-white rounded-lg px-3 py-1.5 text-sm font-black tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                        disabled={etapaClienteBloqueada}
+                        title={etapaClienteBloqueada ? 'No tienes permiso para modificar este cliente en su etapa actual.' : undefined}
+                        className="flex-1 border border-orange-300 bg-white rounded-lg px-3 py-1.5 text-sm font-black tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" />
                       {savingCarta && <span className="text-xs text-orange-500 self-center">Guardando...</span>}
                       {editandoCarta && !savingCarta && (
                         <button onClick={() => { setEditandoCarta(false); setCartaInput(cartaActual) }}
@@ -1676,7 +1678,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                         onKeyDown={e => { if (e.key === 'Enter') guardarPlaca() }}
                         onBlur={guardarPlaca}
                         placeholder="ABC123"
-                        className="flex-1 border border-red-300 bg-white rounded-lg px-3 py-1.5 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-red-400" />
+                        disabled={etapaClienteBloqueada}
+                        title={etapaClienteBloqueada ? 'No tienes permiso para modificar este cliente en su etapa actual.' : undefined}
+                        className="flex-1 border border-red-300 bg-white rounded-lg px-3 py-1.5 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50 disabled:cursor-not-allowed" />
                       {savingPlaca && <span className="text-xs text-red-500 self-center">Guardando...</span>}
                       {editandoPlaca && !savingPlaca && (
                         <button onClick={() => { setEditandoPlaca(false); setPlacaInput(placaActual) }}
@@ -1873,7 +1877,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                         onKeyDown={e => { if (e.key === 'Enter') guardarFactura() }}
                         onBlur={guardarFactura}
                         placeholder="Ej: FAC-00123"
-                        className="flex-1 border border-orange-300 bg-white rounded-lg px-3 py-1.5 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                        disabled={etapaClienteBloqueada}
+                        title={etapaClienteBloqueada ? 'No tienes permiso para modificar este cliente en su etapa actual.' : undefined}
+                        className="flex-1 border border-orange-300 bg-white rounded-lg px-3 py-1.5 text-sm font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50 disabled:cursor-not-allowed" />
                       {savingFactura && <span className="text-xs text-orange-500 self-center">Guardando...</span>}
                       {editandoFactura && !savingFactura && (
                         <button onClick={() => { setEditandoFactura(false); setFacturaInput(facturaActual) }}
@@ -1890,7 +1896,9 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                     <div className="flex gap-2">
                       <input type="date" value={fechaEntregaInput} onChange={e => setFechaEntregaInput(e.target.value)}
                         onBlur={guardarFechaEntrega}
-                        className="flex-1 border border-sky-300 bg-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" />
+                        disabled={etapaClienteBloqueada}
+                        title={etapaClienteBloqueada ? 'No tienes permiso para modificar este cliente en su etapa actual.' : undefined}
+                        className="flex-1 border border-sky-300 bg-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 disabled:opacity-50 disabled:cursor-not-allowed" />
                       {savingFechaEntrega && <span className="text-xs text-sky-500 self-center">Guardando...</span>}
                       {editandoFechaEntrega && !savingFechaEntrega && (
                         <button onClick={() => { setEditandoFechaEntrega(false); setFechaEntregaInput(fechaEntregaActual) }}
