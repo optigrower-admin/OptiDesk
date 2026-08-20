@@ -144,7 +144,7 @@ function ReglaForm({ draft, onChange }: { draft: ReglaDraft; onChange: (d: Regla
             onChange={e => onChange({ ...draft, documentos_requeridos: e.target.value.split('\n') })}
             onBlur={e => onChange({ ...draft, documentos_requeridos: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) })}
             rows={4}
-            placeholder={'Carta de Aprobación\nFactura de Venta\nManifiesto de Importación\nCopia Cédula\nContrato de Mandato\nFUNAL'}
+            placeholder={'Carta de Negociación\nFactura de Venta\nManifiesto de Importación\nCopia Cédula\nContrato de Mandato\nFUNAL'}
             className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none resize-none"
           />
         </div>
