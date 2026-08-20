@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { formatCOP } from '@/lib/ventas/pipeline'
-import { VARIABLES_CORREO } from '@/lib/ventas/variablesCorreo'
+import CampoVariablesCorreo from './components/CampoVariablesCorreo'
+import { partirTextoEnVariables } from '@/lib/ventas/variablesCorreo'
 import PipelinesConfig from './components/PipelinesConfig'
 import InventarioMotosConfig from './components/InventarioMotosConfig'
 import ReglasPipelineConfig from './components/ReglasPipelineConfig'
@@ -1606,7 +1607,9 @@ export default function ConfigVentasPage() {
       <SeccionColapsable titulo="Plantillas de correo" icono="✉️" badge={plantillas.length} defaultOpen={false}>
         <div className="p-5">
           <p className="text-xs text-gray-400 mb-3">
-            Variables disponibles: {VARIABLES_CORREO.map(v => `{${v.clave}}`).join(' ')} — ej: &quot;Solicitud Matrícula ({'{Placa}'})&quot;.
+            Escribe <span className="font-semibold text-gray-500">{'{{'}</span> en el asunto o cuerpo para elegir una variable
+            (Nombre, Placa, Cédula...) — ej: &quot;Solicitud Matrícula ({'{Placa}'})&quot; se convierte en
+            &quot;Solicitud Matrícula (JAS34I)&quot; con el dato real de cada cliente al enviarlo.
             Se envían desde el correo de la empresa (Bot Colaboradores → Correo de la empresa).
           </p>
           <div className="space-y-2 mb-3">
@@ -1618,10 +1621,10 @@ export default function ConfigVentasPage() {
                       className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     <input value={editandoPlantilla.destinatario} onChange={e => setEditandoPlantilla(v => ({ ...v, destinatario: e.target.value }))} placeholder="Destinatario (correo)"
                       className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <input value={editandoPlantilla.asunto} onChange={e => setEditandoPlantilla(v => ({ ...v, asunto: e.target.value }))} placeholder="Asunto del correo"
+                    <CampoVariablesCorreo value={editandoPlantilla.asunto} onChange={v => setEditandoPlantilla(p => ({ ...p, asunto: v }))} placeholder="Asunto del correo — escribe {{ para elegir una variable"
                       className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <textarea value={editandoPlantilla.cuerpo_html} onChange={e => setEditandoPlantilla(v => ({ ...v, cuerpo_html: e.target.value }))}
-                      placeholder="Cuerpo del correo" rows={4}
+                    <CampoVariablesCorreo value={editandoPlantilla.cuerpo_html} onChange={v => setEditandoPlantilla(p => ({ ...p, cuerpo_html: v }))}
+                      placeholder="Cuerpo del correo" multiline
                       className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
                     {catalogoDocumentos.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
@@ -1661,7 +1664,13 @@ export default function ConfigVentasPage() {
                       <ToggleSwitch activo={p.activa} onChange={() => togglePlantilla(p.id, p.activa)} />
                       <button onClick={() => eliminarPlantilla(p.id)} className="text-red-400 hover:text-red-600 text-xs">Eliminar</button>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">Asunto: {p.asunto}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Asunto: {partirTextoEnVariables(p.asunto).map((tramo, i) =>
+                        !tramo.variable
+                          ? <span key={i}>{tramo.texto}</span>
+                          : <span key={i} className={tramo.reconocida ? 'font-semibold text-blue-700' : 'font-semibold text-red-500'}>{tramo.texto}</span>
+                      )}
+                    </p>
                     <p className="text-xs text-gray-400">Para: {p.destinatario || '—'}</p>
                     {!!p.documentos_adjuntos?.length && (
                       <p className="text-[11px] text-gray-400 mt-0.5">
@@ -1680,10 +1689,10 @@ export default function ConfigVentasPage() {
               className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <input value={nuevaPlantilla.destinatario} onChange={e => setNuevaPlantilla(p => ({ ...p, destinatario: e.target.value }))} placeholder="Destinatario (correo)"
               className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <input value={nuevaPlantilla.asunto} onChange={e => setNuevaPlantilla(p => ({ ...p, asunto: e.target.value }))} placeholder="Asunto del correo — ej: Solicitud Matrícula ({Placa})"
+            <CampoVariablesCorreo value={nuevaPlantilla.asunto} onChange={v => setNuevaPlantilla(p => ({ ...p, asunto: v }))} placeholder="Asunto del correo — escribe {{ para elegir una variable"
               className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <textarea value={nuevaPlantilla.cuerpo_html} onChange={e => setNuevaPlantilla(p => ({ ...p, cuerpo_html: e.target.value }))}
-              placeholder="Cuerpo del correo. ej: Hola, adjunto documentos de {Nombre}, placa {Placa}..." rows={4}
+            <CampoVariablesCorreo value={nuevaPlantilla.cuerpo_html} onChange={v => setNuevaPlantilla(p => ({ ...p, cuerpo_html: v }))}
+              placeholder="Cuerpo del correo. ej: Hola, adjunto documentos de {Nombre}, placa {Placa}..." multiline
               className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
             {catalogoDocumentos.length > 0 && (
               <div>
