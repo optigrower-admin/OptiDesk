@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { reemplazarVariablesCorreo, type DatosVariablesCorreo } from '@/lib/ventas/variablesCorreo'
+import { reemplazarVariablesCorreo, partirTextoEnVariables, normalizarVariable, VARIABLES_CORREO, type DatosVariablesCorreo } from '@/lib/ventas/variablesCorreo'
 import type { LeadData } from '../LeadCard'
 
 interface Props {
@@ -102,6 +102,24 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios, esGere
     [documentosSel, documentosDisponibles]
   )
   const bloqueadoPorDocumentos = bloqueaSiFalta && faltanDocumentos.length > 0
+
+  // Variables que la plantilla usa (ej. {Placa}) pero que este cliente todavía
+  // no tiene con dato real — si se envía así, al cliente le llega el texto
+  // literal "{Placa}" en vez del valor, así que se bloquea el envío.
+  const plantillaActual = plantillas.find(p => p.id === plantillaId)
+  const variablesFaltantes = useMemo(() => {
+    if (!plantillaActual) return []
+    const texto = `${plantillaActual.asunto} ${plantillaActual.cuerpo_html}`
+    const claves = new Set<string>()
+    for (const tramo of partirTextoEnVariables(texto)) {
+      if (!tramo.variable || !tramo.reconocida) continue
+      const contenido = tramo.texto.replace(/^\{+|\}+$/g, '')
+      const def = VARIABLES_CORREO.find(v => normalizarVariable(v.clave) === normalizarVariable(contenido))
+      if (def && !datosVariables[def.clave]?.trim()) claves.add(def.label)
+    }
+    return Array.from(claves)
+  }, [plantillaActual, datosVariables])
+  const bloqueadoPorVariables = variablesFaltantes.length > 0
   const [borrandoId, setBorrandoId] = useState<string | null>(null)
 
   async function borrarCorreo(id: string) {
@@ -115,7 +133,7 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios, esGere
   }
 
   async function enviar() {
-    if (!destinatario.trim() || !asunto.trim() || !cuerpo.trim() || enviando || bloqueadoPorDocumentos) return
+    if (!destinatario.trim() || !asunto.trim() || !cuerpo.trim() || enviando || bloqueadoPorDocumentos || bloqueadoPorVariables) return
     if (!window.confirm(`¿Enviar este correo a ${destinatario}?`)) return
     setEnviando(true)
     setError('')
@@ -179,9 +197,15 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios, esGere
           </p>
         )}
 
+        {bloqueadoPorVariables && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            🚫 Falta el dato: {variablesFaltantes.join(', ')} (pestaña Datos). La plantilla usa esa variable pero el cliente no la tiene registrada — no se puede enviar hasta completarla.
+          </p>
+        )}
+
         {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">{error}</p>}
 
-        <button onClick={enviar} disabled={!plantillaId || enviando || !destinatario.trim() || !asunto.trim() || !cuerpo.trim() || bloqueadoPorDocumentos}
+        <button onClick={enviar} disabled={!plantillaId || enviando || !destinatario.trim() || !asunto.trim() || !cuerpo.trim() || bloqueadoPorDocumentos || bloqueadoPorVariables}
           className="w-full py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-sm font-semibold disabled:opacity-40 transition-colors">
           {enviando ? 'Enviando...' : '✉️ Enviar correo'}
         </button>

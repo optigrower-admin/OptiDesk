@@ -4,6 +4,7 @@ import { sendEmailComoEmpresa, type AdjuntoCorreo } from '@/lib/email'
 import { getSignedDownloadUrl } from '@/lib/r2'
 import { downloadFromDrive } from '@/lib/drive'
 import { registrarAuditoria } from '@/lib/audit'
+import { partirTextoEnVariables } from '@/lib/ventas/variablesCorreo'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -32,6 +33,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
   if (!destinatario?.trim() || !asunto?.trim() || !cuerpo?.trim()) {
     return NextResponse.json({ error: 'Faltan asunto, cuerpo o destinatario' }, { status: 400 })
+  }
+
+  // El front ya reemplaza {Variable} por el dato real antes de enviar — si
+  // algo así llega sin reemplazar es porque el cliente no tiene ese dato, y
+  // no se debe mandar el correo con placeholders literales.
+  const variablesSinReemplazar = [
+    ...partirTextoEnVariables(asunto).filter(t => t.variable && t.reconocida),
+    ...partirTextoEnVariables(cuerpo).filter(t => t.variable && t.reconocida),
+  ]
+  if (variablesSinReemplazar.length > 0) {
+    return NextResponse.json({
+      error: `Falta el dato ${variablesSinReemplazar.map(t => t.texto).join(', ')} — el cliente no lo tiene registrado, así que no se puede enviar el correo.`,
+    }, { status: 400 })
   }
 
   const admin = createAdminClient()
