@@ -183,10 +183,12 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
     lead.aprobadoMatriculaPor ?? null
   )
   const [bloqueoMsg, setBloqueoMsg] = useState<string | null>(null)
+  const [editandoAprobacion, setEditandoAprobacion] = useState(false)
 
   useEffect(() => {
     setAprobacionStatus(lead.estadoAprobacionMatricula ?? 'pendiente')
     setAprobadoMatriculaPor(lead.aprobadoMatriculaPor ?? null)
+    setEditandoAprobacion(false)
   }, [lead.id])
 
   // Fecha de venta (fecha_cierre) — visible/editable solo gerencia
@@ -850,6 +852,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       setAprobadoMatriculaPor(por)
       patch({ estadoAprobacionMatricula: status, aprobadoMatriculaPor: por })
       mostrarGuardado()
+      setEditandoAprobacion(false)
     } catch (e) {
       alert(`Error al guardar: ${e instanceof Error ? e.message : 'Error desconocido'}`)
     } finally { hideGlobalLoading() }
@@ -1918,22 +1921,40 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
                 {!!reglaAprobacion && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                     <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1.5">{reglaAprobacion?.etiqueta ?? 'Estado de aprobación para matrícula'}</p>
-                    <div className="flex gap-2">
-                      {([
-                        { key: 'pendiente', label: '⏳ Pendiente',  activo: 'bg-amber-500 border-amber-500 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-amber-300'  },
-                        { key: 'aprobado',  label: '✅ Aprobado',   activo: 'bg-green-600 border-green-600 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-green-300'  },
-                        { key: 'rechazado', label: '❌ Rechazado',  activo: 'bg-red-600 border-red-600 text-white',      inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-red-300'    },
-                      ] as const).map(({ key, label, activo, inactivo }) => (
-                        <button key={key}
-                          onClick={() => actualizarAprobacion(key)}
-                          disabled={!esGerencia}
-                          className={`flex-1 py-1.5 rounded-lg text-xs font-bold border-2 transition-colors ${
-                            aprobacionStatus === key ? activo : inactivo
-                          } ${!esGerencia ? 'cursor-default opacity-80' : ''}`}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+
+                    {aprobacionStatus !== 'pendiente' && !editandoAprobacion ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                          aprobacionStatus === 'aprobado' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+                        }`}>
+                          {aprobacionStatus === 'aprobado' ? '✅ Aprobado' : '❌ Rechazado'}
+                        </span>
+                        {esGerencia && (
+                          <button onClick={() => setEditandoAprobacion(true)}
+                            className="text-xs text-amber-700 hover:text-amber-900 font-semibold underline">
+                            Editar
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        {([
+                          { key: 'pendiente', label: '⏳ Pendiente',  activo: 'bg-amber-500 border-amber-500 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-amber-300'  },
+                          { key: 'aprobado',  label: '✅ Aprobado',   activo: 'bg-green-600 border-green-600 text-white',  inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-green-300'  },
+                          { key: 'rechazado', label: '❌ Rechazado',  activo: 'bg-red-600 border-red-600 text-white',      inactivo: 'bg-white text-gray-500 border-gray-200 hover:border-red-300'    },
+                        ] as const).map(({ key, label, activo, inactivo }) => (
+                          <button key={key}
+                            onClick={() => actualizarAprobacion(key)}
+                            disabled={!esGerencia}
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-bold border-2 transition-colors ${
+                              aprobacionStatus === key ? activo : inactivo
+                            } ${!esGerencia ? 'cursor-default opacity-80' : ''}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
                     {aprobacionStatus === 'aprobado' && aprobadoMatriculaPor && (
                       <p className="mt-1.5 text-xs text-green-700 font-medium">Aprobado por {aprobadoMatriculaPor}</p>
                     )}

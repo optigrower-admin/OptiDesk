@@ -193,6 +193,24 @@ export function useEtapasPipeline(tenantId: string | undefined) {
         }
       }
 
+      // "Placa" también se hereda hacia adelante: una vez que una etapa pide
+      // placa (ej. "En matrícula"), todas las etapas siguientes del mismo
+      // pipeline la siguen pidiendo aunque no tengan su propia regla — salvo
+      // que una etapa posterior tenga su propia regla de "placa" configurada,
+      // en cuyo caso se respeta esa en vez de heredar.
+      for (const etapasDelPipeline of etapasPorPipeline.values()) {
+        const anclasPlaca = etapasDelPipeline
+          .map(e => ({ etapa: e, regla: e.reglas.find(r => r.campo === 'placa') }))
+          .filter((x): x is { etapa: EtapaDinamica; regla: ReglaEtapa } => !!x.regla)
+          .sort((a, b) => a.etapa.orden - b.etapa.orden)
+        if (anclasPlaca.length === 0) continue
+        for (const e of etapasDelPipeline) {
+          if (e.reglas.some(r => r.campo === 'placa')) continue // regla propia — se respeta tal cual
+          const aplicable = anclasPlaca.filter(a => a.etapa.orden <= e.orden).sort((a, b) => b.etapa.orden - a.etapa.orden)[0]
+          if (aplicable) e.reglas = [...e.reglas, { ...aplicable.regla, heredada: true }]
+        }
+      }
+
       const pipelinesOut: PipelineDinamico[] = pipelinesRaw.map(p => ({
         id: p.id, clave: p.clave, nombre: p.nombre, orden: p.orden,
         rolesOcultos: p.roles_ocultos ?? [],
