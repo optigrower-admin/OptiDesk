@@ -9,6 +9,7 @@ interface Props {
   tenantId: string
   lead: LeadData
   usuarios: { id: string; nombre: string }[]
+  esGerencia?: boolean
 }
 
 type Plantilla = {
@@ -37,7 +38,7 @@ function fmtFechaHora(iso: string) {
   return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Props) {
+export default function CorreosTab({ clienteId, tenantId, lead, usuarios, esGerencia }: Props) {
   const supabase = createClient()
   const [plantillas, setPlantillas] = useState<Plantilla[]>([])
   const [historial, setHistorial] = useState<CorreoEnviado[]>([])
@@ -101,6 +102,17 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
     [documentosSel, documentosDisponibles]
   )
   const bloqueadoPorDocumentos = bloqueaSiFalta && faltanDocumentos.length > 0
+  const [borrandoId, setBorrandoId] = useState<string | null>(null)
+
+  async function borrarCorreo(id: string) {
+    if (!window.confirm('¿Borrar este correo del historial? Esta acción no se puede deshacer.')) return
+    setBorrandoId(id)
+    const { error: errorBorrar } = await supabase.from('correos_cliente').delete().eq('id', id)
+    setBorrandoId(null)
+    if (errorBorrar) { alert(`No se pudo borrar: ${errorBorrar.message}`); return }
+    setHistorial(prev => prev.filter(c => c.id !== id))
+    if (expandidoId === id) setExpandidoId(null)
+  }
 
   async function enviar() {
     if (!destinatario.trim() || !asunto.trim() || !cuerpo.trim() || enviando || bloqueadoPorDocumentos) return
@@ -209,6 +221,15 @@ export default function CorreosTab({ clienteId, tenantId, lead, usuarios }: Prop
                     )}
                     {c.estado === 'error' && c.error_mensaje && (
                       <p className="text-[11px] text-red-600">{c.error_mensaje}</p>
+                    )}
+                    {esGerencia && (
+                      <button
+                        onClick={() => borrarCorreo(c.id)}
+                        disabled={borrandoId === c.id}
+                        className="text-[11px] text-red-500 hover:text-red-700 font-medium disabled:opacity-50"
+                      >
+                        {borrandoId === c.id ? 'Borrando...' : '🗑️ Borrar del historial'}
+                      </button>
                     )}
                   </div>
                 )}
