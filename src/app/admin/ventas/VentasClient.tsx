@@ -375,9 +375,9 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         </div>
       </div>
 
-      {/* Filtro por usuario (multi-select, colapsable) */}
-      {usuarios.length > 1 && (
-        <div className="mb-2.5">
+      {/* Fila de filtros colapsables — botones compactos uno junto al otro */}
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        {usuarios.length > 1 && (
           <button
             onClick={() => setAsesorFiltroAbierto(o => !o)}
             className="flex items-center gap-1.5 text-xs bg-white border border-gray-200 hover:border-blue-300 rounded-lg px-3 py-1.5 transition-colors"
@@ -388,47 +388,9 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
-          {asesorFiltroAbierto && (
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <button
-                onClick={() => setUsuariosFiltro(new Set())}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-                  usuariosFiltro.size === 0
-                    ? 'bg-blue-700 text-white border-blue-700'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
-                }`}
-              >
-                Todos
-              </button>
-              {usuarios.map(u => {
-                const activo = usuariosFiltro.has(u.id)
-                return (
-                  <button
-                    key={u.id}
-                    onClick={() => setUsuariosFiltro(prev => {
-                      const next = new Set(prev)
-                      if (next.has(u.id)) next.delete(u.id)
-                      else next.add(u.id)
-                      return next
-                    })}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-                      activo
-                        ? 'bg-blue-700 text-white border-blue-700'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
-                    }`}
-                  >
-                    {u.nombre}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
+        )}
 
-      {/* Filtro por visibilidad compartida (multi-select, colapsable) — solo gerencia/dueño */}
-      {esGerencia && usuarios.length > 1 && (
-        <div className="mb-4">
+        {esGerencia && usuarios.length > 1 && (
           <button
             onClick={() => setVisibilidadFiltroAbierto(o => !o)}
             className="flex items-center gap-1.5 text-xs bg-white border border-gray-200 hover:border-purple-300 rounded-lg px-3 py-1.5 transition-colors"
@@ -439,47 +401,9 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
-          {visibilidadFiltroAbierto && (
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <button
-                onClick={() => setVisibilidadFiltro(new Set())}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-                  visibilidadFiltro.size === 0
-                    ? 'bg-purple-700 text-white border-purple-700'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:text-purple-700'
-                }`}
-              >
-                Todos
-              </button>
-              {usuarios.map(u => {
-                const activo = visibilidadFiltro.has(u.id)
-                return (
-                  <button
-                    key={u.id}
-                    onClick={() => setVisibilidadFiltro(prev => {
-                      const next = new Set(prev)
-                      if (next.has(u.id)) next.delete(u.id)
-                      else next.add(u.id)
-                      return next
-                    })}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-                      activo
-                        ? 'bg-purple-700 text-white border-purple-700'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:text-purple-700'
-                    }`}
-                  >
-                    {u.nombre}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
+        )}
 
-      {/* Filtro por estudio de crédito por entidad */}
-      {entidadesCredito.length > 0 && (
-        <div className="mb-4">
+        {entidadesCredito.length > 0 && (
           <button
             onClick={() => setCreditoPanelOpen(p => !p)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border ${
@@ -498,38 +422,111 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
+        )}
+      </div>
 
-          {creditoPanelOpen && (
-            <div className="mt-2 p-3 bg-white border border-gray-200 rounded-xl space-y-3 max-w-xl">
-              {entidadesCredito.map(ent => (
-                <div key={ent.id}>
-                  <p className="text-xs font-semibold text-gray-700 mb-1">{ent.nombre}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {ESTADO_CREDITO_OPCIONES.map(op => {
-                      const activo = creditoFiltro[ent.id]?.has(op.key) ?? false
-                      return (
-                        <button
-                          key={op.key}
-                          onClick={() => toggleCreditoEstado(ent.id, op.key)}
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors border ${
-                            activo
-                              ? 'bg-blue-700 text-white border-blue-700'
-                              : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
-                          }`}
-                        >
-                          {op.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-              {Object.keys(creditoFiltro).length > 0 && (
-                <button onClick={() => setCreditoFiltro({})} className="text-xs text-blue-600 hover:underline">
-                  Limpiar filtro de crédito
-                </button>
-              )}
+      {/* Paneles desplegados — aparecen debajo de la fila, uno por uno */}
+      {usuarios.length > 1 && asesorFiltroAbierto && (
+        <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+          <button
+            onClick={() => setUsuariosFiltro(new Set())}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+              usuariosFiltro.size === 0
+                ? 'bg-blue-700 text-white border-blue-700'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+            }`}
+          >
+            Todos
+          </button>
+          {usuarios.map(u => {
+            const activo = usuariosFiltro.has(u.id)
+            return (
+              <button
+                key={u.id}
+                onClick={() => setUsuariosFiltro(prev => {
+                  const next = new Set(prev)
+                  if (next.has(u.id)) next.delete(u.id)
+                  else next.add(u.id)
+                  return next
+                })}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                  activo
+                    ? 'bg-blue-700 text-white border-blue-700'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+                }`}
+              >
+                {u.nombre}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {esGerencia && usuarios.length > 1 && visibilidadFiltroAbierto && (
+        <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+          <button
+            onClick={() => setVisibilidadFiltro(new Set())}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+              visibilidadFiltro.size === 0
+                ? 'bg-purple-700 text-white border-purple-700'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:text-purple-700'
+            }`}
+          >
+            Todos
+          </button>
+          {usuarios.map(u => {
+            const activo = visibilidadFiltro.has(u.id)
+            return (
+              <button
+                key={u.id}
+                onClick={() => setVisibilidadFiltro(prev => {
+                  const next = new Set(prev)
+                  if (next.has(u.id)) next.delete(u.id)
+                  else next.add(u.id)
+                  return next
+                })}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                  activo
+                    ? 'bg-purple-700 text-white border-purple-700'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:text-purple-700'
+                }`}
+              >
+                {u.nombre}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {entidadesCredito.length > 0 && creditoPanelOpen && (
+        <div className="mb-4 p-3 bg-white border border-gray-200 rounded-xl space-y-3 max-w-xl">
+          {entidadesCredito.map(ent => (
+            <div key={ent.id}>
+              <p className="text-xs font-semibold text-gray-700 mb-1">{ent.nombre}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {ESTADO_CREDITO_OPCIONES.map(op => {
+                  const activo = creditoFiltro[ent.id]?.has(op.key) ?? false
+                  return (
+                    <button
+                      key={op.key}
+                      onClick={() => toggleCreditoEstado(ent.id, op.key)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors border ${
+                        activo
+                          ? 'bg-blue-700 text-white border-blue-700'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+                      }`}
+                    >
+                      {op.label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
+          ))}
+          {Object.keys(creditoFiltro).length > 0 && (
+            <button onClick={() => setCreditoFiltro({})} className="text-xs text-blue-600 hover:underline">
+              Limpiar filtro de crédito
+            </button>
           )}
         </div>
       )}
