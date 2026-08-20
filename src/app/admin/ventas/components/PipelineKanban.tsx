@@ -241,8 +241,12 @@ export default function PipelineKanban({ leadsIniciales, tenantId, usuarios = []
       setBloqueoMsg('No tienes permiso para mover clientes a esta etapa.')
       return
     }
+    // La regla de aprobación solo debe frenar el AVANCE a etapas posteriores a
+    // donde se pide la revisión (heredada=true) — la etapa donde se hace la
+    // aprobación en sí debe poder recibir el cliente libremente, porque ahí es
+    // justo donde salen los botones Pendiente/Aprobado/Rechazado.
     const reglaAprobacionDestino = destino?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
-    if (reglaAprobacionDestino?.bloquea_cambio_etapa && lead.estadoAprobacionMatricula !== 'aprobado') {
+    if (reglaAprobacionDestino?.bloquea_cambio_etapa && reglaAprobacionDestino.heredada && lead.estadoAprobacionMatricula !== 'aprobado') {
       setBloqueoMsg(reglaAprobacionDestino.mensaje_ayuda || 'Debes pedir aprobación para matricular para poder cambiar de etapa')
       return
     }

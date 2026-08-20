@@ -483,7 +483,7 @@ export default function FichaProspecto({ lead, tenantId, onClose, onEtapaChange,
       return
     }
     const reglaAprobacionNueva = etapasPipeline.etapaMap[newEtapa]?.reglas?.find(r => r.campo === 'aprobacion_gerencia')
-    if (reglaAprobacionNueva?.bloquea_cambio_etapa &&
+    if (reglaAprobacionNueva?.bloquea_cambio_etapa && reglaAprobacionNueva.heredada &&
         aprobacionStatus !== 'aprobado') {
       setBloqueoMsg(reglaAprobacionNueva.mensaje_ayuda || 'Debes pedir aprobación para matricular para poder cambiar de etapa')
       return

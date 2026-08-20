@@ -18,6 +18,7 @@ export interface ReglaEtapa {
   activa: boolean
   orden: number
   documentos_requeridos?: string[] | null   // solo cuando campo === 'documento_requerido'
+  heredada?: boolean   // true si esta regla llegó por cascada desde una etapa anterior (ver useEtapasPipeline)
 }
 
 export interface EtapaDinamica {
@@ -165,7 +166,7 @@ export function useEtapasPipeline(tenantId: string | undefined) {
           // sin importar si la regla de la etapa ancla la marcó como "bloquea"
           // (esa etapa ancla es donde se revisa/aprueba, no debe bloquearse a
           // sí misma; pero de ahí en adelante sí debe frenar el progreso).
-          e.reglas = [...e.reglas, { ...reglaAncla, bloquea_cambio_etapa: true }]
+          e.reglas = [...e.reglas, { ...reglaAncla, bloquea_cambio_etapa: true, heredada: true }]
         }
       }
 
