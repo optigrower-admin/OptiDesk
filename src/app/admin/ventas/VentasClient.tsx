@@ -24,6 +24,14 @@ interface Props {
 
 type UsuarioFiltro = { id: string; nombre: string }
 type EntidadFiltro = { id: string; nombre: string }
+// Texto corto para el botón colapsado de un filtro multi-selección de usuarios.
+function resumenSeleccion(filtro: Set<string>, usuarios: UsuarioFiltro[]): string {
+  if (filtro.size === 0) return 'Todos'
+  const nombres = usuarios.filter(u => filtro.has(u.id)).map(u => u.nombre)
+  if (nombres.length <= 2) return nombres.join(', ')
+  return `${nombres.slice(0, 2).join(', ')} +${nombres.length - 2}`
+}
+
 const ESTADO_CREDITO_OPCIONES: { key: string; label: string }[] = [
   { key: 'sin_iniciar', label: 'Sin iniciar' },
   { key: 'en_estudio', label: 'En estudio' },
@@ -44,6 +52,8 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
   const [usuarios, setUsuarios] = useState<UsuarioFiltro[]>([])
   const [usuariosFiltro, setUsuariosFiltro] = useState<Set<string>>(new Set())
   const [visibilidadFiltro, setVisibilidadFiltro] = useState<Set<string>>(new Set())
+  const [asesorFiltroAbierto, setAsesorFiltroAbierto] = useState(false)
+  const [visibilidadFiltroAbierto, setVisibilidadFiltroAbierto] = useState(false)
   const [entidadesCredito, setEntidadesCredito] = useState<EntidadFiltro[]>([])
   const [reglasSeguimiento, setReglasSeguimiento] = useState<ReglaRecordatorioAuto[]>([])
   const [creditoFiltro, setCreditoFiltro] = useState<Record<string, Set<string>>>({})
@@ -341,7 +351,7 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
           </button>
 
           {/* Tabs */}
-          <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+          <div className="flex bg-gray-100 rounded-xl p-1 gap-1 border-2 border-gray-300 shadow-sm">
             {([
               { id: 'kanban',  label: 'Kanban' },
               ...(esFreelancer ? [] : [{ id: 'bandeja' as Tab, label: '📥 Bandeja' }]),
@@ -352,10 +362,10 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
                   tab === t.id
-                    ? 'bg-white text-blue-700 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-800'
+                    ? 'bg-blue-700 text-white shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-white'
                 }`}
               >
                 {t.label}
@@ -365,79 +375,105 @@ export default function VentasClient({ leadsIniciales, tenantId }: Props) {
         </div>
       </div>
 
-      {/* Filtro por usuario (multi-select) */}
+      {/* Filtro por usuario (multi-select, colapsable) */}
       {usuarios.length > 1 && (
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <span className="text-xs text-gray-500 font-medium">Asesor:</span>
+        <div className="mb-2.5">
           <button
-            onClick={() => setUsuariosFiltro(new Set())}
-            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-              usuariosFiltro.size === 0
-                ? 'bg-blue-700 text-white border-blue-700'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
-            }`}
+            onClick={() => setAsesorFiltroAbierto(o => !o)}
+            className="flex items-center gap-1.5 text-xs bg-white border border-gray-200 hover:border-blue-300 rounded-lg px-3 py-1.5 transition-colors"
           >
-            Todos
+            <span className="text-gray-500 font-medium">Asesor:</span>
+            <span className="font-semibold text-blue-700">{resumenSeleccion(usuariosFiltro, usuarios)}</span>
+            <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${asesorFiltroAbierto ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
-          {usuarios.map(u => {
-            const activo = usuariosFiltro.has(u.id)
-            return (
+          {asesorFiltroAbierto && (
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
               <button
-                key={u.id}
-                onClick={() => setUsuariosFiltro(prev => {
-                  const next = new Set(prev)
-                  if (next.has(u.id)) next.delete(u.id)
-                  else next.add(u.id)
-                  return next
-                })}
+                onClick={() => setUsuariosFiltro(new Set())}
                 className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-                  activo
+                  usuariosFiltro.size === 0
                     ? 'bg-blue-700 text-white border-blue-700'
                     : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
                 }`}
               >
-                {u.nombre}
+                Todos
               </button>
-            )
-          })}
+              {usuarios.map(u => {
+                const activo = usuariosFiltro.has(u.id)
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => setUsuariosFiltro(prev => {
+                      const next = new Set(prev)
+                      if (next.has(u.id)) next.delete(u.id)
+                      else next.add(u.id)
+                      return next
+                    })}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                      activo
+                        ? 'bg-blue-700 text-white border-blue-700'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700'
+                    }`}
+                  >
+                    {u.nombre}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Filtro por visibilidad compartida (multi-select) — solo gerencia/dueño */}
+      {/* Filtro por visibilidad compartida (multi-select, colapsable) — solo gerencia/dueño */}
       {esGerencia && usuarios.length > 1 && (
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <span className="text-xs text-gray-500 font-medium">Visible para:</span>
+        <div className="mb-4">
           <button
-            onClick={() => setVisibilidadFiltro(new Set())}
-            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-              visibilidadFiltro.size === 0
-                ? 'bg-purple-700 text-white border-purple-700'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:text-purple-700'
-            }`}
+            onClick={() => setVisibilidadFiltroAbierto(o => !o)}
+            className="flex items-center gap-1.5 text-xs bg-white border border-gray-200 hover:border-purple-300 rounded-lg px-3 py-1.5 transition-colors"
           >
-            Todos
+            <span className="text-gray-500 font-medium">Visible para:</span>
+            <span className="font-semibold text-purple-700">{resumenSeleccion(visibilidadFiltro, usuarios)}</span>
+            <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${visibilidadFiltroAbierto ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
-          {usuarios.map(u => {
-            const activo = visibilidadFiltro.has(u.id)
-            return (
+          {visibilidadFiltroAbierto && (
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
               <button
-                key={u.id}
-                onClick={() => setVisibilidadFiltro(prev => {
-                  const next = new Set(prev)
-                  if (next.has(u.id)) next.delete(u.id)
-                  else next.add(u.id)
-                  return next
-                })}
+                onClick={() => setVisibilidadFiltro(new Set())}
                 className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
-                  activo
+                  visibilidadFiltro.size === 0
                     ? 'bg-purple-700 text-white border-purple-700'
                     : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:text-purple-700'
                 }`}
               >
-                {u.nombre}
+                Todos
               </button>
-            )
-          })}
+              {usuarios.map(u => {
+                const activo = visibilidadFiltro.has(u.id)
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => setVisibilidadFiltro(prev => {
+                      const next = new Set(prev)
+                      if (next.has(u.id)) next.delete(u.id)
+                      else next.add(u.id)
+                      return next
+                    })}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+                      activo
+                        ? 'bg-purple-700 text-white border-purple-700'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:text-purple-700'
+                    }`}
+                  >
+                    {u.nombre}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
