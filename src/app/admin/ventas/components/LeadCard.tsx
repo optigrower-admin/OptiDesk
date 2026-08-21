@@ -43,6 +43,7 @@ export type LeadData = {
   creditoRechazadoEntidades?: string[]
   creditoPorEntidad?: Record<string, string>  // entidad_id -> estado ('sin_iniciar'|'en_estudio'|'aprobado'|'rechazado')
   automatizado?: boolean
+  bot_bloqueado?: boolean  // el agente IA escaló la conversación a un humano — necesita atención
   flujo_nombre?: string | null
   updated_at?: string | null
   created_at?: string | null
@@ -136,7 +137,9 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, 
       {...listeners}
       onClick={onClick}
       className={`rounded-xl border shadow-sm p-3 cursor-pointer select-none transition-shadow hover:shadow-md ${
-        sinSeguimiento
+        lead.bot_bloqueado
+          ? 'bg-yellow-100 border-yellow-500 border-l-4 border-l-yellow-500 animate-pulse'
+          : sinSeguimiento
           ? 'bg-red-50 border-red-500 border-l-4 border-l-red-600 animate-pulse'
           : necesitaAlistamiento || necesitaPlaca
           ? 'bg-red-50 border-red-400 border-l-4 border-l-red-600'
@@ -178,6 +181,13 @@ export default function LeadCard({ lead, onClick, overlay, asignado, etapaInfo, 
           {lead.flujo_nombre && (
             <span className="text-[10px] text-blue-600 font-medium truncate max-w-[120px]">{lead.flujo_nombre}</span>
           )}
+        </div>
+      )}
+
+      {/* Banner ESCALADO A HUMANO — el agente IA le pasó la conversación a una persona, necesita atención rápida */}
+      {lead.bot_bloqueado && (
+        <div className="bg-yellow-500 text-yellow-950 text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md mb-2 flex items-center justify-center gap-1.5 animate-pulse">
+          🤖→🧑 ESCALADO · ATENDER
         </div>
       )}
 
