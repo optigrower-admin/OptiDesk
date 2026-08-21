@@ -17,6 +17,8 @@ interface Agente {
   prompt_sistema: string | null
   instrucciones: string | null
   respuesta_multimensaje: boolean | null
+  analiza_imagenes: boolean | null
+  tiempo_espera_mensajes_seg: number | null
 }
 interface Integracion { id: string; proveedor: string; modelo_default: string | null; activo: boolean }
 interface HerramientaInfo { nombre: string; descripcion: string }
@@ -244,6 +246,8 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
   const [modelo, setModelo] = useState(agente?.modelo ?? '')
   const [herramientas, setHerramientas] = useState<Set<string>>(new Set(agente?.herramientas_habilitadas ?? []))
   const [respuestaMultimensaje, setRespuestaMultimensaje] = useState(agente?.respuesta_multimensaje ?? false)
+  const [analizaImagenes, setAnalizaImagenes] = useState(agente?.analiza_imagenes ?? true)
+  const [tiempoEspera, setTiempoEspera] = useState(String(agente?.tiempo_espera_mensajes_seg ?? 8))
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
@@ -264,6 +268,8 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
       nombre, descripcion, prompt_sistema: promptSistema, instrucciones,
       integracion_ia_id: integracionId, modelo: modelo || null, herramientas_habilitadas: [...herramientas],
       respuesta_multimensaje: respuestaMultimensaje,
+      analiza_imagenes: analizaImagenes,
+      tiempo_espera_mensajes_seg: Math.max(0, parseInt(tiempoEspera, 10) || 8),
     }
     const r = agente
       ? await fetch(`/api/admin/agentes-ia/${agente.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -338,6 +344,29 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
             </div>
             <p className="text-[11px] text-gray-400 mt-1">
               &quot;Varios mensajes&quot; deja que el agente parta respuestas largas en 2-4 mensajes de WhatsApp seguidos, como escribiría una persona real, en vez de un solo párrafo largo.
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>¿Analiza las fotos que manda el cliente?</label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setAnalizaImagenes(true)}
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${analizaImagenes ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}`}>
+                Sí, analizarlas
+              </button>
+              <button type="button" onClick={() => setAnalizaImagenes(false)}
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${!analizaImagenes ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}`}>
+                No analizarlas
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">
+              Cuando el cliente manda una foto (ej. cédula), la IA la describe una sola vez apenas llega, para que el agente sepa qué es sin volver a pedirla. Requiere tener activo el uso &quot;Analizar fotos que manda el cliente por chat&quot; en Integraciones → Integraciones IA.
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>Tiempo de espera antes de responder (segundos)</label>
+            <input type="number" min={0} max={60} value={tiempoEspera} onChange={e => setTiempoEspera(e.target.value)} className={`${inputCls} max-w-[120px]`} />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Si el cliente manda varios mensajes seguidos (ej. 2 fotos para &quot;ambas caras&quot; de la cédula), el agente espera este tiempo tras el último mensaje antes de responder — así no contesta a la mitad de lo que el cliente está enviando. 8 segundos es un buen punto de partida.
             </p>
           </div>
           <div>

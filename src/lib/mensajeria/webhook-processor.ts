@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToTenant, usuariosConNotificacionesMensajes } from './push'
+import { obtenerConfigAgenteActivo } from '@/lib/ia/llamarAgente'
 import { buscarOCrearCliente } from '@/lib/clientes/buscarOCrearCliente'
 import { uploadToDrive, getOrCreateDriveSubfolder } from '@/lib/drive'
 import { decrypt } from '@/lib/crypto'
@@ -338,9 +339,10 @@ async function procesarMensajeIndividual(
   }
 
   const descarga = mediaId ? await descargarMediaMeta(supabase, tenantId, mediaId) : null
+  const { analizaImagenes } = await obtenerConfigAgenteActivo(tenantId)
   const [persistido, analisisImagen] = await Promise.all([
     descarga ? persistirEnDrive(supabase, tenantId, resolvedClienteId, descarga.buffer, descarga.mimeType) : Promise.resolve(null),
-    descarga && tipo === 'imagen' ? analizarImagenChat(tenantId, descarga.buffer, descarga.mimeType) : Promise.resolve(null),
+    descarga && tipo === 'imagen' && analizaImagenes ? analizarImagenChat(tenantId, descarga.buffer, descarga.mimeType) : Promise.resolve(null),
   ])
 
   // El análisis se guarda DENTRO del contenido del mensaje (no solo como nota

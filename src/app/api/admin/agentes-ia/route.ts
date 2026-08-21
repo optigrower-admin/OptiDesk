@@ -21,7 +21,7 @@ export async function GET() {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('agentes_ia')
-    .select('id, nombre, descripcion, proveedor, modelo, integracion_ia_id, herramientas_habilitadas, activo, created_at, prompt_sistema, instrucciones, respuesta_multimensaje')
+    .select('id, nombre, descripcion, proveedor, modelo, integracion_ia_id, herramientas_habilitadas, activo, created_at, prompt_sistema, instrucciones, respuesta_multimensaje, analiza_imagenes, tiempo_espera_mensajes_seg')
     .eq('tenant_id', perfil.tenantId)
     .order('created_at', { ascending: false })
 
@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     integracion_ia_id?: string | null; herramientas_habilitadas?: string[]
     temperatura?: number; max_tokens?: number; modelo?: string | null
     respuesta_multimensaje?: boolean
+    analiza_imagenes?: boolean; tiempo_espera_mensajes_seg?: number
   } | null
   if (!body?.nombre?.trim()) return NextResponse.json({ error: 'Falta el nombre del agente' }, { status: 400 })
   if (!body.integracion_ia_id) return NextResponse.json({ error: 'Selecciona qué integración de IA va a usar este agente' }, { status: 400 })
@@ -60,6 +61,8 @@ export async function POST(req: NextRequest) {
     instrucciones: body.instrucciones?.trim() || null,
     herramientas_habilitadas: herramientas,
     respuesta_multimensaje: body.respuesta_multimensaje ?? false,
+    analiza_imagenes: body.analiza_imagenes ?? true,
+    tiempo_espera_mensajes_seg: body.tiempo_espera_mensajes_seg ?? 8,
     temperatura: body.temperatura ?? 0.7,
     max_tokens: body.max_tokens ?? 800,
     activo: true,

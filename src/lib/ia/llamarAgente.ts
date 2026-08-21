@@ -47,6 +47,26 @@ interface AgenteRow {
   integracion_ia_id: string | null
   herramientas_habilitadas: string[] | null
   respuesta_multimensaje: boolean | null
+  analiza_imagenes: boolean | null
+  tiempo_espera_mensajes_seg: number | null
+}
+
+// Config compartida por webhook-processor.ts (¿analiza fotos?) y
+// flow-executor.ts (¿cuánto espera antes de responder?) — se toma del
+// agente activo más reciente del tenant. La mayoría de tenants tienen un
+// solo agente conversacional, así que esto cubre el caso normal sin
+// necesitar saber de antemano qué flujo/nodo va a correr.
+export async function obtenerConfigAgenteActivo(tenantId: string): Promise<{ analizaImagenes: boolean; esperaSegundos: number }> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('agentes_ia')
+    .select('analiza_imagenes, tiempo_espera_mensajes_seg')
+    .eq('tenant_id', tenantId).eq('activo', true)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  return {
+    analizaImagenes: data?.analiza_imagenes ?? true,
+    esperaSegundos: data?.tiempo_espera_mensajes_seg ?? 8,
+  }
 }
 
 // Instrucción condicional — solo se agrega si el agente tiene activado

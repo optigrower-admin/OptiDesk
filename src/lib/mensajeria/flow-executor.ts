@@ -37,7 +37,9 @@ export async function iniciarFlujoParaConversacion(
   // propia espera) es la que continúa. No aplica a triggers manuales
   // (flujoId explícito, ej. botón "Iniciar flujo" en Bandeja).
   if (!flujoId) {
-    const ESPERA_DEBOUNCE_MS = 8000
+    const { obtenerConfigAgenteActivo } = await import('@/lib/ia/llamarAgente')
+    const { esperaSegundos } = await obtenerConfigAgenteActivo(tenantId)
+    const ESPERA_DEBOUNCE_MS = esperaSegundos * 1000
     const { data: ultimoAlEntrar } = await supabase
       .from('mensajes').select('id')
       .eq('conversacion_id', conversacionId).eq('direccion', 'entrante')
