@@ -49,11 +49,23 @@ export default function MultimediaTab({ clienteId }: Props) {
 
   useEffect(() => { cargar() }, [cargar])
 
+  // Enlace para "abrir" el archivo (a dónde lleva el clic).
   function urlReal(m: Media): string | null {
     if (!m.media_url) return null
     return m.media_url.startsWith('meta-media://')
       ? `/api/admin/mensajes/meta-media/${m.media_url.slice('meta-media://'.length)}`
       : m.media_url
+  }
+
+  // Para mostrar la miniatura de una imagen guardada en Drive hace falta un
+  // formato distinto al link de "ver" (que abre el visor de Drive, no sirve
+  // como <img src>) — Drive expone las imágenes públicas ("cualquiera con el
+  // enlace") también en este formato uc?export=view.
+  function urlMiniatura(m: Media): string | null {
+    const url = urlReal(m)
+    if (!url) return null
+    const driveId = url.match(/drive\.google\.com\/file\/d\/([^/]+)/)?.[1]
+    return driveId ? `https://drive.google.com/uc?export=view&id=${driveId}` : url
   }
 
   const filtrados = filtro === 'todos' ? media : media.filter(m => m.tipo === filtro)
@@ -91,7 +103,7 @@ export default function MultimediaTab({ clienteId }: Props) {
               className={`block rounded-lg border border-gray-200 overflow-hidden bg-gray-50 ${!url ? 'pointer-events-none opacity-50' : 'hover:border-blue-300'}`}>
               {m.tipo === 'imagen' && url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={url} alt={m.contenido ?? 'Imagen'} className="w-full aspect-square object-cover" />
+                <img src={urlMiniatura(m) ?? url} alt={m.contenido ?? 'Imagen'} className="w-full aspect-square object-cover" />
               ) : (
                 <div className="w-full aspect-square flex items-center justify-center text-3xl">{ICONO[m.tipo] ?? '📎'}</div>
               )}

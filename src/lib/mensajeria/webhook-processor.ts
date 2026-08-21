@@ -1,28 +1,44 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToTenant } from './push'
 import { buscarOCrearCliente } from '@/lib/clientes/buscarOCrearCliente'
-import { uploadToR2, getSignedDownloadUrl } from '@/lib/r2'
+import { uploadToDrive, getOrCreateDriveSubfolder } from '@/lib/drive'
 import { decrypt } from '@/lib/crypto'
 import type { TriggerTipo } from '@/types/flujos'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
 
+function buildFolderName(nombre: string | null, celular: string | null): string {
+  const n = (nombre ?? 'cliente').replace(/[<>:"/\\|?*]/g, '_').trim() || 'cliente'
+  const c = (celular ?? '').replace(/\D/g, '')
+  return c ? `${n} - ${c}` : n
+}
+
 // Las fotos/documentos que el CLIENTE manda por WhatsApp llegan como un
 // media_id de Meta — si solo se guarda esa referencia (meta-media://id), el
 // archivo deja de ser accesible cuando Meta expira ese id (días, no meses).
 // Para no perderlos, se descargan una sola vez aquí (al llegar el webhook) y
-// se guardan en R2, igual que ya se hace con los archivos que el asesor
-// ENVÍA desde OptiDesk (ver enviar-media/route.ts). Si algo falla (token no
-// configurado, Meta no responde, etc.) se cae de vuelta al comportamiento
-// anterior — nunca se pierde el mensaje por esto.
+// se guardan en la MISMA carpeta de Google Drive del cliente que ya usa la
+// pestaña Archivos (tenants.ventas_drive_folder_id → subcarpeta por cliente
+// en clientes.drive_folder_id) — no en R2, para no gastar ese storage. Si
+// Drive no está conectado, o el cliente aún no está identificado, o algo
+// falla, se cae de vuelta a la referencia efímera de Meta — nunca se pierde
+// el mensaje por esto.
 async function persistirMediaEntrante(
-  supabase: SupabaseAdmin, tenantId: string, mediaId: string
+  supabase: SupabaseAdmin, tenantId: string, mediaId: string, clienteId: string | null
 ): Promise<{ url: string; mimeType: string | null } | null> {
   try {
-    const { data: cfg } = await supabase
-      .from('config_meta').select('wa_access_token_enc').eq('tenant_id', tenantId).maybeSingle()
-    if (!cfg?.wa_access_token_enc) return null
-    let token = cfg.wa_access_token_enc
+    if (!clienteId) return null
+
+    const [{ data: cfgMeta }, { data: tenant }, { data: cliente }] = await Promise.all([
+      supabase.from('config_meta').select('wa_access_token_enc').eq('tenant_id', tenantId).maybeSingle(),
+      supabase.from('tenants').select('ventas_drive_folder_id, google_refresh_token').eq('id', tenantId).single(),
+      supabase.from('clientes').select('nombre, celular, drive_folder_id').eq('id', clienteId).maybeSingle(),
+    ])
+    if (!cfgMeta?.wa_access_token_enc) return null
+    const { ventas_drive_folder_id, google_refresh_token } = tenant ?? {}
+    if (!ventas_drive_folder_id || !google_refresh_token || !cliente) return null
+
+    let token = cfgMeta.wa_access_token_enc
     try { token = decrypt(token) } catch { /* dev — token sin encriptar */ }
 
     const metaInfo = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
@@ -38,10 +54,16 @@ async function persistirMediaEntrante(
 
     const mimeType = info.mime_type ?? 'application/octet-stream'
     const ext = mimeType.split('/')[1]?.split(';')[0] ?? 'bin'
-    const r2Key = `mensajes/${tenantId}/${Date.now()}-${mediaId}.${ext}`
-    await uploadToR2(r2Key, buffer, mimeType)
-    const url = await getSignedDownloadUrl(r2Key, 60 * 60 * 24 * 7)
-    return { url, mimeType }
+
+    let subfolderId = cliente.drive_folder_id as string | null
+    if (!subfolderId) {
+      const folderName = buildFolderName(cliente.nombre, cliente.celular)
+      subfolderId = await getOrCreateDriveSubfolder(ventas_drive_folder_id, folderName, google_refresh_token)
+      await supabase.from('clientes').update({ drive_folder_id: subfolderId }).eq('id', clienteId)
+    }
+
+    const { webViewLink } = await uploadToDrive(`chat-${Date.now()}.${ext}`, mimeType, buffer, subfolderId, google_refresh_token)
+    return { url: webViewLink, mimeType }
   } catch (e) {
     console.error('[webhook-processor] no se pudo persistir media entrante:', e)
     return null
@@ -287,7 +309,7 @@ async function procesarMensajeIndividual(
     }
   }
 
-  const mediaPersistida = mediaId ? await persistirMediaEntrante(supabase, tenantId, mediaId) : null
+  const mediaPersistida = mediaId ? await persistirMediaEntrante(supabase, tenantId, mediaId, resolvedClienteId) : null
 
   const now = new Date().toISOString()
   await supabase.from('mensajes').insert({

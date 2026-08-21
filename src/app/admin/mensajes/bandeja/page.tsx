@@ -1174,6 +1174,11 @@ export default function BandejaPage() {
                             const mediaSrc = rawUrl?.startsWith('meta-media://')
                               ? `/api/admin/mensajes/meta-media/${rawUrl.slice('meta-media://'.length)}`
                               : rawUrl ?? null
+                            // Las fotos que se guardan en Drive quedan como link de "ver"
+                            // (drive.google.com/file/d/ID/view) — eso no sirve como <img src>,
+                            // hace falta este formato para que la miniatura sí cargue.
+                            const driveId = mediaSrc?.match(/drive\.google\.com\/file\/d\/([^/]+)/)?.[1]
+                            const imgSrc = driveId ? `https://drive.google.com/uc?export=view&id=${driveId}` : mediaSrc
 
                             if (msg.tipo === 'imagen' && mediaSrc) {
                               return (
@@ -1181,7 +1186,7 @@ export default function BandejaPage() {
                                   <a href={mediaSrc} target="_blank" rel="noopener noreferrer">
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img
-                                      src={mediaSrc}
+                                      src={imgSrc ?? mediaSrc}
                                       alt="imagen"
                                       className="max-w-full rounded-lg max-h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                                       onError={(e) => {
