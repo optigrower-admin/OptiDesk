@@ -277,6 +277,15 @@ export default function BandejaPage() {
     }
   }, [])
 
+  // Preferencia del usuario actual (Config Ventas → Notificaciones de
+  // mensajes nuevos) — si la tiene apagada, tampoco le sale este popup.
+  const [recibeNotificaciones, setRecibeNotificaciones] = useState(true)
+  useEffect(() => {
+    if (!profile?.id) return
+    supabase.from('usuarios').select('recibe_notificaciones_mensajes').eq('id', profile.id).maybeSingle()
+      .then(({ data }) => setRecibeNotificaciones(data?.recibe_notificaciones_mensajes ?? true))
+  }, [profile?.id])
+
   const notificar = useCallback((convId: string, texto: string) => {
     if (!('Notification' in window) || Notification.permission !== 'granted') return
     const conv = convsPrevRef.current.find(c => c.id === convId)
@@ -314,14 +323,20 @@ export default function BandejaPage() {
     const nuevas: Conversacion[] = ((data ?? []) as (Omit<Conversacion, 'clientes'> & { clientes: unknown })[])
       .map(c => ({ ...c, clientes: normalizeClientes(c.clientes) }))
 
-    // Detectar mensajes nuevos para notificación
-    if (convsPrevRef.current.length > 0) {
+    // Detectar mensajes nuevos para notificación — no avisa (ni suena) si la
+    // conversación la está manejando el bot (automatizado): mientras el
+    // agente IA responde solo, nadie necesita que le suene el popup por
+    // cada mensaje. Tampoco avisa si este usuario apagó sus notificaciones
+    // en Config Ventas → Notificaciones de mensajes nuevos.
+    if (convsPrevRef.current.length > 0 && recibeNotificaciones) {
       for (const conv of nuevas) {
         const prev = convsPrevRef.current.find(c => c.id === conv.id)
+        const automatizado = conv.clientes?.[0]?.automatizado === true
         if (
           conv.ultimo_mensaje_direccion === 'entrante' &&
           conv.no_leidos_count > 0 &&
           conv.id !== selectedId &&
+          !automatizado &&
           (!prev || prev.ultimo_mensaje_at !== conv.ultimo_mensaje_at)
         ) {
           if (document.hidden || !document.hasFocus()) {
