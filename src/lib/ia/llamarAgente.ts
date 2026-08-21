@@ -16,7 +16,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { decrypt } from '@/lib/crypto'
 import { obtenerContextoConversacion } from '@/lib/mensajeria/historial'
 import { CATALOGO_HERRAMIENTAS, type CtxHerramienta, type HerramientaDef } from './herramientasAgente'
-import { SEPARADOR_MULTIMENSAJE } from '@/lib/mensajeria/formatoWhatsapp'
 
 type Supa = ReturnType<typeof createAdminClient>
 
@@ -37,6 +36,7 @@ export interface ResultadoAgente {
   ok: boolean
   texto: string | null
   error?: string
+  respuestaMultimensaje?: boolean
 }
 
 interface AgenteRow {
@@ -51,9 +51,13 @@ interface AgenteRow {
 
 // Instrucción condicional — solo se agrega si el agente tiene activado
 // "responder en varios mensajes" en su configuración (ver ModalEditarAgente).
+// No se le pide un separador literal (los modelos no lo escriben de forma
+// confiable) — se apoya en algo que la IA ya hace naturalmente: separar
+// ideas distintas con una línea en blanco. El código (más abajo, en
+// flow-executor.ts) parte la respuesta por esas líneas en blanco y manda
+// cada parte como su propio mensaje de WhatsApp.
 const INSTRUCCION_MULTIMENSAJE =
-  'Formato de respuesta: en vez de un solo mensaje largo, divide tu respuesta en 2 a 4 mensajes cortos e independientes, como los mandaría una persona real por WhatsApp uno detrás del otro. ' +
-  `Separa cada mensaje con la línea "${SEPARADOR_MULTIMENSAJE}" sola, sin nada más en esa línea. Si tu respuesta ya es corta y cabe naturalmente en un solo mensaje, no uses el separador — no lo fuerces.`
+  'Formato de respuesta: en vez de un solo mensaje largo, escribe tu respuesta como 2 a 4 mensajes cortos e independientes, cada uno separado por una línea en blanco — cada bloque se enviará como un mensaje de WhatsApp aparte, uno detrás del otro, como lo haría una persona real. Si tu respuesta ya es corta y cabe naturalmente en un solo mensaje, escribe un solo bloque sin línea en blanco — no lo fuerces.'
 
 interface ProveedorResuelto { proveedor: string; apiKey: string; modelo: string }
 
@@ -274,7 +278,7 @@ export async function llamarAgente(params: LlamarAgenteParams): Promise<Resultad
       tenantId, agenteId, conversacionId, mensajeEntrada: mensajeCliente,
       respuestaTexto: textoFinal, exitoso: true, duracionMs: Date.now() - inicioTotal,
     })
-    return { ok: true, texto: textoFinal }
+    return { ok: true, texto: textoFinal, respuestaMultimensaje: !!ag.respuesta_multimensaje }
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Error desconocido llamando al agente'
     await registrarEjecucion(supabase, {

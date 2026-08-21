@@ -602,7 +602,7 @@ export default function ConfigVentasPage() {
   const [editAgente, setEditAgente]           = useState<string | null>(null)
 
   // ── Asesores asignables ───────────────────────────────────────────────────
-  type UsuarioEquipo = { id: string; nombre: string | null; email: string | null; es_asesor: boolean }
+  type UsuarioEquipo = { id: string; nombre: string | null; email: string | null; es_asesor: boolean; recibe_notificaciones_mensajes: boolean }
   const [usuariosEquipo, setUsuariosEquipo]               = useState<UsuarioEquipo[]>([])
   const [togglingAsesor, setTogglingAsesor]               = useState<string | null>(null)
 
@@ -788,7 +788,7 @@ export default function ConfigVentasPage() {
     // Usuarios del equipo (para configurar quiénes son asesores asignables en ventas)
     const { data: equipo } = await supabase
       .from('usuarios')
-      .select('id, nombre, email, es_asesor')
+      .select('id, nombre, email, es_asesor, recibe_notificaciones_mensajes')
       .eq('tenant_id', profile.tenant_id)
       .order('nombre')
     setUsuariosEquipo((equipo ?? []).map(u => ({
@@ -796,6 +796,7 @@ export default function ConfigVentasPage() {
       nombre: u.nombre as string | null,
       email: u.email as string | null,
       es_asesor: (u.es_asesor ?? false) as boolean,
+      recibe_notificaciones_mensajes: (u.recibe_notificaciones_mensajes ?? true) as boolean,
     })))
 
     setLoading(false)
@@ -942,6 +943,15 @@ export default function ConfigVentasPage() {
     await supabase.from('usuarios').update({ es_asesor: !actual }).eq('id', id)
     setUsuariosEquipo(p => p.map(u => u.id === id ? { ...u, es_asesor: !actual } : u))
     setTogglingAsesor(null)
+  }
+
+  /* ── Notificaciones de mensajes nuevos ── */
+  const [togglingNotif, setTogglingNotif] = useState<string | null>(null)
+  async function toggleNotificaciones(id: string, actual: boolean) {
+    setTogglingNotif(id)
+    await supabase.from('usuarios').update({ recibe_notificaciones_mensajes: !actual }).eq('id', id)
+    setUsuariosEquipo(p => p.map(u => u.id === id ? { ...u, recibe_notificaciones_mensajes: !actual } : u))
+    setTogglingNotif(null)
   }
 
   /* ── Motos ── */
@@ -2099,6 +2109,45 @@ export default function ConfigVentasPage() {
                   >
                     <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                       u.es_asesor ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </SeccionColapsable>
+
+      {/* ── Notificaciones de mensajes nuevos ── */}
+      <SeccionColapsable titulo="Notificaciones de mensajes nuevos" icono="🔔" defaultOpen={false}>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-gray-400">
+            Activa o desactiva a quién le llega la notificación (abajo a la derecha) cuando entra un mensaje nuevo de WhatsApp/Messenger/Instagram. No se notifica mientras el Agente IA está manejando la conversación — la notificación llega apenas se asigna a un humano.
+          </p>
+          {usuariosEquipo.length === 0 ? (
+            <p className="text-sm text-gray-400">Cargando usuarios...</p>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {usuariosEquipo.map(u => (
+                <div key={u.id} className="flex items-center justify-between py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {u.nombre ?? u.email ?? 'Usuario sin nombre'}
+                    </p>
+                    {u.nombre && u.email && (
+                      <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => toggleNotificaciones(u.id, u.recibe_notificaciones_mensajes)}
+                    disabled={togglingNotif === u.id}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+                      u.recibe_notificaciones_mensajes ? 'bg-blue-600' : 'bg-gray-200'
+                    }`}
+                    title={u.recibe_notificaciones_mensajes ? 'Desactivar notificaciones de mensajes' : 'Activar notificaciones de mensajes'}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      u.recibe_notificaciones_mensajes ? 'translate-x-5' : 'translate-x-0'
                     }`} />
                   </button>
                 </div>

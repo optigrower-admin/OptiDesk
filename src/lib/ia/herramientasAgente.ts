@@ -229,13 +229,14 @@ const escalarAHumano: HerramientaDef = {
     const motivo = String(params.motivo ?? 'Solicitado por el cliente').slice(0, 300)
 
     const { data: asesores } = await ctx.supabase
-      .from('usuarios').select('id').eq('tenant_id', ctx.tenantId).in('rol', ['admin', 'gerencia', 'asesor']).eq('activo', true)
+      .from('usuarios').select('id, nombre').eq('tenant_id', ctx.tenantId).in('rol', ['admin', 'gerencia', 'asesor']).eq('activo', true)
     let seleccionado: string | null = null
+    let seleccionadoNombre: string | null = null
     if (asesores?.length) {
       let menorCarga = Infinity
       for (const a of asesores) {
         const { count } = await ctx.supabase.from('conversaciones').select('id', { count: 'exact', head: true }).eq('assigned_to', a.id).eq('estado', 'abierta')
-        if ((count ?? 0) < menorCarga) { menorCarga = count ?? 0; seleccionado = a.id }
+        if ((count ?? 0) < menorCarga) { menorCarga = count ?? 0; seleccionado = a.id; seleccionadoNombre = a.nombre }
       }
     }
 
@@ -262,6 +263,16 @@ const escalarAHumano: HerramientaDef = {
       tipo: 'nota_interna', contenido: `🤖 Agente escaló a humano — motivo: ${motivo}`,
       enviado_por: null, estado_envio: 'enviado', leido_por_asesor: false,
     })
+    // Notificación puntual del hand-off (no del mensaje en sí, ver
+    // webhook-processor.ts) — al asesor asignado, y solo si tiene esa
+    // notificación activada en Config Ventas.
+    if (seleccionado) {
+      const { sendPushToTenant, usuariosConNotificacionesMensajes } = await import('@/lib/mensajeria/push')
+      const usuariosActivos = await usuariosConNotificacionesMensajes(ctx.tenantId)
+      if (usuariosActivos.includes(seleccionado)) {
+        sendPushToTenant(ctx.tenantId, '🙋 Conversación asignada', `Conversación asignada a ${seleccionadoNombre ?? 'un asesor'}`, 'asignacion', [seleccionado]).catch(() => {})
+      }
+    }
     return { ok: true, resultado: { escalado: true, asesor_asignado: seleccionado } }
   },
 }

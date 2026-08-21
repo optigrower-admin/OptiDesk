@@ -11,20 +11,37 @@ function initVapid() {
   vapidSet = true
 }
 
+// Usuarios del tenant que tienen activas las notificaciones de mensajes
+// nuevos (configurable en Config Ventas) — por defecto todos las tienen
+// activas hasta que gerencia apague la de alguien específico.
+export async function usuariosConNotificacionesMensajes(tenantId: string): Promise<string[]> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('usuarios').select('id')
+    .eq('tenant_id', tenantId).eq('recibe_notificaciones_mensajes', true)
+  return (data ?? []).map(u => u.id as string)
+}
+
 export async function sendPushToTenant(
   tenantId: string,
   title: string,
   body: string,
-  tag = 'mensaje'
+  tag = 'mensaje',
+  soloUsuarios?: string[], // si viene, solo se notifica a estos user_id (ver notas-mensajes/asignación)
 ) {
   initVapid()
   if (!vapidSet) return // VAPID no configurado — sin push
 
   const admin = createAdminClient()
-  const { data: subs } = await admin
+  let query = admin
     .from('push_subscriptions')
     .select('endpoint, p256dh, auth')
     .eq('tenant_id', tenantId)
+  if (soloUsuarios) {
+    if (soloUsuarios.length === 0) return
+    query = query.in('user_id', soloUsuarios)
+  }
+  const { data: subs } = await query
 
   if (!subs?.length) return
 

@@ -9,7 +9,7 @@ import { decrypt } from '@/lib/crypto'
 import type { Node, Edge } from 'reactflow'
 import type { ContextoEjecucion, TriggerTipo } from '@/types/flujos'
 import { obtenerContextoConversacion } from './historial'
-import { sanitizarFormatoWhatsapp, dividirEnMensajes } from './formatoWhatsapp'
+import { sanitizarFormatoWhatsapp, dividirEnMensajes, SEPARADOR_MULTIMENSAJE } from './formatoWhatsapp'
 
 type Supa = ReturnType<typeof createAdminClient>
 
@@ -778,6 +778,15 @@ async function procesarNodo(
               })
               if (!resultado.ok) advertencia = resultado.error ?? 'Error desconocido'
               salida = resultado.texto
+              // El agente escribe sus mensajes separados por línea en blanco de
+              // forma natural (se lo pide el prompt cuando tiene "responder en
+              // varios mensajes" activo) — se re-empaquetan con el separador
+              // interno para que el nodo "Mensaje" los mande como bubbles
+              // separados en vez de un solo párrafo largo.
+              if (resultado.respuestaMultimensaje && salida) {
+                const partes = salida.split(/\n\s*\n+/).map(p => p.trim()).filter(Boolean)
+                if (partes.length > 1) salida = partes.join(SEPARADOR_MULTIMENSAJE)
+              }
             } catch (e) {
               advertencia = e instanceof Error ? e.message : 'Error desconocido'
               console.error('[flow-executor] Error accion/openai (agente):', e)

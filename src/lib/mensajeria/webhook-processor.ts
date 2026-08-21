@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendPushToTenant } from './push'
+import { sendPushToTenant, usuariosConNotificacionesMensajes } from './push'
 import { buscarOCrearCliente } from '@/lib/clientes/buscarOCrearCliente'
 import { uploadToDrive, getOrCreateDriveSubfolder } from '@/lib/drive'
 import { decrypt } from '@/lib/crypto'
@@ -322,10 +322,21 @@ async function procesarMensajeIndividual(
     leido_por_asesor: false,
   })
 
-  // Push notification cuando Chrome está cerrado o en background
+  // Push notification cuando Chrome está cerrado o en background — solo si
+  // la conversación NO la está llevando el bot (automatizado): mientras el
+  // agente IA la maneja, nadie necesita que le suene el celular por cada
+  // mensaje; la notificación real llega cuando se ASIGNA a un humano (ver
+  // escalar_a_humano en herramientasAgente.ts).
   if (contenido) {
-    const remitente = canalContactId
-    sendPushToTenant(tenantId, `📱 ${remitente}`, contenido.slice(0, 100)).catch(() => {})
+    const { data: clienteAuto } = resolvedClienteId
+      ? await supabase.from('clientes').select('automatizado').eq('id', resolvedClienteId).maybeSingle()
+      : { data: null }
+    if (!clienteAuto?.automatizado) {
+      const remitente = canalContactId
+      usuariosConNotificacionesMensajes(tenantId)
+        .then(usuarios => sendPushToTenant(tenantId, `📱 ${remitente}`, contenido.slice(0, 100), 'mensaje', usuarios))
+        .catch(() => {})
+    }
   }
 
   await supabase.from('conversaciones').update({
