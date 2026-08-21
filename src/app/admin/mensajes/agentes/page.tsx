@@ -16,6 +16,7 @@ interface Agente {
   created_at: string
   prompt_sistema: string | null
   instrucciones: string | null
+  respuesta_multimensaje: boolean | null
 }
 interface Integracion { id: string; proveedor: string; modelo_default: string | null; activo: boolean }
 interface HerramientaInfo { nombre: string; descripcion: string }
@@ -242,6 +243,7 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
   const [integracionId, setIntegracionId] = useState(agente?.integracion_ia_id ?? integraciones[0]?.id ?? '')
   const [modelo, setModelo] = useState(agente?.modelo ?? '')
   const [herramientas, setHerramientas] = useState<Set<string>>(new Set(agente?.herramientas_habilitadas ?? []))
+  const [respuestaMultimensaje, setRespuestaMultimensaje] = useState(agente?.respuesta_multimensaje ?? false)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
@@ -261,6 +263,7 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
     const body = {
       nombre, descripcion, prompt_sistema: promptSistema, instrucciones,
       integracion_ia_id: integracionId, modelo: modelo || null, herramientas_habilitadas: [...herramientas],
+      respuesta_multimensaje: respuestaMultimensaje,
     }
     const r = agente
       ? await fetch(`/api/admin/agentes-ia/${agente.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -320,6 +323,22 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
             <textarea value={instrucciones} onChange={e => setInstrucciones(e.target.value)} rows={3}
               placeholder="Ej: Nunca discutas precios de la competencia. Si preguntan por repuestos, deriva a Servicio Técnico."
               className={`${inputCls} resize-none`} />
+          </div>
+          <div>
+            <label className={labelCls}>Estilo de respuesta</label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setRespuestaMultimensaje(false)}
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${!respuestaMultimensaje ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}`}>
+                Un solo mensaje
+              </button>
+              <button type="button" onClick={() => setRespuestaMultimensaje(true)}
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${respuestaMultimensaje ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}`}>
+                Varios mensajes (más natural)
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">
+              &quot;Varios mensajes&quot; deja que el agente parta respuestas largas en 2-4 mensajes de WhatsApp seguidos, como escribiría una persona real, en vez de un solo párrafo largo.
+            </p>
           </div>
           <div>
             <label className={labelCls}>Herramientas que puede usar</label>

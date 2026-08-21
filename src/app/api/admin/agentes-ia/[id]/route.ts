@@ -23,6 +23,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     nombre?: string; descripcion?: string | null; prompt_sistema?: string | null; instrucciones?: string | null
     integracion_ia_id?: string | null; herramientas_habilitadas?: string[]
     temperatura?: number; max_tokens?: number; activo?: boolean; modelo?: string | null
+    respuesta_multimensaje?: boolean
   } | null
   if (!body) return NextResponse.json({ error: 'Cuerpo inválido' }, { status: 400 })
 
@@ -37,6 +38,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (body.temperatura !== undefined) update.temperatura = body.temperatura
   if (body.max_tokens !== undefined) update.max_tokens = body.max_tokens
   if (body.activo !== undefined) update.activo = body.activo
+  if (body.respuesta_multimensaje !== undefined) update.respuesta_multimensaje = body.respuesta_multimensaje
 
   const admin = createAdminClient()
   const { error } = await admin.from('agentes_ia').update(update).eq('id', params.id).eq('tenant_id', perfil.tenantId)

@@ -1,4 +1,5 @@
 import type { createAdminClient } from '@/lib/supabase/admin'
+import { sanitizarFormatoWhatsapp } from './formatoWhatsapp'
 
 export interface CfgMeta {
   wa_phone_number_id: string
@@ -38,7 +39,7 @@ export async function enviarWADirecto(
         messaging_product: 'whatsapp',
         to,
         type: 'text',
-        text: { body: text, preview_url: false },
+        text: { body: sanitizarFormatoWhatsapp(text), preview_url: false },
       }),
     }
   )

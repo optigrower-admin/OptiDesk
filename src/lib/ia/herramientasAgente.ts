@@ -143,7 +143,7 @@ const iniciarEstudioCredito: HerramientaDef = {
 // ─── consultar_inventario (solo lectura) ──────────────────────────────────────
 const consultarInventario: HerramientaDef = {
   nombre: 'consultar_inventario',
-  descripcion: 'Consulta si un modelo o categoría de moto está activo en el catálogo real de MotoSpace. Solo lectura — nunca inventes disponibilidad, usa esta herramienta. IMPORTANTE: el catálogo no tiene conteo de unidades, solo indica si el modelo está activo para la venta.',
+  descripcion: 'Consulta si un modelo o categoría de moto está activo en el catálogo real de MotoSpace, y su precio CON papeles/matrícula incluidos (precio_con_papeles) — ese es el único precio que se le debe dar al cliente, nunca el precio sin papeles. Solo lectura — nunca inventes disponibilidad ni precio, usa esta herramienta. IMPORTANTE: el catálogo no tiene conteo de unidades, solo indica si el modelo está activo para la venta.',
   parametros: {
     type: 'object',
     properties: {
@@ -156,7 +156,7 @@ const consultarInventario: HerramientaDef = {
     if (!texto) return { ok: false, error: 'Falta el modelo o categoría a buscar' }
     const { data, error } = await ctx.supabase
       .from('motos_catalogo')
-      .select('referencia, precio, cilindraje, activa')
+      .select('referencia, precio, costo_documentos, cilindraje, activa')
       .eq('tenant_id', ctx.tenantId)
       .ilike('referencia', `%${texto}%`)
       .limit(5)
@@ -165,8 +165,13 @@ const consultarInventario: HerramientaDef = {
     return {
       ok: true,
       resultado: {
-        encontrados: data.map(m => ({ referencia: m.referencia, precio: m.precio, cilindraje: m.cilindraje, activo: m.activa })),
-        nota: 'No hay conteo de unidades disponibles en el sistema — solo confirma si el modelo está activo para la venta.',
+        encontrados: data.map(m => ({
+          referencia: m.referencia,
+          precio_con_papeles: m.precio + (m.costo_documentos ?? 0),
+          cilindraje: m.cilindraje,
+          activo: m.activa,
+        })),
+        nota: 'precio_con_papeles ya incluye matrícula/documentos — es el único precio que se le debe dar al cliente. No hay conteo de unidades disponibles en el sistema — solo confirma si el modelo está activo para la venta.',
       },
     }
   },

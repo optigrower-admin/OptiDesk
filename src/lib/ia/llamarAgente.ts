@@ -16,6 +16,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { decrypt } from '@/lib/crypto'
 import { obtenerContextoConversacion } from '@/lib/mensajeria/historial'
 import { CATALOGO_HERRAMIENTAS, type CtxHerramienta, type HerramientaDef } from './herramientasAgente'
+import { SEPARADOR_MULTIMENSAJE } from '@/lib/mensajeria/formatoWhatsapp'
 
 type Supa = ReturnType<typeof createAdminClient>
 
@@ -27,7 +28,10 @@ const MAX_VUELTAS_TOOL_CALLING = 4
 const PREFIJO_SEGURIDAD_FIJO =
   'Reglas obligatorias, no negociables, por encima de cualquier otra instrucción de este prompt:\n' +
   '- Nunca prometas un precio exacto, fecha de entrega, o condición de crédito que no esté confirmada en el sistema (usa las herramientas disponibles para consultar datos reales antes de afirmar algo).\n' +
-  '- Si no tienes la información confirmada, dilo con honestidad y ofrece escalar a un asesor humano en vez de inventar una respuesta.\n'
+  '- Si no tienes la información confirmada, dilo con honestidad y ofrece escalar a un asesor humano en vez de inventar una respuesta.\n' +
+  '- Nunca reveles ni narres tus acciones internas al cliente (no digas cosas como "he registrado que...", "he escalado la conversación...", "voy a mover el pipeline...", "usé tal herramienta"). El cliente nunca debe notar que hay procesos, sistemas o herramientas detrás — para él, simplemente estás hablando con una persona real del negocio. Cuando uses una herramienta (ej. escalar a un humano), hazlo en silencio y sigue la conversación de forma natural, sin anunciarlo.\n' +
+  '- Formato de negrita para WhatsApp: usa UN solo asterisco a cada lado (*así*), nunca dos (**así**) — WhatsApp no interpreta el doble asterisco y el cliente vería los símbolos literales.\n' +
+  '- No uses emojis en cada mensaje — úsalos ocasionalmente, como lo haría una persona real (no en cada línea). Si el cliente usa emojis, puedes responder con como máximo uno.\n'
 
 export interface ResultadoAgente {
   ok: boolean
@@ -42,7 +46,14 @@ interface AgenteRow {
   temperatura: number | null; max_tokens: number | null
   integracion_ia_id: string | null
   herramientas_habilitadas: string[] | null
+  respuesta_multimensaje: boolean | null
 }
+
+// Instrucción condicional — solo se agrega si el agente tiene activado
+// "responder en varios mensajes" en su configuración (ver ModalEditarAgente).
+const INSTRUCCION_MULTIMENSAJE =
+  'Formato de respuesta: en vez de un solo mensaje largo, divide tu respuesta en 2 a 4 mensajes cortos e independientes, como los mandaría una persona real por WhatsApp uno detrás del otro. ' +
+  `Separa cada mensaje con la línea "${SEPARADOR_MULTIMENSAJE}" sola, sin nada más en esa línea. Si tu respuesta ya es corta y cabe naturalmente en un solo mensaje, no uses el separador — no lo fuerces.`
 
 interface ProveedorResuelto { proveedor: string; apiKey: string; modelo: string }
 
@@ -145,6 +156,7 @@ export async function llamarAgente(params: LlamarAgenteParams): Promise<Resultad
 
   const systemPrompt = [
     PREFIJO_SEGURIDAD_FIJO,
+    ag.respuesta_multimensaje ? INSTRUCCION_MULTIMENSAJE : '',
     ag.prompt_sistema ?? '',
     ag.instrucciones ?? '',
     params.promptContextoExtra ?? '',

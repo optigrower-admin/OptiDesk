@@ -9,6 +9,7 @@ import { decrypt } from '@/lib/crypto'
 import type { Node, Edge } from 'reactflow'
 import type { ContextoEjecucion, TriggerTipo } from '@/types/flujos'
 import { obtenerContextoConversacion } from './historial'
+import { sanitizarFormatoWhatsapp, dividirEnMensajes } from './formatoWhatsapp'
 
 type Supa = ReturnType<typeof createAdminClient>
 
@@ -374,10 +375,19 @@ async function procesarNodo(
       }
 
       const textoFinal = interpolarVariables(contenido, contexto)
-      const envio = await enviarMensajeDirecto(supabase, tenantId, convId, textoFinal, 'texto')
+      // Un agente configurado para "responder en varios mensajes" puede haber
+      // incluido el separador § — cada parte se manda como su propio mensaje
+      // de WhatsApp (con una pequeña pausa entre uno y otro), en vez de un
+      // solo mensaje largo con saltos de línea.
+      const partes = dividirEnMensajes(textoFinal)
+      let ultimoEnvio: { ok: boolean; canal?: string; error?: string } = { ok: true }
+      for (let i = 0; i < partes.length; i++) {
+        ultimoEnvio = await enviarMensajeDirecto(supabase, tenantId, convId, partes[i], 'texto')
+        if (i < partes.length - 1) await new Promise(r => setTimeout(r, 900))
+      }
       return {
         tipo: 'continuar', siguiente_nodo_id: getSiguienteNodo(edges, nodo.id),
-        advertencia: envio.ok ? undefined : `No se pudo entregar el mensaje por ${envio.canal ?? 'el canal'}: ${envio.error ?? 'error desconocido'}`,
+        advertencia: ultimoEnvio.ok ? undefined : `No se pudo entregar el mensaje por ${ultimoEnvio.canal ?? 'el canal'}: ${ultimoEnvio.error ?? 'error desconocido'}`,
       }
     }
 
@@ -1202,9 +1212,10 @@ export async function enviarMensajeDirecto(
   supabase: Supa,
   tenantId: string,
   convId: string,
-  texto: string,
+  textoOriginal: string,
   tipo: string
 ): Promise<{ ok: boolean; canal?: string; error?: string }> {
+  const texto = sanitizarFormatoWhatsapp(textoOriginal)
   const { data: conv } = await supabase
     .from('conversaciones')
     .select('canal, canal_contact_id')
