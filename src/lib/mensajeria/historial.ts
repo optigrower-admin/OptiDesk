@@ -106,3 +106,54 @@ export async function obtenerContextoConversacion(supabase: Supa, tenantId: stri
   bloques.push(`Mensajes más recientes:\n${formatearMensajes(recientesAsc)}`)
   return bloques.join('\n\n')
 }
+
+// ─── Resumen manual, a pedido de gerencia (pestaña Bandeja) ───────────────────
+// A diferencia de obtenerContextoConversacion (que solo llama a la IA cuando
+// la conversación supera el umbral automático), esta función SIEMPRE hace una
+// llamada a IA — es la acción explícita "Generar resumen" del botón, no el
+// funcionamiento normal del agente. Reutiliza el mismo resumen cacheado
+// (resumen_ia/resumen_hasta_at) como punto de partida para no re-resumir lo
+// que ya estaba cubierto.
+export async function generarResumenManual(supabase: Supa, tenantId: string, convId: string): Promise<{ ok: boolean; resumen?: string; error?: string }> {
+  const { data: conv } = await supabase
+    .from('conversaciones').select('resumen_ia, resumen_hasta_at').eq('id', convId).maybeSingle()
+  const resumenPrevio = (conv?.resumen_ia as string | null) ?? null
+  const resumenHastaAt = (conv?.resumen_hasta_at as string | null) ?? null
+
+  let query = supabase.from('mensajes').select('direccion, contenido, created_at')
+    .eq('conversacion_id', convId).order('created_at', { ascending: true })
+  if (resumenHastaAt) query = query.gt('created_at', resumenHastaAt)
+  const { data: pendientes } = await query
+
+  if (!pendientes?.length) {
+    if (resumenPrevio) return { ok: true, resumen: resumenPrevio }
+    return { ok: false, error: 'Todavía no hay mensajes en esta conversación para resumir.' }
+  }
+
+  const { data: integ } = await supabase
+    .from('integraciones_ia').select('proveedor').eq('tenant_id', tenantId).eq('activo', true)
+    .contains('uso_asignado', ['resumenes_conversacion']).limit(1).maybeSingle()
+  const proveedor = ((integ?.proveedor as string | undefined) ?? 'OPENAI').toUpperCase()
+  const modeloEconomico = MODELO_ECONOMICO_RESUMEN[proveedor] ?? 'gpt-4o-mini'
+
+  const prompt = [
+    'Actualiza el resumen de esta conversación de ventas entre un cliente y el negocio.',
+    'Sé breve pero conserva datos concretos: nombre, celular/email si se mencionaron, qué producto le interesa, forma de pago (contado/financiado), acuerdos o compromisos, y pendientes.',
+    resumenPrevio ? `\nResumen hasta ahora:\n${resumenPrevio}` : '\nAún no hay resumen previo — es el inicio de la conversación.',
+    `\nMensajes nuevos a incorporar:\n${formatearMensajes(pendientes as MensajeRow[])}`,
+    '\nEscribe el resumen actualizado completo (no solo lo nuevo):',
+  ].join('\n')
+
+  const resultado = await llamarIA(tenantId, 'resumenes_conversacion', prompt, {
+    proveedor: proveedor as 'OPENAI' | 'ANTHROPIC' | 'GOOGLE' | 'GROK', modelo: modeloEconomico,
+    maxTokens: 400, temperatura: 0.3,
+  })
+  if (!resultado.ok || !resultado.texto) return { ok: false, error: resultado.error ?? 'La IA no devolvió un resumen' }
+
+  const resumenFinal = resultado.texto.trim()
+  const ultimoPendiente = (pendientes as MensajeRow[])[pendientes.length - 1]
+  await supabase.from('conversaciones').update({
+    resumen_ia: resumenFinal, resumen_hasta_at: ultimoPendiente.created_at,
+  }).eq('id', convId)
+  return { ok: true, resumen: resumenFinal }
+}

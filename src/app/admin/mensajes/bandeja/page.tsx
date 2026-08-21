@@ -23,6 +23,8 @@ type Conversacion = {
   assigned_to: string | null
   cliente_id: string | null
   clientes: { id: string; nombre: string | null; automatizado?: boolean; bot_bloqueado?: boolean }[] | null
+  resumen_ia: string | null
+  resumen_hasta_at: string | null
 }
 
 type EjecucionFlujo = {
@@ -225,6 +227,9 @@ export default function BandejaPage() {
   const [flujos, setFlujos]                 = useState<{ id: string; nombre: string; trigger_tipo: string }[]>([])
   const [iniciandoFlujo, setIniciandoFlujo] = useState(false)
 
+  // Resumen de la conversación (IA) — botón "Generar resumen", solo gerencia
+  const [generandoResumen, setGenerandoResumen] = useState(false)
+
   // Ver flujo ejecutado (historial de pasos)
   const [flujoEjecutadoOpen, setFlujoEjecutadoOpen] = useState(false)
   const [ejecucionesConv, setEjecucionesConv] = useState<EjecucionFlujo[]>([])
@@ -297,7 +302,7 @@ export default function BandejaPage() {
     if (!silent) setLoadingConvs(true)
     let q = supabase
       .from('conversaciones')
-      .select('id, canal, canal_contact_id, estado, prioridad, no_leidos_count, ultimo_mensaje_at, ultimo_mensaje_texto, ultimo_mensaje_direccion, assigned_to, cliente_id, clientes(id, nombre, automatizado, bot_bloqueado)')
+      .select('id, canal, canal_contact_id, estado, prioridad, no_leidos_count, ultimo_mensaje_at, ultimo_mensaje_texto, ultimo_mensaje_direccion, assigned_to, cliente_id, clientes(id, nombre, automatizado, bot_bloqueado), resumen_ia, resumen_hasta_at')
       .eq('tenant_id', profile.tenant_id)
       .order('ultimo_mensaje_at', { ascending: false, nullsFirst: false })
       .limit(300)
@@ -703,6 +708,29 @@ export default function BandejaPage() {
       ? { ...c, clientes: (c.clientes ?? []).map(cl => cl.id === clienteId ? { ...cl, bot_bloqueado: false } : cl) }
       : c))
     toast('🤖 Bot reactivado')
+  }
+
+  // Genera (o actualiza) el resumen de la conversación — a diferencia del
+  // resumen que ya arma el agente/flujos automáticamente para su propio
+  // contexto, este SÍ hace una llamada a IA aparte, por eso queda limitado
+  // a gerencia y solo se dispara cuando el usuario le da al botón.
+  const generarResumen = async () => {
+    if (!selectedConv || generandoResumen) return
+    setGenerandoResumen(true)
+    try {
+      const res = await fetch('/api/admin/mensajes/resumen-conversacion', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversacion_id: selectedConv.id }),
+      })
+      const json = await res.json() as { resumen?: string; error?: string }
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo generar el resumen')
+      setConvs(cs => cs.map(c => c.id === selectedConv.id ? { ...c, resumen_ia: json.resumen ?? c.resumen_ia } : c))
+      toast('📝 Resumen generado')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Error al generar el resumen', false)
+    } finally {
+      setGenerandoResumen(false)
+    }
   }
 
   const verFlujoEjecutado = async () => {
@@ -1429,6 +1457,26 @@ export default function BandejaPage() {
                   <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO_COLORS[selectedConv.estado]}`}>
                     {selectedConv.estado}
                   </span>
+                </div>
+
+                {/* Resumen de la conversación (IA) — muestra el resumen que el
+                    agente/flujos ya arman por su cuenta (sin consulta extra);
+                    "Generar resumen" sí dispara una llamada a IA aparte. */}
+                <div className="pt-3 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Resumen (IA)</p>
+                  {selectedConv.resumen_ia ? (
+                    <p className="text-xs text-gray-700 whitespace-pre-wrap bg-violet-50 border border-violet-100 rounded-lg px-2.5 py-2">
+                      {selectedConv.resumen_ia}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-400">Aún no se ha generado un resumen de esta conversación.</p>
+                  )}
+                  {profile?.rol === 'gerencia' && (
+                    <button onClick={generarResumen} disabled={generandoResumen}
+                      className="mt-2 w-full py-1.5 border border-violet-300 hover:border-violet-500 text-violet-700 hover:text-violet-900 hover:bg-violet-50 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50">
+                      {generandoResumen ? 'Generando...' : (selectedConv.resumen_ia ? '↻ Actualizar resumen' : '📝 Generar resumen')}
+                    </button>
+                  )}
                 </div>
 
                 {/* Etiquetas */}
