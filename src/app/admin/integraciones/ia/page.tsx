@@ -15,6 +15,7 @@ const PROVEEDORES = [
 
 const USOS = [
   { key: 'resumenes_conversacion', label: 'Resúmenes de conversación' },
+  { key: 'analisis_imagen_chat', label: 'Analizar fotos que manda el cliente por chat' },
   { key: 'sugerencias_respuesta', label: 'Sugerencias de respuesta' },
   { key: 'clasificacion_intencion', label: 'Clasificar intención del mensaje' },
   { key: 'transcripcion_audio', label: 'Transcripción de audio a texto' },

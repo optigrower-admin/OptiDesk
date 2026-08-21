@@ -10,6 +10,9 @@ export interface OpcionesIA {
   voiceId?: string
   /** Fuerza un proveedor puntual cuando hay varios activos asignados al mismo uso. */
   proveedor?: ProveedorIA
+  /** Para análisis de imagen (visión) — solo soportado por OpenAI aquí. */
+  imagenBase64?: string
+  imagenMimeType?: string
 }
 
 export interface ResultadoIA {
@@ -115,12 +118,20 @@ async function llamarProveedor(
 
   if (proveedor === 'OPENAI' || proveedor === 'GROK') {
     const url = proveedor === 'OPENAI' ? 'https://api.openai.com/v1/chat/completions' : 'https://api.x.ai/v1/chat/completions'
+    // Análisis de imagen (visión) — solo OpenAI aquí; el content pasa de
+    // string plano a un array multi-parte con la imagen en base64.
+    const content = opciones.imagenBase64
+      ? [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:${opciones.imagenMimeType || 'image/jpeg'};base64,${opciones.imagenBase64}` } },
+        ]
+      : prompt
     const r = await fetch(url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: modelo || (proveedor === 'OPENAI' ? 'gpt-4o-mini' : 'grok-2-latest'),
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: 'user', content }],
         max_tokens: maxTokens,
         temperature: temperatura,
       }),

@@ -27,6 +27,32 @@ export async function iniciarFlujoParaConversacion(
   const supabase = createAdminClient()
   console.log(`[flow-executor] iniciarFlujo conv=${conversacionId} cliente=${clienteId ?? 'null'} trigger=${JSON.stringify(triggerTipo)}`)
 
+  // Debounce: si el cliente manda varios mensajes seguidos (ej. dos fotos
+  // para "cédula por ambas caras"), cada uno dispara su propia llamada al
+  // webhook — sin esto, el bot le respondería al primero mientras el
+  // segundo todavía va en camino ("no veo la foto" con la foto ya llegando).
+  // Se espera un poco y se revisa si sigue siendo el mensaje entrante más
+  // reciente de la conversación; si llegó uno más nuevo mientras se
+  // esperaba, esta invocación se cancela — la del mensaje más nuevo (con su
+  // propia espera) es la que continúa. No aplica a triggers manuales
+  // (flujoId explícito, ej. botón "Iniciar flujo" en Bandeja).
+  if (!flujoId) {
+    const ESPERA_DEBOUNCE_MS = 8000
+    const { data: ultimoAlEntrar } = await supabase
+      .from('mensajes').select('id')
+      .eq('conversacion_id', conversacionId).eq('direccion', 'entrante')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    await new Promise(r => setTimeout(r, ESPERA_DEBOUNCE_MS))
+    const { data: ultimoAlSalir } = await supabase
+      .from('mensajes').select('id')
+      .eq('conversacion_id', conversacionId).eq('direccion', 'entrante')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (ultimoAlSalir?.id !== ultimoAlEntrar?.id) {
+      console.log(`[flow-executor] llegó un mensaje más nuevo durante la espera — se cancela esta invocación`)
+      return
+    }
+  }
+
   // Verificar si esta conversación ya tiene una ejecución activa
   const { data: ejecucionExistente, error: errExist } = await supabase
     .from('flujo_ejecuciones')

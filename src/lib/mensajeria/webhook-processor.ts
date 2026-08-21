@@ -13,31 +13,15 @@ function buildFolderName(nombre: string | null, celular: string | null): string 
   return c ? `${n} - ${c}` : n
 }
 
-// Las fotos/documentos que el CLIENTE manda por WhatsApp llegan como un
-// media_id de Meta — si solo se guarda esa referencia (meta-media://id), el
-// archivo deja de ser accesible cuando Meta expira ese id (días, no meses).
-// Para no perderlos, se descargan una sola vez aquí (al llegar el webhook) y
-// se guardan en la MISMA carpeta de Google Drive del cliente que ya usa la
-// pestaña Archivos (tenants.ventas_drive_folder_id → subcarpeta por cliente
-// en clientes.drive_folder_id) — no en R2, para no gastar ese storage. Si
-// Drive no está conectado, o el cliente aún no está identificado, o algo
-// falla, se cae de vuelta a la referencia efímera de Meta — nunca se pierde
-// el mensaje por esto.
-async function persistirMediaEntrante(
-  supabase: SupabaseAdmin, tenantId: string, mediaId: string, clienteId: string | null
-): Promise<{ url: string; mimeType: string | null } | null> {
+// Descarga el binario real de un media_id de Meta (WhatsApp) — separado de
+// la persistencia en Drive para poder reutilizar el mismo buffer también
+// para el análisis de imagen (visión), sin descargarlo dos veces.
+async function descargarMediaMeta(
+  supabase: SupabaseAdmin, tenantId: string, mediaId: string
+): Promise<{ buffer: Buffer; mimeType: string } | null> {
   try {
-    if (!clienteId) return null
-
-    const [{ data: cfgMeta }, { data: tenant }, { data: cliente }] = await Promise.all([
-      supabase.from('config_meta').select('wa_access_token_enc').eq('tenant_id', tenantId).maybeSingle(),
-      supabase.from('tenants').select('ventas_drive_folder_id, google_refresh_token').eq('id', tenantId).single(),
-      supabase.from('clientes').select('nombre, celular, drive_folder_id').eq('id', clienteId).maybeSingle(),
-    ])
+    const { data: cfgMeta } = await supabase.from('config_meta').select('wa_access_token_enc').eq('tenant_id', tenantId).maybeSingle()
     if (!cfgMeta?.wa_access_token_enc) return null
-    const { ventas_drive_folder_id, google_refresh_token } = tenant ?? {}
-    if (!ventas_drive_folder_id || !google_refresh_token || !cliente) return null
-
     let token = cfgMeta.wa_access_token_enc
     try { token = decrypt(token) } catch { /* dev — token sin encriptar */ }
 
@@ -51,10 +35,35 @@ async function persistirMediaEntrante(
     const archivo = await fetch(info.url, { headers: { Authorization: `Bearer ${token}` } })
     if (!archivo.ok) return null
     const buffer = Buffer.from(await archivo.arrayBuffer())
+    return { buffer, mimeType: info.mime_type ?? 'application/octet-stream' }
+  } catch (e) {
+    console.error('[webhook-processor] no se pudo descargar media de Meta:', e)
+    return null
+  }
+}
 
-    const mimeType = info.mime_type ?? 'application/octet-stream'
+// Las fotos/documentos que el CLIENTE manda por WhatsApp llegan como un
+// media_id de Meta — si solo se guarda esa referencia (meta-media://id), el
+// archivo deja de ser accesible cuando Meta expira ese id (días, no meses).
+// Para no perderlos, se guardan en la MISMA carpeta de Google Drive del
+// cliente que ya usa la pestaña Archivos (tenants.ventas_drive_folder_id →
+// subcarpeta por cliente en clientes.drive_folder_id) — no en R2, para no
+// gastar ese storage. Si Drive no está conectado, o el cliente aún no está
+// identificado, o algo falla, se cae de vuelta a la referencia efímera de
+// Meta — nunca se pierde el mensaje por esto.
+async function persistirEnDrive(
+  supabase: SupabaseAdmin, tenantId: string, clienteId: string | null, buffer: Buffer, mimeType: string
+): Promise<{ url: string } | null> {
+  try {
+    if (!clienteId) return null
+    const [{ data: tenant }, { data: cliente }] = await Promise.all([
+      supabase.from('tenants').select('ventas_drive_folder_id, google_refresh_token').eq('id', tenantId).single(),
+      supabase.from('clientes').select('nombre, celular, drive_folder_id').eq('id', clienteId).maybeSingle(),
+    ])
+    const { ventas_drive_folder_id, google_refresh_token } = tenant ?? {}
+    if (!ventas_drive_folder_id || !google_refresh_token || !cliente) return null
+
     const ext = mimeType.split('/')[1]?.split(';')[0] ?? 'bin'
-
     let subfolderId = cliente.drive_folder_id as string | null
     if (!subfolderId) {
       const folderName = buildFolderName(cliente.nombre, cliente.celular)
@@ -63,9 +72,28 @@ async function persistirMediaEntrante(
     }
 
     const { webViewLink } = await uploadToDrive(`chat-${Date.now()}.${ext}`, mimeType, buffer, subfolderId, google_refresh_token)
-    return { url: webViewLink, mimeType }
+    return { url: webViewLink }
   } catch (e) {
-    console.error('[webhook-processor] no se pudo persistir media entrante:', e)
+    console.error('[webhook-processor] no se pudo persistir media entrante en Drive:', e)
+    return null
+  }
+}
+
+// Analiza una foto recibida por chat con visión (GPT-4o-mini) para que el
+// agente/asesor sepan qué es sin tener que "verla" — se hace UNA sola vez,
+// al llegar el mensaje, y el resultado queda guardado en el mensaje mismo
+// (ver más abajo), no se vuelve a analizar después.
+async function analizarImagenChat(tenantId: string, buffer: Buffer, mimeType: string): Promise<string | null> {
+  try {
+    const { llamarIA } = await import('@/lib/ia/llamarIA')
+    const prompt = 'Describe brevemente esta imagen para un asesor de ventas de motos que la recibió por WhatsApp. Si es un documento de identidad, factura, comprobante o similar, di qué tipo de documento es, de quién (si el nombre es legible) y qué cara/lado muestra (frontal/trasera) si aplica. Si es una foto de un producto, la moto o algo cotidiano, descríbelo en una línea. Máximo 2 líneas, directo, sin rodeos.'
+    const resultado = await llamarIA(tenantId, 'analisis_imagen_chat', prompt, {
+      proveedor: 'OPENAI', modelo: 'gpt-4o-mini', maxTokens: 150, temperatura: 0.3,
+      imagenBase64: buffer.toString('base64'), imagenMimeType: mimeType,
+    })
+    return resultado.ok ? (resultado.texto ?? null) : null
+  } catch (e) {
+    console.error('[webhook-processor] no se pudo analizar la imagen:', e)
     return null
   }
 }
@@ -309,18 +337,40 @@ async function procesarMensajeIndividual(
     }
   }
 
-  const mediaPersistida = mediaId ? await persistirMediaEntrante(supabase, tenantId, mediaId, resolvedClienteId) : null
+  const descarga = mediaId ? await descargarMediaMeta(supabase, tenantId, mediaId) : null
+  const [persistido, analisisImagen] = await Promise.all([
+    descarga ? persistirEnDrive(supabase, tenantId, resolvedClienteId, descarga.buffer, descarga.mimeType) : Promise.resolve(null),
+    descarga && tipo === 'imagen' ? analizarImagenChat(tenantId, descarga.buffer, descarga.mimeType) : Promise.resolve(null),
+  ])
+
+  // El análisis se guarda DENTRO del contenido del mensaje (no solo como nota
+  // aparte) para que el historial que lee el agente lo vea automáticamente
+  // en la próxima respuesta — sin esto, el agente "no ve" las fotos que
+  // manda el cliente y sigue pidiéndolas aunque ya llegaron.
+  const contenidoConAnalisis = analisisImagen
+    ? (contenido ? `${contenido}\n[📷 Foto recibida — ${analisisImagen}]` : `[📷 Foto recibida — ${analisisImagen}]`)
+    : contenido
 
   const now = new Date().toISOString()
   await supabase.from('mensajes').insert({
     conversacion_id: conv.id, tenant_id: tenantId,
     direccion: 'entrante', tipo,
-    contenido: contenido.slice(0, 4000),
+    contenido: contenidoConAnalisis.slice(0, 4000),
     meta_message_id: metaMessageId || null,
-    media_url: mediaPersistida?.url ?? (mediaId ? `meta-media://${mediaId}` : null),
-    media_mime_type: mediaPersistida?.mimeType ?? null,
+    media_url: persistido?.url ?? (mediaId ? `meta-media://${mediaId}` : null),
+    media_mime_type: descarga?.mimeType ?? null,
     leido_por_asesor: false,
   })
+
+  // Nota interna visible en la Bandeja para el asesor humano, con el mismo
+  // análisis — comentario aparte, justo después de la imagen.
+  if (analisisImagen) {
+    await supabase.from('mensajes').insert({
+      conversacion_id: conv.id, tenant_id: tenantId, direccion: 'saliente',
+      tipo: 'nota_interna', contenido: `🔎 Análisis de imagen (IA): ${analisisImagen}`,
+      enviado_por: null, estado_envio: 'enviado', leido_por_asesor: false,
+    })
+  }
 
   // Push notification cuando Chrome está cerrado o en background — solo si
   // la conversación NO la está llevando el bot (automatizado): mientras el
