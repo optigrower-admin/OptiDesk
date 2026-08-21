@@ -46,6 +46,19 @@ function buildFolderName(nombre: string | null, celular: string | null): string 
   return c ? `${n} - ${c}` : n
 }
 
+// Para los documentos del catálogo (Carta de Negociación, Copia Cédula, etc.)
+// el nombre del archivo pasa a ser "{Tipo de documento}_{n}_{NOMBRE CLIENTE}"
+// en vez del nombre que trae el escaneo/foto (ej. "escan_1787...pdf") — así
+// se identifica a simple vista de qué documento y de quién es, tanto en
+// Drive como en la lista de Archivos de OptiDesk. El número consecutivo
+// permite tener varios archivos del mismo tipo (ej. dos cédulas) sin
+// pisarse el nombre.
+function nombreDesdeTipoDocumento(tipoDocumento: string, nombreCliente: string | null, seq: number, extOriginal: string): string {
+  const tipoSlug = tipoDocumento.trim().replace(/\s+/g, '_')
+  const nombreSlug = (nombreCliente ?? 'CLIENTE').trim().toUpperCase().replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, '_')
+  return `${tipoSlug}_${seq}_${nombreSlug}.${extOriginal}`
+}
+
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -82,8 +95,16 @@ export async function POST(req: NextRequest) {
   if (!clienteRes.data) return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 })
 
   const bufferOriginal = Buffer.from(await file.arrayBuffer())
-  const { buffer, mimeType, nombre: nombreArchivo } = await comprimirArchivo(bufferOriginal, file.type, file.name)
+  const { buffer, mimeType, nombre: nombreComprimido } = await comprimirArchivo(bufferOriginal, file.type, file.name)
   const tipo = isImage ? 'imagen' : tipoDoc
+
+  let nombreArchivo = nombreComprimido
+  if (tipoDocumento) {
+    const { count } = await admin.from('archivos_cliente').select('id', { count: 'exact', head: true })
+      .eq('cliente_id', clienteId).eq('tipo_documento', tipoDocumento)
+    const ext = nombreComprimido.split('.').pop() || 'pdf'
+    nombreArchivo = nombreDesdeTipoDocumento(tipoDocumento, clienteRes.data.nombre, (count ?? 0) + 1, ext)
+  }
 
   let url: string
   let drive_url: string | null = null

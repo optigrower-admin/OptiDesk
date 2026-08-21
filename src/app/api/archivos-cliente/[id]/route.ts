@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getSignedDownloadUrl, deleteFromR2 } from '@/lib/r2'
+import { deleteFromDrive } from '@/lib/drive'
 import { registrarAuditoria } from '@/lib/audit'
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -50,6 +51,11 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   if (archivo.storage_location === 'r2') {
     try { await deleteFromR2(archivo.url) } catch { /* Si ya no existe, continuar */ }
+  } else if (archivo.storage_location === 'drive') {
+    const { data: tenant } = await supabase.from('tenants').select('google_refresh_token').eq('id', archivo.tenant_id).maybeSingle()
+    if (tenant?.google_refresh_token) {
+      try { await deleteFromDrive(archivo.url, tenant.google_refresh_token) } catch { /* Si ya no existe, continuar */ }
+    }
   }
 
   await supabase.from('archivos_cliente').delete().eq('id', params.id)
