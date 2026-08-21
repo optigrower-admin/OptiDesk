@@ -14,6 +14,8 @@ interface Agente {
   herramientas_habilitadas: string[]
   activo: boolean
   created_at: string
+  prompt_sistema: string | null
+  instrucciones: string | null
 }
 interface Integracion { id: string; proveedor: string; modelo_default: string | null; activo: boolean }
 interface HerramientaInfo { nombre: string; descripcion: string }
@@ -235,8 +237,8 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
 }) {
   const [nombre, setNombre] = useState(agente?.nombre ?? '')
   const [descripcion, setDescripcion] = useState(agente?.descripcion ?? '')
-  const [promptSistema, setPromptSistema] = useState('')
-  const [instrucciones, setInstrucciones] = useState('')
+  const [promptSistema, setPromptSistema] = useState(agente?.prompt_sistema ?? '')
+  const [instrucciones, setInstrucciones] = useState(agente?.instrucciones ?? '')
   const [integracionId, setIntegracionId] = useState(agente?.integracion_ia_id ?? integraciones[0]?.id ?? '')
   const [modelo, setModelo] = useState(agente?.modelo ?? '')
   const [herramientas, setHerramientas] = useState<Set<string>>(new Set(agente?.herramientas_habilitadas ?? []))

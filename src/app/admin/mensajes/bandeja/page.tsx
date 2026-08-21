@@ -22,7 +22,7 @@ type Conversacion = {
   ultimo_mensaje_direccion: string | null
   assigned_to: string | null
   cliente_id: string | null
-  clientes: { id: string; nombre: string | null; automatizado?: boolean }[] | null
+  clientes: { id: string; nombre: string | null; automatizado?: boolean; bot_bloqueado?: boolean }[] | null
 }
 
 type EjecucionFlujo = {
@@ -135,7 +135,7 @@ function formatDuracion(ms: number): string {
 
 // PostgREST may return the embedded join as an object (many-to-one) or array —
 // normalize to always have an array so the rest of the code works uniformly.
-function normalizeClientes(raw: unknown): { id: string; nombre: string | null; automatizado?: boolean }[] {
+function normalizeClientes(raw: unknown): { id: string; nombre: string | null; automatizado?: boolean; bot_bloqueado?: boolean }[] {
   if (!raw) return []
   if (Array.isArray(raw)) return raw as { id: string; nombre: string | null }[]
   if (typeof raw === 'object') return [raw as { id: string; nombre: string | null }]
@@ -297,7 +297,7 @@ export default function BandejaPage() {
     if (!silent) setLoadingConvs(true)
     let q = supabase
       .from('conversaciones')
-      .select('id, canal, canal_contact_id, estado, prioridad, no_leidos_count, ultimo_mensaje_at, ultimo_mensaje_texto, ultimo_mensaje_direccion, assigned_to, cliente_id, clientes(id, nombre, automatizado)')
+      .select('id, canal, canal_contact_id, estado, prioridad, no_leidos_count, ultimo_mensaje_at, ultimo_mensaje_texto, ultimo_mensaje_direccion, assigned_to, cliente_id, clientes(id, nombre, automatizado, bot_bloqueado)')
       .eq('tenant_id', profile.tenant_id)
       .order('ultimo_mensaje_at', { ascending: false, nullsFirst: false })
       .limit(300)
@@ -692,6 +692,19 @@ export default function BandejaPage() {
     }
   }
 
+  // El bot queda pausado (bot_bloqueado) cuando el agente IA escala la
+  // conversación a un humano — esto lo reactiva para que vuelva a responder
+  // automáticamente en el siguiente mensaje del cliente.
+  const reactivarBot = async () => {
+    const clienteId = selectedConv?.cliente_id
+    if (!clienteId) return
+    await supabase.from('clientes').update({ bot_bloqueado: false }).eq('id', clienteId)
+    setConvs(cs => cs.map(c => c.cliente_id === clienteId
+      ? { ...c, clientes: (c.clientes ?? []).map(cl => cl.id === clienteId ? { ...cl, bot_bloqueado: false } : cl) }
+      : c))
+    toast('🤖 Bot reactivado')
+  }
+
   const verFlujoEjecutado = async () => {
     if (!selectedConv) return
     setFlujoEjecutadoOpen(true)
@@ -1024,6 +1037,16 @@ export default function BandejaPage() {
                   </svg>
                   {iniciandoFlujo ? 'Iniciando...' : '▶ Iniciar flujo'}
                 </button>
+                {/* El agente IA pausa el bot al escalar a humano — este botón lo reactiva */}
+                {selectedConv.clientes?.[0]?.bot_bloqueado && (
+                  <button
+                    onClick={reactivarBot}
+                    className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-amber-700 hover:text-amber-900 hover:bg-amber-50 rounded-lg transition-colors border border-amber-300 hover:border-amber-500"
+                    title="El agente IA escaló esta conversación a un humano y el bot dejó de responder automáticamente"
+                  >
+                    🤖⏸️ Bot pausado · Reactivar
+                  </button>
+                )}
               </div>
               {/* Eliminar chat — solo Gerencia */}
               {profile?.rol === 'gerencia' && (

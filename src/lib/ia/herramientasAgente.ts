@@ -238,10 +238,20 @@ const escalarAHumano: HerramientaDef = {
       estado: 'pendiente', ...(seleccionado ? { assigned_to: seleccionado } : {}),
     }).eq('id', ctx.conversacionId)
     if (clienteId) {
+      // bot_bloqueado=true impide que se arranque una ejecución nueva del
+      // flujo en el próximo mensaje (ver crearYArrancarEjecucion) — sin esto,
+      // el bot retomaba la conversación automáticamente pisando la escalación.
       await ctx.supabase.from('clientes').update({
-        automatizado: false, flujo_activo_id: null, ...(seleccionado ? { assigned_to: seleccionado } : {}),
+        automatizado: false, flujo_activo_id: null, bot_bloqueado: true,
+        ...(seleccionado ? { assigned_to: seleccionado } : {}),
       }).eq('id', clienteId)
     }
+    // Cerrar la ejecución de flujo activa de esta conversación (si la hay) —
+    // mismo estado que usa continuarEjecucion al terminar un flujo por 'fin',
+    // para que iniciarFlujoParaConversacion no la retome en el próximo mensaje.
+    await ctx.supabase.from('flujo_ejecuciones').update({
+      estado: 'completado', updated_at: new Date().toISOString(),
+    }).eq('conversacion_id', ctx.conversacionId).eq('estado', 'activo')
     await ctx.supabase.from('mensajes').insert({
       conversacion_id: ctx.conversacionId, tenant_id: ctx.tenantId, direccion: 'saliente',
       tipo: 'nota_interna', contenido: `🤖 Agente escaló a humano — motivo: ${motivo}`,

@@ -21,7 +21,7 @@ export async function GET() {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('agentes_ia')
-    .select('id, nombre, descripcion, proveedor, modelo, integracion_ia_id, herramientas_habilitadas, activo, created_at')
+    .select('id, nombre, descripcion, proveedor, modelo, integracion_ia_id, herramientas_habilitadas, activo, created_at, prompt_sistema, instrucciones')
     .eq('tenant_id', perfil.tenantId)
     .order('created_at', { ascending: false })
 
