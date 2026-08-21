@@ -1,35 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { renameDriveFolder as renameDriveFile } from '@/lib/drive'
 
 // Migración de un solo uso: renombra los archivos_cliente que ya tienen
 // tipo_documento (Carta de Negociación, Copia Cédula, etc.) al patrón
 // "{Tipo}_{n}_{NOMBRE CLIENTE}.ext" — tanto en la base de datos como en el
-// archivo real de Drive. Protegido con CRON_SECRET (mismo patrón que los
-// crons) porque no lo dispara un usuario desde la UI, se ejecuta una vez.
+// archivo real de Drive. Se dispara con la sesión normal de gerencia
+// (abriendo esta URL en el navegador estando logueado), no con un secreto.
 function nombreDesdeTipoDocumento(tipoDocumento: string, nombreCliente: string | null, seq: number, ext: string): string {
   const tipoSlug = tipoDocumento.trim().replace(/\s+/g, '_')
   const nombreSlug = (nombreCliente ?? 'CLIENTE').trim().toUpperCase().replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, '_')
   return `${tipoSlug}_${seq}_${nombreSlug}.${ext}`
 }
 
-export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-  }
+export async function GET(req: NextRequest) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-  const { tenant_id } = await req.json().catch(() => ({})) as { tenant_id?: string }
-  if (!tenant_id) return NextResponse.json({ error: 'Falta tenant_id' }, { status: 400 })
+  const { data: perfil } = await supabase.from('usuarios').select('tenant_id, rol').eq('id', user.id).single()
+  if (!perfil) return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+  if (perfil.rol !== 'gerencia') return NextResponse.json({ error: 'Solo gerencia puede ejecutar esta migración' }, { status: 403 })
 
+  const tenantId = perfil.tenant_id as string
   const admin = createAdminClient()
-  const { data: tenant } = await admin.from('tenants').select('google_refresh_token').eq('id', tenant_id).maybeSingle()
+  const { data: tenant } = await admin.from('tenants').select('google_refresh_token').eq('id', tenantId).maybeSingle()
   const refreshToken = tenant?.google_refresh_token as string | null
 
   const { data: archivos, error } = await admin
     .from('archivos_cliente')
     .select('id, nombre_archivo, tipo_documento, storage_location, url, cliente_id, clientes(nombre)')
-    .eq('tenant_id', tenant_id)
+    .eq('tenant_id', tenantId)
     .not('tipo_documento', 'is', null)
     .order('created_at', { ascending: true })
 
