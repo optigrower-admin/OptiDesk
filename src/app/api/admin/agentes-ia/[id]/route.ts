@@ -25,6 +25,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     temperatura?: number; max_tokens?: number; activo?: boolean; modelo?: string | null
     respuesta_multimensaje?: boolean
     analiza_imagenes?: boolean; tiempo_espera_mensajes_seg?: number
+    objeciones?: { objecion: string; respuesta: string }[]
   } | null
   if (!body) return NextResponse.json({ error: 'Cuerpo inválido' }, { status: 400 })
 
@@ -42,6 +43,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (body.respuesta_multimensaje !== undefined) update.respuesta_multimensaje = body.respuesta_multimensaje
   if (body.analiza_imagenes !== undefined) update.analiza_imagenes = body.analiza_imagenes
   if (body.tiempo_espera_mensajes_seg !== undefined) update.tiempo_espera_mensajes_seg = body.tiempo_espera_mensajes_seg
+  if (body.objeciones !== undefined) update.objeciones = body.objeciones
 
   const admin = createAdminClient()
   const { error } = await admin.from('agentes_ia').update(update).eq('id', params.id).eq('tenant_id', perfil.tenantId)

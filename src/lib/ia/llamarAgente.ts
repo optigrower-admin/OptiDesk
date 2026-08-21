@@ -49,6 +49,14 @@ interface AgenteRow {
   respuesta_multimensaje: boolean | null
   analiza_imagenes: boolean | null
   tiempo_espera_mensajes_seg: number | null
+  objeciones: { objecion: string; respuesta: string }[] | null
+}
+
+function formatearObjeciones(objeciones: AgenteRow['objeciones']): string {
+  const validas = (objeciones ?? []).filter(o => o.objecion?.trim() && o.respuesta?.trim())
+  if (!validas.length) return ''
+  return 'Manejo de objeciones comunes (guía de referencia — adáptala al tono de la conversación, no la repitas palabra por palabra):\n' +
+    validas.map(o => `- Si el cliente dice algo como "${o.objecion}": ${o.respuesta}`).join('\n')
 }
 
 // Config compartida por webhook-processor.ts (¿analiza fotos?) y
@@ -183,6 +191,7 @@ export async function llamarAgente(params: LlamarAgenteParams): Promise<Resultad
     ag.respuesta_multimensaje ? INSTRUCCION_MULTIMENSAJE : '',
     ag.prompt_sistema ?? '',
     ag.instrucciones ?? '',
+    formatearObjeciones(ag.objeciones),
     params.promptContextoExtra ?? '',
     '\nContexto del cliente:',
     `- Nombre: ${params.contextoCliente?.nombre ?? 'desconocido'}`,

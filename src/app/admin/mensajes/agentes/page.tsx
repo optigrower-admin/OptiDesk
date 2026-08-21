@@ -19,6 +19,12 @@ interface Agente {
   respuesta_multimensaje: boolean | null
   analiza_imagenes: boolean | null
   tiempo_espera_mensajes_seg: number | null
+  objeciones: Objecion[] | null
+}
+type Objecion = { objecion: string; respuesta: string }
+type Sugerencia = {
+  id: string; tipo: 'objecion' | 'proceso'; objecion: string | null; respuesta: string | null
+  motivo: string | null; estado: string; conversaciones_analizadas: number; created_at: string
 }
 interface Integracion { id: string; proveedor: string; modelo_default: string | null; activo: boolean }
 interface HerramientaInfo { nombre: string; descripcion: string }
@@ -248,8 +254,16 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
   const [respuestaMultimensaje, setRespuestaMultimensaje] = useState(agente?.respuesta_multimensaje ?? false)
   const [analizaImagenes, setAnalizaImagenes] = useState(agente?.analiza_imagenes ?? true)
   const [tiempoEspera, setTiempoEspera] = useState(String(agente?.tiempo_espera_mensajes_seg ?? 8))
+  const [objeciones, setObjeciones] = useState<Objecion[]>(agente?.objeciones ?? [])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
+
+  function actualizarObjecion(i: number, campo: 'objecion' | 'respuesta', valor: string) {
+    setObjeciones(prev => prev.map((o, idx) => idx === i ? { ...o, [campo]: valor } : o))
+  }
+  function quitarObjecion(i: number) {
+    setObjeciones(prev => prev.filter((_, idx) => idx !== i))
+  }
 
   const integracionActual = integraciones.find(i => i.id === integracionId)
   const modelosDisponibles = MODELOS_AGENTE[(integracionActual?.proveedor ?? '').toUpperCase()] ?? []
@@ -270,6 +284,7 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
       respuesta_multimensaje: respuestaMultimensaje,
       analiza_imagenes: analizaImagenes,
       tiempo_espera_mensajes_seg: Math.max(0, parseInt(tiempoEspera, 10) || 8),
+      objeciones: objeciones.filter(o => o.objecion.trim() || o.respuesta.trim()),
     }
     const r = agente
       ? await fetch(`/api/admin/agentes-ia/${agente.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -370,6 +385,30 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
             </p>
           </div>
           <div>
+            <label className={labelCls}>Objeciones comunes</label>
+            <p className="text-[11px] text-gray-400 mb-1.5">
+              Agrega objeciones frecuentes de clientes y cómo debe responderlas el agente (ej. &quot;está muy caro&quot; → &quot;...&quot;). Se le agregan como guía, no las repite palabra por palabra.
+            </p>
+            <div className="space-y-2">
+              {objeciones.map((o, i) => (
+                <div key={i} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50">
+                  <div className="flex items-center gap-1.5">
+                    <input value={o.objecion} onChange={e => actualizarObjecion(i, 'objecion', e.target.value)}
+                      placeholder="Objeción del cliente (ej: Está muy caro)" className={`${inputCls} flex-1`} />
+                    <button type="button" onClick={() => quitarObjecion(i)} className="text-red-400 hover:text-red-600 text-xs px-1.5">✕</button>
+                  </div>
+                  <textarea value={o.respuesta} onChange={e => actualizarObjecion(i, 'respuesta', e.target.value)} rows={2}
+                    placeholder="Cómo debe responder el agente" className={`${inputCls} resize-none`} />
+                </div>
+              ))}
+              <button type="button" onClick={() => setObjeciones(prev => [...prev, { objecion: '', respuesta: '' }])}
+                className="w-full py-1.5 border border-dashed border-gray-300 rounded-lg text-xs text-gray-500 hover:border-violet-400 hover:text-violet-600 transition-colors">
+                + Agregar objeción
+              </button>
+            </div>
+          </div>
+          {agente && <SugerenciasAgente agenteId={agente.id} objeciones={objeciones} setObjeciones={setObjeciones} />}
+          <div>
             <label className={labelCls}>Herramientas que puede usar</label>
             <div className="space-y-1.5 border border-gray-100 rounded-lg p-2.5 bg-gray-50">
               {catalogoHerramientas.map(h => (
@@ -394,6 +433,105 @@ function ModalEditarAgente({ agente, integraciones, catalogoHerramientas, onClos
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Sugerencias de aprendizaje: analiza conversaciones ganadas/perdidas ──────
+// recientes y sugiere objeciones nuevas para agregar — gerencia revisa y
+// aprueba cada una antes de que se sumen al agente (nunca se auto-aplican).
+function SugerenciasAgente({ agenteId, objeciones, setObjeciones }: {
+  agenteId: string
+  objeciones: Objecion[]
+  setObjeciones: (fn: (prev: Objecion[]) => Objecion[]) => void
+}) {
+  const supabase = createClient()
+  const [sugerencias, setSugerencias] = useState<Sugerencia[]>([])
+  const [cargando, setCargando] = useState(true)
+  const [analizando, setAnalizando] = useState(false)
+  const [error, setError] = useState('')
+
+  const cargar = useCallback(async () => {
+    const { data } = await supabase.from('agente_sugerencias')
+      .select('id, tipo, objecion, respuesta, motivo, estado, conversaciones_analizadas, created_at')
+      .eq('agente_id', agenteId).eq('estado', 'pendiente')
+      .order('created_at', { ascending: false })
+    setSugerencias((data ?? []) as Sugerencia[])
+    setCargando(false)
+  }, [agenteId])
+
+  useEffect(() => { cargar() }, [cargar])
+
+  async function analizar() {
+    setAnalizando(true); setError('')
+    try {
+      const res = await fetch(`/api/admin/agentes-ia/${agenteId}/analizar`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'No se pudo analizar')
+      await cargar()
+      if ((json.sugerencias ?? []).length === 0) setError('No se encontraron suficientes conversaciones recientes para analizar, o no salió nada nuevo.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al analizar')
+    }
+    setAnalizando(false)
+  }
+
+  async function aprobar(s: Sugerencia) {
+    if (s.tipo === 'objecion') {
+      setObjeciones(prev => [...prev, { objecion: s.objecion ?? '', respuesta: s.respuesta ?? '' }])
+    }
+    await supabase.from('agente_sugerencias').update({ estado: 'aplicada' }).eq('id', s.id)
+    setSugerencias(prev => prev.filter(x => x.id !== s.id))
+  }
+
+  async function descartar(id: string) {
+    await supabase.from('agente_sugerencias').update({ estado: 'descartada' }).eq('id', id)
+    setSugerencias(prev => prev.filter(x => x.id !== id))
+  }
+
+  return (
+    <div className="border border-violet-100 bg-violet-50/40 rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold text-violet-900">🧠 Aprendizaje del agente</p>
+          <p className="text-[11px] text-gray-500">Analiza conversaciones recientes (ganadas y perdidas) y sugiere objeciones nuevas para revisar.</p>
+        </div>
+        <button type="button" onClick={analizar} disabled={analizando}
+          className="flex-shrink-0 px-3 py-1.5 bg-violet-700 hover:bg-violet-800 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+          {analizando ? 'Analizando...' : 'Analizar conversaciones'}
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-amber-700">{error}</p>}
+      {!cargando && sugerencias.length > 0 && (
+        <div className="space-y-1.5 pt-1">
+          {sugerencias.map(s => (
+            <div key={s.id} className="bg-white border border-gray-200 rounded-lg p-2 space-y-1">
+              {s.tipo === 'objecion' ? (
+                <>
+                  <p className="text-xs font-semibold text-gray-800">Objeción: {s.objecion}</p>
+                  <p className="text-xs text-gray-600">Respuesta sugerida: {s.respuesta}</p>
+                </>
+              ) : (
+                <p className="text-xs text-gray-800">💡 {s.respuesta}</p>
+              )}
+              {s.motivo && <p className="text-[11px] text-gray-400">Por qué: {s.motivo}</p>}
+              <p className="text-[10px] text-gray-300">Basado en {s.conversaciones_analizadas} conversación{s.conversaciones_analizadas === 1 ? '' : 'es'}</p>
+              <div className="flex gap-1.5 pt-1">
+                {s.tipo === 'objecion' && (
+                  <button type="button" onClick={() => aprobar(s)} className="flex-1 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[11px] font-semibold">✓ Agregar a Objeciones</button>
+                )}
+                <button type="button" onClick={() => descartar(s.id)} className="flex-1 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-[11px]">Descartar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {!cargando && sugerencias.length === 0 && !error && (
+        <p className="text-[11px] text-gray-400">Sin sugerencias pendientes. Dale a &quot;Analizar conversaciones&quot; cuando quieras revisar cómo va el agente.</p>
+      )}
+      <p className="text-[11px] text-gray-400">
+        Objeciones actuales configuradas: {objeciones.filter(o => o.objecion.trim()).length}
+      </p>
     </div>
   )
 }
